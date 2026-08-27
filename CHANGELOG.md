@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-08-27
+
+### Fixed
+
+- `CODEX_PROTECTED_NAMES` now includes `plugins`, matching
+  `CLAUDE_PROTECTED_NAMES`. Found by dogfooding against a real `~/.codex`:
+  `plugins/` holds genuine installed-plugin state (`plugins/cache`,
+  `plugins/.plugin-appserver`), not disposable cache. No code path sweeps
+  it today, so this is a defense-in-depth fix, not a behavior change.
+
 ## [1.0.1] - 2026-08-27
 
 ### Added
@@ -75,6 +85,7 @@ Initial public release.
   the tool installs via `brew tap matteo-dritara/cancellai && brew install
   cancellai`.
 
-[Unreleased]: https://github.com/matteo-dritara/homebrew-cancellai/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/matteo-dritara/homebrew-cancellai/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/matteo-dritara/homebrew-cancellai/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/matteo-dritara/homebrew-cancellai/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/matteo-dritara/homebrew-cancellai/releases/tag/v1.0.0
