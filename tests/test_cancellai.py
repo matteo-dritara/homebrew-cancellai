@@ -608,7 +608,7 @@ class TrustFloorTests(unittest.TestCase):
         self.assertEqual(plan.actions, [])
         self.assertTrue(unknown.exists())
 
-    def test_coverage_classifies_protected_cleanable_and_reported_state(self):
+    def test_coverage_classifies_protected_selective_and_reported_state(self):
         write_file(self.codex / "auth.json", "SECRET")
         write_file(self.codex / "state_5.sqlite", "DB")
         write_file(self.codex / "sessions" / "keep.jsonl", "{}")
@@ -616,10 +616,10 @@ class TrustFloorTests(unittest.TestCase):
         states = {p.name: cleaner.coverage_state(p.name, "codex") for p, _s in cleaner.root_entry_sizes(self.codex)}
         self.assertEqual(states["auth.json"], "protected")
         self.assertEqual(states["state_5.sqlite"], "reported")
-        self.assertEqual(states["sessions"], "cleanable")
+        self.assertEqual(states["sessions"], "selective")
         self.assertEqual(states["dictation-history"], "unknown")
         self.assertEqual(cleaner.coverage_state("plugins", "claude"), "protected")
-        self.assertEqual(cleaner.coverage_state("file-history", "claude"), "cleanable")
+        self.assertEqual(cleaner.coverage_state("file-history", "claude"), "selective")
         self.assertEqual(cleaner.coverage_state("chrome", "claude"), "unknown")
 
     def test_status_coverage_output_lists_unknown_entries(self):
@@ -653,7 +653,7 @@ class RootAuthorityTests(unittest.TestCase):
             for tool in ("codex", "claude"):
                 authority = cleaner.fingerprint_root(cleaner.default_home(tool), tool)
                 self.assertEqual((authority.origin, authority.confidence), ("default", "default"), tool)
-                self.assertTrue(authority.destructive_allowed(acknowledged=False), tool)
+                self.assertTrue(authority.destructive_allowed(), tool)
 
     def test_ordinary_project_directory_with_tmp_and_log_is_refused(self):
         rogue = self.base / "my-project"
@@ -665,7 +665,7 @@ class RootAuthorityTests(unittest.TestCase):
 
         authority = cleaner.fingerprint_root(rogue, "codex")
         self.assertEqual(authority.confidence, "unknown")
-        self.assertFalse(authority.destructive_allowed(acknowledged=True))
+        self.assertFalse(authority.destructive_allowed())
 
         plan = cleaner.build_plan(
             days=7,
@@ -687,19 +687,19 @@ class RootAuthorityTests(unittest.TestCase):
         write_file(weak / "config.toml", 'model="x"')
         authority = cleaner.fingerprint_root(weak, "codex")
         self.assertEqual(authority.confidence, "low")
-        self.assertFalse(authority.destructive_allowed(acknowledged=True))
+        self.assertFalse(authority.destructive_allowed())
 
-    def test_credible_custom_root_needs_explicit_intent(self):
+    def test_structurally_perfect_custom_root_is_still_refused(self):
+        # ADR-0013: looking exactly like the provider is not proof of belonging to it.
         custom = self.base / "custom-codex"
         write_file(custom / "auth.json", "{}")
         write_file(custom / "config.toml", 'model="x"')
         codex_rollout(custom, "51515151-5151-4151-8151-515151515151", "2026-01-01", 30)
         authority = cleaner.fingerprint_root(custom, "codex")
         self.assertEqual((authority.origin, authority.confidence), ("custom", "high"))
-        # Structure alone is not permission: the operator must also mean it.
-        self.assertFalse(authority.destructive_allowed(acknowledged=False))
-        self.assertTrue(authority.destructive_allowed(acknowledged=True))
-        self.assertIn("--allow-custom-root", authority.explain(acknowledged=False))
+        self.assertTrue(authority.structurally_credible)
+        self.assertFalse(authority.destructive_allowed())
+        self.assertIn("not the default", authority.explain())
 
     def test_marker_filenames_without_provider_content_do_not_identify_a_root(self):
         # Filenames are not identity: the same names with unrelated content prove nothing.
@@ -710,7 +710,7 @@ class RootAuthorityTests(unittest.TestCase):
         self.assertEqual(cleaner.fingerprint_root(decoy, "codex").confidence, "unknown")
         self.assertEqual(cleaner.fingerprint_root(decoy, "claude").confidence, "unknown")
 
-    def test_acknowledged_custom_root_can_still_be_cleaned(self):
+    def test_no_custom_root_can_be_cleaned_in_the_python_reference(self):
         custom = self.base / "custom-codex"
         write_file(custom / "auth.json", "{}")
         write_file(custom / "config.toml", 'model="x"')
@@ -723,20 +723,10 @@ class RootAuthorityTests(unittest.TestCase):
             claude_home=self.claude,
             codex_backend="filesystem",
             aggressive=False,
-            allow_custom_roots=True,
         )
-        self.assertIn(old, {a.path for a in plan.actions})
-        with mock.patch.object(cleaner, "active_processes", return_value=quiet_processes()):
-            cleaner.execute_plan(
-                plan,
-                codex_home=custom,
-                claude_home=self.claude,
-                dry_run=False,
-                allow_running=True,
-                trim_history=False,
-                verbose=False,
-            )
-        self.assertFalse(old.exists())
+        self.assertEqual(plan.actions, [])
+        self.assertEqual(plan.withheld, ["codex"])
+        self.assertTrue(old.exists())
 
     def test_inspection_still_works_on_an_unverified_root(self):
         rogue = self.base / "my-project"
@@ -956,7 +946,7 @@ class IndependentVerifierAdversarialTests(unittest.TestCase):
             codex_backend="filesystem",
             aggressive=False,
         )
-        self.assertFalse(authority.destructive_allowed(acknowledged=True), authority.explain(acknowledged=True))
+        self.assertFalse(authority.destructive_allowed(), authority.explain())
         self.assertNotIn(rollout, {action.path for action in plan.actions})
 
     def test_history_trim_preserves_retained_bytes_including_crlf(self):
@@ -1112,11 +1102,15 @@ class ReviewResponseTests(unittest.TestCase):
     # --- E00-S08: `cleanable` may not overclaim ------------------------------
     def test_coverage_states_match_what_cleanup_actually_reaches(self):
         self.assertEqual(cleaner.coverage_state("history.jsonl", "claude"), "trimmed")
-        self.assertEqual(cleaner.coverage_state("backups", "claude"), "aggressive-only")
+        self.assertEqual(cleaner.coverage_state("backups", "claude"), "selective-aggressive")
+        self.assertEqual(cleaner.coverage_state("cache", "claude"), "selective-aggressive")
         self.assertEqual(cleaner.coverage_state("todos", "claude"), "aggressive-only")
-        self.assertEqual(cleaner.coverage_state("cache", "claude"), "aggressive-only")
-        self.assertEqual(cleaner.coverage_state("file-history", "claude"), "cleanable")
+        self.assertEqual(cleaner.coverage_state("remote-settings.json", "claude"), "aggressive-only")
+        self.assertEqual(cleaner.coverage_state("file-history", "claude"), "selective")
+        self.assertEqual(cleaner.coverage_state("projects", "claude"), "selective")
+        self.assertEqual(cleaner.coverage_state("sessions", "codex"), "selective")
         self.assertEqual(cleaner.coverage_state("history.jsonl", "codex"), "unknown")
+        self.assertNotIn("cleanable", cleaner.COVERAGE_STATES)
         self.assertEqual(set(cleaner.COVERAGE_LEGEND), set(cleaner.COVERAGE_STATES))
 
     def test_no_standalone_history_file_is_ever_selected_for_deletion(self):
@@ -1175,6 +1169,277 @@ class ReviewResponseTests(unittest.TestCase):
         self.assertTrue(observation.complete)
         self.assertEqual(observation.running("codex"), [424242])
         self.assertEqual(observation.running("claude"), [])
+
+
+class RoundTwoIndependentVerifierTests(unittest.TestCase):
+    """Counterexamples for defect classes, not only round-one instances."""
+
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        self.base = Path(self.td.name)
+        self.codex, self.claude = make_provider_roots(self.base)
+        use_as_default_roots(self, self.codex, self.claude)
+
+    def tearDown(self):
+        self.td.cleanup()
+
+    def test_protected_name_barrier_is_case_insensitive_for_apfs(self):
+        # macOS commonly mounts APFS case-insensitively. The lexical barrier must not
+        # depend on the scanner reproducing the protected entry's stored case.
+        candidate = self.codex / "Plugins" / "state.json"
+        self.assertEqual(
+            cleaner.protected_component(candidate, self.codex, cleaner.CODEX_PROTECTED_NAMES),
+            "plugins",
+        )
+
+    def test_custom_root_with_validated_lookalike_content_is_still_refused(self):
+        project = self.base / "unrelated-project"
+        write_file(project / "auth.json", "{}")
+        write_file(project / "config.toml", "name = 'unrelated'")
+        rollout = codex_rollout(project, "71717171-7171-4171-8171-717171717171", "2026-01-01", 30)
+        authority = cleaner.fingerprint_root(project, "codex")
+        plan = cleaner.build_plan(
+            days=7,
+            keep_latest=0,
+            tools={"codex"},
+            codex_home=project,
+            claude_home=self.claude,
+            codex_backend="filesystem",
+            aggressive=False,
+        )
+        self.assertFalse(authority.destructive_allowed(), authority.explain())
+        self.assertNotIn(rollout, {action.path for action in plan.actions})
+
+    def test_successful_ps_output_without_self_is_not_a_complete_observation(self):
+        completed = subprocess.CompletedProcess(args=["ps"], returncode=0, stdout="424242 unrelated-daemon\n")
+        with mock.patch.object(cleaner.subprocess, "run", return_value=completed):
+            self.assertFalse(cleaner.active_processes().complete)
+
+    def test_history_symlink_is_not_replaced(self):
+        target = self.base / "elsewhere-history"
+        session_id = "72727272-7272-4272-8272-727272727272"
+        target.write_bytes((json.dumps({"sessionId": session_id}) + "\n").encode())
+        history = self.claude / "history.jsonl"
+        history.symlink_to(target)
+        removed, _bytes, status = cleaner.trim_claude_history(history, {session_id})
+        self.assertEqual((removed, status), (0, "unreadable"))
+        self.assertTrue(history.is_symlink())
+
+    def test_coverage_does_not_call_memory_only_projects_cleanable(self):
+        write_file(self.claude / "projects" / "demo" / "memory" / "MEMORY.md", "keep", 30)
+        plan = cleaner.build_plan(
+            days=7,
+            keep_latest=0,
+            tools={"claude"},
+            codex_home=self.codex,
+            claude_home=self.claude,
+            codex_backend="filesystem",
+            aggressive=True,
+        )
+        self.assertNotIn(self.claude / "projects", {action.path for action in plan.actions})
+        self.assertNotEqual(cleaner.coverage_state("projects", "claude"), "cleanable")
+
+    def test_cmd_clean_converts_execution_oserror_to_documented_failure(self):
+        session_id = "73737373-7373-4373-8373-737373737373"
+        codex_rollout(self.codex, session_id, "2026-01-01", 30)
+        env = {"CODEX_HOME": str(self.codex), "CLAUDE_CONFIG_DIR": str(self.claude)}
+        with (
+            mock.patch.dict(os.environ, env),
+            mock.patch.object(cleaner, "active_processes", return_value=quiet_processes()),
+            mock.patch.object(cleaner, "execute_plan", side_effect=OSError("disk I/O failure")),
+            mock.patch.object(sys, "stdout", new=io.StringIO()),
+        ):
+            self.assertEqual(
+                cleaner.main(["clean", "-y", "--json", "--tool", "codex", "--keep-latest", "0", "--codex-backend", "filesystem"]),
+                cleaner.EXIT_FAILED,
+            )
+
+
+class RoundTwoResponseTests(unittest.TestCase):
+    """Round-two repairs, tested as defect classes rather than reported instances."""
+
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        self.base = Path(self.td.name)
+        self.codex, self.claude = make_provider_roots(self.base)
+        use_as_default_roots(self, self.codex, self.claude)
+        self.locked = []
+
+    def tearDown(self):
+        for path, mode in reversed(self.locked):
+            with contextlib.suppress(OSError):
+                path.chmod(mode)
+        self.td.cleanup()
+
+    def deny(self, path: Path, restore_mode: int):
+        self.locked.append((path, restore_mode))
+        path.chmod(0o000)
+
+    # --- E00-S01: case folding, not one reported spelling --------------------
+    def test_protected_barrier_matches_any_case_variant(self):
+        for spelling in ("Plugins", "PLUGINS", "pLuGiNs"):
+            candidate = self.codex / spelling / "state.json"
+            self.assertEqual(
+                cleaner.protected_component(candidate, self.codex, cleaner.CODEX_PROTECTED_NAMES),
+                "plugins",
+                spelling,
+            )
+        self.assertEqual(
+            cleaner.protected_component(self.claude / "Agent-Memory" / "n.md", self.claude, cleaner.CLAUDE_PROTECTED_NAMES),
+            "agent-memory",
+        )
+
+    def test_case_variant_protected_path_is_refused_at_deletion(self):
+        target = write_file(self.codex / "Plugins" / "state.json", "keep")
+        with self.assertRaises(cleaner.SafetyError):
+            cleaner.safe_remove(target, self.codex, cleaner.CODEX_PROTECTED_NAMES)
+        self.assertTrue(target.exists())
+
+    # --- E00-S02: no custom root is mutable in this build --------------------
+    def test_every_custom_root_shape_is_refused(self):
+        shapes = {}
+        empty = self.base / "empty"
+        empty.mkdir()
+        shapes["empty"] = empty
+        weak = self.base / "weak"
+        write_file(weak / "config.toml", "x = 1")
+        shapes["weak"] = weak
+        perfect = self.base / "perfect"
+        write_file(perfect / "auth.json", "{}")
+        write_file(perfect / "config.toml", "x = 1")
+        codex_rollout(perfect, "81818181-8181-4181-8181-818181818181", "2026-01-01", 30)
+        shapes["perfect"] = perfect
+        for label, root in shapes.items():
+            self.assertFalse(cleaner.fingerprint_root(root, "codex").destructive_allowed(), label)
+
+    def test_configure_refuses_a_custom_claude_root(self):
+        custom = self.base / "custom-claude"
+        write_file(custom / "settings.json", "{}")
+        write_file(custom / "keybindings.json", "{}")
+        env = {"CODEX_HOME": str(self.codex), "CLAUDE_CONFIG_DIR": str(custom)}
+        with mock.patch.dict(os.environ, env), mock.patch.object(sys, "stderr", new=io.StringIO()):
+            code = cleaner.main(["configure", "--claude-retention", "3"])
+        self.assertEqual(code, cleaner.EXIT_USAGE)
+        self.assertEqual(json.loads((custom / "settings.json").read_text(encoding="utf-8")), {})
+
+    # --- E00-S04: the exit taxonomy has no escape hatch ----------------------
+    def test_unexpected_exception_never_collides_with_the_cancelled_code(self):
+        env = {"CODEX_HOME": str(self.codex), "CLAUDE_CONFIG_DIR": str(self.claude)}
+        with (
+            mock.patch.dict(os.environ, env),
+            mock.patch.object(cleaner, "build_plan", side_effect=RuntimeError("boom")),
+            mock.patch.object(sys, "stderr", new=io.StringIO()),
+        ):
+            code = cleaner.main(["clean", "-y", "--tool", "codex"])
+        self.assertEqual(code, cleaner.EXIT_FAILED)
+        self.assertNotEqual(code, cleaner.EXIT_CANCELLED)
+
+    # --- E00-S05: an unreadable parent is not an absent scope ----------------
+    def test_unreadable_root_is_recorded_rather_than_read_as_empty(self):
+        codex_rollout(self.codex, "82828282-8282-4282-8282-828282828282", "2026-01-01", 30)
+        self.deny(self.codex, 0o755)
+        plan = cleaner.build_plan(
+            days=7,
+            keep_latest=0,
+            tools={"codex"},
+            codex_home=self.codex,
+            claude_home=self.claude,
+            codex_backend="filesystem",
+            aggressive=False,
+        )
+        self.assertFalse(plan.scan_complete)
+        self.assertEqual(plan.withheld, ["codex"])
+        self.assertTrue(plan.scan_errors)
+
+    def test_observe_separates_absent_from_unreadable(self):
+        scan = cleaner.Scan(scope="codex")
+        self.assertIsNone(cleaner.observe(self.codex / "definitely-absent", scan))
+        self.assertTrue(scan.complete)
+        hidden = self.codex / "hidden"
+        hidden.mkdir()
+        self.deny(hidden, 0o755)
+        self.assertIsNone(cleaner.observe(hidden / "inside", scan))
+        self.assertFalse(scan.complete)
+
+    # --- E00-S06: shared metadata is never rewritten through an indirection --
+    def test_history_symlink_is_left_alone_in_both_directions(self):
+        session_id = "83838383-8383-4383-8383-838383838383"
+        target = self.base / "outside-history.jsonl"
+        payload = (json.dumps({"sessionId": session_id}) + "\n").encode()
+        target.write_bytes(payload)
+        history = self.claude / "history.jsonl"
+        history.unlink(missing_ok=True)
+        history.symlink_to(target)
+        removed, _bytes, status = cleaner.trim_claude_history(history, {session_id})
+        self.assertEqual((removed, status), (0, "unreadable"))
+        self.assertTrue(history.is_symlink())
+        self.assertEqual(target.read_bytes(), payload)
+
+    def test_execution_reports_a_skipped_history_trim(self):
+        session_id = "84848484-8484-4484-8484-848484848484"
+        claude_session(self.claude, "-project", session_id, 30)
+        history = self.claude / "history.jsonl"
+        history.unlink(missing_ok=True)
+        history.symlink_to(self.base / "outside-history.jsonl")
+        (self.base / "outside-history.jsonl").write_text(json.dumps({"sessionId": session_id}) + "\n", encoding="utf-8")
+        plan = cleaner.build_plan(
+            days=7,
+            keep_latest=0,
+            tools={"claude"},
+            codex_home=self.codex,
+            claude_home=self.claude,
+            codex_backend="filesystem",
+            aggressive=False,
+        )
+        with mock.patch.object(cleaner, "active_processes", return_value=quiet_processes()):
+            result = cleaner.execute_plan(
+                plan,
+                codex_home=self.codex,
+                claude_home=self.claude,
+                dry_run=False,
+                allow_running=True,
+                trim_history=True,
+                verbose=False,
+            )
+        self.assertTrue(result.partial)
+        self.assertTrue(any("could not be read or rewritten" in e for e in result.errors))
+
+    # --- E00-S08: every state matches what cleanup really does ---------------
+    def test_no_selective_container_is_ever_deleted_whole(self):
+        containers = [
+            self.claude / "projects",
+            self.claude / "file-history",
+            self.codex / "sessions",
+            self.codex / "tmp",
+        ]
+        for container in containers:
+            write_file(container / "child" / "payload.txt", "data", 400)
+            age_tree(container, 400)
+        plan = cleaner.build_plan(
+            days=7,
+            keep_latest=0,
+            tools={"codex", "claude"},
+            codex_home=self.codex,
+            claude_home=self.claude,
+            codex_backend="filesystem",
+            aggressive=True,
+        )
+        selected = {action.path for action in plan.actions}
+        for container in containers:
+            self.assertNotIn(container, selected, str(container))
+
+    # --- E00-S09: a listing that omits this process is not a listing ---------
+    def test_observation_requires_seeing_this_process(self):
+        cases = {
+            "empty": "",
+            "unrelated only": "424242 unrelated-daemon\n",
+            "codex without self": "424242 codex\n",
+            "unparsable": "no pids here\n",
+        }
+        for label, stdout in cases.items():
+            completed = subprocess.CompletedProcess(args=["ps"], returncode=0, stdout=stdout)
+            with mock.patch.object(cleaner.subprocess, "run", return_value=completed):
+                self.assertFalse(cleaner.active_processes().complete, label)
 
 
 if __name__ == "__main__":

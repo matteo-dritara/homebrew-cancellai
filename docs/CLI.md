@@ -26,9 +26,8 @@ options:
 
 ```text
 usage: cancellai clean [-h] [--days DAYS] [--keep-latest KEEP_LATEST] [--tool {all,codex,claude}]
-                       [--codex-backend {auto,cli,filesystem}] [--aggressive]
-                       [--allow-custom-root] [--json] [--dry-run] [-y] [--allow-running]
-                       [--keep-claude-history] [--verbose]
+                       [--codex-backend {auto,cli,filesystem}] [--aggressive] [--json] [--dry-run]
+                       [-y] [--allow-running] [--keep-claude-history] [--verbose]
 
 options:
   -h, --help            show this help message and exit
@@ -40,8 +39,6 @@ options:
                         auto/cli prefer official 'codex delete --force'; filesystem is an explicit
                         unsafe-compatibility fallback
   --aggressive          Also remove Claude legacy/rebuildable caches
-  --allow-custom-root   Permit mutation of a non-default CODEX_HOME/CLAUDE_CONFIG_DIR that still
-                        passes provider fingerprinting
   --json                Machine-readable summary
   --dry-run             Preview only; delete nothing
   -y, --yes             Skip confirmation
@@ -55,8 +52,8 @@ options:
 
 ```text
 usage: cancellai status [-h] [--days DAYS] [--keep-latest KEEP_LATEST] [--tool {all,codex,claude}]
-                        [--codex-backend {auto,cli,filesystem}] [--aggressive]
-                        [--allow-custom-root] [--json] [--paths] [--coverage] [--top TOP]
+                        [--codex-backend {auto,cli,filesystem}] [--aggressive] [--json] [--paths]
+                        [--coverage] [--top TOP]
 
 options:
   -h, --help            show this help message and exit
@@ -68,8 +65,6 @@ options:
                         auto/cli prefer official 'codex delete --force'; filesystem is an explicit
                         unsafe-compatibility fallback
   --aggressive          Also remove Claude legacy/rebuildable caches
-  --allow-custom-root   Permit mutation of a non-default CODEX_HOME/CLAUDE_CONFIG_DIR that still
-                        passes provider fingerprinting
   --json                Machine-readable summary
   --paths               Show largest candidate paths
   --coverage            Report which top-level provider entries this build classifies, including
@@ -80,13 +75,11 @@ options:
 ## `cancellai configure`
 
 ```text
-usage: cancellai configure [-h] --claude-retention DAYS [--allow-custom-root]
+usage: cancellai configure [-h] --claude-retention DAYS
 
 options:
   -h, --help            show this help message and exit
   --claude-retention DAYS
-  --allow-custom-root   Permit writing to a non-default CLAUDE_CONFIG_DIR that still passes
-                        provider fingerprinting
 ```
 
 ## `cancellai version`

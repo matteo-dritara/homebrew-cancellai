@@ -1,9 +1,11 @@
 # ADR-0012: Custom provider roots require validated structure and explicit intent
 
-- Status: Accepted
+- Status: Superseded by [ADR-0013](0013-custom-provider-roots-are-inspection-only-in-python-v1.md)
 - Date: 2026-08-27
 - Decision owners: project owner / cEOS
 - Related: PD-002, PD-018, C-02, C-03, SI-002, SI-004, SI-009, E00-S02
+
+> **Superseded.** Independent review produced a counterexample satisfying both conditions adopted here: a directory with a valid-JSON `auth.json`, a real `config.toml` and a genuine `rollout-<uuid>.jsonl`. Structure plus intent is not positive provider identity. [ADR-0013](0013-custom-provider-roots-are-inspection-only-in-python-v1.md) replaces it.
 
 ## Context
 

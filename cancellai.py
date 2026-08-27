@@ -101,11 +101,16 @@ MAX_ROOT_PROBE_ENTRIES = 2000
 # Coverage vocabulary. `cleanable` means a deletion rule can select this entry as it
 # stands; anything conditional or non-deleting gets its own state so the report cannot
 # overclaim what cleanup actually reaches.
-COVERAGE_STATES = ("cleanable", "aggressive-only", "trimmed", "protected", "reported", "unknown")
-CODEX_CLEANABLE_NAMES = {"sessions", "archived_sessions", "log", "tmp"}
+COVERAGE_STATES = ("selective", "selective-aggressive", "aggressive-only", "trimmed", "protected", "reported", "unknown")
+# `selective` is the honest label for a container: cancellAI selects entries *inside* it by
+# age and policy and never deletes the container. Whether any particular entry is selected
+# depends on its contents, age and the keep-latest rail, so the directory itself can never
+# be called cleanable.
+CODEX_SELECTIVE_NAMES = {"sessions", "archived_sessions", "log", "tmp"}
 CODEX_REPORTED_PREFIXES = ("state_", "logs_", "goals_", "memories_", "queue_", "thread_history_")
-CLAUDE_CLEANABLE_NAMES = {"projects", *CLAUDE_RETENTION_PATHS}
-CLAUDE_AGGRESSIVE_ONLY_NAMES = {"backups", *CLAUDE_LEGACY_PATHS, *(Path(rel).parts[0] for rel in CLAUDE_SAFE_CACHE_FILES)}
+CLAUDE_SELECTIVE_NAMES = {"projects", *CLAUDE_RETENTION_PATHS}
+CLAUDE_SELECTIVE_AGGRESSIVE_NAMES = {"backups", *(Path(rel).parent.name for rel in CLAUDE_SAFE_CACHE_FILES if Path(rel).parent.name)}
+CLAUDE_AGGRESSIVE_ONLY_NAMES = {*CLAUDE_LEGACY_PATHS, *(rel for rel in CLAUDE_SAFE_CACHE_FILES if Path(rel).parent.name == "")}
 CLAUDE_TRIMMED_NAMES = {"history.jsonl"}
 
 
@@ -169,30 +174,36 @@ class RootAuthority:
 
     @property
     def structurally_credible(self) -> bool:
+        """Whether the directory *looks* like the provider. Reported, never authoritative.
+
+        Structural evidence is cheap to fabricate and therefore cannot be positive provider
+        identity (SI-002). It is useful information for the operator; it is not permission.
+        """
         return self.confidence in {"default", "high"}
 
-    def destructive_allowed(self, *, acknowledged: bool) -> bool:
-        """Two independent conditions, neither of which is sufficient alone.
+    def destructive_allowed(self) -> bool:
+        """Only the provider's own default directory may be mutated by the Python reference.
 
-        Structure answers "is this really the provider"; acknowledgement answers "did an
-        operator mean to point us here". A default root carries its own intent.
+        Two weaker schemes were tried and rejected by independent review: filename markers,
+        then validated structure plus an explicit operator flag. Neither establishes that a
+        directory belongs to the provider - a lookalike satisfies both. Positive identity
+        needs the provider capability contract, which the Rust core will have and this
+        reference does not. Until then, a relocated root is inspectable and nothing more.
+        See ADR-0013.
         """
-        return self.structurally_credible and (self.origin == "default" or acknowledged)
+        return self.origin == "default"
 
-    def explain(self, *, acknowledged: bool) -> str:
-        if self.destructive_allowed(acknowledged=acknowledged):
+    def explain(self) -> str:
+        if self.destructive_allowed():
             return f"{self.tool} root {self.path} ({self.origin}, confidence {self.confidence})"
         found = ", ".join(self.markers) if self.markers else "none"
-        if self.structurally_credible:
-            return (
-                f"Refusing destructive work on custom {self.tool} root {self.path}: it looks like a {self.tool} "
-                "installation, but a non-default root is not deleted from without explicit intent. "
-                "Re-run with --allow-custom-root if that is really what you want. Inspection with `status` still works."
-            )
+        looks_right = " It does look like one" if self.structurally_credible else " It does not look like one"
         return (
-            f"Refusing destructive work on {self.tool} root {self.path}: it does not look like a {self.tool} "
-            f"installation (confidence {self.confidence}; validated provider markers: {found}). "
-            "Inspection with `status` still works."
+            f"Refusing destructive work on {self.tool} root {self.path}: it is not the default {self.tool} directory."
+            f"{looks_right} (confidence {self.confidence}; validated provider markers: {found}), but looking right is "
+            "not proof of ownership, so this build will not remove anything there. Inspection with `status` works "
+            "normally; "
+            f"unset the {'CLAUDE_CONFIG_DIR' if self.tool == 'claude' else 'CODEX_HOME'} override to clean the default root."
         )
 
 
@@ -231,7 +242,6 @@ class Plan:
     root_authority: dict[str, RootAuthority] = field(default_factory=dict)
     withheld: list[str] = field(default_factory=list)
     for_mutation: bool = True
-    allow_custom_roots: bool = False
 
     @property
     def scan_complete(self) -> bool:
@@ -473,6 +483,11 @@ def protected_component(path: Path, root: Path, protected_names: set[str]) -> st
     except OSError:
         return "<unresolvable>"
 
+    # macOS mounts APFS case-insensitively by default, so a candidate spelled `Plugins`
+    # names the same directory as `plugins`. Matching case-sensitively would make the
+    # barrier depend on which spelling a scanner happened to produce. On a case-sensitive
+    # filesystem this is merely over-inclusive, and over-inclusive is the safe direction.
+    folded = {name.casefold(): name for name in protected_names}
     for candidate, base in views:
         try:
             relative = candidate.relative_to(base)
@@ -480,8 +495,9 @@ def protected_component(path: Path, root: Path, protected_names: set[str]) -> st
             # This view falls outside the approved root; containment checks own that case.
             continue
         for part in relative.parts:
-            if part in protected_names:
-                return part
+            canonical = folded.get(part.casefold())
+            if canonical is not None:
+                return canonical
     return None
 
 
@@ -507,6 +523,24 @@ def is_within(path: Path, root: Path) -> bool:
         return False
 
 
+def observe(path: Path, scan: Scan | None = None) -> os.stat_result | None:
+    """`lstat` that separates "not there" from "could not look".
+
+    `Path.exists()` answers False for both, so using it as a discovery guard silently turns
+    an unreadable directory into an empty one - the exact collapse this scope channel
+    exists to prevent. Every guard that decides whether a scope was scanned goes through
+    here instead.
+    """
+    try:
+        return path.lstat()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        if scan is not None:
+            scan.record(path, exc)
+        return None
+
+
 def safe_lstat_size(path: Path, scan: Scan | None = None) -> int:
     try:
         st = path.lstat()
@@ -524,13 +558,8 @@ def safe_lstat_size(path: Path, scan: Scan | None = None) -> int:
 
 
 def directory_size(root: Path, scan: Scan | None = None) -> int:
-    if not root.exists() and not root.is_symlink():
-        return 0
-    try:
-        st = root.lstat()
-    except OSError as exc:
-        if scan is not None:
-            scan.record(root, exc)
+    st = observe(root, scan)
+    if st is None:
         return 0
     if stat.S_ISLNK(st.st_mode):
         return st.st_size
@@ -619,7 +648,8 @@ def latest_mtime(path: Path, scan: Scan | None = None) -> float:
 
 
 def iter_files(root: Path, suffix: str | None = None, scan: Scan | None = None) -> Iterator[Path]:
-    if not root.exists() or root.is_symlink():
+    st = observe(root, scan)
+    if st is None or stat.S_ISLNK(st.st_mode):
         return
 
     def on_walk_error(exc: OSError) -> None:
@@ -850,7 +880,8 @@ def discover_codex_sessions(codex_home: Path, strategy: str, scan: Scan | None =
     found: list[Action] = []
     for rel, category in (("sessions", "session"), ("archived_sessions", "archived-session")):
         root = codex_home / rel
-        if not root.exists():
+        root_stat = observe(root, scan)
+        if root_stat is None or stat.S_ISLNK(root_stat.st_mode):
             continue
         for p in iter_files(root, suffix=".jsonl", scan=scan):
             if not p.name.startswith("rollout-"):
@@ -882,7 +913,8 @@ def discover_codex_sessions(codex_home: Path, strategy: str, scan: Scan | None =
 def discover_claude_sessions(claude_home: Path, scan: Scan | None = None) -> list[Action]:
     projects = claude_home / "projects"
     found: list[Action] = []
-    if not projects.exists() or projects.is_symlink():
+    projects_stat = observe(projects, scan)
+    if projects_stat is None or stat.S_ISLNK(projects_stat.st_mode):
         return found
 
     # Top-level project transcript files only. memory/ and subagent JSONL are never treated as roots.
@@ -940,7 +972,8 @@ def discover_aged_top_entries(
     protected_session_ids: set[str] | None = None,
     scan: Scan | None = None,
 ) -> list[Action]:
-    if not root.exists() or root.is_symlink():
+    st = observe(root, scan)
+    if st is None or stat.S_ISLNK(st.st_mode):
         return []
     protected_session_ids = protected_session_ids or set()
     actions: list[Action] = []
@@ -995,7 +1028,8 @@ def discover_claude_aux(
         # widens which categories are eligible; it never bypasses the age cutoff.
         for rel in CLAUDE_LEGACY_PATHS:
             root = claude_home / rel
-            if root.exists() and not root.is_symlink():
+            legacy_stat = observe(root, scan)
+            if legacy_stat is not None and not stat.S_ISLNK(legacy_stat.st_mode):
                 mt = latest_mtime(root, scan)
                 if mt <= 0 or mt >= cutoff:
                     continue
@@ -1010,15 +1044,10 @@ def discover_claude_aux(
                 )
         for rel in CLAUDE_SAFE_CACHE_FILES:
             p = claude_home / rel
-            if p.exists() and (p.is_file() or p.is_symlink()):
-                try:
-                    st = p.lstat()
-                except OSError as exc:
-                    if scan is not None:
-                        scan.record(p, exc)
-                    continue
-                if st.st_mtime >= cutoff:
-                    continue
+            st = observe(p, scan)
+            if st is None or not (stat.S_ISREG(st.st_mode) or stat.S_ISLNK(st.st_mode)):
+                continue
+            if st.st_mtime < cutoff:
                 actions.append(
                     Action(
                         tool="claude",
@@ -1032,7 +1061,7 @@ def discover_claude_aux(
 
 
 def count_claude_history_matches(history_path: Path, session_ids: set[str], scan: Scan | None = None) -> int:
-    if not session_ids or not history_path.exists():
+    if not session_ids or observe(history_path, scan) is None:
         return 0
     matches = 0
     try:
@@ -1062,7 +1091,6 @@ def build_plan(
     codex_backend: str,
     aggressive: bool,
     for_mutation: bool = True,
-    allow_custom_roots: bool = False,
 ) -> Plan:
     """Assemble the set of actions.
 
@@ -1077,7 +1105,7 @@ def build_plan(
         raise ValueError("keep_latest must be >= 0")
 
     cutoff = now_ts() - days * 86400
-    plan = Plan(cutoff=cutoff, days=days, keep_latest=keep_latest, for_mutation=for_mutation, allow_custom_roots=allow_custom_roots)
+    plan = Plan(cutoff=cutoff, days=days, keep_latest=keep_latest, for_mutation=for_mutation)
     plan.root_authority = {
         "codex": fingerprint_root(codex_home, "codex"),
         "claude": fingerprint_root(claude_home, "claude"),
@@ -1164,9 +1192,9 @@ def build_plan(
         withheld: set[str] = set()
         for tool in sorted(tools):
             authority = plan.root_authority[tool]
-            if not authority.destructive_allowed(acknowledged=allow_custom_roots):
+            if not authority.destructive_allowed():
                 withheld.add(tool)
-                plan.notes.append(authority.explain(acknowledged=allow_custom_roots))
+                plan.notes.append(authority.explain())
         for scan in plan.scans:
             if not scan.complete:
                 withheld.add(scan.scope)
@@ -1211,7 +1239,7 @@ def active_processes() -> ProcessObservation:
         return ProcessObservation(pids=result, complete=False)
     if proc.returncode != 0:
         return ProcessObservation(pids=result, complete=False)
-    parsed_any = False
+    saw_self = False
     self_pid = os.getpid()
     for line in proc.stdout.splitlines():
         line = line.strip()
@@ -1224,15 +1252,17 @@ def active_processes() -> ProcessObservation:
             pid = int(parts[0])
         except ValueError:
             continue
-        parsed_any = True
         if pid == self_pid:
+            saw_self = True
             continue
         base = Path(parts[1]).name
         for tool, names in targets.items():
             if base in names:
                 result[tool].append(pid)
-    # `ps` always lists at least this process; nothing parsable means we cannot trust it.
-    return ProcessObservation(pids=result, complete=parsed_any)
+    # A full process listing necessarily contains this process. If it does not, we are not
+    # looking at a full listing - filtered, truncated, sandboxed or stubbed output must not
+    # be read as "nothing is running".
+    return ProcessObservation(pids=result, complete=saw_self)
 
 
 def safe_remove(path: Path, approved_root: Path, protected_names: set[str]) -> int:
@@ -1335,6 +1365,11 @@ def trim_claude_history(
     """
     if not deleted_session_ids or not history_path.exists():
         return 0, 0, "noop"
+    if history_path.is_symlink():
+        # os.replace() would swap the link for a regular file, silently detaching whatever
+        # the operator pointed it at. Shared provider metadata is not rewritten through an
+        # indirection we did not create.
+        return 0, 0, "unreadable"
     deleted_session_ids = {s.lower() for s in deleted_session_ids}
     try:
         original_stat = history_path.stat()
@@ -1410,8 +1445,8 @@ def execute_plan(
     roots = {"codex": codex_home, "claude": claude_home}
     for tool in sorted({action.tool for action in plan.actions}):
         authority = fingerprint_root(roots[tool], tool)
-        if not authority.destructive_allowed(acknowledged=plan.allow_custom_roots):
-            raise SafetyError(authority.explain(acknowledged=plan.allow_custom_roots))
+        if not authority.destructive_allowed():
+            raise SafetyError(authority.explain())
     for scan in plan.scans:
         if not scan.complete:
             raise SafetyError(f"Refusing to execute a plan built from an incomplete {scan.scope} scan")
@@ -1430,9 +1465,9 @@ def execute_plan(
     codex_ok, codex_bin = codex_delete_supported()
 
     before_size = 0
-    if "codex" in target_tools and codex_home.exists():
+    if "codex" in target_tools:
         before_size += directory_size(codex_home)
-    if "claude" in target_tools and claude_home.exists():
+    if "claude" in target_tools:
         before_size += directory_size(claude_home)
 
     for idx, action in enumerate(plan.actions, 1):
@@ -1501,9 +1536,9 @@ def execute_plan(
             prune_empty_dirs(claude_home / rel)
 
     after_size = 0
-    if "codex" in target_tools and codex_home.exists():
+    if "codex" in target_tools:
         after_size += directory_size(codex_home)
-    if "claude" in target_tools and claude_home.exists():
+    if "claude" in target_tools:
         after_size += directory_size(claude_home)
     result.freed_bytes = max(0, before_size - after_size)
 
@@ -1521,7 +1556,8 @@ def execute_plan(
 
 def root_entry_sizes(root: Path, scan: Scan | None = None) -> list[tuple[Path, int]]:
     """Size every top-level entry of a provider root in a single pass."""
-    if not root.exists() or root.is_symlink():
+    st = observe(root, scan)
+    if st is None or stat.S_ISLNK(st.st_mode):
         return []
     try:
         children = list(root.iterdir())
@@ -1541,12 +1577,16 @@ def coverage_state(name: str, tool: str) -> str:
 
     The vocabulary is deliberately narrow so the report cannot overclaim:
 
-    - `cleanable` - a deletion rule selects this entry as it stands;
-    - `aggressive-only` - a deletion rule selects it, but only under `--aggressive`;
+    - `selective` - entries inside are selected by age and policy; this entry is never deleted;
+    - `selective-aggressive` - the same, but only under `--aggressive`;
+    - `aggressive-only` - this entry is deleted whole, only under `--aggressive`;
     - `trimmed` - never deleted; individual lines are rewritten when their session goes;
     - `protected` - an unconditional barrier covers it;
     - `reported` - shown in status, never touched;
     - `unknown` - this build does not classify it at all.
+
+    There is deliberately no state meaning "this entry gets deleted as it stands", because
+    no top-level provider entry is treated that way outside `--aggressive`.
 
     Reporting `unknown` is the point: a provider that adds a directory must show up as
     unclassified rather than disappearing from the picture. No discovery path reads this
@@ -1555,15 +1595,17 @@ def coverage_state(name: str, tool: str) -> str:
     if name in protected_names_for(tool):
         return "protected"
     if tool == "codex":
-        if name in CODEX_CLEANABLE_NAMES:
-            return "cleanable"
+        if name in CODEX_SELECTIVE_NAMES:
+            return "selective"
         if name.startswith(CODEX_REPORTED_PREFIXES):
             return "reported"
         return "unknown"
     if name in CLAUDE_TRIMMED_NAMES:
         return "trimmed"
-    if name in CLAUDE_CLEANABLE_NAMES:
-        return "cleanable"
+    if name in CLAUDE_SELECTIVE_NAMES:
+        return "selective"
+    if name in CLAUDE_SELECTIVE_AGGRESSIVE_NAMES:
+        return "selective-aggressive"
     if name in CLAUDE_AGGRESSIVE_ONLY_NAMES:
         return "aggressive-only"
     return "unknown"
@@ -1590,8 +1632,9 @@ def coverage_payload(entries: Sequence[tuple[Path, int]], tool: str) -> dict[str
 
 
 COVERAGE_LEGEND = {
-    "cleanable": "a deletion rule selects these as they stand",
-    "aggressive-only": "selected only under --aggressive",
+    "selective": "entries inside are selected by age and policy; this entry is never deleted",
+    "selective-aggressive": "the same, but only under --aggressive",
+    "aggressive-only": "deleted whole, only under --aggressive",
     "trimmed": "never deleted; lines tied to deleted sessions are removed",
     "protected": "unconditional barrier, never deleted",
     "reported": "shown here, never touched",
@@ -1609,7 +1652,7 @@ def print_coverage(tool: str, root: Path, entries: Sequence[tuple[Path, int]]) -
 
 
 def protected_codex_db_entries(codex_home: Path, scan: Scan | None = None) -> list[tuple[Path, int]]:
-    if not codex_home.exists():
+    if observe(codex_home, scan) is None:
         return []
     entries: list[tuple[Path, int]] = []
     try:
@@ -1668,7 +1711,7 @@ def plan_summary_dict(plan: Plan) -> dict[str, object]:
                 "origin": authority.origin,
                 "confidence": authority.confidence,
                 "markers": list(authority.markers),
-                "destructive_allowed": authority.destructive_allowed(acknowledged=plan.allow_custom_roots),
+                "destructive_allowed": authority.destructive_allowed(),
             }
             for tool, authority in sorted(plan.root_authority.items())
         },
@@ -1760,11 +1803,6 @@ def build_parser() -> argparse.ArgumentParser:
             help="auto/cli prefer official 'codex delete --force'; filesystem is an explicit unsafe-compatibility fallback",
         )
         p.add_argument("--aggressive", action="store_true", help="Also remove Claude legacy/rebuildable caches")
-        p.add_argument(
-            "--allow-custom-root",
-            action="store_true",
-            help="Permit mutation of a non-default CODEX_HOME/CLAUDE_CONFIG_DIR that still passes provider fingerprinting",
-        )
         p.add_argument("--json", action="store_true", help="Machine-readable summary")
 
     clean = sub.add_parser("clean", help="Clean old session data (default when other args are given without a subcommand)")
@@ -1787,11 +1825,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     configure = sub.add_parser("configure", help="Configure Claude Code's built-in retention")
     configure.add_argument("--claude-retention", type=int, required=True, metavar="DAYS")
-    configure.add_argument(
-        "--allow-custom-root",
-        action="store_true",
-        help="Permit writing to a non-default CLAUDE_CONFIG_DIR that still passes provider fingerprinting",
-    )
 
     sub.add_parser("version", help="Print version")
     return parser
@@ -1858,7 +1891,7 @@ def cmd_status(args: argparse.Namespace) -> int:
             "origin": authority.origin,
             "confidence": authority.confidence,
             "markers": list(authority.markers),
-            "destructive_allowed": authority.destructive_allowed(acknowledged=False),
+            "destructive_allowed": authority.destructive_allowed(),
             "bytes": total,
             "bytes_complete": root_scans[tool].complete,
             "unreadable": root_scans[tool].errors,
@@ -1887,8 +1920,8 @@ def cmd_status(args: argparse.Namespace) -> int:
                 print(f"  unreadable: {error}")
     for tool in ("codex", "claude"):
         authority = plan.root_authority[tool]
-        if not authority.destructive_allowed(acknowledged=False):
-            print(f"WARNING: {authority.explain(acknowledged=False)}")
+        if not authority.destructive_allowed():
+            print(f"WARNING: {authority.explain()}")
     running = active_processes()
     if not running.complete:
         print("Running processes: unknown (process enumeration failed; cleanup will refuse to run)")
@@ -1929,7 +1962,6 @@ def cmd_clean(args: argparse.Namespace) -> int:
             claude_home=claude_home,
             codex_backend=args.codex_backend,
             aggressive=args.aggressive,
-            allow_custom_roots=args.allow_custom_root,
         )
     except (SafetyError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
@@ -1992,6 +2024,13 @@ def cmd_clean(args: argparse.Namespace) -> int:
         result = CleanResult()
         result.deferred.append(str(exc))
         result.errors.append(str(exc))
+    except OSError as exc:
+        # An I/O failure that escapes the per-action isolation is a mutation failure, and
+        # automation must see exit 3 rather than a traceback and Python's own exit 1 -
+        # which would be indistinguishable from the user declining the prompt.
+        result = CleanResult()
+        result.failed = 1
+        result.errors.append(f"Cleanup aborted: {exc}")
     if plan.withheld:
         withheld_note = f"Safety withheld all work for: {', '.join(plan.withheld)}. See the notes above."
         result.deferred.append(withheld_note)
@@ -2041,8 +2080,8 @@ def cmd_configure(args: argparse.Namespace) -> int:
         claude_home = validate_config_root(get_claude_home(), "Claude")
         # Writing provider configuration is a mutation, so it uses the same root boundary.
         authority = fingerprint_root(claude_home, "claude")
-        if not authority.destructive_allowed(acknowledged=args.allow_custom_root):
-            raise SafetyError(authority.explain(acknowledged=args.allow_custom_root))
+        if not authority.destructive_allowed():
+            raise SafetyError(authority.explain())
         settings = configure_claude_retention(claude_home, args.claude_retention)
     except (SafetyError, ValueError, OSError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
@@ -2056,14 +2095,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     command = args.command or "status"
-    if command == "status":
-        return cmd_status(args)
-    if command == "configure":
-        return cmd_configure(args)
-    if command == "version":
-        print(VERSION)
-        return EXIT_OK
-    return cmd_clean(args)
+    try:
+        if command == "status":
+            return cmd_status(args)
+        if command == "configure":
+            return cmd_configure(args)
+        if command == "version":
+            print(VERSION)
+            return EXIT_OK
+        return cmd_clean(args)
+    except KeyboardInterrupt:
+        print("\nInterrupted.", file=sys.stderr)
+        return EXIT_CANCELLED
+    except Exception as exc:  # the exit taxonomy must cover every path, including a bug in this program
+        # An uncaught exception would leave Python's own exit code 1, which automation
+        # cannot distinguish from the user declining the confirmation prompt.
+        print(f"ERROR: unexpected failure: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return EXIT_FAILED
 
 
 if __name__ == "__main__":
