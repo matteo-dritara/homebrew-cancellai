@@ -33,7 +33,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 DEFAULT_DAYS = 7
 DEFAULT_KEEP_LATEST = 2
 UUID_RE = re.compile(r"(?P<uuid>[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})")
