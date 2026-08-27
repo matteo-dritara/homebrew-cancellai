@@ -6,18 +6,13 @@ Every story is a work contract. Implementation may refine internals, but changin
 
 ## E00 - Trust Floor Remediation
 
-**Phase:** `P0`  
-**Status:** `in_progress`  
-**Epic dependencies:** none
+**Phase:** `P0` | **Status:** `in_progress` | **Epic dependencies:** none
 
 Correct known P0 safety and contract defects in Python without broadening product scope.
 
 ### E00-S01 - Enforce protected-name barriers
 
-**Status:** `ready_for_review`  
-**Change Risk:** `CR4`  
-**Dependencies:** none  
-**Safety obligations:** SI-001, SI-003, SI-006
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-001, SI-003, SI-006
 
 **Outcome.** Make documented protected names an executable defense at discovery and execution time.
 
@@ -39,10 +34,7 @@ Correct known P0 safety and contract defects in Python without broadening produc
 
 ### E00-S02 - Fingerprint custom provider roots
 
-**Status:** `ready_for_review`  
-**Change Risk:** `CR4`  
-**Dependencies:** none  
-**Safety obligations:** SI-002, SI-004, SI-009
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-002, SI-004, SI-009
 
 **Outcome.** Reject destructive use of custom roots that do not credibly match the selected provider layout.
 
@@ -64,10 +56,7 @@ Correct known P0 safety and contract defects in Python without broadening produc
 
 ### E00-S03 - Make aggressive mode retention-safe
 
-**Status:** `done`  
-**Change Risk:** `CR3`  
-**Dependencies:** none  
-**Safety obligations:** SI-005, SI-012
+**Status:** `done` | **Change Risk:** `CR3` | **Dependencies:** none | **Safety obligations:** SI-005, SI-012
 
 **Outcome.** Ensure aggressive expands eligible categories but never silently bypasses age retention.
 
@@ -89,10 +78,7 @@ Correct known P0 safety and contract defects in Python without broadening produc
 
 ### E00-S04 - Remove ambiguous destructive CLI escalation
 
-**Status:** `ready_for_review`  
-**Change Risk:** `CR3`  
-**Dependencies:** none  
-**Safety obligations:** SI-007, SI-014
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** none | **Safety obligations:** SI-007, SI-014
 
 **Outcome.** Require the clean subcommand for all destructive behavior and publish stable exit semantics.
 
@@ -115,10 +101,7 @@ Correct known P0 safety and contract defects in Python without broadening produc
 
 ### E00-S05 - Represent incomplete scans and fail closed
 
-**Status:** `ready_for_review`  
-**Change Risk:** `CR4`  
-**Dependencies:** none  
-**Safety obligations:** SI-008, SI-009, SI-010
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-008, SI-009, SI-010
 
 **Outcome.** Stop treating unreadable or partially scanned trees as implicitly safe.
 
@@ -140,10 +123,7 @@ Correct known P0 safety and contract defects in Python without broadening produc
 
 ### E00-S06 - Protect concurrent Claude metadata rewrites
 
-**Status:** `ready_for_review`  
-**Change Risk:** `CR3`  
-**Dependencies:** none  
-**Safety obligations:** SI-011, SI-015
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** none | **Safety obligations:** SI-011, SI-015
 
 **Outcome.** Make history trimming streaming and safe in the presence of active writers.
 
@@ -165,10 +145,7 @@ Correct known P0 safety and contract defects in Python without broadening produc
 
 ### E00-S09 - Fail closed when provider activity is unknown
 
-**Status:** `ready_for_review`  
-**Change Risk:** `CR4`  
-**Dependencies:** none  
-**Safety obligations:** SI-009, SI-014, SI-011
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-009, SI-014, SI-011
 
 **Outcome.** Stop treating an unusable process observation as proof that no provider is running.
 
@@ -191,10 +168,7 @@ Correct known P0 safety and contract defects in Python without broadening produc
 
 ### E00-S07 - P0 regression evidence packet
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E00-S01, E00-S02, E00-S03, E00-S04, E00-S05, E00-S06  
-**Safety obligations:** SI-019
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E00-S01, E00-S02, E00-S03, E00-S04, E00-S05, E00-S06 | **Safety obligations:** SI-019
 
 **Outcome.** Close Trust Floor only with explicit evidence for every P0 defect.
 
@@ -216,10 +190,7 @@ Correct known P0 safety and contract defects in Python without broadening produc
 
 ### E00-S08 - Report provider layout coverage
 
-**Status:** `ready_for_review`  
-**Change Risk:** `CR1`  
-**Dependencies:** none  
-**Safety obligations:** SI-004, SI-009, SI-010
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** SI-004, SI-009, SI-010
 
 **Outcome.** Make the gap between observed provider state and cancellAI-classified state visible instead of silent.
 
@@ -242,18 +213,13 @@ Correct known P0 safety and contract defects in Python without broadening produc
 
 ## E01 - Executable Reference Contract
 
-**Phase:** `P0`  
-**Status:** `planned`  
-**Epic dependencies:** E00
+**Phase:** `P0` | **Status:** `planned` | **Epic dependencies:** E00
 
 Turn Python v1 into a behavioral oracle before Rust implementation begins.
 
 ### E01-S01 - Freeze domain vocabulary
 
-**Status:** `planned`  
-**Change Risk:** `CR1`  
-**Dependencies:** E00-S07  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E00-S07 | **Safety obligations:** none
 
 **Outcome.** Define canonical terms for Artifact, ProviderRoot, Evidence, Confidence, Lifecycle, Authority, Plan, Action, and Result.
 
@@ -272,10 +238,7 @@ Turn Python v1 into a behavioral oracle before Rust implementation begins.
 
 ### E01-S02 - Build provider layout fixture corpus
 
-**Status:** `planned`  
-**Change Risk:** `CR1`  
-**Dependencies:** E01-S01  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E01-S01 | **Safety obligations:** none
 
 **Outcome.** Capture synthetic, privacy-safe Claude/Codex layouts for supported and adversarial cases.
 
@@ -294,10 +257,7 @@ Turn Python v1 into a behavioral oracle before Rust implementation begins.
 
 ### E01-S03 - Define versioned plan/result JSON contracts
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E01-S01  
-**Safety obligations:** SI-013, SI-016
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E01-S01 | **Safety obligations:** SI-013, SI-016
 
 **Outcome.** Specify machine-readable inventory, plan, explanation, and execution result schemas.
 
@@ -318,10 +278,7 @@ Turn Python v1 into a behavioral oracle before Rust implementation begins.
 
 ### E01-S04 - Characterize Python behavior
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E01-S02, E01-S03  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E01-S02, E01-S03 | **Safety obligations:** none
 
 **Outcome.** Record Python outputs for the complete fixture corpus without treating defects as desired behavior.
 
@@ -340,10 +297,7 @@ Turn Python v1 into a behavioral oracle before Rust implementation begins.
 
 ### E01-S05 - Create differential test harness contract
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E01-S04  
-**Safety obligations:** SI-019
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E01-S04 | **Safety obligations:** SI-019
 
 **Outcome.** Define how Python reference and Rust candidate outputs are normalized and compared.
 
@@ -362,10 +316,7 @@ Turn Python v1 into a behavioral oracle before Rust implementation begins.
 
 ### E01-S06 - Freeze Python feature scope
 
-**Status:** `planned`  
-**Change Risk:** `CR0`  
-**Dependencies:** E01-S05  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR0` | **Dependencies:** E01-S05 | **Safety obligations:** none
 
 **Outcome.** Declare Python reference maintenance-only after contract extraction.
 
@@ -385,18 +336,13 @@ Turn Python v1 into a behavioral oracle before Rust implementation begins.
 
 ## E02 - Rust Workspace Bootstrap
 
-**Phase:** `P1`  
-**Status:** `planned`  
-**Epic dependencies:** E01
+**Phase:** `P1` | **Status:** `planned` | **Epic dependencies:** E01
 
 Establish the target Rust workspace, coding standards, and build factory without changing user-visible behavior.
 
 ### E02-S01 - Create Rust workspace skeleton
 
-**Status:** `planned`  
-**Change Risk:** `CR1`  
-**Dependencies:** E01-S06  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E01-S06 | **Safety obligations:** none
 
 **Outcome.** Create crates for model, safety, inventory, policy, provider API, store, CLI, TUI, and later Guardian.
 
@@ -416,10 +362,7 @@ Establish the target Rust workspace, coding standards, and build factory without
 
 ### E02-S02 - Establish Rust quality baseline
 
-**Status:** `planned`  
-**Change Risk:** `CR1`  
-**Dependencies:** E02-S01  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E02-S01 | **Safety obligations:** none
 
 **Outcome.** Adopt fmt, clippy, tests, cargo-deny, RustSec audit, MSRV policy, and dependency rules.
 
@@ -440,10 +383,7 @@ Establish the target Rust workspace, coding standards, and build factory without
 
 ### E02-S03 - Define error and diagnostic model
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E02-S01  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E02-S01 | **Safety obligations:** none
 
 **Outcome.** Create typed error categories and stable machine-facing exit mapping.
 
@@ -463,10 +403,7 @@ Establish the target Rust workspace, coding standards, and build factory without
 
 ### E02-S04 - Introduce deterministic clock and filesystem seams
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E02-S01  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E02-S01 | **Safety obligations:** none
 
 **Outcome.** Make time and filesystem observation injectable for tests without abstracting away security-critical OS semantics.
 
@@ -485,18 +422,13 @@ Establish the target Rust workspace, coding standards, and build factory without
 
 ## E03 - Formal Safety Kernel
 
-**Phase:** `P1`  
-**Status:** `planned`  
-**Epic dependencies:** E02
+**Phase:** `P1` | **Status:** `planned` | **Epic dependencies:** E02
 
 Implement constitutional safety invariants as a dedicated, testable Rust authority boundary.
 
 ### E03-S01 - Artifact identity tokens
 
-**Status:** `planned`  
-**Change Risk:** `CR4`  
-**Dependencies:** E02-S04  
-**Safety obligations:** SI-013, SI-017
+**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E02-S04 | **Safety obligations:** SI-013, SI-017
 
 **Outcome.** Define cross-platform identity preconditions using device/inode on Unix and volume/file identity plus reparse metadata on Windows.
 
@@ -515,10 +447,7 @@ Implement constitutional safety invariants as a dedicated, testable Rust authori
 
 ### E03-S02 - Sealed cleanup plan
 
-**Status:** `planned`  
-**Change Risk:** `CR4`  
-**Dependencies:** E03-S01  
-**Safety obligations:** SI-013, SI-016
+**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E03-S01 | **Safety obligations:** SI-013, SI-016
 
 **Outcome.** Make every mutating plan immutable, identity-bound, capability-bound, and policy-explained.
 
@@ -538,10 +467,7 @@ Implement constitutional safety invariants as a dedicated, testable Rust authori
 
 ### E03-S03 - Root and boundary capabilities
 
-**Status:** `planned`  
-**Change Risk:** `CR4`  
-**Dependencies:** E03-S01  
-**Safety obligations:** SI-002, SI-003, SI-018
+**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E03-S01 | **Safety obligations:** SI-002, SI-003, SI-018
 
 **Outcome.** Represent approved roots and filesystem boundaries as explicit capabilities rather than raw paths.
 
@@ -561,10 +487,7 @@ Implement constitutional safety invariants as a dedicated, testable Rust authori
 
 ### E03-S04 - Action authority lattice
 
-**Status:** `planned`  
-**Change Risk:** `CR4`  
-**Dependencies:** E02-S03  
-**Safety obligations:** SI-001, SI-007, SI-008, SI-009
+**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E02-S03 | **Safety obligations:** SI-001, SI-007, SI-008, SI-009
 
 **Outcome.** Implement action classes and Effective Authority as a monotonic minimum over all governing constraints.
 
@@ -585,10 +508,7 @@ Implement constitutional safety invariants as a dedicated, testable Rust authori
 
 ### E03-S05 - Mutation executor isolation
 
-**Status:** `planned`  
-**Change Risk:** `CR4`  
-**Dependencies:** E03-S02, E03-S03, E03-S04  
-**Safety obligations:** SI-019, SI-020
+**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E03-S02, E03-S03, E03-S04 | **Safety obligations:** SI-019, SI-020
 
 **Outcome.** Make the safety executor the sole code path for filesystem mutation.
 
@@ -608,18 +528,13 @@ Implement constitutional safety invariants as a dedicated, testable Rust authori
 
 ## E04 - Single-Pass Inventory Engine
 
-**Phase:** `P1`  
-**Status:** `planned`  
-**Epic dependencies:** E03
+**Phase:** `P1` | **Status:** `planned` | **Epic dependencies:** E03
 
 Build a fast, evidence-rich inventory that scans once and never equates unknown with safe.
 
 ### E04-S01 - FileFacts inventory model
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E03-S01  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E03-S01 | **Safety obligations:** none
 
 **Outcome.** Collect logical size, allocated/physical estimate, timestamps, type, identity, boundary, provider/category hints, and scan confidence.
 
@@ -638,10 +553,7 @@ Build a fast, evidence-rich inventory that scans once and never equates unknown 
 
 ### E04-S02 - One traversal per scope
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E04-S01  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E04-S01 | **Safety obligations:** none
 
 **Outcome.** Replace repeated recursive size walks with a reusable inventory pass.
 
@@ -660,10 +572,7 @@ Build a fast, evidence-rich inventory that scans once and never equates unknown 
 
 ### E04-S03 - Incomplete inventory propagation
 
-**Status:** `planned`  
-**Change Risk:** `CR3`  
-**Dependencies:** E04-S01  
-**Safety obligations:** SI-008, SI-009
+**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E04-S01 | **Safety obligations:** SI-008, SI-009
 
 **Outcome.** Propagate permission, disappearance, I/O, and unsupported filesystem states into completeness metadata.
 
@@ -682,10 +591,7 @@ Build a fast, evidence-rich inventory that scans once and never equates unknown 
 
 ### E04-S04 - Performance budget baseline
 
-**Status:** `planned`  
-**Change Risk:** `CR1`  
-**Dependencies:** E04-S02  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E04-S02 | **Safety obligations:** none
 
 **Outcome.** Establish scan latency, memory, CPU, and cancellAI self-footprint budgets on representative datasets.
 
@@ -704,18 +610,13 @@ Build a fast, evidence-rich inventory that scans once and never equates unknown 
 
 ## E05 - Provider API and Reference Adapters
 
-**Phase:** `P1`  
-**Status:** `planned`  
-**Epic dependencies:** E04
+**Phase:** `P1` | **Status:** `planned` | **Epic dependencies:** E04
 
 Implement capability-based provider integration and achieve Claude/Codex semantic parity.
 
 ### E05-S01 - Provider capability contract
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E04-S01  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E04-S01 | **Safety obligations:** none
 
 **Outcome.** Define detect, fingerprint, inventory mapping, session graph, project attribution, activity, native mutation, explain, and compatibility capabilities.
 
@@ -734,10 +635,7 @@ Implement capability-based provider integration and achieve Claude/Codex semanti
 
 ### E05-S02 - Provider trust enforcement
 
-**Status:** `planned`  
-**Change Risk:** `CR4`  
-**Dependencies:** E05-S01, E03-S04  
-**Safety obligations:** SI-021, SI-022
+**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E05-S01, E03-S04 | **Safety obligations:** SI-021, SI-022
 
 **Outcome.** Implement Built-in Verified, Community Verified, Local Custom, and Untrusted trust levels as authority inputs.
 
@@ -757,10 +655,7 @@ Implement capability-based provider integration and achieve Claude/Codex semanti
 
 ### E05-S03 - Claude reference adapter
 
-**Status:** `planned`  
-**Change Risk:** `CR3`  
-**Dependencies:** E05-S01  
-**Safety obligations:** SI-001, SI-004
+**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E05-S01 | **Safety obligations:** SI-001, SI-004
 
 **Outcome.** Port Claude discovery/classification/session relationships to Rust with version/layout fingerprinting.
 
@@ -780,10 +675,7 @@ Implement capability-based provider integration and achieve Claude/Codex semanti
 
 ### E05-S04 - Codex reference adapter
 
-**Status:** `planned`  
-**Change Risk:** `CR3`  
-**Dependencies:** E05-S01  
-**Safety obligations:** SI-001, SI-004
+**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E05-S01 | **Safety obligations:** SI-001, SI-004
 
 **Outcome.** Port Codex rollout/subagent/native-delete knowledge to Rust with version/layout fingerprinting.
 
@@ -803,10 +695,7 @@ Implement capability-based provider integration and achieve Claude/Codex semanti
 
 ### E05-S05 - Reference-provider compatibility matrix
 
-**Status:** `planned`  
-**Change Risk:** `CR1`  
-**Dependencies:** E05-S03, E05-S04  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E05-S03, E05-S04 | **Safety obligations:** none
 
 **Outcome.** Publish tested provider versions/layout signatures and supported capability states.
 
@@ -825,18 +714,13 @@ Implement capability-based provider integration and achieve Claude/Codex semanti
 
 ## E06 - Rust CLI Parity and Cutover
 
-**Phase:** `P1`  
-**Status:** `planned`  
-**Epic dependencies:** E05
+**Phase:** `P1` | **Status:** `planned` | **Epic dependencies:** E05
 
 Make Rust the canonical engine only after observable parity, migration, and rollback evidence.
 
 ### E06-S01 - Rust CLI contract parity
 
-**Status:** `planned`  
-**Change Risk:** `CR3`  
-**Dependencies:** E05-S03, E05-S04  
-**Safety obligations:** SI-007
+**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E05-S03, E05-S04 | **Safety obligations:** SI-007
 
 **Outcome.** Implement status/inspect/plan/clean/configure equivalents against the new engine without TUI concerns.
 
@@ -856,10 +740,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S02 - Differential parity gate
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E06-S01, E01-S05  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E06-S01, E01-S05 | **Safety obligations:** none
 
 **Outcome.** Run Python and Rust over the full normative fixture corpus in CI.
 
@@ -878,10 +759,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S03 - Migration and rollback packaging
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E06-S02  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E06-S02 | **Safety obligations:** none
 
 **Outcome.** Define side-by-side invocation, data compatibility, and rollback from Rust candidate to Python reference during beta.
 
@@ -901,10 +779,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S04 - Canonical engine switch
 
-**Status:** `planned`  
-**Change Risk:** `CR4`  
-**Dependencies:** E06-S03  
-**Safety obligations:** SI-019
+**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E06-S03 | **Safety obligations:** SI-019
 
 **Outcome.** Promote Rust to stable only after functional, safety, compatibility, and operability gates pass.
 
@@ -925,18 +800,13 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ## E07 - Cross-Platform Operating-System Layer
 
-**Phase:** `P2`  
-**Status:** `planned`  
-**Epic dependencies:** E06
+**Phase:** `P2` | **Status:** `planned` | **Epic dependencies:** E06
 
 Make macOS, Linux, Windows native, and WSL2 first-class platform targets.
 
 ### E07-S01 - Unix platform backend
 
-**Status:** `planned`  
-**Change Risk:** `CR3`  
-**Dependencies:** E06-S04  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E06-S04 | **Safety obligations:** none
 
 **Outcome.** Implement macOS/Linux process, identity, allocated-size, notification, and filesystem semantics behind OS capabilities.
 
@@ -955,10 +825,7 @@ Make macOS, Linux, Windows native, and WSL2 first-class platform targets.
 
 ### E07-S02 - Windows native backend
 
-**Status:** `planned`  
-**Change Risk:** `CR4`  
-**Dependencies:** E07-S01  
-**Safety obligations:** SI-017, SI-018
+**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E07-S01 | **Safety obligations:** SI-017, SI-018
 
 **Outcome.** Implement Windows path, volume/file identity, reparse point, process, allocated-size, and atomic move semantics.
 
@@ -977,10 +844,7 @@ Make macOS, Linux, Windows native, and WSL2 first-class platform targets.
 
 ### E07-S03 - WSL environment model
 
-**Status:** `planned`  
-**Change Risk:** `CR3`  
-**Dependencies:** E07-S02  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E07-S02 | **Safety obligations:** none
 
 **Outcome.** Treat WSL as Windows host plus Linux guest/filesystem context rather than generic Linux.
 
@@ -999,10 +863,7 @@ Make macOS, Linux, Windows native, and WSL2 first-class platform targets.
 
 ### E07-S04 - Tiered platform support contract
 
-**Status:** `planned`  
-**Change Risk:** `CR1`  
-**Dependencies:** E07-S01, E07-S02, E07-S03  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E07-S01, E07-S02, E07-S03 | **Safety obligations:** none
 
 **Outcome.** Publish Tier 1/Tier 2 platform capability matrix and support policy.
 
@@ -1022,18 +883,13 @@ Make macOS, Linux, Windows native, and WSL2 first-class platform targets.
 
 ## E08 - Universal Artifact and Project Intelligence
 
-**Phase:** `P2`  
-**Status:** `planned`  
-**Epic dependencies:** E07
+**Phase:** `P2` | **Status:** `planned` | **Epic dependencies:** E07
 
 Map provider state into the multidimensional AgentArtifact model and evidence-based project relationships.
 
 ### E08-S01 - AgentArtifact domain implementation
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E07-S04  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E07-S04 | **Safety obligations:** none
 
 **Outcome.** Implement lifecycle axes, risk, reversibility, confidence, authority ceiling, provenance, and relationships.
 
@@ -1052,10 +908,7 @@ Map provider state into the multidimensional AgentArtifact model and evidence-ba
 
 ### E08-S02 - Project attribution evidence model
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E08-S01  
-**Safety obligations:** SI-023
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E08-S01 | **Safety obligations:** SI-023
 
 **Outcome.** Attribute artifacts to projects only through explicit provider metadata, known paths, or strong observed evidence.
 
@@ -1074,10 +927,7 @@ Map provider state into the multidimensional AgentArtifact model and evidence-ba
 
 ### E08-S03 - Orphan and staleness signals
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E08-S02  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E08-S02 | **Safety obligations:** none
 
 **Outcome.** Derive ORPHANED/STALE signals without directly implying deletion eligibility.
 
@@ -1096,10 +946,7 @@ Map provider state into the multidimensional AgentArtifact model and evidence-ba
 
 ### E08-S04 - Multi-dimensional query API
 
-**Status:** `planned`  
-**Change Risk:** `CR1`  
-**Dependencies:** E08-S01  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E08-S01 | **Safety obligations:** none
 
 **Outcome.** Expose machine/project/provider/artifact/session views over one inventory model.
 
@@ -1118,18 +965,13 @@ Map provider state into the multidimensional AgentArtifact model and evidence-ba
 
 ## E09 - Atlas TUI
 
-**Phase:** `P2`  
-**Status:** `planned`  
-**Epic dependencies:** E08
+**Phase:** `P2` | **Status:** `planned` | **Epic dependencies:** E08
 
 Deliver the first rich exploratory interface without duplicating engine logic.
 
 ### E09-S01 - TUI shell and navigation
 
-**Status:** `planned`  
-**Change Risk:** `CR1`  
-**Dependencies:** E08-S04  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E08-S04 | **Safety obligations:** none
 
 **Outcome.** Build keyboard-first terminal UI over engine query APIs.
 
@@ -1149,10 +991,7 @@ Deliver the first rich exploratory interface without duplicating engine logic.
 
 ### E09-S02 - Machine and project atlas
 
-**Status:** `planned`  
-**Change Risk:** `CR1`  
-**Dependencies:** E09-S01  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E09-S01 | **Safety obligations:** none
 
 **Outcome.** Show total footprint, reclaimable estimates, providers, projects, unattributed state, and top contributors.
 
@@ -1171,10 +1010,7 @@ Deliver the first rich exploratory interface without duplicating engine logic.
 
 ### E09-S03 - Artifact explain view
 
-**Status:** `planned`  
-**Change Risk:** `CR1`  
-**Dependencies:** E09-S01, E08-S01  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E09-S01, E08-S01 | **Safety obligations:** none
 
 **Outcome.** Expose why an artifact exists, classification, evidence, risk, reversibility, allowed authority, and policy outcome.
 
@@ -1193,10 +1029,7 @@ Deliver the first rich exploratory interface without duplicating engine logic.
 
 ### E09-S04 - Plan review workflow
 
-**Status:** `planned`  
-**Change Risk:** `CR3`  
-**Dependencies:** E09-S03  
-**Safety obligations:** SI-016
+**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E09-S03 | **Safety obligations:** SI-016
 
 **Outcome.** Allow select/inspect/plan handoff while execution remains in the shared safety engine.
 
@@ -1215,18 +1048,13 @@ Deliver the first rich exploratory interface without duplicating engine logic.
 
 ## E10 - Storage Accounting and Performance
 
-**Phase:** `P2`  
-**Status:** `planned`  
-**Epic dependencies:** E08
+**Phase:** `P2` | **Status:** `planned` | **Epic dependencies:** E08
 
 Make storage numbers trustworthy and the scanner inexpensive enough for continuous use.
 
 ### E10-S01 - Reclaimability estimator
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E04-S01, E07-S04  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E04-S01, E07-S04 | **Safety obligations:** none
 
 **Outcome.** Distinguish logical size, allocated size, shared/clone uncertainty, and expected reclaim on supported filesystems.
 
@@ -1245,10 +1073,7 @@ Make storage numbers trustworthy and the scanner inexpensive enough for continuo
 
 ### E10-S02 - Performance guardrails
 
-**Status:** `planned`  
-**Change Risk:** `CR1`  
-**Dependencies:** E04-S04  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E04-S04 | **Safety obligations:** none
 
 **Outcome.** Enforce latency/memory/self-footprint regression budgets.
 
@@ -1267,18 +1092,13 @@ Make storage numbers trustworthy and the scanner inexpensive enough for continuo
 
 ## E11 - Deterministic Policy Engine
 
-**Phase:** `P3`  
-**Status:** `planned`  
-**Epic dependencies:** E09
+**Phase:** `P3` | **Status:** `planned` | **Epic dependencies:** E09
 
 Compile human-readable policy into typed constraints and a fully explainable Effective Policy.
 
 ### E11-S01 - Policy schema and scopes
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E08-S01  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E08-S01 | **Safety obligations:** none
 
 **Outcome.** Define global, machine, provider, project, artifact-type, session/pin scopes and versioned policy schema.
 
@@ -1297,10 +1117,7 @@ Compile human-readable policy into typed constraints and a fully explainable Eff
 
 ### E11-S02 - Constraint resolver
 
-**Status:** `planned`  
-**Change Risk:** `CR4`  
-**Dependencies:** E11-S01, E03-S04  
-**Safety obligations:** SI-001, SI-025
+**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E11-S01, E03-S04 | **Safety obligations:** SI-001, SI-025
 
 **Outcome.** Implement constitutional precedence and monotonic authority resolution.
 
@@ -1320,10 +1137,7 @@ Compile human-readable policy into typed constraints and a fully explainable Eff
 
 ### E11-S03 - Policy explanation graph
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E11-S02  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E11-S02 | **Safety obligations:** none
 
 **Outcome.** Return a trace showing every rule/evidence item that contributed to the final result.
 
@@ -1342,10 +1156,7 @@ Compile human-readable policy into typed constraints and a fully explainable Eff
 
 ### E11-S04 - Budgets, retention, pinning
 
-**Status:** `planned`  
-**Change Risk:** `CR3`  
-**Dependencies:** E11-S02  
-**Safety obligations:** SI-001, SI-025
+**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E11-S02 | **Safety obligations:** SI-001, SI-025
 
 **Outcome.** Implement total/provider/project budgets, age/count retention, and explicit pin/protect semantics.
 
@@ -1364,18 +1175,13 @@ Compile human-readable policy into typed constraints and a fully explainable Eff
 
 ## E12 - Quarantine, Archive, Restore, Purge
 
-**Phase:** `P3`  
-**Status:** `planned`  
-**Epic dependencies:** E11
+**Phase:** `P3` | **Status:** `planned` | **Epic dependencies:** E11
 
 Introduce reversible lifecycle operations before expanding autonomy.
 
 ### E12-S01 - Quarantine store semantics
 
-**Status:** `planned`  
-**Change Risk:** `CR4`  
-**Dependencies:** E11-S02, E03-S05  
-**Safety obligations:** SI-018, SI-020
+**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E11-S02, E03-S05 | **Safety obligations:** SI-018, SI-020
 
 **Outcome.** Define same-volume move-first quarantine with explicit capacity and boundary checks.
 
@@ -1395,10 +1201,7 @@ Introduce reversible lifecycle operations before expanding autonomy.
 
 ### E12-S02 - Restore protocol
 
-**Status:** `planned`  
-**Change Risk:** `CR4`  
-**Dependencies:** E12-S01  
-**Safety obligations:** SI-013
+**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E12-S01 | **Safety obligations:** SI-013
 
 **Outcome.** Restore quarantined artifacts only if destination safety and conflict policy are satisfied.
 
@@ -1417,10 +1220,7 @@ Introduce reversible lifecycle operations before expanding autonomy.
 
 ### E12-S03 - Archive/compression lifecycle
 
-**Status:** `planned`  
-**Change Risk:** `CR3`  
-**Dependencies:** E12-S01  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E12-S01 | **Safety obligations:** none
 
 **Outcome.** Support cold archival for eligible artifacts with verifiable archive integrity.
 
@@ -1440,10 +1240,7 @@ Introduce reversible lifecycle operations before expanding autonomy.
 
 ### E12-S04 - Purge and tombstones
 
-**Status:** `planned`  
-**Change Risk:** `CR4`  
-**Dependencies:** E12-S01, E13-S02  
-**Safety obligations:** SI-020
+**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E12-S01, E13-S02 | **Safety obligations:** SI-020
 
 **Outcome.** Permanently purge only within authority ceilings and preserve a minimal contentless tombstone.
 
@@ -1462,18 +1259,13 @@ Introduce reversible lifecycle operations before expanding autonomy.
 
 ## E13 - Local State, Event Ledger, Analytical Memory
 
-**Phase:** `P3`  
-**Status:** `planned`  
-**Epic dependencies:** E11
+**Phase:** `P3` | **Status:** `planned` | **Epic dependencies:** E11
 
 Persist only bounded metadata required for lifecycle, audit, undo, and Guardian intelligence.
 
 ### E13-S01 - Reconstructible current-state store
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E08-S01  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E08-S01 | **Safety obligations:** none
 
 **Outcome.** Introduce SQLite current state as a cache/index that can be dropped and rebuilt.
 
@@ -1493,10 +1285,7 @@ Persist only bounded metadata required for lifecycle, audit, undo, and Guardian 
 
 ### E13-S02 - Append-only operational ledger
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E13-S01  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E13-S01 | **Safety obligations:** none
 
 **Outcome.** Record significant classification/policy/mutation/lifecycle events without storing artifact content.
 
@@ -1515,10 +1304,7 @@ Persist only bounded metadata required for lifecycle, audit, undo, and Guardian 
 
 ### E13-S03 - Analytical rollups and retention
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E13-S01  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E13-S01 | **Safety obligations:** none
 
 **Outcome.** Aggregate fine-grained measurements into hourly/daily/long-term statistics with bounded retention.
 
@@ -1537,10 +1323,7 @@ Persist only bounded metadata required for lifecycle, audit, undo, and Guardian 
 
 ### E13-S04 - Self-budget and local reset
 
-**Status:** `planned`  
-**Change Risk:** `CR3`  
-**Dependencies:** E13-S02, E13-S03  
-**Safety obligations:** SI-026
+**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E13-S02, E13-S03 | **Safety obligations:** SI-026
 
 **Outcome.** Enforce cancellAI state/log budgets and provide reset of cancellAI state only.
 
@@ -1561,10 +1344,7 @@ Persist only bounded metadata required for lifecycle, audit, undo, and Guardian 
 
 ### E13-S05 - Incremental inventory reuse
 
-**Status:** `planned`  
-**Change Risk:** `CR3`  
-**Dependencies:** E13-S01, E04-S03  
-**Safety obligations:** SI-024
+**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E13-S01, E04-S03 | **Safety obligations:** SI-024
 
 **Outcome.** Reuse persisted facts safely between scans while invalidating on identity, metadata, provider-knowledge, and completeness changes.
 
@@ -1584,18 +1364,13 @@ Persist only bounded metadata required for lifecycle, audit, undo, and Guardian 
 
 ## E14 - Predictive Guardian Intelligence
 
-**Phase:** `P4`  
-**Status:** `planned`  
-**Epic dependencies:** E10, E13
+**Phase:** `P4` | **Status:** `planned` | **Epic dependencies:** E10, E13
 
 Detect disk pressure, runaway growth, and structural anomalies using local evidence without acquiring authority.
 
 ### E14-S01 - Pressure state model
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E13-S03  
-**Safety obligations:** SI-027
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E13-S03 | **Safety obligations:** SI-027
 
 **Outcome.** Define GREEN/YELLOW/ORANGE/RED from free space, budgets, growth velocity, reclaimability, and active workload.
 
@@ -1614,10 +1389,7 @@ Detect disk pressure, runaway growth, and structural anomalies using local evide
 
 ### E14-S02 - Growth velocity and forecast
 
-**Status:** `planned`  
-**Change Risk:** `CR1`  
-**Dependencies:** E14-S01  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E14-S01 | **Safety obligations:** none
 
 **Outcome.** Estimate provider/project growth rate and conservative time-to-pressure forecasts.
 
@@ -1636,10 +1408,7 @@ Detect disk pressure, runaway growth, and structural anomalies using local evide
 
 ### E14-S03 - Behavioral baseline anomaly detection
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E13-S03  
-**Safety obligations:** SI-027
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E13-S03 | **Safety obligations:** SI-027
 
 **Outcome.** Build local baselines and flag statistically/heuristically unusual growth without content inspection.
 
@@ -1658,10 +1427,7 @@ Detect disk pressure, runaway growth, and structural anomalies using local evide
 
 ### E14-S04 - Structural anomaly detection
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E05-S05, E14-S01  
-**Safety obligations:** SI-004
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E05-S05, E14-S01 | **Safety obligations:** SI-004
 
 **Outcome.** Detect session explosion, unexpected giant files, orphan growth, and provider layout drift.
 
@@ -1680,18 +1446,13 @@ Detect disk pressure, runaway growth, and structural anomalies using local evide
 
 ## E15 - Guardian Runtime and Bounded Remediation
 
-**Phase:** `P4`  
-**Status:** `planned`  
-**Epic dependencies:** E14, E12
+**Phase:** `P4` | **Status:** `planned` | **Epic dependencies:** E14, E12
 
 Run monitoring continuously using OS-native user services while keeping all actions within Effective Policy.
 
 ### E15-S01 - Cross-platform user-service runtime
 
-**Status:** `planned`  
-**Change Risk:** `CR3`  
-**Dependencies:** E14-S04, E07-S04  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E14-S04, E07-S04 | **Safety obligations:** none
 
 **Outcome.** Implement launchd/systemd-user/Windows task-or-service adapters with one Guardian engine.
 
@@ -1711,10 +1472,7 @@ Run monitoring continuously using OS-native user services while keeping all acti
 
 ### E15-S02 - Notification abstraction
 
-**Status:** `planned`  
-**Change Risk:** `CR1`  
-**Dependencies:** E15-S01  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E15-S01 | **Safety obligations:** none
 
 **Outcome.** Provide OS-appropriate notifications with terminal fallback and privacy-safe messages.
 
@@ -1733,10 +1491,7 @@ Run monitoring continuously using OS-native user services while keeping all acti
 
 ### E15-S03 - Bounded remediation planner
 
-**Status:** `planned`  
-**Change Risk:** `CR4`  
-**Dependencies:** E15-S01, E11-S04, E12-S01  
-**Safety obligations:** SI-027, SI-028
+**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E15-S01, E11-S04, E12-S01 | **Safety obligations:** SI-027, SI-028
 
 **Outcome.** Translate pressure/anomaly signals into recommendations or pre-authorized quarantine/reclaim plans without authority escalation.
 
@@ -1755,10 +1510,7 @@ Run monitoring continuously using OS-native user services while keeping all acti
 
 ### E15-S04 - Guardian kill-switch and audit
 
-**Status:** `planned`  
-**Change Risk:** `CR3`  
-**Dependencies:** E15-S03  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E15-S03 | **Safety obligations:** none
 
 **Outcome.** Provide immediate local disable and complete ledger trace for every autonomous recommendation/action.
 
@@ -1777,18 +1529,13 @@ Run monitoring continuously using OS-native user services while keeping all acti
 
 ## E16 - Provider Ecosystem and Federated Knowledge
 
-**Phase:** `P5`  
-**Status:** `planned`  
-**Epic dependencies:** E15
+**Phase:** `P5` | **Status:** `planned` | **Epic dependencies:** E15
 
 Scale provider coverage through manifests, native adapters, signed knowledge bundles, and explicit trust promotion.
 
 ### E16-S01 - Manifest schema v1
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E05-S01  
-**Safety obligations:** SI-021
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E05-S01 | **Safety obligations:** SI-021
 
 **Outcome.** Define declarative roots/artifact patterns/capability hints that are inspection-safe by default.
 
@@ -1807,10 +1554,7 @@ Scale provider coverage through manifests, native adapters, signed knowledge bun
 
 ### E16-S02 - Signed knowledge bundle format
 
-**Status:** `planned`  
-**Change Risk:** `CR4`  
-**Dependencies:** E16-S01, E17-S01  
-**Safety obligations:** SI-022, SI-029
+**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E16-S01, E17-S01 | **Safety obligations:** SI-022, SI-029
 
 **Outcome.** Package provider/version/layout intelligence separately from the binary with signature/provenance verification.
 
@@ -1830,10 +1574,7 @@ Scale provider coverage through manifests, native adapters, signed knowledge bun
 
 ### E16-S03 - Gemini CLI adapter
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E16-S01  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E16-S01 | **Safety obligations:** none
 
 **Outcome.** Add discovery/inventory first, then only capabilities supported by verified evidence.
 
@@ -1852,10 +1593,7 @@ Scale provider coverage through manifests, native adapters, signed knowledge bun
 
 ### E16-S04 - GitHub Copilot CLI adapter
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E16-S01  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E16-S01 | **Safety obligations:** none
 
 **Outcome.** Add local session/state inventory with capability truthfulness.
 
@@ -1874,10 +1612,7 @@ Scale provider coverage through manifests, native adapters, signed knowledge bun
 
 ### E16-S05 - OpenCode adapter
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E16-S01  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E16-S01 | **Safety obligations:** none
 
 **Outcome.** Add local state inventory and cleanup capabilities incrementally.
 
@@ -1896,10 +1631,7 @@ Scale provider coverage through manifests, native adapters, signed knowledge bun
 
 ### E16-S06 - Community provider verification workflow
 
-**Status:** `planned`  
-**Change Risk:** `CR3`  
-**Dependencies:** E16-S01  
-**Safety obligations:** SI-021
+**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E16-S01 | **Safety obligations:** SI-021
 
 **Outcome.** Automate manifest lint, fixture tests, trust-level labeling, and maintainer promotion criteria.
 
@@ -1919,18 +1651,13 @@ Scale provider coverage through manifests, native adapters, signed knowledge bun
 
 ## E17 - Verifiable Supply Chain and Distribution
 
-**Phase:** `P5`  
-**Status:** `planned`  
-**Epic dependencies:** E06
+**Phase:** `P5` | **Status:** `planned` | **Epic dependencies:** E06
 
 Automate canonical cross-platform builds, provenance, SBOM, signatures/attestations, and channel-aware installers.
 
 ### E17-S01 - Release artifact manifest
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E02-S02  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E02-S02 | **Safety obligations:** none
 
 **Outcome.** Define canonical artifact names, checksums, target triples, channel, source SHA, build identity, and knowledge compatibility metadata.
 
@@ -1950,10 +1677,7 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 ### E17-S02 - Automated multi-target build
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E17-S01, E07-S04  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E17-S01, E07-S04 | **Safety obligations:** none
 
 **Outcome.** Use a release toolchain such as dist/cargo-dist or equivalent to produce macOS/Linux/Windows artifacts and installers from tags.
 
@@ -1972,10 +1696,7 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 ### E17-S03 - Provenance, SBOM, and signing
 
-**Status:** `planned`  
-**Change Risk:** `CR3`  
-**Dependencies:** E17-S02  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E17-S02 | **Safety obligations:** none
 
 **Outcome.** Generate GitHub artifact attestations/provenance, SBOM, and cryptographic verification material for canonical artifacts.
 
@@ -1995,10 +1716,7 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 ### E17-S04 - Installation-source awareness
 
-**Status:** `planned`  
-**Change Risk:** `CR1`  
-**Dependencies:** E17-S02  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E17-S02 | **Safety obligations:** none
 
 **Outcome.** Record Homebrew/direct/Windows/Linux package source and route upgrade guidance through the same source.
 
@@ -2017,10 +1735,7 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 ### E17-S05 - Stable/beta/nightly authority constraints
 
-**Status:** `planned`  
-**Change Risk:** `CR4`  
-**Dependencies:** E17-S03  
-**Safety obligations:** SI-030
+**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E17-S03 | **Safety obligations:** SI-030
 
 **Outcome.** Bind release channel to maximum default authority.
 
@@ -2040,10 +1755,7 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 ### E17-S06 - Canonical source and distribution repository topology
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E17-S02  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E17-S02 | **Safety obligations:** none
 
 **Outcome.** Move the canonical cross-platform product source to a product-named repository when Rust becomes canonical while preserving homebrew-cancellai as a compatibility/distribution tap rather than forcing a premature repository migration.
 
@@ -2064,10 +1776,7 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 ### E17-S07 - Safety incident containment and capability downgrade
 
-**Status:** `planned`  
-**Change Risk:** `CR4`  
-**Dependencies:** E16-S05, E17-S03, E17-S05  
-**Safety obligations:** SI-022, SI-029, SI-030
+**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E16-S05, E17-S03, E17-S05 | **Safety obligations:** SI-022, SI-029, SI-030
 
 **Outcome.** Operationalize a least-authority incident path that can stop promotion and remotely distribute signed capability downgrades without introducing a remote destructive control plane.
 
@@ -2090,18 +1799,13 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 ## E18 - Remote Targets and Fleet Boundary
 
-**Phase:** `P6`  
-**Status:** `planned`  
-**Epic dependencies:** E16, E17
+**Phase:** `P6` | **Status:** `planned` | **Epic dependencies:** E16, E17
 
 Extend observation/governance to remote development environments without weakening local authority or OSS boundaries.
 
 ### E18-S01 - Remote target abstraction
 
-**Status:** `planned`  
-**Change Risk:** `CR2`  
-**Dependencies:** E16-S02  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E16-S02 | **Safety obligations:** none
 
 **Outcome.** Model SSH/dev-container/CI-runner targets as explicit machines with independent capabilities and trust.
 
@@ -2120,10 +1824,7 @@ Extend observation/governance to remote development environments without weakeni
 
 ### E18-S02 - Local-agent remote execution boundary
 
-**Status:** `planned`  
-**Change Risk:** `CR4`  
-**Dependencies:** E18-S01  
-**Safety obligations:** SI-031
+**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E18-S01 | **Safety obligations:** SI-031
 
 **Outcome.** Keep mutation execution on the target node under its local safety kernel even when a remote controller requests policy evaluation.
 
@@ -2142,10 +1843,7 @@ Extend observation/governance to remote development environments without weakeni
 
 ### E18-S03 - OSS/commercial protocol boundary
 
-**Status:** `planned`  
-**Change Risk:** `CR1`  
-**Dependencies:** E18-S02  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E18-S02 | **Safety obligations:** none
 
 **Outcome.** Define an open local node protocol and separate optional fleet-control services without reducing local functionality.
 
@@ -2164,18 +1862,13 @@ Extend observation/governance to remote development environments without weakeni
 
 ## E19 - Desktop Experience
 
-**Phase:** `P6`  
-**Status:** `planned`  
-**Epic dependencies:** E15
+**Phase:** `P6` | **Status:** `planned` | **Epic dependencies:** E15
 
 Add a cross-platform desktop client only after CLI/TUI/Guardian domain contracts are stable.
 
 ### E19-S01 - Desktop API boundary
 
-**Status:** `planned`  
-**Change Risk:** `CR3`  
-**Dependencies:** E15-S04  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E15-S04 | **Safety obligations:** none
 
 **Outcome.** Expose a narrow local IPC/API that reuses engine plans and explanations.
 
@@ -2194,10 +1887,7 @@ Add a cross-platform desktop client only after CLI/TUI/Guardian domain contracts
 
 ### E19-S02 - Cross-platform desktop shell
 
-**Status:** `planned`  
-**Change Risk:** `CR1`  
-**Dependencies:** E19-S01  
-**Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E19-S01 | **Safety obligations:** none
 
 **Outcome.** Implement tray/menu-bar/dashboard experience using shared core, with Tauri or an equivalent evidence-backed choice.
 

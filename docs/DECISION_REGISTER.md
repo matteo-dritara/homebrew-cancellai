@@ -248,14 +248,28 @@ Every work item has Change Risk Level CR0-CR4, separate Definition of Done and D
 
 ## PD-019 - Custom provider roots require validated structure and explicit intent
 
-**Status:** accepted
+**Status:** superseded
 
-A non-default CODEX_HOME/CLAUDE_CONFIG_DIR is mutated only when it contains content-validated provider markers and the operator passes --allow-custom-root. Default roots are authoritative by definition. Inspection is never gated.
+Superseded by PD-020. A non-default root was to be mutated when it contained content-validated provider markers and the operator passed --allow-custom-root.
 
-**Rationale.** Filenames are not identity: an ordinary project directory can contain auth.json or sessions/. Structure answers whether this is really the provider; explicit intent answers whether an operator meant to point us there. Neither is sufficient alone.
+**Rationale.** Independent review produced a lookalike satisfying both conditions. Structural evidence is forgeable, so it cannot be positive provider identity, and operator intent cannot supply the missing proof when the failure mode is intent based on a wrong value.
 
 **Implications**
 
 - Relocated provider roots require an explicit flag in scripts and cron entries.
 - Refusal is visible and non-destructive: exit code 4 naming the missing condition.
 - Provider-native identity remains the target for the Rust core once the provider capability contract exists.
+
+## PD-020 - Custom provider roots are inspection-only in the Python reference
+
+**Status:** accepted
+
+Only the provider's own default directory may be mutated by the Python reference. A relocated CODEX_HOME/CLAUDE_CONFIG_DIR is fully inspectable and never deleted from or written to.
+
+**Rationale.** SI-002 requires proof that a directory belongs to the provider. Everything the filesystem can show is forgeable, and an operator flag supplies intent rather than proof. Positive identity needs the provider capability contract that E05 defines and this reference does not have.
+
+**Implications**
+
+- Operators who relocated a provider root lose clean and configure until the Rust core ships provider-native identity.
+- The structural fingerprint remains as reported information and is documented as non-authoritative.
+- --allow-custom-root is removed rather than kept as a switch that cannot make the operation safe.

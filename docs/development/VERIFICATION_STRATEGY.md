@@ -87,3 +87,5 @@ Fixtures classify expected results as:
 ## Test data rules
 
 Never commit real transcripts, source code, auth data, API keys, or developer home paths. Synthetic fixture generators are preferred. Any captured vendor metadata must be scrubbed and reviewed.
+
+Synthetic fixture policy and layout: [`tests/fixtures/README.md`](../../tests/fixtures/README.md).

@@ -21,6 +21,8 @@ cancellAI treats documentation as part of the executable product system. This pa
 - [architecture/PERSISTENCE_MODEL.md](architecture/PERSISTENCE_MODEL.md) - local state, event ledger, analytical memory, quarantine.
 - [architecture/POLICY_MODEL.md](architecture/POLICY_MODEL.md) - policy hierarchy and deterministic constraint resolution.
 - [architecture/GUARDIAN_MODEL.md](architecture/GUARDIAN_MODEL.md) - predictive signals, pressure states, bounded remediation.
+- [PLATFORMS.md](PLATFORMS.md) - platform support levels and what "supported" is allowed to mean.
+- [PROVIDERS.md](PROVIDERS.md) - provider compatibility posture and capability scoping.
 
 ## Security and trust
 
@@ -38,6 +40,8 @@ cancellAI treats documentation as part of the executable product system. This pa
 - [development/MIGRATION_PYTHON_RUST.md](development/MIGRATION_PYTHON_RUST.md) - spec-first migration sequence and cutover gates.
 - [development/RELEASE_GATES.md](development/RELEASE_GATES.md) - Definition of Done/Safe and release gate matrix.
 - [development/REPOSITORY_GOVERNANCE.md](development/REPOSITORY_GOVERNANCE.md) - GitHub rulesets, Actions permissions, tag/release controls, and settings drift policy.
+- [RELEASING.md](RELEASING.md) - the release runbook and versioning scheme.
+- [CLI.md](CLI.md) - generated command reference for the current Python CLI.
 
 ## Evidence, research, and decisions
 
@@ -53,8 +57,8 @@ The source of truth for project planning lives under [`project/`](../project/):
 - `project/decisions.json` - product decisions.
 - `project/roadmap.json` - phases and exit gates.
 - `project/epics/*.json` - story contracts.
-- `project/generated/PROJECT_STATUS.md` - generated project summary.
-- `project/templates/` - ADR, RFC, evidence, story, and Safety Verdict templates.
+- [`project/generated/PROJECT_STATUS.md`](../project/generated/PROJECT_STATUS.md) - generated project summary.
+- `project/templates/` - see [the template index](../project/README.md#templates).
 
 Run:
 
@@ -65,6 +69,7 @@ python3 scripts/project_os.py next
 python3 scripts/project_os.py brief E00-S01 --role executor
 python3 scripts/check_docs.py check
 python3 scripts/check_workflows.py check
+python3 scripts/check_process.py check
 ```
 
 Generated Markdown (`DECISION_REGISTER.md`, `ROADMAP.md`, `BACKLOG.md`, `PROJECT_STATUS.md`) must never be edited manually.

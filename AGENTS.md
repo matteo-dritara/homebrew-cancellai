@@ -113,7 +113,13 @@ python3 scripts/gen_docs.py --check
 python3 scripts/project_os.py check
 python3 scripts/check_docs.py check
 python3 scripts/check_workflows.py check
+python3 scripts/check_process.py check
 ```
+
+Or `pre-commit run --all-files`, which runs the same set. Install the hooks once with
+`pre-commit install --install-hooks --hook-type pre-commit --hook-type commit-msg`; the
+`commit-msg` hook enforces Conventional Commits, and CI enforces it again for every pull
+request.
 
 If a dev tool is unavailable locally, say so in evidence; CI must still run it before merge.
 

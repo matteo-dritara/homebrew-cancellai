@@ -26,10 +26,10 @@ discover_*()   -->   build_plan()   -->   execute_plan()
 Seven things constitute the security boundary. Any change to them needs matching test coverage before it merges, not after:
 
 1. **`validate_config_root`** - refuses to operate when `$CODEX_HOME` / `$CLAUDE_CONFIG_DIR` resolves to `/`, the user's home, or anything shallower than a few path segments.
-2. **`fingerprint_root`** - answers the question `validate_config_root` cannot: does this directory actually look like the provider we are about to delete from. Default roots are authoritative by definition. A custom root must satisfy two independent conditions before it can be mutated - content-validated structure *and* an explicit `--allow-custom-root` - because a filename is not an identity. See [ADR-0012](../adrs/0012-custom-provider-roots-require-structure-and-intent.md). `low` and `unknown` roots remain fully inspectable but cannot be planned against or executed against.
-3. **`Scan`** - the completeness channel. Size and mtime helpers answer with numbers that cannot express "I could not look", so unreadable paths are recorded separately. An incomplete scope withholds destructive authority for that tool: absence of evidence never becomes absence of data. A path that vanished mid-scan is recorded as a race, not as blindness, and the error list is bounded so a governance tool cannot become an unbounded log producer.
+2. **`fingerprint_root` / `RootAuthority`** - only the provider's own default directory may be mutated. The structural fingerprint survives as *reported information* - it tells the operator what cancellAI sees - and is explicitly non-authoritative: nothing observable in a filesystem proves a directory belongs to a provider, and two schemes that assumed otherwise were rejected by independent review. Any relocated root is fully inspectable and never mutated. See [ADR-0013](../adrs/0013-custom-provider-roots-are-inspection-only-in-python-v1.md).
+3. **`Scan` / `observe`** - the completeness channel. Size and mtime helpers answer with numbers that cannot express "I could not look", so unreadable paths are recorded separately. Every discovery guard goes through `observe()` rather than `Path.exists()`, which answers False for both "absent" and "unreadable" and would reintroduce the collapse at the guard. An incomplete scope withholds destructive authority for that tool. A path that vanished mid-scan is recorded as a race, not as blindness, and the error list is bounded so a governance tool cannot become an unbounded log producer.
 4. **`safe_remove`** - the only function allowed to call `unlink`/`rmtree`. It never follows a symlink outside the approved root and re-resolves the path immediately before deleting, so a filesystem change between planning and acting is caught at the last possible moment rather than trusted from stale information.
-5. **`protected_component`** - the executable form of `CLAUDE_PROTECTED_NAMES` / `CODEX_PROTECTED_NAMES`. Applied twice: when the plan is assembled and again inside `safe_remove`. The name is checked both lexically and after resolution, so a protected entry that is itself a symlink out of the root keeps its protection instead of falling out of the relative-path computation. `--aggressive` widens which categories are eligible; it can never reach a protected name.
+5. **`protected_component`** - the executable form of `CLAUDE_PROTECTED_NAMES` / `CODEX_PROTECTED_NAMES`. Applied twice: when the plan is assembled and again inside `safe_remove`. The name is checked both lexically and after resolution, so a protected entry that is itself a symlink keeps its protection instead of falling out of the relative-path computation, and matching is case-insensitive because APFS is. Over-inclusive is the safe direction here. `--aggressive` widens which categories are eligible; it can never reach a protected name.
 6. **`active_processes`** - reports *whether it could observe* provider activity separately from what it found. An unusable `ps` marks the observation incomplete, and unknown activity blocks mutation exactly as a detected running provider does.
 7. **`normalize_argv`** - destructive intent must be typed. A leading flag resolves to the read-only `status` view; an unknown verb is a usage error.
 
@@ -57,7 +57,9 @@ Codex rollouts reference a `parent_thread_id`. `choose_codex_old_sessions` walks
 | 3 | at least one mutation failed |
 | 4 | safety blocked, withheld or deferred requested work; nothing may be assumed cleaned |
 
-Exit 4 covers a live provider process, provider activity that could not be determined, a root that failed its fingerprint or lost it between planning and execution, an incomplete scan, and a deferred or failed `history.jsonl` trim. A safety boundary that fires during execution is reported through this code and the JSON result, never as an uncaught exception.
+Exit 4 covers a live provider process, provider activity that could not be determined, a non-default root, a root that lost its authority between planning and execution, an incomplete scan, and a deferred or failed `history.jsonl` trim.
+
+The taxonomy is total: `main()` converts any escaping exception into exit 3. Leaving one uncaught would surrender the process to Python's own exit code 1, which automation cannot distinguish from the operator declining the confirmation prompt.
 
 ### Where things live
 
@@ -92,19 +94,20 @@ The baseline code review in [`../audits/2026-08-27-CODE_REVIEW.md`](../audits/20
 
 | Defect | Story | State |
 | --- | --- | --- |
-The first remediation round was independently reviewed on 2026-08-27. Six of seven stories were rejected; every defect the review found is repaired in the second round, which is again awaiting review. A story is closed only when the reviewer issues a verdict, and the CR4 ones additionally need a Safety Verdict.
+Two independent review rounds have been performed. Round 1 rejected six of seven stories; round 2 rejected all seven. Every defect both rounds found is repaired. A story is closed only when a reviewer issues a verdict, and the CR4 ones additionally need a Safety Verdict.
 
-| Defect | Story | Change Risk | Review round 1 | State |
-| --- | --- | --- | --- | --- |
-| P0-01 protected names not enforced | E00-S01 | CR4 | FAIL - protected symlink escaped the barrier | repaired, ready_for_review |
-| P0-02 custom roots not fingerprinted | E00-S02 | CR4 | FAIL - filenames treated as identity | repaired, ready_for_review |
-| P0-03 aggressive bypasses retention | E00-S03 | CR3 | PASS | done |
-| P0-04 CLI normalizes to `clean` | E00-S04 | CR3 | FAIL - execution-time refusal escaped as an uncaught exception | repaired, ready_for_review |
-| P0-05 incomplete scans collapse to zero | E00-S05 | CR4 | FAIL - three observation paths still swallowed errors | repaired, ready_for_review |
-| P0-06 blocked cleanup returns success | E00-S04 | CR3 | FAIL - see P0-04 | repaired, ready_for_review |
-| P0-07 concurrent history rewrite | E00-S06 | CR3 | FAIL - retained CRLF bytes were normalised | repaired, ready_for_review |
+| Story | Round 1 | Round 2 | State |
+| --- | --- | --- | --- |
+| E00-S01 protected-name barrier (CR4) | FAIL - protected symlink escaped | FAIL - case variant `Plugins` escaped | repaired |
+| E00-S02 provider-root authority (CR4) | FAIL - filenames treated as identity | FAIL - validated lookalike still accepted | repaired, ADR-0013 |
+| E00-S03 aggressive retention (CR3) | **PASS** | - | **done** |
+| E00-S04 CLI and exit taxonomy (CR3) | FAIL - refusal escaped as an exception | FAIL - `OSError` still escaped | repaired |
+| E00-S05 scan completeness (CR4) | FAIL - three helpers swallowed errors | FAIL - `exists()` guards collapsed access errors | repaired |
+| E00-S06 concurrent metadata rewrite (CR3) | FAIL - CRLF bytes normalised | FAIL - symlink followed and replaced | repaired |
+| E00-S08 coverage vocabulary (CR1) | new | FAIL - container labelled cleanable | repaired |
+| E00-S09 activity observation (CR4) | new | FAIL - unrelated `ps` line marked it complete | repaired |
 
-Two further defects were found during remediation and are tracked as their own stories rather than folded in silently: `E00-S08` (coverage vocabulary overclaimed what cleanup reaches) and `E00-S09` (an unusable process observation was treated as proof that no provider was running).
+The pattern across both rounds is worth recording: every round-1 repair closed the reported *instance* and left the defect *class* open. Round 2 was scoped to falsify classes rather than instances, and found one in each story. E00-S08 and E00-S09 were opened during remediation rather than folded into an existing story.
 
 Provider layout drift is tracked separately by E00-S08: `status --coverage` classifies every top-level provider entry and names the ones this build does not understand. Unknown entries are reported, never cleaned.
 

@@ -4,8 +4,7 @@
 
 Current phase: **P0**
 
-Epics: **20**  
-Stories: **90**
+Epics: **20** | Stories: **90**
 
 ## Story status
 

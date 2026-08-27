@@ -14,7 +14,24 @@ python3 scripts/project_os.py next
 python3 scripts/project_os.py brief E00-S01 --role executor
 python3 scripts/check_docs.py check
 python3 scripts/check_workflows.py check
+python3 scripts/check_process.py check
 ```
+
+## Templates
+
+Every artefact the process asks for has a template. Use them rather than inventing a shape;
+`scripts/check_process.py` validates the parts that carry decisions.
+
+| Template | Used for |
+| --- | --- |
+| [STORY.md](templates/STORY.md) | drafting a story contract before it enters an epic file |
+| [ADR.md](templates/ADR.md) | an architecturally significant decision |
+| [RFC.md](templates/RFC.md) | a proposal with competing material options, before an ADR |
+| [EXECUTOR_PROMPT.md](templates/EXECUTOR_PROMPT.md) | handing a story to an implementing agent |
+| [VERIFIER_PROMPT.md](templates/VERIFIER_PROMPT.md) | handing a story to an independent reviewer |
+| [EVIDENCE_PACKET.md](templates/EVIDENCE_PACKET.md) | executor evidence for a story or batch |
+| [SAFETY_VERDICT.md](templates/SAFETY_VERDICT.md) | the reviewer's CR4 verdict, required to close a CR4 story |
+| [RELEASE_EVIDENCE.md](templates/RELEASE_EVIDENCE.md) | evidence for a release |
 
 ## Editing rules
 
@@ -27,7 +44,7 @@ python3 scripts/check_workflows.py check
 
 ## Evidence
 
-`project/evidence/` contains lightweight, version-controlled evidence summaries where needed. Large raw test logs belong in CI artifacts; the committed evidence packet links to the run/commit and records conclusions/residuals.
+[`evidence/`](evidence/README.md) contains lightweight, version-controlled evidence summaries where needed. Large raw test logs belong in CI artifacts; the committed evidence packet links to the run/commit and records conclusions/residuals.
 
 ## Story handoff
 
