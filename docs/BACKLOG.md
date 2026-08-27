@@ -196,7 +196,9 @@ Correct known P0 safety and contract defects in Python without broadening produc
 
 **Acceptance criteria**
 
-- Status classifies every top-level provider entry as cleanable, protected, reported, or unknown, with size.
+- Status classifies every top-level provider entry with a state that matches what cleanup actually does to it, with size.
+- A container whose contents are selected by age and policy is never classified as deletable in its own right.
+- Conditional categories state the condition rather than being reported as unconditional.
 - Unknown entries are reported and never become cleanup candidates.
 - Machine-readable status output exposes the same coverage classification.
 
@@ -204,6 +206,7 @@ Correct known P0 safety and contract defects in Python without broadening produc
 
 - Fixtures include provider directories this build does not classify.
 - Tests prove an unknown entry cannot enter a destructive plan, including under --aggressive.
+- Tests prove no container carrying a selective state is ever selected for deletion itself.
 
 **Documentation impact**
 

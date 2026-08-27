@@ -98,9 +98,9 @@ CODEX_PROTECTED_NAMES = {
 MAX_RECORDED_SCAN_ERRORS = 50
 MAX_ROOT_PROBE_ENTRIES = 2000
 
-# Coverage vocabulary. `cleanable` means a deletion rule can select this entry as it
-# stands; anything conditional or non-deleting gets its own state so the report cannot
-# overclaim what cleanup actually reaches.
+# Coverage vocabulary. There is deliberately no state meaning "deleted as it stands":
+# no top-level provider entry is treated that way, so every state names either a container
+# whose contents are selected, a conditional case, or something never touched.
 COVERAGE_STATES = ("selective", "selective-aggressive", "aggressive-only", "trimmed", "protected", "reported", "unknown")
 # `selective` is the honest label for a container: cancellAI selects entries *inside* it by
 # age and policy and never deletes the container. Whether any particular entry is selected

@@ -63,9 +63,9 @@ def unknown_processes():
 def use_as_default_roots(test, codex: Path, claude: Path):
     """Make the temp roots stand in for the operator's real ~/.codex and ~/.claude.
 
-    A non-default root needs --allow-custom-root (E00-S02). Tests that are not about the
-    root boundary should exercise the ordinary default-root path, so they patch the
-    default rather than silently acknowledging a custom one.
+    A non-default root cannot be mutated at all (E00-S02 / ADR-0013). Tests that are not
+    about the root boundary must therefore exercise the ordinary default-root path, and
+    patching the default is the only honest way to do that.
     """
     roots = {"codex": codex, "claude": claude}
     patcher = mock.patch.object(cleaner, "default_home", side_effect=lambda tool: roots[tool])
