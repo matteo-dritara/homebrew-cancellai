@@ -1,6 +1,6 @@
 # ADR-0006: CLI and TUI as first-class clients of one engine
 
-- Status: accepted
+- Status: Accepted
 - Date: 2026-08-27
 - Related: PD-009
 

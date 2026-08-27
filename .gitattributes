@@ -1,6 +1,12 @@
-# Normalize line endings in the repository. The Claude history rewriter preserves the
-# bytes it reads, so test fixtures that assert on CRLF must not be rewritten by Git.
+# Source files are normalized to LF on checkout so the repository is byte-identical
+# across platforms.
 * text=auto eol=lf
+
+# Test fixtures are exempt. cancellAI preserves the exact bytes of the provider metadata
+# it rewrites, so a committed fixture asserting on CRLF or on a missing trailing newline
+# must reach the test runner unmodified. (Tests that build such bytes at runtime are
+# unaffected by Git either way; this protects the committed case.)
+tests/fixtures/** -text
 
 *.png binary
 *.jpg binary

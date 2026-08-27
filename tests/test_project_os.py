@@ -106,12 +106,35 @@ class ProjectOSTests(unittest.TestCase):
             empty.write_text("# nothing\n", encoding="utf-8")
             unrelated = base / "E00-OTHER.md"
             unrelated.write_text("x" * (project_os.MIN_EVIDENCE_BYTES + 10), encoding="utf-8")
+            filler = base / "E00-FILLER.md"
+            filler.write_text("E00-S01 " + "y" * project_os.MIN_EVIDENCE_BYTES, encoding="utf-8")
             good = base / "E00-GOOD.md"
-            good.write_text("E00-S01 evidence. " + "y" * project_os.MIN_EVIDENCE_BYTES, encoding="utf-8")
+            good.write_text(
+                "# E00-S01\n\n## Outcome\nPASS\n\n## Verification\ntests\n\n## Residual risks\nnone\n" + "y" * project_os.MIN_EVIDENCE_BYTES,
+                encoding="utf-8",
+            )
             self.assertFalse(project_os.evidence_is_substantive(empty, "E00-S01"))
             self.assertFalse(project_os.evidence_is_substantive(unrelated, "E00-S01"))
             self.assertFalse(project_os.evidence_is_substantive(base / "missing.md", "E00-S01"))
+            # Size plus a story id is filler, not evidence: it says nothing about outcome.
+            self.assertFalse(project_os.evidence_is_substantive(filler, "E00-S01"))
             self.assertTrue(project_os.evidence_is_substantive(good, "E00-S01"))
+            self.assertTrue(project_os.evidence_states_residual_risk(good))
+            self.assertFalse(project_os.evidence_states_residual_risk(filler))
+
+    def test_a_cr4_story_cannot_close_over_a_failing_safety_verdict(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            failing = base / "SAFETY_VERDICT.md"
+            failing.write_text("# Safety Verdict - E00-S01\n\n## Verdict\n\n`FAIL`\n", encoding="utf-8")
+            passing = base / "SAFETY_VERDICT_OK.md"
+            passing.write_text("# Safety Verdict - E00-S01\n\n## Verdict\n\n`PASS`\n", encoding="utf-8")
+            mixed = base / "SAFETY_VERDICT_MIXED.md"
+            mixed.write_text("## Verdict\n\n`PASS`\n\n## Owner decision\n\n`REJECT`\n", encoding="utf-8")
+            self.assertFalse(project_os.safety_verdict_passes(failing))
+            self.assertTrue(project_os.safety_verdict_passes(passing))
+            # A pass that is overridden by a rejection elsewhere in the file is not a pass.
+            self.assertFalse(project_os.safety_verdict_passes(mixed))
 
     def test_ready_for_review_does_not_require_a_safety_verdict(self) -> None:
         # The Safety Verdict is the reviewer's output; demanding it at handoff would force

@@ -33,9 +33,20 @@ DECISION_ID_RE = re.compile(r"^PD-\d{3}$")
 EPIC_ID_RE = re.compile(r"^E\d{2}$")
 STORY_ID_RE = re.compile(r"^E\d{2}-S\d{2}$")
 SAFETY_ID_RE = re.compile(r"^###\s+(SI-\d{3})\b", re.MULTILINE)
-# An evidence file must actually say something about the story it is offered for. The floor
-# is deliberately low - it rejects an empty or unrelated placeholder, not thin prose.
+# An evidence file must actually say something about the story it is offered for. Size alone
+# is filler-shaped, so the gate also requires the sections the evidence template defines:
+# what the outcome was, how it was verified, and what risk remains.
 MIN_EVIDENCE_BYTES = 400
+# An evidence file has to say what happened and how that was established. Both groups must
+# appear; "residual risk" is strongly expected but is a warning, because a genuine PASS may
+# have none and forcing the phrase would only teach people to paste it.
+EVIDENCE_OUTCOME_TERMS = ("verdict", "outcome")
+EVIDENCE_METHOD_TERMS = ("verification", "evidence", "test")
+EVIDENCE_RESIDUAL_TERMS = ("residual", "known risk")
+# A Safety Verdict file satisfying the CR4 gate must actually record a passing verdict. A
+# committed FAIL is evidence that the story is not finished, not evidence that it is.
+FAILING_VERDICT_RE = re.compile(r"^\s*`?(FAIL|REJECT)`?\s*$", re.MULTILINE | re.IGNORECASE)
+PASSING_VERDICT_RE = re.compile(r"^\s*`?(PASS|PASS_WITH_RESIDUALS)`?\s*$", re.MULTILINE | re.IGNORECASE)
 
 
 class GovernanceError(RuntimeError):
@@ -89,17 +100,43 @@ def safety_invariant_ids() -> set[str]:
 
 
 def evidence_is_substantive(path: Path, story_id: str) -> bool:
-    """An evidence file counts only if it exists, has content, and names the story.
+    """An evidence file counts only if it follows the template and names the story.
 
     Without this the gate is satisfied by any Markdown filename, which makes the handoff
-    requirement ceremonial rather than real.
+    requirement ceremonial. Requiring the template's sections is what turns "a file exists"
+    into "someone recorded an outcome, how it was verified, and what risk remains".
     """
     try:
         if not path.is_file() or path.stat().st_size < MIN_EVIDENCE_BYTES:
             return False
-        return story_id in path.read_text(encoding="utf-8", errors="replace")
+        text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return False
+    if story_id not in text:
+        return False
+    lowered = text.lower()
+    return any(term in lowered for term in EVIDENCE_OUTCOME_TERMS) and any(term in lowered for term in EVIDENCE_METHOD_TERMS)
+
+
+def safety_verdict_passes(path: Path) -> bool:
+    """Whether a Safety Verdict records a pass rather than merely existing.
+
+    Checking only for a file named "verdict" lets a rejected story be marked done while the
+    rejection sits next to it in the repository.
+    """
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return bool(PASSING_VERDICT_RE.search(text)) and not FAILING_VERDICT_RE.search(text)
+
+
+def evidence_states_residual_risk(path: Path) -> bool:
+    try:
+        lowered = path.read_text(encoding="utf-8", errors="replace").lower()
+    except OSError:
+        return False
+    return any(term in lowered for term in EVIDENCE_RESIDUAL_TERMS)
 
 
 def assert_acyclic(graph: dict[str, list[str]]) -> None:
@@ -319,22 +356,32 @@ def validate(model: Model) -> list[str]:
                 story_evidence_dir = evidence_root / story["id"]
                 if story_evidence_dir.is_dir():
                     candidates.extend(story_evidence_dir.glob("*.md"))
+                if story["status"] == "ready_for_review":
+                    # A review handoff may share one executor packet for a batch of stories.
+                    # It is a candidate alongside story-level files rather than a fallback
+                    # behind them: a story-level file from an earlier round is history, and
+                    # history must not be able to satisfy the current handoff.
+                    candidates.extend(evidence_root.glob(f"{epic['id']}-*.md"))
                 evidence = [item for item in candidates if evidence_is_substantive(item, story["id"])]
-                if story["status"] == "ready_for_review" and not evidence:
-                    # A review handoff may share one executor packet for a batch of stories,
-                    # but it may never be requested with nothing for the reviewer to read.
-                    batch = [item for item in evidence_root.glob(f"{epic['id']}-*.md") if evidence_is_substantive(item, story["id"])]
-                    evidence.extend(batch)
                 if not evidence:
                     raise GovernanceError(
                         f"{story['id']}: status {story['status']} requires committed evidence under project/evidence/ that "
-                        f"names {story['id']} and is at least {MIN_EVIDENCE_BYTES} bytes"
+                        f"names {story['id']}, is at least {MIN_EVIDENCE_BYTES} bytes, and states an outcome and how it "
+                        "was established"
                     )
+                if not any(evidence_states_residual_risk(item) for item in evidence):
+                    warnings.append(f"{story['id']}: no evidence file states residual risk")
                 # The Safety Verdict is the verifier's output, so it is required to close a
                 # CR4 story, never to hand one over for review.
-                has_safety_verdict = any("safety" in item.name.lower() or "verdict" in item.name.lower() for item in evidence)
-                if story["status"] == "done" and story["change_risk"] == "CR4" and not has_safety_verdict:
-                    raise GovernanceError(f"{story['id']}: completed CR4 story requires an owner-visible Safety Verdict evidence file")
+                verdicts = [item for item in evidence if "safety" in item.name.lower() or "verdict" in item.name.lower()]
+                if story["status"] == "done" and story["change_risk"] == "CR4":
+                    if not verdicts:
+                        raise GovernanceError(f"{story['id']}: completed CR4 story requires an owner-visible Safety Verdict evidence file")
+                    if not any(safety_verdict_passes(item) for item in verdicts):
+                        raise GovernanceError(
+                            f"{story['id']}: cannot be done - no committed Safety Verdict records PASS or "
+                            "PASS_WITH_RESIDUALS, and at least one records FAIL/REJECT"
+                        )
 
     return warnings
 
@@ -417,9 +464,7 @@ def backlog_markdown(model: Model) -> str:
             [
                 f"## {epic['id']} - {epic['title']}",
                 "",
-                f"**Phase:** `{epic['phase']}`  ",
-                f"**Status:** `{epic['status']}`  ",
-                f"**Epic dependencies:** {deps}",
+                f"**Phase:** `{epic['phase']}` | **Status:** `{epic['status']}` | **Epic dependencies:** {deps}",
                 "",
                 epic["objective"],
                 "",
@@ -432,10 +477,8 @@ def backlog_markdown(model: Model) -> str:
                 [
                     f"### {s['id']} - {s['title']}",
                     "",
-                    f"**Status:** `{s['status']}`  ",
-                    f"**Change Risk:** `{s['change_risk']}`  ",
-                    f"**Dependencies:** {deps}  ",
-                    f"**Safety obligations:** {safety}",
+                    f"**Status:** `{s['status']}` | **Change Risk:** `{s['change_risk']}` "
+                    f"| **Dependencies:** {deps} | **Safety obligations:** {safety}",
                     "",
                     f"**Outcome.** {s['outcome']}",
                     "",
@@ -468,8 +511,7 @@ def project_status_markdown(model: Model) -> str:
         "",
         f"Current phase: **{model.roadmap['current_phase']}**",
         "",
-        f"Epics: **{len(model.epics)}**  ",
-        f"Stories: **{len(stories)}**",
+        f"Epics: **{len(model.epics)}** | Stories: **{len(stories)}**",
         "",
         "## Story status",
         "",

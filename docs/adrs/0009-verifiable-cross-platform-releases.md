@@ -1,6 +1,6 @@
 # ADR-0009: Verifiable canonical releases and channel-aware distribution
 
-- Status: accepted
+- Status: Accepted
 - Date: 2026-08-27
 - Related: PD-017
 

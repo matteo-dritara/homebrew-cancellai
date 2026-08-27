@@ -1,6 +1,6 @@
 # ADR-0008: Reconstructible state, event ledger, and bounded analytical memory
 
-- Status: accepted
+- Status: Accepted
 - Date: 2026-08-27
 - Related: PD-016
 

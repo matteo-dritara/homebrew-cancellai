@@ -1,6 +1,6 @@
 # ADR-0001: Agent State Control Plane as the product category
 
-- Status: accepted
+- Status: Accepted
 - Date: 2026-08-27
 - Related: PD-001, PD-003
 

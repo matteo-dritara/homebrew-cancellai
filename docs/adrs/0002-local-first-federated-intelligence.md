@@ -1,6 +1,6 @@
 # ADR-0002: Local authority with optional federated intelligence
 
-- Status: accepted
+- Status: Accepted
 - Date: 2026-08-27
 - Related: PD-007
 

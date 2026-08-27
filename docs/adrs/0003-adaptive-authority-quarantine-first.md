@@ -1,6 +1,6 @@
 # ADR-0003: Adaptive authority and quarantine-first lifecycle
 
-- Status: accepted
+- Status: Accepted
 - Date: 2026-08-27
 - Related: PD-004, PD-011
 

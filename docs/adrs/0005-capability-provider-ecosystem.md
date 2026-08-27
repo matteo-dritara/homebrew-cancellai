@@ -1,6 +1,6 @@
 # ADR-0005: Capability-based provider ecosystem
 
-- Status: accepted
+- Status: Accepted
 - Date: 2026-08-27
 - Related: PD-006, PD-013
 

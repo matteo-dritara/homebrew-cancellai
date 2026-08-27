@@ -29,5 +29,12 @@ ignore = ["TRY004"]
 
 [tool.mypy]
 python_version = "3.10"
-files = ["cancellai.py", "scripts/gen_docs.py", "scripts/project_os.py", "scripts/check_docs.py", "scripts/check_workflows.py"]
+files = [
+  "cancellai.py",
+  "scripts/gen_docs.py",
+  "scripts/project_os.py",
+  "scripts/check_docs.py",
+  "scripts/check_workflows.py",
+  "scripts/check_process.py",
+]
 strict = true

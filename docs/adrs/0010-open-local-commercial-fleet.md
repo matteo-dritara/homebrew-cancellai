@@ -1,6 +1,6 @@
 # ADR-0010: Open local core, commercial fleet plane
 
-- Status: accepted
+- Status: Accepted
 - Date: 2026-08-27
 - Related: PD-008, PD-002
 

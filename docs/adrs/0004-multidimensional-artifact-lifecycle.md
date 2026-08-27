@@ -1,6 +1,6 @@
 # ADR-0004: Multidimensional artifact and lifecycle model
 
-- Status: accepted
+- Status: Accepted
 - Date: 2026-08-27
 - Related: PD-005, PD-012
 

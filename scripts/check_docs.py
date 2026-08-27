@@ -20,6 +20,19 @@ ROOT = Path(__file__).resolve().parent.parent
 MARKDOWN_LINK = re.compile(r"(?<!!)\[[^\]]*\]\(([^)]+)\)")
 INVARIANT_HEADING = re.compile(r"^###\s+(SI-\d{3})\b")
 
+# A document nobody links to is a document nobody reads, and stale unread documentation is
+# worse than none. Every Markdown file must be reachable from the documentation graph -
+# either linked directly, or living in a directory that is linked as a whole.
+#
+# Two categories are exempt, both because they are addressed by something other than a
+# link: files GitHub consumes by location, and evidence records addressed by work-item id
+# (scripts/check_process.py enforces that they name a real story).
+UNLINKED_BY_DESIGN = (
+    ".github/ISSUE_TEMPLATE",
+    ".github/PULL_REQUEST_TEMPLATE.md",
+    "project/evidence",
+)
+
 
 class DocsError(RuntimeError):
     pass
@@ -33,8 +46,12 @@ class LocalLink:
     target: Path
 
 
+# Tool caches are not documentation.
+IGNORED_DIRECTORIES = {".git", ".pytest_cache", ".mypy_cache", ".ruff_cache", "__pycache__", ".venv", "node_modules"}
+
+
 def markdown_files() -> list[Path]:
-    return sorted(path for path in ROOT.rglob("*.md") if ".git" not in path.parts)
+    return sorted(path for path in ROOT.rglob("*.md") if not IGNORED_DIRECTORIES.intersection(path.parts))
 
 
 def _link_destination(raw: str) -> str:
@@ -74,14 +91,28 @@ def safety_invariant_ids() -> set[str]:
     return ids
 
 
+def is_exempt(path: Path) -> bool:
+    relative = path.relative_to(ROOT).as_posix()
+    return any(relative == item or relative.startswith(f"{item}/") for item in UNLINKED_BY_DESIGN)
+
+
 def validate_docs() -> None:
     errors: list[str] = []
     files = markdown_files()
+    linked: set[Path] = set()
     for path in files:
         for link in local_links(path):
+            linked.add(link.target)
             if not link.target.exists():
                 source = link.source.relative_to(ROOT)
                 errors.append(f"{source}:{link.line}: missing local link target {link.raw_target!r}")
+
+    for path in files:
+        if path == ROOT / "README.md" or is_exempt(path):
+            continue
+        if path in linked or path.parent in linked:
+            continue
+        errors.append(f"{path.relative_to(ROOT)}: not reachable from any other document; link it or the reader will never find it")
 
     invariant_ids = safety_invariant_ids()
     if not invariant_ids:
