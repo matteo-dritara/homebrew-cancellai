@@ -92,6 +92,19 @@ keep-latest + protected names + process detection, layered rather than any
 single one being load-bearing alone) is the level of caution to match, not
 exceed reflexively.
 
+## Repository settings
+
+`main` is protected: the `test`, `lint`, and `homebrew` checks from
+`tests.yml` must pass before anything can be merged into it via a pull
+request, force-pushes and branch deletion are blocked, and merges are
+squash-only. Direct `git push` to `main` (not through a PR) is still
+allowed for the maintainer — that's a deliberate choice, not an oversight,
+since this is a single-maintainer repo and required status checks don't
+gate direct pushes anyway (only the PR merge button). Dependabot PRs
+(`.github/dependabot.yml`, GitHub Actions ecosystem only) are auto-merged
+by `.github/workflows/dependabot-auto-merge.yml` once CI is green — no
+manual rebase/merge dance needed for routine Action version bumps.
+
 ## Releasing
 
 Full runbook: [docs/RELEASING.md](docs/RELEASING.md). Short version: bump

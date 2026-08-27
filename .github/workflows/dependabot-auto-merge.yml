@@ -1,0 +1,26 @@
+name: dependabot-auto-merge
+
+# Dependabot only tracks the github-actions ecosystem here (see
+# .github/dependabot.yml) -- version bumps for the Actions used in CI.
+# The real safety net is that `tests.yml`'s required status checks
+# (test, lint, homebrew) must pass before GitHub will actually merge;
+# this workflow only flags the PR for auto-merge, it never bypasses CI.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable auto-merge for this Dependabot PR
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

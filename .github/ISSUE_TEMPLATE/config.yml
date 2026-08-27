@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/matteo-dritara/homebrew-cancellai/security/advisories/new
+    about: Please report a way this tool could delete something it shouldn't privately, not as a public issue.
