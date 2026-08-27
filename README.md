@@ -1,5 +1,8 @@
 # cancellAI
 
+[![tests](https://github.com/matteo-dritara/homebrew-cancellai/actions/workflows/tests.yml/badge.svg)](https://github.com/matteo-dritara/homebrew-cancellai/actions/workflows/tests.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Safely reclaim disk space from old [Codex CLI](https://github.com/openai/codex) and [Claude Code](https://claude.com/claude-code) session data.
 
 Codex and Claude Code both accumulate transcripts, caches and auxiliary files under `~/.codex` and `~/.claude` that are never cleaned up automatically. cancellAI finds what is safe to delete and removes it, conservatively, on request.
@@ -52,6 +55,14 @@ brew untap matteo-dritara/cancellai
 ```
 
 cancellai never modifies your shell configuration or installs itself outside of what Homebrew manages, so uninstalling is a clean removal.
+
+## Documentation
+
+- [docs/CLI.md](docs/CLI.md) — full command reference, generated from the CLI itself
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how the discover/plan/execute pipeline and the safety model work
+- [CHANGELOG.md](CHANGELOG.md) — what changed, per release
+- [CONTRIBUTING.md](CONTRIBUTING.md) / [AGENTS.md](AGENTS.md) — how to work on this repo, for humans and AI coding agents alike
+- [SECURITY.md](SECURITY.md) — how to report a way this tool deletes something it shouldn't
 
 ## License
 
