@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "id": "E07",
+  "phase": "P2",
+  "title": "Cross-Platform Operating-System Layer",
+  "objective": "Make macOS, Linux, Windows native, and WSL2 first-class platform targets.",
+  "dependencies": [
+    "E06"
+  ],
+  "status": "planned",
+  "stories": [
+    {
+      "id": "E07-S01",
+      "title": "Unix platform backend",
+      "status": "planned",
+      "outcome": "Implement macOS/Linux process, identity, allocated-size, notification, and filesystem semantics behind OS capabilities.",
+      "change_risk": "CR3",
+      "dependencies": [
+        "E06-S04"
+      ],
+      "acceptance_criteria": [
+        "macOS and Linux behavior uses explicit capability checks rather than cfg sprawl in domain code.",
+        "Unsupported filesystem features lower capability safely."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "macOS/Linux CI and filesystem integration suites."
+      ],
+      "documentation_impact": [
+        "docs/architecture/PLATFORM_MODEL.md"
+      ]
+    },
+    {
+      "id": "E07-S02",
+      "title": "Windows native backend",
+      "status": "planned",
+      "outcome": "Implement Windows path, volume/file identity, reparse point, process, allocated-size, and atomic move semantics.",
+      "change_risk": "CR4",
+      "dependencies": [
+        "E07-S01"
+      ],
+      "acceptance_criteria": [
+        "Reparse points are never treated as Unix symlinks by assumption.",
+        "Drive/volume boundaries constrain quarantine and mutation."
+      ],
+      "safety_obligations": [
+        "SI-017",
+        "SI-018"
+      ],
+      "verification": [
+        "Windows CI with junction/symlink/reparse adversarial fixtures."
+      ],
+      "documentation_impact": [
+        "docs/architecture/PLATFORM_MODEL.md"
+      ]
+    },
+    {
+      "id": "E07-S03",
+      "title": "WSL environment model",
+      "status": "planned",
+      "outcome": "Treat WSL as Windows host plus Linux guest/filesystem context rather than generic Linux.",
+      "change_risk": "CR3",
+      "dependencies": [
+        "E07-S02"
+      ],
+      "acceptance_criteria": [
+        "WSL detection is explicit.",
+        "/mnt/* crossings are separately classified and performance/safety caveats surfaced."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "WSL integration smoke suite where available plus simulated path fixtures."
+      ],
+      "documentation_impact": [
+        "docs/architecture/PLATFORM_MODEL.md"
+      ]
+    },
+    {
+      "id": "E07-S04",
+      "title": "Tiered platform support contract",
+      "status": "planned",
+      "outcome": "Publish Tier 1/Tier 2 platform capability matrix and support policy.",
+      "change_risk": "CR1",
+      "dependencies": [
+        "E07-S01",
+        "E07-S02",
+        "E07-S03"
+      ],
+      "acceptance_criteria": [
+        "No platform is called supported without required CI and destructive safety fixtures.",
+        "Unsupported OSes remain inspect-only or refused explicitly."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Generated platform matrix check."
+      ],
+      "documentation_impact": [
+        "README.md",
+        "docs/PLATFORMS.md"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cancellai.dev/schemas/decisions.schema.json",
+  "title": "cancellAI product decision register",
+  "type": "object",
+  "required": ["schema_version", "project", "decisions"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "project": {"const": "cancellAI"},
+    "decisions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "status", "decision", "rationale", "implications"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^PD-[0-9]{3}$"},
+          "title": {"type": "string", "minLength": 1},
+          "status": {"enum": ["proposed", "accepted", "superseded", "deprecated"]},
+          "decision": {"type": "string", "minLength": 1},
+          "rationale": {"type": "string", "minLength": 1},
+          "implications": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": true
+}

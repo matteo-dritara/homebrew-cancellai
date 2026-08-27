@@ -19,13 +19,34 @@ repos:
     hooks:
       - id: mypy
         args: [--strict]
-        files: ^(cancellai\.py|scripts/gen_docs\.py)$
+        files: ^(cancellai\.py|scripts/(gen_docs|project_os|check_docs|check_workflows)\.py)$
 
   - repo: local
     hooks:
       - id: gen-docs-check
-        name: docs/CLI.md matches the CLI
+        name: docs/CLI.md matches the current Python CLI
         entry: python3 scripts/gen_docs.py --check
         language: system
         files: ^(cancellai\.py|scripts/gen_docs\.py|docs/CLI\.md)$
+        pass_filenames: false
+
+      - id: project-os-check
+        name: project control plane is valid and generated docs are current
+        entry: python3 scripts/project_os.py check
+        language: system
+        files: ^(project/|docs/(DECISION_REGISTER|ROADMAP|BACKLOG)\.md|scripts/project_os\.py|docs/security/SAFETY_INVARIANTS\.md)
+        pass_filenames: false
+
+      - id: docs-check
+        name: local documentation links and invariant IDs are valid
+        entry: python3 scripts/check_docs.py check
+        language: system
+        files: ^(.*\.md|scripts/check_docs\.py)$
+        pass_filenames: false
+
+      - id: workflow-policy-check
+        name: GitHub Actions are least-privilege and immutable-pinned
+        entry: python3 scripts/check_workflows.py check
+        language: system
+        files: ^(.github/workflows/.*\.ya?ml|scripts/check_workflows\.py)$
         pass_filenames: false

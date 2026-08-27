@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "id": "E08",
+  "phase": "P2",
+  "title": "Universal Artifact and Project Intelligence",
+  "objective": "Map provider state into the multidimensional AgentArtifact model and evidence-based project relationships.",
+  "dependencies": [
+    "E07"
+  ],
+  "status": "planned",
+  "stories": [
+    {
+      "id": "E08-S01",
+      "title": "AgentArtifact domain implementation",
+      "status": "planned",
+      "outcome": "Implement lifecycle axes, risk, reversibility, confidence, authority ceiling, provenance, and relationships.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E07-S04"
+      ],
+      "acceptance_criteria": [
+        "Artifact state axes are independent and validated.",
+        "No UI/provider-specific field enters the core model."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Domain invariant property tests."
+      ],
+      "documentation_impact": [
+        "docs/architecture/DOMAIN_MODEL.md"
+      ]
+    },
+    {
+      "id": "E08-S02",
+      "title": "Project attribution evidence model",
+      "status": "planned",
+      "outcome": "Attribute artifacts to projects only through explicit provider metadata, known paths, or strong observed evidence.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E08-S01"
+      ],
+      "acceptance_criteria": [
+        "Uncertain attribution remains Unattributed.",
+        "Attribution records evidence source and confidence."
+      ],
+      "safety_obligations": [
+        "SI-023"
+      ],
+      "verification": [
+        "Ambiguous/moved/deleted project fixtures."
+      ],
+      "documentation_impact": [
+        "docs/architecture/DOMAIN_MODEL.md"
+      ]
+    },
+    {
+      "id": "E08-S03",
+      "title": "Orphan and staleness signals",
+      "status": "planned",
+      "outcome": "Derive ORPHANED/STALE signals without directly implying deletion eligibility.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E08-S02"
+      ],
+      "acceptance_criteria": [
+        "Orphan state and protection state coexist.",
+        "Signal explanation identifies evidence and thresholds."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Lifecycle transition tables."
+      ],
+      "documentation_impact": [
+        "docs/architecture/DOMAIN_MODEL.md"
+      ]
+    },
+    {
+      "id": "E08-S04",
+      "title": "Multi-dimensional query API",
+      "status": "planned",
+      "outcome": "Expose machine/project/provider/artifact/session views over one inventory model.",
+      "change_risk": "CR1",
+      "dependencies": [
+        "E08-S01"
+      ],
+      "acceptance_criteria": [
+        "Views do not duplicate source data.",
+        "Totals reconcile across dimensions with explicit Unattributed bucket."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Cross-view reconciliation tests."
+      ],
+      "documentation_impact": [
+        "docs/architecture/TARGET.md"
+      ]
+    }
+  ]
+}

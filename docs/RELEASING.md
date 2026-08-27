@@ -1,70 +1,66 @@
 # Releasing
 
-cancellai has no build step and no PyPI package — the release artifact is a
-git tag, and the "package manager" is the Homebrew formula in this same
-repo. This is the exact sequence used for every release; follow it in order.
+This document has two release modes because cancellAI is transitioning from the current Python/Homebrew v1 to a future cross-platform Rust release factory.
 
-1. **Land the change on `main` first**, with `CHANGELOG.md`'s `## [Unreleased]`
-   section already updated (see [AGENTS.md](../AGENTS.md#changelog)). Don't
-   bundle the version bump with unrelated code changes.
+## Current Python v1 release process
 
-2. **Bump the version** in two places (they must always match):
-   - `VERSION` constant in `cancellai.py`
-   - `version` field in `pyproject.toml`
+Until the Rust cutover, the release artifact remains the tagged source used by the Homebrew formula.
 
-3. **Move the changelog entry**: rename `## [Unreleased]` to
-   `## [X.Y.Z] - YYYY-MM-DD` and add a fresh empty `## [Unreleased]` above it.
+1. All required story/release gates are green.
+2. `python3 scripts/project_os.py check` passes.
+3. Python tests/lint/type/docs/Homebrew checks pass.
+4. Update `VERSION` in `cancellai.py` and `version` in `pyproject.toml` together.
+5. Move changelog entries from Unreleased to `X.Y.Z` with date and create a new Unreleased section.
+6. Commit the release metadata.
+7. Tag `vX.Y.Z` and push.
+8. Download the GitHub tag tarball and calculate SHA-256.
+9. Update `Formula/cancellai.rb` URL/SHA in a separate commit.
+10. Run Homebrew audit/style/install/test end to end.
+11. If the release contains CR4 work, ensure its owner-visible Safety Verdict is part of durable release evidence before declaring the release complete.
 
-4. **Commit and push** the version bump + changelog to `main`.
+Do not add future product features to Python merely because the Python release path is simpler.
 
-5. **Tag and push the tag**:
+## Target Rust release factory
 
-   ```sh
-   git tag -a vX.Y.Z -m "cancellAI vX.Y.Z"
-   git push origin vX.Y.Z
-   ```
+Epic E17 replaces the manual build/package steps with canonical cross-platform release automation. The target release includes:
 
-6. **Compute the release tarball's sha256** (GitHub generates the tarball
-   automatically from the tag, no upload step needed):
+- macOS/Linux/Windows canonical binaries;
+- checksums and release manifest;
+- SBOM;
+- build provenance/attestation and chosen signature material;
+- channel identity (stable/beta/nightly);
+- compatibility/knowledge version;
+- installer/package outputs from the same canonical build lineage;
+- automated install smoke tests;
+- G1 Functional, G2 Safety, G3 Compatibility, G4 Operability evidence.
 
-   ```sh
-   curl -sL -o /tmp/cancellai.tar.gz \
-     https://github.com/matteo-dritara/homebrew-cancellai/archive/refs/tags/vX.Y.Z.tar.gz
-   shasum -a 256 /tmp/cancellai.tar.gz
-   ```
+The exact release tool (for example `dist`/cargo-dist) is selected by ADR during E17 rather than being a permanent decision in this document.
 
-7. **Update `Formula/cancellai.rb`**: bump the `url` tag and replace `sha256`
-   with the value from step 6. Commit and push this to `main` — it's a
-   separate commit from step 4, because the sha256 of a given tag's tarball
-   cannot be known until the tag exists.
+## Versioning
 
-8. **Verify the formula end-to-end before calling it done.** Do not skip
-   this — a broken formula fails silently for every future `brew install`
-   until someone reports it:
+Semantic Versioning remains the public version scheme.
 
-   ```sh
-   brew tap matteo-dritara/cancellai   # or: brew tap-new-update if already tapped
-   brew audit --strict matteo-dritara/cancellai/cancellai
-   brew style matteo-dritara/cancellai/cancellai
-   brew install matteo-dritara/cancellai/cancellai
-   cancellai --version                 # confirm it matches X.Y.Z
-   brew test matteo-dritara/cancellai/cancellai
-   brew uninstall cancellai && brew untap matteo-dritara/cancellai   # clean up the local test tap
-   ```
+Safety/authority behavior is part of the public contract. A change that materially expands destructive authority or breaks machine-facing schema compatibility may require a MINOR/MAJOR change even if the command spelling remains unchanged.
 
-## Version scheme
+Provider knowledge bundles have their own version/content identity and are not forced to share the binary SemVer.
 
-Semantic versioning. Given the tool's actual failure mode is "deletes the
-wrong thing," treat any change to the safety-critical core described in
-[ARCHITECTURE.md](ARCHITECTURE.md#the-safety-critical-core) — the protected
-name lists, `safe_remove`, `validate_config_root`, the keep-latest/age-cutoff
-selection logic — as at least a MINOR bump with an explicit changelog entry,
-even if the CLI surface didn't change.
+## Release channels
 
-## What doesn't need a tag
+- stable: highest verified default authority;
+- beta: migration/compatibility validation with reduced autonomous defaults;
+- nightly: experimental, Observe/Recommend oriented by default.
 
-Documentation, CI configuration, and dev-tooling-only changes (ruff/mypy
-config, this file) don't need a release on their own. Fold them into
-whichever `main` state the next real tag is cut from, or cut a lightweight
-patch release if enough of them accumulate that `brew install` should pick
-them up sooner (Homebrew installs from a tagged release, not from `main`).
+See `docs/security/SUPPLY_CHAIN.md` and SI-030.
+
+## Repository topology transition
+
+The current remote is `matteo-dritara/homebrew-cancellai`. It remains canonical while Python v1/Homebrew is the shipping product. Do not rename/split the repository during P0/P1 merely for aesthetics.
+
+When the Rust core and cross-platform release factory are proven, E17-S06 evaluates a controlled split:
+
+```text
+matteo-dritara/cancellai          canonical product source/releases
+matteo-dritara/homebrew-cancellai  Homebrew tap/distribution compatibility
+```
+
+The migration must preserve existing Homebrew upgrade paths and make release provenance point unambiguously at the canonical source repository. Repository movement is a distribution migration with compatibility evidence, not a housekeeping rename.

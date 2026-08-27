@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "id": "E05",
+  "phase": "P1",
+  "title": "Provider API and Reference Adapters",
+  "objective": "Implement capability-based provider integration and achieve Claude/Codex semantic parity.",
+  "dependencies": [
+    "E04"
+  ],
+  "status": "planned",
+  "stories": [
+    {
+      "id": "E05-S01",
+      "title": "Provider capability contract",
+      "status": "planned",
+      "outcome": "Define detect, fingerprint, inventory mapping, session graph, project attribution, activity, native mutation, explain, and compatibility capabilities.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E04-S01"
+      ],
+      "acceptance_criteria": [
+        "Capability absence is first-class and never inferred from provider identity.",
+        "Capability responses carry evidence and confidence."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Mock provider contract conformance suite."
+      ],
+      "documentation_impact": [
+        "docs/architecture/PROVIDER_MODEL.md"
+      ]
+    },
+    {
+      "id": "E05-S02",
+      "title": "Provider trust enforcement",
+      "status": "planned",
+      "outcome": "Implement Built-in Verified, Community Verified, Local Custom, and Untrusted trust levels as authority inputs.",
+      "change_risk": "CR4",
+      "dependencies": [
+        "E05-S01",
+        "E03-S04"
+      ],
+      "acceptance_criteria": [
+        "Untrusted manifests cannot produce irreversible actions.",
+        "Trust promotion requires explicit verified provenance and tests."
+      ],
+      "safety_obligations": [
+        "SI-021",
+        "SI-022"
+      ],
+      "verification": [
+        "Trust/capability matrix tests."
+      ],
+      "documentation_impact": [
+        "docs/architecture/PROVIDER_MODEL.md",
+        "docs/security/THREAT_MODEL.md"
+      ]
+    },
+    {
+      "id": "E05-S03",
+      "title": "Claude reference adapter",
+      "status": "planned",
+      "outcome": "Port Claude discovery/classification/session relationships to Rust with version/layout fingerprinting.",
+      "change_risk": "CR3",
+      "dependencies": [
+        "E05-S01"
+      ],
+      "acceptance_criteria": [
+        "Reference fixtures match normative Python contract.",
+        "Memory/settings/plugin protected classes are explicit artifacts or exclusions with evidence.",
+        "Unknown layouts downgrade to inspection-only."
+      ],
+      "safety_obligations": [
+        "SI-001",
+        "SI-004"
+      ],
+      "verification": [
+        "Differential fixture parity plus current-version compatibility fixtures."
+      ],
+      "documentation_impact": [
+        "docs/architecture/PROVIDER_MODEL.md"
+      ]
+    },
+    {
+      "id": "E05-S04",
+      "title": "Codex reference adapter",
+      "status": "planned",
+      "outcome": "Port Codex rollout/subagent/native-delete knowledge to Rust with version/layout fingerprinting.",
+      "change_risk": "CR3",
+      "dependencies": [
+        "E05-S01"
+      ],
+      "acceptance_criteria": [
+        "Root/subagent trees are preserved as graph relationships.",
+        "Native delete capability is detected without assuming filesystem fallback equivalence.",
+        "SQLite/config/auth/plugin state stays protected."
+      ],
+      "safety_obligations": [
+        "SI-001",
+        "SI-004"
+      ],
+      "verification": [
+        "Differential parity and native-delete fake CLI integration tests."
+      ],
+      "documentation_impact": [
+        "docs/architecture/PROVIDER_MODEL.md"
+      ]
+    },
+    {
+      "id": "E05-S05",
+      "title": "Reference-provider compatibility matrix",
+      "status": "planned",
+      "outcome": "Publish tested provider versions/layout signatures and supported capability states.",
+      "change_risk": "CR1",
+      "dependencies": [
+        "E05-S03",
+        "E05-S04"
+      ],
+      "acceptance_criteria": [
+        "Compatibility is reported per capability, not a single supported boolean.",
+        "Unknown version behavior is documented and fail-closed."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Generated matrix drift check from adapter metadata."
+      ],
+      "documentation_impact": [
+        "docs/PROVIDERS.md"
+      ]
+    }
+  ]
+}

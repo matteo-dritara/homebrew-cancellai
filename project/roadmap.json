@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "project": "cancellAI",
+  "north_star": "Become the local-first, cross-platform control plane for state created by AI agents.",
+  "current_phase": "P0",
+  "phases": [
+    {
+      "id": "P0",
+      "name": "Trust & Contract",
+      "goal": "Repair the Python trust floor, extract executable behavior, and freeze the reference implementation.",
+      "exit_criteria": [
+        "All E00 P0 defects fixed with owner-visible Safety Verdict.",
+        "Normative Python fixture/golden contract exists.",
+        "Python feature scope is frozen."
+      ],
+      "epics": [
+        "E00",
+        "E01"
+      ]
+    },
+    {
+      "id": "P1",
+      "name": "Rust Kernel",
+      "goal": "Build and prove the provider-neutral Rust engine, formal safety kernel, inventory, reference adapters, and CLI cutover.",
+      "exit_criteria": [
+        "Rust passes differential parity on normative corpus.",
+        "Safety kernel CR4 evidence is accepted.",
+        "Rust is canonical stable engine with rollback evidence."
+      ],
+      "epics": [
+        "E02",
+        "E03",
+        "E04",
+        "E05",
+        "E06"
+      ]
+    },
+    {
+      "id": "P2",
+      "name": "Atlas",
+      "goal": "Become genuinely cross-platform and make agent state understandable by machine/project/provider/artifact through CLI and TUI.",
+      "exit_criteria": [
+        "macOS/Linux/Windows/WSL Tier-1 contract is met.",
+        "Artifact/project model reconciles views.",
+        "TUI provides complete inspect/explain/plan workflows."
+      ],
+      "epics": [
+        "E07",
+        "E08",
+        "E09",
+        "E10"
+      ]
+    },
+    {
+      "id": "P3",
+      "name": "Govern",
+      "goal": "Add deterministic policy, budgets, quarantine/restore/archive, and bounded persistent memory.",
+      "exit_criteria": [
+        "Policies are fully explainable and cannot override safety ceilings.",
+        "Reversible lifecycle operations survive crash/failure scenarios.",
+        "cancellAI enforces its own state budget."
+      ],
+      "epics": [
+        "E11",
+        "E12",
+        "E13"
+      ]
+    },
+    {
+      "id": "P4",
+      "name": "Guardian",
+      "goal": "Prevent runaway agent storage with predictive intelligence and bounded autonomous remediation.",
+      "exit_criteria": [
+        "Pressure/anomaly detection is locally explainable.",
+        "Guardian has OS-native runtime on Tier-1 platforms.",
+        "Autonomous actions never exceed Effective Policy."
+      ],
+      "epics": [
+        "E14",
+        "E15"
+      ]
+    },
+    {
+      "id": "P5",
+      "name": "Ecosystem",
+      "goal": "Scale provider coverage and ship verifiable, signed, multi-channel releases with federated compatibility knowledge.",
+      "exit_criteria": [
+        "Manifest ecosystem and knowledge trust chain are operational.",
+        "Gemini/Copilot/OpenCode have truthful capability-based support.",
+        "Canonical release artifacts carry provenance/SBOM/verification evidence."
+      ],
+      "epics": [
+        "E16",
+        "E17"
+      ]
+    },
+    {
+      "id": "P6",
+      "name": "Network & Experience",
+      "goal": "Extend to remote targets/fleet governance and optional desktop UX without moving destructive authority away from local nodes.",
+      "exit_criteria": [
+        "Remote target protocol preserves local safety authority.",
+        "OSS/commercial boundary remains intact.",
+        "Desktop is a client, not a parallel implementation."
+      ],
+      "epics": [
+        "E18",
+        "E19"
+      ]
+    }
+  ],
+  "epic_files": [
+    "project/epics/E00.json",
+    "project/epics/E01.json",
+    "project/epics/E02.json",
+    "project/epics/E03.json",
+    "project/epics/E04.json",
+    "project/epics/E05.json",
+    "project/epics/E06.json",
+    "project/epics/E07.json",
+    "project/epics/E08.json",
+    "project/epics/E09.json",
+    "project/epics/E10.json",
+    "project/epics/E11.json",
+    "project/epics/E12.json",
+    "project/epics/E13.json",
+    "project/epics/E14.json",
+    "project/epics/E15.json",
+    "project/epics/E16.json",
+    "project/epics/E17.json",
+    "project/epics/E18.json",
+    "project/epics/E19.json"
+  ]
+}

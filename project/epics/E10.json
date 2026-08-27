@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "id": "E10",
+  "phase": "P2",
+  "title": "Storage Accounting and Performance",
+  "objective": "Make storage numbers trustworthy and the scanner inexpensive enough for continuous use.",
+  "dependencies": [
+    "E08"
+  ],
+  "status": "planned",
+  "stories": [
+    {
+      "id": "E10-S01",
+      "title": "Reclaimability estimator",
+      "status": "planned",
+      "outcome": "Distinguish logical size, allocated size, shared/clone uncertainty, and expected reclaim on supported filesystems.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E04-S01",
+        "E07-S04"
+      ],
+      "acceptance_criteria": [
+        "Estimates are labeled by confidence.",
+        "Unknown APFS/reflink/shared-block effects are never presented as guaranteed savings."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Filesystem-specific integration tests and conservative fallback tests."
+      ],
+      "documentation_impact": [
+        "docs/architecture/PLATFORM_MODEL.md"
+      ]
+    },
+    {
+      "id": "E10-S02",
+      "title": "Performance guardrails",
+      "status": "planned",
+      "outcome": "Enforce latency/memory/self-footprint regression budgets.",
+      "change_risk": "CR1",
+      "dependencies": [
+        "E04-S04"
+      ],
+      "acceptance_criteria": [
+        "Fast CI benchmarks catch large regressions.",
+        "Scheduled deep benchmarks publish trends without blocking ordinary PRs on noisy metrics."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Benchmark workflow and regression-threshold unit tests."
+      ],
+      "documentation_impact": [
+        "docs/development/RELEASE_GATES.md"
+      ]
+    }
+  ]
+}

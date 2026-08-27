@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cancellai.dev/schemas/epic.schema.json",
+  "title": "cancellAI epic and story contract",
+  "type": "object",
+  "required": ["schema_version", "id", "phase", "title", "objective", "dependencies", "status", "stories"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "id": {"type": "string", "pattern": "^E[0-9]{2}$"},
+    "phase": {"type": "string", "pattern": "^P[0-9]+$"},
+    "title": {"type": "string", "minLength": 1},
+    "objective": {"type": "string", "minLength": 1},
+    "dependencies": {"type": "array", "items": {"type": "string"}},
+    "status": {"enum": ["planned", "ready", "in_progress", "verification", "blocked", "done", "cancelled"]},
+    "stories": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "status", "outcome", "change_risk", "dependencies", "acceptance_criteria", "safety_obligations", "verification", "documentation_impact"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^E[0-9]{2}-S[0-9]{2}$"},
+          "title": {"type": "string", "minLength": 1},
+          "status": {"enum": ["planned", "ready", "in_progress", "verification", "blocked", "done", "cancelled"]},
+          "outcome": {"type": "string", "minLength": 1},
+          "change_risk": {"enum": ["CR0", "CR1", "CR2", "CR3", "CR4"]},
+          "dependencies": {"type": "array", "items": {"type": "string"}},
+          "acceptance_criteria": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+          "safety_obligations": {"type": "array", "items": {"type": "string", "pattern": "^SI-[0-9]{3}$"}},
+          "verification": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+          "documentation_impact": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

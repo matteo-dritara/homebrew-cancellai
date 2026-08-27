@@ -1,0 +1,143 @@
+{
+  "schema_version": 1,
+  "id": "E03",
+  "phase": "P1",
+  "title": "Formal Safety Kernel",
+  "objective": "Implement constitutional safety invariants as a dedicated, testable Rust authority boundary.",
+  "dependencies": [
+    "E02"
+  ],
+  "status": "planned",
+  "stories": [
+    {
+      "id": "E03-S01",
+      "title": "Artifact identity tokens",
+      "status": "planned",
+      "outcome": "Define cross-platform identity preconditions using device/inode on Unix and volume/file identity plus reparse metadata on Windows.",
+      "change_risk": "CR4",
+      "dependencies": [
+        "E02-S04"
+      ],
+      "acceptance_criteria": [
+        "Identity captures enough information to detect target replacement between plan and execute.",
+        "Unsupported identity state lowers authority rather than guessing."
+      ],
+      "safety_obligations": [
+        "SI-013",
+        "SI-017"
+      ],
+      "verification": [
+        "TOCTOU fixtures replace file, directory, symlink, junction, and mount/reparse target between phases."
+      ],
+      "documentation_impact": [
+        "docs/architecture/PLATFORM_MODEL.md"
+      ]
+    },
+    {
+      "id": "E03-S02",
+      "title": "Sealed cleanup plan",
+      "status": "planned",
+      "outcome": "Make every mutating plan immutable, identity-bound, capability-bound, and policy-explained.",
+      "change_risk": "CR4",
+      "dependencies": [
+        "E03-S01"
+      ],
+      "acceptance_criteria": [
+        "Plan records provider/root fingerprint, artifact identity, action class, authority, reversibility, and preconditions.",
+        "Execution rejects stale plans after relevant state change."
+      ],
+      "safety_obligations": [
+        "SI-013",
+        "SI-016"
+      ],
+      "verification": [
+        "Mutation-after-plan tests always fail closed."
+      ],
+      "documentation_impact": [
+        "docs/architecture/DOMAIN_MODEL.md",
+        "docs/security/SAFETY_INVARIANTS.md"
+      ]
+    },
+    {
+      "id": "E03-S03",
+      "title": "Root and boundary capabilities",
+      "status": "planned",
+      "outcome": "Represent approved roots and filesystem boundaries as explicit capabilities rather than raw paths.",
+      "change_risk": "CR4",
+      "dependencies": [
+        "E03-S01"
+      ],
+      "acceptance_criteria": [
+        "No mutation API accepts an unconstrained raw path.",
+        "Cross-root and root-self deletion are impossible through typed APIs.",
+        "Mount/reparse boundary behavior is explicit per platform."
+      ],
+      "safety_obligations": [
+        "SI-002",
+        "SI-003",
+        "SI-018"
+      ],
+      "verification": [
+        "Compile-time/API tests plus adversarial boundary fixtures."
+      ],
+      "documentation_impact": [
+        "docs/architecture/PLATFORM_MODEL.md"
+      ]
+    },
+    {
+      "id": "E03-S04",
+      "title": "Action authority lattice",
+      "status": "planned",
+      "outcome": "Implement action classes and Effective Authority as a monotonic minimum over all governing constraints.",
+      "change_risk": "CR4",
+      "dependencies": [
+        "E02-S03"
+      ],
+      "acceptance_criteria": [
+        "Raising user authority cannot raise an artifact above its ceiling.",
+        "Unknown/active/protected/partial states collapse to non-destructive authority.",
+        "Every authority result has a deterministic explanation trace."
+      ],
+      "safety_obligations": [
+        "SI-001",
+        "SI-007",
+        "SI-008",
+        "SI-009"
+      ],
+      "verification": [
+        "Table-driven exhaustive lattice tests."
+      ],
+      "documentation_impact": [
+        "docs/security/SAFETY_INVARIANTS.md",
+        "docs/architecture/DOMAIN_MODEL.md"
+      ]
+    },
+    {
+      "id": "E03-S05",
+      "title": "Mutation executor isolation",
+      "status": "planned",
+      "outcome": "Make the safety executor the sole code path for filesystem mutation.",
+      "change_risk": "CR4",
+      "dependencies": [
+        "E03-S02",
+        "E03-S03",
+        "E03-S04"
+      ],
+      "acceptance_criteria": [
+        "Provider/UI crates cannot directly unlink/rmtree/delete.",
+        "Executor revalidates all plan preconditions immediately before mutation.",
+        "Partial failures produce explicit per-action results and never hide skipped work."
+      ],
+      "safety_obligations": [
+        "SI-019",
+        "SI-020"
+      ],
+      "verification": [
+        "Static dependency checks and fault-injection tests."
+      ],
+      "documentation_impact": [
+        "docs/architecture/TARGET.md"
+      ]
+    }
+  ]
+}

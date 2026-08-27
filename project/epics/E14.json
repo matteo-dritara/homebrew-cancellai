@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "id": "E14",
+  "phase": "P4",
+  "title": "Predictive Guardian Intelligence",
+  "objective": "Detect disk pressure, runaway growth, and structural anomalies using local evidence without acquiring authority.",
+  "dependencies": [
+    "E10",
+    "E13"
+  ],
+  "status": "planned",
+  "stories": [
+    {
+      "id": "E14-S01",
+      "title": "Pressure state model",
+      "status": "planned",
+      "outcome": "Define GREEN/YELLOW/ORANGE/RED from free space, budgets, growth velocity, reclaimability, and active workload.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E13-S03"
+      ],
+      "acceptance_criteria": [
+        "Pressure is deterministic from inputs and independently testable.",
+        "Pressure does not change authority by itself."
+      ],
+      "safety_obligations": [
+        "SI-027"
+      ],
+      "verification": [
+        "Boundary and hysteresis tests."
+      ],
+      "documentation_impact": [
+        "docs/architecture/GUARDIAN_MODEL.md"
+      ]
+    },
+    {
+      "id": "E14-S02",
+      "title": "Growth velocity and forecast",
+      "status": "planned",
+      "outcome": "Estimate provider/project growth rate and conservative time-to-pressure forecasts.",
+      "change_risk": "CR1",
+      "dependencies": [
+        "E14-S01"
+      ],
+      "acceptance_criteria": [
+        "Forecast uncertainty is surfaced.",
+        "Sparse/noisy history produces insufficient-data rather than false precision."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Synthetic trend and burst datasets."
+      ],
+      "documentation_impact": [
+        "docs/architecture/GUARDIAN_MODEL.md"
+      ]
+    },
+    {
+      "id": "E14-S03",
+      "title": "Behavioral baseline anomaly detection",
+      "status": "planned",
+      "outcome": "Build local baselines and flag statistically/heuristically unusual growth without content inspection.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E13-S03"
+      ],
+      "acceptance_criteria": [
+        "Baseline uses bounded analytical memory.",
+        "Anomaly score is explanatory and never directly destructive."
+      ],
+      "safety_obligations": [
+        "SI-027"
+      ],
+      "verification": [
+        "Known-normal and runaway simulation corpus."
+      ],
+      "documentation_impact": [
+        "docs/architecture/GUARDIAN_MODEL.md"
+      ]
+    },
+    {
+      "id": "E14-S04",
+      "title": "Structural anomaly detection",
+      "status": "planned",
+      "outcome": "Detect session explosion, unexpected giant files, orphan growth, and provider layout drift.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E05-S05",
+        "E14-S01"
+      ],
+      "acceptance_criteria": [
+        "Layout drift can downgrade provider capabilities automatically.",
+        "Structural signals reference concrete observed evidence."
+      ],
+      "safety_obligations": [
+        "SI-004"
+      ],
+      "verification": [
+        "Provider drift and explosion fixtures."
+      ],
+      "documentation_impact": [
+        "docs/architecture/GUARDIAN_MODEL.md"
+      ]
+    }
+  ]
+}

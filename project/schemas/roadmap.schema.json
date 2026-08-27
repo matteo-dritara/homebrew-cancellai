@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cancellai.dev/schemas/roadmap.schema.json",
+  "title": "cancellAI roadmap",
+  "type": "object",
+  "required": ["schema_version", "project", "north_star", "current_phase", "phases", "epic_files"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "project": {"const": "cancellAI"},
+    "north_star": {"type": "string", "minLength": 1},
+    "current_phase": {"type": "string", "pattern": "^P[0-9]+$"},
+    "phases": {"type": "array", "minItems": 1},
+    "epic_files": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^project/epics/E[0-9]{2}\\.json$"}}
+  }
+}

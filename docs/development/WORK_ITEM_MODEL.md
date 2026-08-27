@@ -1,0 +1,148 @@
+# Work Item Model
+
+## Story contract
+
+The machine-readable story is the minimum implementation contract:
+
+- stable ID;
+- title;
+- status;
+- outcome;
+- Change Risk Level;
+- dependencies;
+- acceptance criteria;
+- safety invariant references;
+- verification plan;
+- documentation impact.
+
+Generated [`../BACKLOG.md`](../BACKLOG.md) renders these contracts for humans.
+
+## Story statuses
+
+`planned -> ready -> in_progress -> ready_for_review -> verification -> done`
+
+| Status | Meaning | Owned by |
+| --- | --- | --- |
+| `planned` | contract exists, not scheduled | owner |
+| `ready` | contract is complete and dependencies are done; may be picked up | owner |
+| `in_progress` | an executor is implementing it | executor |
+| `ready_for_review` | implementation, tests and documentation are complete and all gates pass; **the executor has handed it to the independent reviewer** | executor -> reviewer |
+| `verification` | the independent reviewer is actively falsifying it | reviewer |
+| `done` | verified, evidence committed, and for CR4 a Safety Verdict exists | owner |
+
+Side states:
+
+- `blocked` - cannot proceed; blocker is documented.
+- `cancelled` - intentionally removed with rationale/decision reference.
+
+A status change is project state and belongs in version control.
+
+### `ready_for_review` is the standard executor exit state
+
+An executor **never** moves its own work past `ready_for_review`. That status is the handoff itself, and it carries obligations:
+
+- every gate required by the story's Change Risk Level passes locally;
+- tests, documentation and changelog entries land in the same change;
+- an executor evidence packet is committed under `project/evidence/`, per story or per epic batch;
+- `python3 scripts/project_os.py check` enforces that evidence exists before a story may sit in `ready_for_review`.
+
+The Safety Verdict required to close a CR4 story is the **reviewer's** output, so it is gated at `done`, never at `ready_for_review`.
+
+List the queue with:
+
+```sh
+python3 scripts/project_os.py review
+```
+
+## Change Risk Levels
+
+### CR0 - Documentation / metadata
+
+Examples: prose, generated planning metadata, typo, non-executable templates.
+
+Minimum gates:
+
+- governance/docs validation;
+- link/format checks where available;
+- no product behavior claim that contradicts implementation.
+
+### CR1 - Observational behavior
+
+Examples: status rendering, read-only query, TUI view, metrics calculation that cannot influence mutation authority.
+
+Minimum gates:
+
+- unit/integration tests;
+- deterministic outputs where contracted;
+- performance/compatibility check proportional to change.
+
+### CR2 - Classification / planning / state semantics
+
+Examples: project attribution, provider capability result, policy schema, plan serialization.
+
+Minimum gates:
+
+- unit + integration;
+- golden fixture tests;
+- error/unknown-state tests;
+- differential tests during Python->Rust migration where applicable;
+- independent verifier for safety-relevant classification changes.
+
+### CR3 - Reversible/conditional mutation
+
+Examples: quarantine, archive, metadata rewrite, configuration write, service install.
+
+Minimum gates:
+
+- all CR2 gates;
+- fault injection/crash recovery;
+- idempotency/retry behavior;
+- rollback/restore path;
+- adversarial filesystem/concurrency tests;
+- independent verification.
+
+### CR4 - Irreversible mutation or authority boundary
+
+Examples: purge, safety executor, root capability, policy authority lattice, provider trust, release-channel authority, remote mutation boundary.
+
+Minimum gates:
+
+- all CR3 gates;
+- explicit threat cases;
+- direct invariant mapping;
+- exhaustive/property/fuzz tests where appropriate;
+- independent adversarial verifier;
+- owner-visible Safety Verdict;
+- release evidence references;
+- no unresolved HIGH/CRITICAL residual safety risk without explicit owner acceptance.
+
+## Story changes during implementation
+
+If implementation reveals an AC is wrong or an architectural decision is missing:
+
+1. stop widening implementation;
+2. update story/RFC/ADR first;
+3. re-run governance generation;
+4. have verifier use the new contract.
+
+The code never becomes the unofficial spec by accident.
+
+## Epics and phases
+
+Epics define coherent capability outcomes. Phases have exit criteria. Dates may be estimated separately, but a phase does not become complete because a calendar date arrived.
+
+## RFC trigger
+
+Write an RFC before coding when a story proposes:
+
+- a new public protocol/schema with long-lived compatibility cost;
+- a new dependency with material security/operational impact;
+- a new mutation model;
+- a new network trust boundary;
+- a new persistence strategy;
+- a major UI/domain semantic change;
+- a change that could reasonably produce competing architecture options.
+
+## ADR trigger
+
+Write an ADR when the team/owner has chosen among significant alternatives and the rationale must survive. An RFC explores; an ADR records the accepted architectural decision.

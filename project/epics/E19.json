@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "id": "E19",
+  "phase": "P6",
+  "title": "Desktop Experience",
+  "objective": "Add a cross-platform desktop client only after CLI/TUI/Guardian domain contracts are stable.",
+  "dependencies": [
+    "E15"
+  ],
+  "status": "planned",
+  "stories": [
+    {
+      "id": "E19-S01",
+      "title": "Desktop API boundary",
+      "status": "planned",
+      "outcome": "Expose a narrow local IPC/API that reuses engine plans and explanations.",
+      "change_risk": "CR3",
+      "dependencies": [
+        "E15-S04"
+      ],
+      "acceptance_criteria": [
+        "Desktop cannot bypass safety executor.",
+        "API is local-authenticated and versioned."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Unauthorized local client and schema compatibility tests."
+      ],
+      "documentation_impact": [
+        "docs/architecture/TARGET.md"
+      ]
+    },
+    {
+      "id": "E19-S02",
+      "title": "Cross-platform desktop shell",
+      "status": "planned",
+      "outcome": "Implement tray/menu-bar/dashboard experience using shared core, with Tauri or an equivalent evidence-backed choice.",
+      "change_risk": "CR1",
+      "dependencies": [
+        "E19-S01"
+      ],
+      "acceptance_criteria": [
+        "Desktop is optional and core remains headless-capable.",
+        "UI shows the same inventory/policy semantics as CLI/TUI."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "View-model parity tests."
+      ],
+      "documentation_impact": [
+        "docs/PRODUCT.md"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "id": "E04",
+  "phase": "P1",
+  "title": "Single-Pass Inventory Engine",
+  "objective": "Build a fast, evidence-rich inventory that scans once and never equates unknown with safe.",
+  "dependencies": [
+    "E03"
+  ],
+  "status": "planned",
+  "stories": [
+    {
+      "id": "E04-S01",
+      "title": "FileFacts inventory model",
+      "status": "planned",
+      "outcome": "Collect logical size, allocated/physical estimate, timestamps, type, identity, boundary, provider/category hints, and scan confidence.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E03-S01"
+      ],
+      "acceptance_criteria": [
+        "Facts distinguish logical from reclaimable/allocated estimates when supported.",
+        "Unsupported metrics are explicit null/unknown values."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Platform fixture tests and filesystem golden snapshots."
+      ],
+      "documentation_impact": [
+        "docs/architecture/DOMAIN_MODEL.md"
+      ]
+    },
+    {
+      "id": "E04-S02",
+      "title": "One traversal per scope",
+      "status": "planned",
+      "outcome": "Replace repeated recursive size walks with a reusable inventory pass.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E04-S01"
+      ],
+      "acceptance_criteria": [
+        "Status/planning/top-consumers reuse one inventory snapshot.",
+        "Traversal count is observable in benchmarks."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Benchmark fixture proves bounded traversal count independent of report views."
+      ],
+      "documentation_impact": [
+        "docs/architecture/TARGET.md"
+      ]
+    },
+    {
+      "id": "E04-S03",
+      "title": "Incomplete inventory propagation",
+      "status": "planned",
+      "outcome": "Propagate permission, disappearance, I/O, and unsupported filesystem states into completeness metadata.",
+      "change_risk": "CR3",
+      "dependencies": [
+        "E04-S01"
+      ],
+      "acceptance_criteria": [
+        "Every inventory scope is COMPLETE, PARTIAL, or UNKNOWN with reasons.",
+        "Planning cannot erase completeness information."
+      ],
+      "safety_obligations": [
+        "SI-008",
+        "SI-009"
+      ],
+      "verification": [
+        "Permission and race fixtures across nested directories."
+      ],
+      "documentation_impact": [
+        "docs/security/SAFETY_INVARIANTS.md"
+      ]
+    },
+    {
+      "id": "E04-S04",
+      "title": "Performance budget baseline",
+      "status": "planned",
+      "outcome": "Establish scan latency, memory, CPU, and cancellAI self-footprint budgets on representative datasets.",
+      "change_risk": "CR1",
+      "dependencies": [
+        "E04-S02"
+      ],
+      "acceptance_criteria": [
+        "Benchmarks include 10k, 100k, and 1M-entry synthetic datasets where feasible.",
+        "Regression thresholds are recorded and CI-friendly microbenchmarks are separated from scheduled heavy benchmarks."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Scheduled benchmark workflow produces machine-readable trend artifact."
+      ],
+      "documentation_impact": [
+        "docs/development/RELEASE_GATES.md"
+      ]
+    }
+  ]
+}

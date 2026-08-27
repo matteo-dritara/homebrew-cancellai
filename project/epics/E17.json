@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "id": "E17",
+  "phase": "P5",
+  "title": "Verifiable Supply Chain and Distribution",
+  "objective": "Automate canonical cross-platform builds, provenance, SBOM, signatures/attestations, and channel-aware installers.",
+  "dependencies": [
+    "E06"
+  ],
+  "status": "planned",
+  "stories": [
+    {
+      "id": "E17-S01",
+      "title": "Release artifact manifest",
+      "status": "planned",
+      "outcome": "Define canonical artifact names, checksums, target triples, channel, source SHA, build identity, and knowledge compatibility metadata.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E02-S02"
+      ],
+      "acceptance_criteria": [
+        "Manifest is machine-verifiable and versioned.",
+        "Every distributed binary is represented exactly once."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Manifest schema and checksum round-trip tests."
+      ],
+      "documentation_impact": [
+        "docs/security/SUPPLY_CHAIN.md",
+        "docs/RELEASING.md"
+      ]
+    },
+    {
+      "id": "E17-S02",
+      "title": "Automated multi-target build",
+      "status": "planned",
+      "outcome": "Use a release toolchain such as dist/cargo-dist or equivalent to produce macOS/Linux/Windows artifacts and installers from tags.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E17-S01",
+        "E07-S04"
+      ],
+      "acceptance_criteria": [
+        "Build matrix covers declared tier-1 targets.",
+        "Release process is reproducible from a clean tagged checkout."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Release dry-run workflow and installer smoke tests."
+      ],
+      "documentation_impact": [
+        "docs/RELEASING.md"
+      ]
+    },
+    {
+      "id": "E17-S03",
+      "title": "Provenance, SBOM, and signing",
+      "status": "planned",
+      "outcome": "Generate GitHub artifact attestations/provenance, SBOM, and cryptographic verification material for canonical artifacts.",
+      "change_risk": "CR3",
+      "dependencies": [
+        "E17-S02"
+      ],
+      "acceptance_criteria": [
+        "Users can verify origin from repository/workflow/commit.",
+        "SBOM is attached/attested for each canonical build family.",
+        "Release fails if required evidence is missing."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Automated attestation verification job."
+      ],
+      "documentation_impact": [
+        "docs/security/SUPPLY_CHAIN.md"
+      ]
+    },
+    {
+      "id": "E17-S04",
+      "title": "Installation-source awareness",
+      "status": "planned",
+      "outcome": "Record Homebrew/direct/Windows/Linux package source and route upgrade guidance through the same source.",
+      "change_risk": "CR1",
+      "dependencies": [
+        "E17-S02"
+      ],
+      "acceptance_criteria": [
+        "cancellai update --check never silently switches package channels.",
+        "Source is inspectable in version/status output."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Installer-source fixtures."
+      ],
+      "documentation_impact": [
+        "docs/RELEASING.md"
+      ]
+    },
+    {
+      "id": "E17-S05",
+      "title": "Stable/beta/nightly authority constraints",
+      "status": "planned",
+      "outcome": "Bind release channel to maximum default authority.",
+      "change_risk": "CR4",
+      "dependencies": [
+        "E17-S03"
+      ],
+      "acceptance_criteria": [
+        "Nightly defaults cannot execute stable-equivalent irreversible autonomy.",
+        "Channel information is signed/attested release metadata."
+      ],
+      "safety_obligations": [
+        "SI-030"
+      ],
+      "verification": [
+        "Channel \u00d7 policy authority tests."
+      ],
+      "documentation_impact": [
+        "docs/security/SAFETY_INVARIANTS.md",
+        "docs/RELEASING.md"
+      ]
+    },
+    {
+      "id": "E17-S06",
+      "title": "Canonical source and distribution repository topology",
+      "status": "planned",
+      "outcome": "Move the canonical cross-platform product source to a product-named repository when Rust becomes canonical while preserving homebrew-cancellai as a compatibility/distribution tap rather than forcing a premature repository migration.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E17-S02"
+      ],
+      "acceptance_criteria": [
+        "The migration plan preserves tags/releases/issues or documents intentional moves and does not break existing Homebrew users.",
+        "The canonical source repository is unambiguously identified by release provenance and contributor documentation.",
+        "homebrew-cancellai remains usable as a tap or is retired only through an explicit compatibility plan."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Repository/tap release dry-run and existing Homebrew upgrade-path smoke test."
+      ],
+      "documentation_impact": [
+        "docs/RELEASING.md",
+        "docs/security/SUPPLY_CHAIN.md"
+      ]
+    },
+    {
+      "id": "E17-S07",
+      "title": "Safety incident containment and capability downgrade",
+      "status": "planned",
+      "outcome": "Operationalize a least-authority incident path that can stop promotion and remotely distribute signed capability downgrades without introducing a remote destructive control plane.",
+      "change_risk": "CR4",
+      "dependencies": [
+        "E16-S05",
+        "E17-S03",
+        "E17-S05"
+      ],
+      "acceptance_criteria": [
+        "A compromised provider/version/capability can be downgraded to Observe or Recommend through trusted signed knowledge without granting any new mutation authority.",
+        "Offline operation remains available under the installed local safety kernel when the knowledge service is unavailable.",
+        "Incident evidence records affected release/knowledge provenance, capability, provider, platform, and invariant references without collecting provider payload content."
+      ],
+      "safety_obligations": [
+        "SI-022",
+        "SI-029",
+        "SI-030"
+      ],
+      "verification": [
+        "Replay, rollback, invalid-signature, unavailable-network, and attempted authority-elevation incident simulations.",
+        "Independent CR4 Safety Verdict."
+      ],
+      "documentation_impact": [
+        "docs/security/INCIDENT_RESPONSE.md",
+        "docs/security/SUPPLY_CHAIN.md",
+        "docs/development/RELEASE_GATES.md"
+      ]
+    }
+  ]
+}

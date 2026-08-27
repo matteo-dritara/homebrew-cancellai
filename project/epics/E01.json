@@ -1,0 +1,148 @@
+{
+  "schema_version": 1,
+  "id": "E01",
+  "phase": "P0",
+  "title": "Executable Reference Contract",
+  "objective": "Turn Python v1 into a behavioral oracle before Rust implementation begins.",
+  "dependencies": [
+    "E00"
+  ],
+  "status": "planned",
+  "stories": [
+    {
+      "id": "E01-S01",
+      "title": "Freeze domain vocabulary",
+      "status": "planned",
+      "outcome": "Define canonical terms for Artifact, ProviderRoot, Evidence, Confidence, Lifecycle, Authority, Plan, Action, and Result.",
+      "change_risk": "CR1",
+      "dependencies": [
+        "E00-S07"
+      ],
+      "acceptance_criteria": [
+        "Terms are defined once and reused across architecture, schemas, tests, and UI contracts.",
+        "Ambiguous legacy terms are mapped or deprecated."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Documentation consistency check finds no conflicting definitions."
+      ],
+      "documentation_impact": [
+        "docs/architecture/DOMAIN_MODEL.md"
+      ]
+    },
+    {
+      "id": "E01-S02",
+      "title": "Build provider layout fixture corpus",
+      "status": "planned",
+      "outcome": "Capture synthetic, privacy-safe Claude/Codex layouts for supported and adversarial cases.",
+      "change_risk": "CR1",
+      "dependencies": [
+        "E01-S01"
+      ],
+      "acceptance_criteria": [
+        "Fixtures cover normal sessions, subagents, active data, protected state, partial trees, symlinks, and layout drift.",
+        "Fixtures contain no real user content or paths."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Fixture manifest validation in CI."
+      ],
+      "documentation_impact": [
+        "tests/fixtures/README.md"
+      ]
+    },
+    {
+      "id": "E01-S03",
+      "title": "Define versioned plan/result JSON contracts",
+      "status": "planned",
+      "outcome": "Specify machine-readable inventory, plan, explanation, and execution result schemas.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E01-S01"
+      ],
+      "acceptance_criteria": [
+        "Schemas include explicit version fields.",
+        "Unknown fields have a documented compatibility policy.",
+        "Every destructive action carries reason, authority, reversibility, and preconditions."
+      ],
+      "safety_obligations": [
+        "SI-013",
+        "SI-016"
+      ],
+      "verification": [
+        "Golden JSON snapshots validate deterministic ordering and required fields."
+      ],
+      "documentation_impact": [
+        "docs/architecture/DOMAIN_MODEL.md",
+        "docs/development/VERIFICATION_STRATEGY.md"
+      ]
+    },
+    {
+      "id": "E01-S04",
+      "title": "Characterize Python behavior",
+      "status": "planned",
+      "outcome": "Record Python outputs for the complete fixture corpus without treating defects as desired behavior.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E01-S02",
+        "E01-S03"
+      ],
+      "acceptance_criteria": [
+        "Each fixture records observed output and whether it is normative, intentionally changed, or legacy-only.",
+        "Known defects are marked non-normative."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Golden characterization suite is reproducible on clean checkout."
+      ],
+      "documentation_impact": [
+        "docs/development/MIGRATION_PYTHON_RUST.md"
+      ]
+    },
+    {
+      "id": "E01-S05",
+      "title": "Create differential test harness contract",
+      "status": "planned",
+      "outcome": "Define how Python reference and Rust candidate outputs are normalized and compared.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E01-S04"
+      ],
+      "acceptance_criteria": [
+        "Comparison ignores only explicitly documented nondeterministic fields.",
+        "Any semantic divergence fails unless whitelisted by an accepted ADR/RFC."
+      ],
+      "safety_obligations": [
+        "SI-019"
+      ],
+      "verification": [
+        "Harness self-test catches intentionally injected divergence."
+      ],
+      "documentation_impact": [
+        "docs/development/VERIFICATION_STRATEGY.md"
+      ]
+    },
+    {
+      "id": "E01-S06",
+      "title": "Freeze Python feature scope",
+      "status": "planned",
+      "outcome": "Declare Python reference maintenance-only after contract extraction.",
+      "change_risk": "CR0",
+      "dependencies": [
+        "E01-S05"
+      ],
+      "acceptance_criteria": [
+        "AGENTS.md prohibits new product features in Python except parity/safety fixes.",
+        "Migration gate and rollback strategy are documented."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Governance checker confirms reference-freeze marker."
+      ],
+      "documentation_impact": [
+        "AGENTS.md",
+        "docs/development/MIGRATION_PYTHON_RUST.md"
+      ]
+    }
+  ]
+}

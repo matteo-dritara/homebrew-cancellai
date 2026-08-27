@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "id": "E16",
+  "phase": "P5",
+  "title": "Provider Ecosystem and Federated Knowledge",
+  "objective": "Scale provider coverage through manifests, native adapters, signed knowledge bundles, and explicit trust promotion.",
+  "dependencies": [
+    "E15"
+  ],
+  "status": "planned",
+  "stories": [
+    {
+      "id": "E16-S01",
+      "title": "Manifest schema v1",
+      "status": "planned",
+      "outcome": "Define declarative roots/artifact patterns/capability hints that are inspection-safe by default.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E05-S01"
+      ],
+      "acceptance_criteria": [
+        "Manifest-only integrations cannot acquire destructive capability implicitly.",
+        "Schema is versioned and rejects unknown security-relevant fields."
+      ],
+      "safety_obligations": [
+        "SI-021"
+      ],
+      "verification": [
+        "Malicious/overbroad manifest corpus."
+      ],
+      "documentation_impact": [
+        "docs/architecture/PROVIDER_MODEL.md"
+      ]
+    },
+    {
+      "id": "E16-S02",
+      "title": "Signed knowledge bundle format",
+      "status": "planned",
+      "outcome": "Package provider/version/layout intelligence separately from the binary with signature/provenance verification.",
+      "change_risk": "CR4",
+      "dependencies": [
+        "E16-S01",
+        "E17-S01"
+      ],
+      "acceptance_criteria": [
+        "Unsigned/invalid bundles are ignored with diagnostics.",
+        "Knowledge update cannot raise authority beyond local trust policy.",
+        "Rollback to prior trusted bundle is supported."
+      ],
+      "safety_obligations": [
+        "SI-022",
+        "SI-029"
+      ],
+      "verification": [
+        "Tamper, rollback, expiry, and unknown-signer tests."
+      ],
+      "documentation_impact": [
+        "docs/security/SUPPLY_CHAIN.md"
+      ]
+    },
+    {
+      "id": "E16-S03",
+      "title": "Gemini CLI adapter",
+      "status": "planned",
+      "outcome": "Add discovery/inventory first, then only capabilities supported by verified evidence.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E16-S01"
+      ],
+      "acceptance_criteria": [
+        "Adapter starts at truthful capability subset.",
+        "Vendor-native retention is detected/explained where relevant."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Provider conformance suite and version fixtures."
+      ],
+      "documentation_impact": [
+        "docs/PROVIDERS.md"
+      ]
+    },
+    {
+      "id": "E16-S04",
+      "title": "GitHub Copilot CLI adapter",
+      "status": "planned",
+      "outcome": "Add local session/state inventory with capability truthfulness.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E16-S01"
+      ],
+      "acceptance_criteria": [
+        "SQLite/internal state is not mutated without documented native capability.",
+        "Project/session mapping remains evidence-based."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Provider conformance suite."
+      ],
+      "documentation_impact": [
+        "docs/PROVIDERS.md"
+      ]
+    },
+    {
+      "id": "E16-S05",
+      "title": "OpenCode adapter",
+      "status": "planned",
+      "outcome": "Add local state inventory and cleanup capabilities incrementally.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E16-S01"
+      ],
+      "acceptance_criteria": [
+        "Unknown layouts remain inspection-only.",
+        "Community contribution path exercises same trust pipeline."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Provider conformance suite."
+      ],
+      "documentation_impact": [
+        "docs/PROVIDERS.md"
+      ]
+    },
+    {
+      "id": "E16-S06",
+      "title": "Community provider verification workflow",
+      "status": "planned",
+      "outcome": "Automate manifest lint, fixture tests, trust-level labeling, and maintainer promotion criteria.",
+      "change_risk": "CR3",
+      "dependencies": [
+        "E16-S01"
+      ],
+      "acceptance_criteria": [
+        "Community PR cannot mark itself Built-in Verified.",
+        "Promotion requires maintainer-owned evidence and compatibility tests."
+      ],
+      "safety_obligations": [
+        "SI-021"
+      ],
+      "verification": [
+        "CI permission and spoofed-metadata tests."
+      ],
+      "documentation_impact": [
+        ".github/CONTRIBUTING.md",
+        "docs/development/ENGINEERING_SYSTEM.md"
+      ]
+    }
+  ]
+}
