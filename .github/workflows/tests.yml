@@ -9,7 +9,7 @@ jobs:
   test:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: "3.x"
@@ -19,7 +19,7 @@ jobs:
   lint:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: "3.x"
@@ -32,7 +32,7 @@ jobs:
   homebrew:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # `brew audit`/`brew style` only accept a tapped formula name, not a
       # bare path, so tap this checkout locally before checking it.
       - run: brew tap matteo-dritara/cancellai "$GITHUB_WORKSPACE"
