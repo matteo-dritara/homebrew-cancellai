@@ -28,7 +28,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -38,6 +38,14 @@ DEFAULT_DAYS = 7
 DEFAULT_KEEP_LATEST = 2
 UUID_RE = re.compile(r"(?P<uuid>[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})")
 KNOWN_COMMANDS = {"clean", "status", "configure", "version"}
+
+# Stable exit taxonomy. Automation must be able to distinguish "nothing ran because
+# it was unsafe" from "everything ran" and from "you typed the command wrong".
+EXIT_OK = 0
+EXIT_CANCELLED = 1
+EXIT_USAGE = 2
+EXIT_FAILED = 3
+EXIT_BLOCKED = 4
 
 # Claude Code paths documented as session/application data. Auto-memory is deliberately excluded.
 CLAUDE_RETENTION_PATHS = (
@@ -85,6 +93,119 @@ CODEX_PROTECTED_NAMES = {
 }
 
 
+# Budgets. cancellAI governs storage, so it never becomes an unbounded producer itself
+# (C-11): recorded scan errors and pre-authority root probing are both capped.
+MAX_RECORDED_SCAN_ERRORS = 50
+MAX_ROOT_PROBE_ENTRIES = 2000
+
+# Coverage vocabulary. `cleanable` means a deletion rule can select this entry as it
+# stands; anything conditional or non-deleting gets its own state so the report cannot
+# overclaim what cleanup actually reaches.
+COVERAGE_STATES = ("cleanable", "aggressive-only", "trimmed", "protected", "reported", "unknown")
+CODEX_CLEANABLE_NAMES = {"sessions", "archived_sessions", "log", "tmp"}
+CODEX_REPORTED_PREFIXES = ("state_", "logs_", "goals_", "memories_", "queue_", "thread_history_")
+CLAUDE_CLEANABLE_NAMES = {"projects", *CLAUDE_RETENTION_PATHS}
+CLAUDE_AGGRESSIVE_ONLY_NAMES = {"backups", *CLAUDE_LEGACY_PATHS, *(Path(rel).parts[0] for rel in CLAUDE_SAFE_CACHE_FILES)}
+CLAUDE_TRIMMED_NAMES = {"history.jsonl"}
+
+
+@dataclass(frozen=True)
+class ProcessObservation:
+    """What we learned about provider activity, and whether we learned anything at all.
+
+    A dictionary of empty lists cannot distinguish "no provider is running" from "we could
+    not enumerate processes". Conflating the two makes an unusable observation authorize
+    deletion while a provider may be writing, so the two are carried separately.
+    """
+
+    pids: dict[str, list[int]]
+    complete: bool = True
+
+    def running(self, tool: str) -> list[int]:
+        return self.pids.get(tool, [])
+
+    @property
+    def any_running(self) -> bool:
+        return any(self.pids.values())
+
+
+@dataclass
+class Scan:
+    """Completeness channel for one discovery scope.
+
+    Filesystem helpers answer "how big" and "how recent" with numbers that cannot express
+    "I could not look". This carries that separately, so absence of evidence never becomes
+    evidence of absence, and an incomplete scope cannot hand out destructive authority.
+    """
+
+    scope: str
+    errors: list[str] = field(default_factory=list)
+    truncated: bool = False
+
+    @property
+    def complete(self) -> bool:
+        return not self.errors and not self.truncated
+
+    def record(self, path: Path, exc: OSError) -> None:
+        # A path that vanished mid-scan is a race, not an unreadable scope: there is nothing
+        # left to observe and nothing left to delete. Anything else means we are blind.
+        if isinstance(exc, FileNotFoundError):
+            return
+        if len(self.errors) >= MAX_RECORDED_SCAN_ERRORS:
+            self.truncated = True
+            return
+        self.errors.append(f"{path}: {exc.strerror or type(exc).__name__}")
+
+
+@dataclass(frozen=True)
+class RootAuthority:
+    """Whether a configured provider root has earned the right to be mutated."""
+
+    tool: str
+    path: Path
+    origin: str  # default | custom
+    confidence: str  # default | high | low | unknown
+    markers: tuple[str, ...]
+
+    @property
+    def structurally_credible(self) -> bool:
+        return self.confidence in {"default", "high"}
+
+    def destructive_allowed(self, *, acknowledged: bool) -> bool:
+        """Two independent conditions, neither of which is sufficient alone.
+
+        Structure answers "is this really the provider"; acknowledgement answers "did an
+        operator mean to point us here". A default root carries its own intent.
+        """
+        return self.structurally_credible and (self.origin == "default" or acknowledged)
+
+    def explain(self, *, acknowledged: bool) -> str:
+        if self.destructive_allowed(acknowledged=acknowledged):
+            return f"{self.tool} root {self.path} ({self.origin}, confidence {self.confidence})"
+        found = ", ".join(self.markers) if self.markers else "none"
+        if self.structurally_credible:
+            return (
+                f"Refusing destructive work on custom {self.tool} root {self.path}: it looks like a {self.tool} "
+                "installation, but a non-default root is not deleted from without explicit intent. "
+                "Re-run with --allow-custom-root if that is really what you want. Inspection with `status` still works."
+            )
+        return (
+            f"Refusing destructive work on {self.tool} root {self.path}: it does not look like a {self.tool} "
+            f"installation (confidence {self.confidence}; validated provider markers: {found}). "
+            "Inspection with `status` still works."
+        )
+
+
+@dataclass(frozen=True)
+class CoverageBucket:
+    """How much of a provider root this build can actually reason about."""
+
+    state: str
+    entries: int
+    bytes: int
+    names: list[str]
+
+
 @dataclass(frozen=True)
 class Action:
     tool: str
@@ -106,6 +227,23 @@ class Plan:
     notes: list[str] = field(default_factory=list)
     claude_history_session_ids: set[str] = field(default_factory=set)
     claude_history_lines: int = 0
+    scans: list[Scan] = field(default_factory=list)
+    root_authority: dict[str, RootAuthority] = field(default_factory=dict)
+    withheld: list[str] = field(default_factory=list)
+    for_mutation: bool = True
+    allow_custom_roots: bool = False
+
+    @property
+    def scan_complete(self) -> bool:
+        return all(scan.complete for scan in self.scans)
+
+    @property
+    def scan_errors(self) -> list[str]:
+        return [error for scan in self.scans for error in scan.errors]
+
+    @property
+    def incomplete_scopes(self) -> list[str]:
+        return [scan.scope for scan in self.scans if not scan.complete]
 
     @property
     def estimated_bytes(self) -> int:
@@ -124,6 +262,13 @@ class CleanResult:
     freed_bytes: int = 0
     errors: list[str] = field(default_factory=list)
     deleted_claude_session_ids: set[str] = field(default_factory=set)
+    blocked_tools: set[str] = field(default_factory=set)
+    deferred: list[str] = field(default_factory=list)
+
+    @property
+    def partial(self) -> bool:
+        """True when safety deliberately prevented requested work from running."""
+        return bool(self.blocked_tools or self.deferred)
 
 
 class SafetyError(RuntimeError):
@@ -155,14 +300,189 @@ def format_age(mtime: float, reference: float | None = None) -> str:
     return f"{days:.1f}d"
 
 
+def default_home(tool: str) -> Path:
+    return Path.home() / (".claude" if tool == "claude" else ".codex")
+
+
 def get_codex_home() -> Path:
     raw = os.environ.get("CODEX_HOME")
-    return Path(raw).expanduser() if raw else Path.home() / ".codex"
+    return Path(raw).expanduser() if raw else default_home("codex")
 
 
 def get_claude_home() -> Path:
     raw = os.environ.get("CLAUDE_CONFIG_DIR")
-    return Path(raw).expanduser() if raw else Path.home() / ".claude"
+    return Path(raw).expanduser() if raw else default_home("claude")
+
+
+# Marker validators below deliberately answer False on any error. They only ever *reduce*
+# confidence, so an unreadable marker withholds authority rather than granting it.
+def _is_json_object(path: Path) -> bool:
+    try:
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > 8 * 1024 * 1024:
+            return False
+        return isinstance(json.loads(path.read_text(encoding="utf-8", errors="strict")), dict)
+    except (OSError, ValueError):
+        return False
+
+
+def _is_jsonl_of_objects(path: Path) -> bool:
+    try:
+        if path.is_symlink() or not path.is_file():
+            return False
+        with path.open("r", encoding="utf-8", errors="replace") as fh:
+            for _ in range(20):
+                line = fh.readline()
+                if not line:
+                    break
+                if line.strip() and isinstance(json.loads(line), dict):
+                    return True
+    except (OSError, ValueError):
+        return False
+    return False
+
+
+def _is_nonempty_file(path: Path) -> bool:
+    try:
+        return not path.is_symlink() and path.is_file() and path.stat().st_size > 0
+    except OSError:
+        return False
+
+
+def _contains_uuid_named_jsonl(root: Path, prefix: str = "") -> bool:
+    """Bounded probe for a provider-shaped transcript below `root`.
+
+    Deliberately capped: fingerprinting runs before any authority is granted and must not
+    turn into an unbounded walk of a directory we have not yet trusted.
+    """
+    seen = 0
+    try:
+        if root.is_symlink() or not root.is_dir():
+            return False
+        for base, dirs, files in os.walk(root, followlinks=False):
+            base_p = Path(base)
+            dirs[:] = [d for d in dirs if not (base_p / d).is_symlink()]
+            for name in files:
+                seen += 1
+                if seen > MAX_ROOT_PROBE_ENTRIES:
+                    return False
+                if name.endswith(".jsonl") and name.startswith(prefix) and extract_uuid(name):
+                    return True
+    except OSError:
+        return False
+    return False
+
+
+def _is_dir(path: Path) -> bool:
+    try:
+        return not path.is_symlink() and path.is_dir()
+    except OSError:
+        return False
+
+
+# name -> (validator, is_identifying)
+ROOT_MARKERS: dict[str, dict[str, tuple[Callable[[Path], bool], bool]]] = {
+    "codex": {
+        "auth.json": (_is_json_object, True),
+        "session_index.jsonl": (_is_jsonl_of_objects, True),
+        "installation_id": (_is_nonempty_file, True),
+        "sessions": (lambda p: _contains_uuid_named_jsonl(p, "rollout-"), True),
+        "config.toml": (_is_nonempty_file, False),
+        "archived_sessions": (_is_dir, False),
+        "history.jsonl": (_is_jsonl_of_objects, False),
+        "skills": (_is_dir, False),
+        "rules": (_is_dir, False),
+        "memories": (_is_dir, False),
+        "plugins": (_is_dir, False),
+        "sqlite": (_is_dir, False),
+    },
+    "claude": {
+        "settings.json": (_is_json_object, True),
+        "keybindings.json": (_is_json_object, True),
+        "projects": (_contains_uuid_named_jsonl, True),
+        "history.jsonl": (_is_jsonl_of_objects, False),
+        "file-history": (_is_dir, False),
+        "shell-snapshots": (_is_dir, False),
+        "plugins": (_is_dir, False),
+        "agent-memory": (_is_dir, False),
+        "session-env": (_is_dir, False),
+        "tasks": (_is_dir, False),
+        "statsig": (_is_dir, False),
+        "todos": (_is_dir, False),
+    },
+}
+
+
+def fingerprint_root(path: Path, tool: str) -> RootAuthority:
+    """Decide how much a configured root has proved about its own identity.
+
+    `validate_config_root()` only rejects catastrophically broad paths; an ordinary project
+    directory that happens to contain `tmp/` or `log/` passes it. This adds the missing
+    question - does this directory actually look like the provider we are about to delete
+    from - and answers it from validated structure, never from the path string and never
+    from a filename alone.
+    """
+    markers = ROOT_MARKERS[tool]
+    resolved = path.resolve(strict=False)
+    origin = "default" if resolved == default_home(tool).resolve(strict=False) else "custom"
+
+    found: list[str] = []
+    identifying = 0
+    for name, (validator, is_identifying) in markers.items():
+        if validator(path / name):
+            found.append(name)
+            identifying += int(is_identifying)
+
+    if origin == "default":
+        # The provider's own directory is authoritative by definition, including on a fresh
+        # machine where it is empty or absent.
+        confidence = "default"
+    elif identifying >= 1 and len(found) >= 2:
+        confidence = "high"
+    elif found:
+        confidence = "low"
+    else:
+        confidence = "unknown"
+    return RootAuthority(tool=tool, path=resolved, origin=origin, confidence=confidence, markers=tuple(sorted(found)))
+
+
+def protected_names_for(tool: str) -> set[str]:
+    return CLAUDE_PROTECTED_NAMES if tool == "claude" else CODEX_PROTECTED_NAMES
+
+
+def protected_component(path: Path, root: Path, protected_names: set[str]) -> str | None:
+    """Return the protected path component if `path` is, or lives under, a protected entry.
+
+    This is a name-based barrier, deliberately independent of whichever scanner produced
+    the candidate: a future discovery change cannot quietly invalidate the documented
+    protection lists.
+
+    The name is checked both lexically and after resolution. Resolving first would let a
+    protected entry that is itself a symlink point outside the root, fall out of the
+    relative-path computation, and lose its protection - which is exactly the entry an
+    attacker or a misbehaving provider install would want unprotected.
+    """
+    if not protected_names:
+        return None
+    absolute = path.expanduser().absolute()
+    root_absolute = root.expanduser().absolute()
+    views: list[tuple[Path, Path]] = [
+        (Path(os.path.normpath(absolute)), Path(os.path.normpath(root_absolute))),
+    ]
+    try:
+        views.append((absolute.resolve(strict=False), root_absolute.resolve(strict=False)))
+    except OSError:
+        return "<unresolvable>"
+
+    for candidate, base in views:
+        try:
+            relative = candidate.relative_to(base)
+        except ValueError:
+            # This view falls outside the approved root; containment checks own that case.
+            continue
+        for part in relative.parts:
+            if part in protected_names:
+                return part
+    return None
 
 
 def validate_config_root(path: Path, label: str) -> Path:
@@ -187,34 +507,43 @@ def is_within(path: Path, root: Path) -> bool:
         return False
 
 
-def safe_lstat_size(path: Path) -> int:
+def safe_lstat_size(path: Path, scan: Scan | None = None) -> int:
     try:
         st = path.lstat()
-    except (FileNotFoundError, PermissionError, OSError):
+    except OSError as exc:
+        if scan is not None:
+            scan.record(path, exc)
         return 0
     if stat.S_ISLNK(st.st_mode):
         return st.st_size
     if stat.S_ISREG(st.st_mode):
         return st.st_size
     if stat.S_ISDIR(st.st_mode):
-        return directory_size(path)
+        return directory_size(path, scan)
     return 0
 
 
-def directory_size(root: Path) -> int:
+def directory_size(root: Path, scan: Scan | None = None) -> int:
     if not root.exists() and not root.is_symlink():
         return 0
     try:
         st = root.lstat()
-    except OSError:
+    except OSError as exc:
+        if scan is not None:
+            scan.record(root, exc)
         return 0
     if stat.S_ISLNK(st.st_mode):
         return st.st_size
     if stat.S_ISREG(st.st_mode):
         return st.st_size
     total = 0
+
+    def on_walk_error(exc: OSError) -> None:
+        if scan is not None:
+            scan.record(Path(getattr(exc, "filename", None) or root), exc)
+
     try:
-        for base, dirs, files in os.walk(root, followlinks=False):
+        for base, dirs, files in os.walk(root, followlinks=False, onerror=on_walk_error):
             base_p = Path(base)
             # Do not follow directory symlinks. os.walk places them in dirs.
             keep_dirs: list[str] = []
@@ -226,53 +555,78 @@ def directory_size(root: Path) -> int:
                         total += lst.st_size
                     else:
                         keep_dirs.append(name)
-                except OSError:
+                except OSError as exc:
+                    if scan is not None:
+                        scan.record(p, exc)
                     continue
             dirs[:] = keep_dirs
             for name in files:
                 p = base_p / name
-                with contextlib.suppress(OSError):
+                try:
                     total += p.lstat().st_size
-    except OSError:
-        pass
+                except OSError as exc:
+                    if scan is not None:
+                        scan.record(p, exc)
+    except OSError as exc:
+        if scan is not None:
+            scan.record(root, exc)
     return total
 
 
-def latest_mtime(path: Path) -> float:
+def latest_mtime(path: Path, scan: Scan | None = None) -> float:
     """Return latest mtime within a tree without following symlinks."""
     try:
         st = path.lstat()
-    except OSError:
+    except OSError as exc:
+        if scan is not None:
+            scan.record(path, exc)
         return 0.0
     latest = st.st_mtime
     if stat.S_ISLNK(st.st_mode) or stat.S_ISREG(st.st_mode):
         return latest
+
+    def on_walk_error(exc: OSError) -> None:
+        if scan is not None:
+            scan.record(Path(getattr(exc, "filename", None) or path), exc)
+
     try:
-        for base, dirs, files in os.walk(path, followlinks=False):
+        for base, dirs, files in os.walk(path, followlinks=False, onerror=on_walk_error):
             base_p = Path(base)
             keep_dirs: list[str] = []
             for name in dirs:
                 p = base_p / name
                 try:
                     lst = p.lstat()
-                except OSError:
+                except OSError as exc:
+                    if scan is not None:
+                        scan.record(p, exc)
                     continue
                 latest = max(latest, lst.st_mtime)
                 if not stat.S_ISLNK(lst.st_mode):
                     keep_dirs.append(name)
             dirs[:] = keep_dirs
             for name in files:
-                with contextlib.suppress(OSError):
-                    latest = max(latest, (base_p / name).lstat().st_mtime)
-    except OSError:
-        pass
+                p = base_p / name
+                try:
+                    latest = max(latest, p.lstat().st_mtime)
+                except OSError as exc:
+                    if scan is not None:
+                        scan.record(p, exc)
+    except OSError as exc:
+        if scan is not None:
+            scan.record(path, exc)
     return latest
 
 
-def iter_files(root: Path, suffix: str | None = None) -> Iterator[Path]:
+def iter_files(root: Path, suffix: str | None = None, scan: Scan | None = None) -> Iterator[Path]:
     if not root.exists() or root.is_symlink():
         return
-    for base, dirs, files in os.walk(root, followlinks=False):
+
+    def on_walk_error(exc: OSError) -> None:
+        if scan is not None:
+            scan.record(Path(getattr(exc, "filename", None) or root), exc)
+
+    for base, dirs, files in os.walk(root, followlinks=False, onerror=on_walk_error):
         base_p = Path(base)
         dirs[:] = [d for d in dirs if not (base_p / d).is_symlink()]
         for name in files:
@@ -286,7 +640,7 @@ def extract_uuid(text: str) -> str | None:
     return matches[-1].group("uuid").lower() if matches else None
 
 
-def read_codex_parent_session_id(path: Path) -> str | None:
+def read_codex_parent_session_id(path: Path, scan: Scan | None = None) -> str | None:
     """Read parent_thread_id from Codex session_meta without scanning the full rollout.
 
     Current Codex rollouts put session metadata near the head of the JSONL file.
@@ -321,7 +675,11 @@ def read_codex_parent_session_id(path: Path) -> str | None:
                 if raw_parent is None:
                     return None
                 return extract_uuid(str(raw_parent))
-    except OSError:
+    except OSError as exc:
+        # Unreadable lineage is not "no parent": it changes which sessions are treated as
+        # independent safety units, so the scope must lose destructive authority.
+        if scan is not None:
+            scan.record(path, exc)
         return None
     return None
 
@@ -488,13 +846,13 @@ def codex_delete_supported(codex_bin: str | None = None) -> tuple[bool, str | No
         return False, codex_bin
 
 
-def discover_codex_sessions(codex_home: Path, strategy: str) -> list[Action]:
+def discover_codex_sessions(codex_home: Path, strategy: str, scan: Scan | None = None) -> list[Action]:
     found: list[Action] = []
     for rel, category in (("sessions", "session"), ("archived_sessions", "archived-session")):
         root = codex_home / rel
         if not root.exists():
             continue
-        for p in iter_files(root, suffix=".jsonl"):
+        for p in iter_files(root, suffix=".jsonl", scan=scan):
             if not p.name.startswith("rollout-"):
                 continue
             sid = extract_uuid(p.name)
@@ -502,7 +860,9 @@ def discover_codex_sessions(codex_home: Path, strategy: str) -> list[Action]:
                 continue
             try:
                 st = p.lstat()
-            except OSError:
+            except OSError as exc:
+                if scan is not None:
+                    scan.record(p, exc)
                 continue
             found.append(
                 Action(
@@ -513,13 +873,13 @@ def discover_codex_sessions(codex_home: Path, strategy: str) -> list[Action]:
                     mtime=st.st_mtime,
                     session_id=sid,
                     strategy=strategy,
-                    parent_session_id=read_codex_parent_session_id(p),
+                    parent_session_id=read_codex_parent_session_id(p, scan),
                 )
             )
     return found
 
 
-def discover_claude_sessions(claude_home: Path) -> list[Action]:
+def discover_claude_sessions(claude_home: Path, scan: Scan | None = None) -> list[Action]:
     projects = claude_home / "projects"
     found: list[Action] = []
     if not projects.exists() or projects.is_symlink():
@@ -528,13 +888,17 @@ def discover_claude_sessions(claude_home: Path) -> list[Action]:
     # Top-level project transcript files only. memory/ and subagent JSONL are never treated as roots.
     try:
         project_dirs = [p for p in projects.iterdir() if p.is_dir() and not p.is_symlink()]
-    except OSError:
+    except OSError as exc:
+        if scan is not None:
+            scan.record(projects, exc)
         return found
 
     for project_dir in project_dirs:
         try:
             children = list(project_dir.iterdir())
-        except OSError:
+        except OSError as exc:
+            if scan is not None:
+                scan.record(project_dir, exc)
             continue
         for p in children:
             if not p.is_file() or p.is_symlink() or p.suffix != ".jsonl":
@@ -544,14 +908,16 @@ def discover_claude_sessions(claude_home: Path) -> list[Action]:
                 continue
             try:
                 st = p.stat()
-            except OSError:
+            except OSError as exc:
+                if scan is not None:
+                    scan.record(p, exc)
                 continue
             companion = project_dir / p.stem
             size = st.st_size
             mt = st.st_mtime
             if companion.exists() and companion.is_dir() and not companion.is_symlink():
-                size += directory_size(companion)
-                mt = max(mt, latest_mtime(companion))
+                size += directory_size(companion, scan)
+                mt = max(mt, latest_mtime(companion, scan))
             found.append(
                 Action(
                     tool="claude",
@@ -572,6 +938,7 @@ def discover_aged_top_entries(
     category: str,
     cutoff: float,
     protected_session_ids: set[str] | None = None,
+    scan: Scan | None = None,
 ) -> list[Action]:
     if not root.exists() or root.is_symlink():
         return []
@@ -579,13 +946,15 @@ def discover_aged_top_entries(
     actions: list[Action] = []
     try:
         entries = list(root.iterdir())
-    except OSError:
+    except OSError as exc:
+        if scan is not None:
+            scan.record(root, exc)
         return actions
     for p in entries:
         sid = extract_uuid(p.name)
         if sid and sid in protected_session_ids:
             continue
-        mt = latest_mtime(p)
+        mt = latest_mtime(p, scan)
         if mt <= 0 or mt >= cutoff:
             continue
         actions.append(
@@ -593,7 +962,7 @@ def discover_aged_top_entries(
                 tool=tool,
                 category=category,
                 path=p,
-                size=safe_lstat_size(p),
+                size=safe_lstat_size(p, scan),
                 mtime=mt,
                 session_id=sid,
                 strategy="filesystem",
@@ -602,10 +971,10 @@ def discover_aged_top_entries(
     return actions
 
 
-def discover_codex_aux(codex_home: Path, cutoff: float) -> list[Action]:
+def discover_codex_aux(codex_home: Path, cutoff: float, scan: Scan | None = None) -> list[Action]:
     actions: list[Action] = []
     for rel, category in (("log", "old-log"), ("tmp", "old-temp")):
-        actions.extend(discover_aged_top_entries(codex_home / rel, "codex", category, cutoff))
+        actions.extend(discover_aged_top_entries(codex_home / rel, "codex", category, cutoff, scan=scan))
     return actions
 
 
@@ -614,24 +983,29 @@ def discover_claude_aux(
     cutoff: float,
     aggressive: bool,
     protected_session_ids: set[str] | None = None,
+    scan: Scan | None = None,
 ) -> list[Action]:
     actions: list[Action] = []
     for rel in CLAUDE_RETENTION_PATHS:
-        actions.extend(discover_aged_top_entries(claude_home / rel, "claude", rel, cutoff, protected_session_ids))
+        actions.extend(discover_aged_top_entries(claude_home / rel, "claude", rel, cutoff, protected_session_ids, scan))
 
     if aggressive:
-        actions.extend(discover_aged_top_entries(claude_home / "backups", "claude", "backups", cutoff, protected_session_ids))
-        # Legacy directories are no longer written by current Claude Code.
+        actions.extend(discover_aged_top_entries(claude_home / "backups", "claude", "backups", cutoff, protected_session_ids, scan))
+        # Legacy directories are no longer written by current Claude Code. --aggressive
+        # widens which categories are eligible; it never bypasses the age cutoff.
         for rel in CLAUDE_LEGACY_PATHS:
             root = claude_home / rel
             if root.exists() and not root.is_symlink():
+                mt = latest_mtime(root, scan)
+                if mt <= 0 or mt >= cutoff:
+                    continue
                 actions.append(
                     Action(
                         tool="claude",
                         category=f"legacy-{rel}",
                         path=root,
-                        size=directory_size(root),
-                        mtime=latest_mtime(root),
+                        size=directory_size(root, scan),
+                        mtime=mt,
                     )
                 )
         for rel in CLAUDE_SAFE_CACHE_FILES:
@@ -639,7 +1013,11 @@ def discover_claude_aux(
             if p.exists() and (p.is_file() or p.is_symlink()):
                 try:
                     st = p.lstat()
-                except OSError:
+                except OSError as exc:
+                    if scan is not None:
+                        scan.record(p, exc)
+                    continue
+                if st.st_mtime >= cutoff:
                     continue
                 actions.append(
                     Action(
@@ -653,7 +1031,7 @@ def discover_claude_aux(
     return actions
 
 
-def count_claude_history_matches(history_path: Path, session_ids: set[str]) -> int:
+def count_claude_history_matches(history_path: Path, session_ids: set[str], scan: Scan | None = None) -> int:
     if not session_ids or not history_path.exists():
         return 0
     matches = 0
@@ -667,7 +1045,9 @@ def count_claude_history_matches(history_path: Path, session_ids: set[str]) -> i
                 sid = str(obj.get("sessionId", "")).lower()
                 if sid in session_ids:
                     matches += 1
-    except OSError:
+    except OSError as exc:
+        if scan is not None:
+            scan.record(history_path, exc)
         return 0
     return matches
 
@@ -681,14 +1061,30 @@ def build_plan(
     claude_home: Path,
     codex_backend: str,
     aggressive: bool,
+    for_mutation: bool = True,
+    allow_custom_roots: bool = False,
 ) -> Plan:
+    """Assemble the set of actions.
+
+    `for_mutation=False` is the inspection path used by `status`: discovery still runs and
+    still reports what it saw, but the plan is not permitted to be executed. The destructive
+    path (`clean`, including `--dry-run`) keeps `for_mutation=True` so that a preview and a
+    real run always select the same set.
+    """
     if days < 1:
         raise ValueError("days must be >= 1")
     if keep_latest < 0:
         raise ValueError("keep_latest must be >= 0")
 
     cutoff = now_ts() - days * 86400
-    plan = Plan(cutoff=cutoff, days=days, keep_latest=keep_latest)
+    plan = Plan(cutoff=cutoff, days=days, keep_latest=keep_latest, for_mutation=for_mutation, allow_custom_roots=allow_custom_roots)
+    plan.root_authority = {
+        "codex": fingerprint_root(codex_home, "codex"),
+        "claude": fingerprint_root(claude_home, "claude"),
+    }
+    codex_scan = Scan(scope="codex")
+    claude_scan = Scan(scope="claude")
+    plan.scans = [scan for tool, scan in (("codex", codex_scan), ("claude", claude_scan)) if tool in tools]
 
     if "codex" in tools:
         if codex_backend in ("auto", "cli"):
@@ -697,7 +1093,7 @@ def build_plan(
         else:
             strategy = "filesystem"
 
-        sessions = discover_codex_sessions(codex_home, strategy)
+        sessions = discover_codex_sessions(codex_home, strategy, codex_scan)
         selected = choose_codex_old_sessions(
             sessions,
             cutoff,
@@ -716,17 +1112,17 @@ def build_plan(
                 "Codex filesystem fallback is enabled explicitly. It removes rollout JSONL files directly and "
                 "may leave stale session metadata in Codex SQLite indexes; prefer the default auto backend on current Codex versions."
             )
-        plan.actions.extend(discover_codex_aux(codex_home, cutoff))
+        plan.actions.extend(discover_codex_aux(codex_home, cutoff, codex_scan))
 
     if "claude" in tools:
-        sessions = discover_claude_sessions(claude_home)
+        sessions = discover_claude_sessions(claude_home, claude_scan)
         selected = choose_old_sessions(sessions, cutoff, keep_latest)
         selected_ids = {a.session_id for a in selected if a.session_id}
         protected_ids = {a.session_id for a in sessions if a.session_id and a.session_id not in selected_ids}
         plan.actions.extend(selected)
-        plan.actions.extend(discover_claude_aux(claude_home, cutoff, aggressive, protected_session_ids=protected_ids))
+        plan.actions.extend(discover_claude_aux(claude_home, cutoff, aggressive, protected_ids, claude_scan))
         plan.claude_history_session_ids = selected_ids
-        plan.claude_history_lines = count_claude_history_matches(claude_home / "history.jsonl", plan.claude_history_session_ids)
+        plan.claude_history_lines = count_claude_history_matches(claude_home / "history.jsonl", plan.claude_history_session_ids, claude_scan)
 
     # De-duplicate exact filesystem paths while preserving the first action.
     deduped: list[Action] = []
@@ -737,12 +1133,67 @@ def build_plan(
             continue
         seen.add(key)
         deduped.append(action)
-    plan.actions = deduped
+
+    # Protected-name barrier. Independent of the scanners above by design: it holds even
+    # if a future discovery change starts emitting protected paths as candidates.
+    roots = {"codex": codex_home, "claude": claude_home}
+    kept: list[Action] = []
+    blocked_names: set[str] = set()
+    for action in deduped:
+        if action.strategy == "codex-cli":
+            # Deletion is delegated to Codex by session id, not by path.
+            kept.append(action)
+            continue
+        hit = protected_component(action.path, roots[action.tool], protected_names_for(action.tool))
+        if hit is None:
+            kept.append(action)
+        else:
+            blocked_names.add(f"{action.tool}:{hit}")
+    if blocked_names:
+        plan.notes.append(
+            "Refused "
+            + str(len(deduped) - len(kept))
+            + " candidate(s) covered by protected names: "
+            + ", ".join(sorted(blocked_names))
+            + ". This is a safety barrier, not a filter you can disable."
+        )
+
+    if for_mutation:
+        # Two independent reasons to withhold destructive authority for a whole tool:
+        # the root has not proved it is that provider, or we could not finish looking at it.
+        withheld: set[str] = set()
+        for tool in sorted(tools):
+            authority = plan.root_authority[tool]
+            if not authority.destructive_allowed(acknowledged=allow_custom_roots):
+                withheld.add(tool)
+                plan.notes.append(authority.explain(acknowledged=allow_custom_roots))
+        for scan in plan.scans:
+            if not scan.complete:
+                withheld.add(scan.scope)
+                detail = "; ".join(scan.errors[:3]) or "scan truncated"
+                plan.notes.append(
+                    f"Refusing destructive work on {scan.scope}: the scan was incomplete, so absence of evidence "
+                    f"cannot mean absence of data ({len(scan.errors)} unreadable path(s), e.g. {detail}). "
+                    "Run `status` to see the full list."
+                )
+        if withheld:
+            before = len(kept)
+            kept = [action for action in kept if action.tool not in withheld]
+            plan.withheld = sorted(withheld)
+            plan.notes.append(f"Withheld {before - len(kept)} candidate(s) for: {', '.join(plan.withheld)}.")
+
+    plan.actions = kept
     return plan
 
 
-def active_processes() -> dict[str, list[int]]:
-    """Best-effort exact-process-name detection. False negatives are possible; never used as sole safety control."""
+def active_processes() -> ProcessObservation:
+    """Best-effort exact-process-name detection.
+
+    False negatives remain possible even on success, so this is never the sole safety
+    control. What it must not do is report success when it failed: if `ps` is missing,
+    fails, times out, or returns nothing parsable, the observation is marked incomplete and
+    the caller treats provider activity as unknown rather than as absent.
+    """
     targets = {"codex": {"codex", "Codex"}, "claude": {"claude"}}
     result: dict[str, list[int]] = {"codex": [], "claude": []}
     ps_bin = shutil.which("ps") or "/bin/ps"
@@ -757,7 +1208,10 @@ def active_processes() -> dict[str, list[int]]:
             check=False,
         )
     except (OSError, subprocess.SubprocessError):
-        return result
+        return ProcessObservation(pids=result, complete=False)
+    if proc.returncode != 0:
+        return ProcessObservation(pids=result, complete=False)
+    parsed_any = False
     self_pid = os.getpid()
     for line in proc.stdout.splitlines():
         line = line.strip()
@@ -770,18 +1224,27 @@ def active_processes() -> dict[str, list[int]]:
             pid = int(parts[0])
         except ValueError:
             continue
+        parsed_any = True
         if pid == self_pid:
             continue
         base = Path(parts[1]).name
         for tool, names in targets.items():
             if base in names:
                 result[tool].append(pid)
-    return result
+    # `ps` always lists at least this process; nothing parsable means we cannot trust it.
+    return ProcessObservation(pids=result, complete=parsed_any)
 
 
-def safe_remove(path: Path, approved_root: Path) -> int:
-    """Delete one path without following symlinks. Returns pre-delete size."""
+def safe_remove(path: Path, approved_root: Path, protected_names: set[str]) -> int:
+    """Delete one path without following symlinks. Returns pre-delete size.
+
+    `protected_names` is re-checked here, not only at plan time, so the barrier holds for
+    every caller and at the last possible moment before the filesystem is touched.
+    """
     root_resolved = approved_root.resolve(strict=False)
+    hit = protected_component(path, approved_root, protected_names)
+    if hit is not None:
+        raise SafetyError(f"Refusing to delete protected {hit!r} state: {path}")
     try:
         st = path.lstat()
     except FileNotFoundError:
@@ -817,6 +1280,7 @@ def safe_remove(path: Path, approved_root: Path) -> int:
 
 
 def prune_empty_dirs(root: Path) -> None:
+    """Cosmetic post-mutation tidy-up. rmdir failing simply means the directory is in use."""
     if not root.exists() or root.is_symlink():
         return
     for base, dirs, _files in os.walk(root, topdown=False, followlinks=False):
@@ -850,50 +1314,77 @@ def delete_codex_via_cli(action: Action, codex_bin: str) -> tuple[bool, str]:
     return False, (proc.stdout or f"exit {proc.returncode}").strip()
 
 
-def trim_claude_history(history_path: Path, deleted_session_ids: set[str], dry_run: bool = False) -> tuple[int, int]:
-    """Remove history lines tied to successfully deleted session ids. Malformed lines are preserved."""
+def _history_identity(st: os.stat_result) -> tuple[int, int, int, int]:
+    return (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns)
+
+
+def trim_claude_history(
+    history_path: Path,
+    deleted_session_ids: set[str],
+    dry_run: bool = False,
+) -> tuple[int, int, str]:
+    """Remove history lines tied to successfully deleted session ids.
+
+    Malformed lines are preserved. The rewrite streams instead of loading the file, and
+    the source is re-identified immediately before the atomic replace: if a provider wrote
+    to `history.jsonl` while we were copying it, the replace is abandoned rather than
+    silently discarding the concurrent writer's lines.
+
+    Returns (removed_lines, removed_bytes, status) where status is one of
+    "noop", "trimmed", "dry-run", "unreadable" or "concurrent-modification".
+    """
     if not deleted_session_ids or not history_path.exists():
-        return 0, 0
+        return 0, 0, "noop"
     deleted_session_ids = {s.lower() for s in deleted_session_ids}
     try:
         original_stat = history_path.stat()
-        lines = history_path.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
     except OSError:
-        return 0, 0
+        return 0, 0, "unreadable"
 
-    kept: list[str] = []
-    removed = 0
-    removed_bytes = 0
-    for line in lines:
-        should_remove = False
-        try:
-            obj = json.loads(line)
-            sid = str(obj.get("sessionId", "")).lower()
-            should_remove = sid in deleted_session_ids
-        except json.JSONDecodeError:
-            should_remove = False
-        if should_remove:
-            removed += 1
-            removed_bytes += len(line.encode("utf-8", errors="replace"))
-        else:
-            kept.append(line)
-
-    if removed == 0 or dry_run:
-        return removed, removed_bytes
+    if dry_run:
+        return count_claude_history_matches(history_path, deleted_session_ids), 0, "dry-run"
 
     history_path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(prefix=".history.", suffix=".tmp", dir=str(history_path.parent))
+    removed = 0
+    removed_bytes = 0
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.writelines(kept)
-            fh.flush()
-            os.fsync(fh.fileno())
+        try:
+            with history_path.open("rb") as src, os.fdopen(fd, "wb") as out:
+                for line in src:
+                    try:
+                        obj = json.loads(line.decode("utf-8", errors="replace"))
+                        should_remove = str(obj.get("sessionId", "")).lower() in deleted_session_ids
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        should_remove = False
+                    if not isinstance(should_remove, bool):
+                        should_remove = False
+                    if should_remove:
+                        removed += 1
+                        removed_bytes += len(line)
+                    else:
+                        # Retained lines are copied verbatim: no newline translation, no
+                        # re-encoding, no trailing-newline insertion.
+                        out.write(line)
+                out.flush()
+                os.fsync(out.fileno())
+        except OSError:
+            return 0, 0, "unreadable"
+
+        if removed == 0:
+            return 0, 0, "noop"
+        try:
+            current_stat = history_path.stat()
+        except OSError:
+            return 0, 0, "concurrent-modification"
+        if _history_identity(current_stat) != _history_identity(original_stat):
+            return 0, 0, "concurrent-modification"
         os.chmod(tmp_name, stat.S_IMODE(original_stat.st_mode))
         os.replace(tmp_name, history_path)
     finally:
         with contextlib.suppress(FileNotFoundError):
             os.unlink(tmp_name)
-    return removed, removed_bytes
+    return removed, removed_bytes, "trimmed"
 
 
 def execute_plan(
@@ -911,9 +1402,31 @@ def execute_plan(
         result.skipped = len(plan.actions)
         return result
 
+    if not plan.for_mutation:
+        raise SafetyError("Refusing to execute an inspection-only plan")
+
+    # Defense in depth: build_plan already withheld these, so reaching here means a caller
+    # assembled a plan another way. Re-derive both gates rather than trusting the plan.
+    roots = {"codex": codex_home, "claude": claude_home}
+    for tool in sorted({action.tool for action in plan.actions}):
+        authority = fingerprint_root(roots[tool], tool)
+        if not authority.destructive_allowed(acknowledged=plan.allow_custom_roots):
+            raise SafetyError(authority.explain(acknowledged=plan.allow_custom_roots))
+    for scan in plan.scans:
+        if not scan.complete:
+            raise SafetyError(f"Refusing to execute a plan built from an incomplete {scan.scope} scan")
+
     running = active_processes()
     target_tools = {action.tool for action in plan.actions}
-    blocked_tools = {tool for tool, pids in running.items() if tool in target_tools and pids and not allow_running}
+    if running.complete:
+        blocked_tools = {tool for tool in target_tools if running.running(tool) and not allow_running}
+    else:
+        # Unknown activity is not absence of activity.
+        blocked_tools = set() if allow_running else set(target_tools)
+        result.errors.append(
+            "Could not determine whether Codex/Claude are running, so cleanup was skipped. Pass --allow-running if you accept the risk."
+        )
+    result.blocked_tools = set(blocked_tools)
     codex_ok, codex_bin = codex_delete_supported()
 
     before_size = 0
@@ -935,17 +1448,17 @@ def execute_plan(
                 if not ok:
                     raise RuntimeError(msg or "codex delete failed")
             elif action.tool == "codex":
-                safe_remove(action.path, codex_home)
+                safe_remove(action.path, codex_home, CODEX_PROTECTED_NAMES)
             else:
                 # For a Claude session action, delete transcript + sibling session payload directory.
                 if action.category == "session" and action.session_id:
                     companion = action.path.parent / action.path.stem
-                    safe_remove(action.path, claude_home)
+                    safe_remove(action.path, claude_home, CLAUDE_PROTECTED_NAMES)
                     if companion.exists() or companion.is_symlink():
-                        safe_remove(companion, claude_home)
+                        safe_remove(companion, claude_home, CLAUDE_PROTECTED_NAMES)
                     result.deleted_claude_session_ids.add(action.session_id)
                 else:
-                    safe_remove(action.path, claude_home)
+                    safe_remove(action.path, claude_home, CLAUDE_PROTECTED_NAMES)
             result.succeeded += 1
             if verbose:
                 print(f"  deleted [{action.tool}/{action.category}] {action.path}")
@@ -956,9 +1469,27 @@ def execute_plan(
             print(f"  progress: {idx}/{len(plan.actions)} actions")
 
     if trim_history and result.deleted_claude_session_ids and "claude" not in blocked_tools:
-        removed_lines, _removed_bytes = trim_claude_history(claude_home / "history.jsonl", result.deleted_claude_session_ids)
-        if verbose and removed_lines:
-            print(f"  trimmed {removed_lines} Claude history line(s) linked to deleted sessions")
+        if not running.complete:
+            result.deferred.append("Claude history trimming was skipped because provider activity could not be determined.")
+        elif running.running("claude"):
+            # history.jsonl is shared mutable provider metadata. --allow-running may permit
+            # removing independent artifacts, but it never authorizes rewriting a file a
+            # live provider is appending to.
+            result.deferred.append(
+                "Claude history trimming was skipped because a Claude process is running "
+                f"(PID: {', '.join(str(pid) for pid in running.running('claude'))}). "
+                "Deleted sessions may still be listed in history.jsonl."
+            )
+        else:
+            removed_lines, _removed_bytes, trim_status = trim_claude_history(claude_home / "history.jsonl", result.deleted_claude_session_ids)
+            if trim_status == "concurrent-modification":
+                result.deferred.append(
+                    "Claude history.jsonl changed while it was being rewritten; the trim was abandoned to avoid discarding concurrent writes."
+                )
+            elif trim_status == "unreadable":
+                result.deferred.append("Claude history.jsonl could not be read or rewritten; deleted sessions may still be listed in it.")
+            elif verbose and removed_lines:
+                print(f"  trimmed {removed_lines} Claude history line(s) linked to deleted sessions")
 
     # Empty date/project/session directories are harmless but add visual clutter.
     if "codex" not in blocked_tools:
@@ -977,29 +1508,107 @@ def execute_plan(
     result.freed_bytes = max(0, before_size - after_size)
 
     for tool in sorted(blocked_tools):
-        pids = ", ".join(str(p) for p in running[tool])
+        pids = ", ".join(str(p) for p in running.running(tool))
+        if not pids:
+            continue
         result.errors.append(
             f"Skipped {tool} cleanup because a {tool} process appears to be running (PID: {pids}). "
             "Close it or pass --allow-running if you accept the risk."
         )
+    result.errors.extend(result.deferred)
     return result
 
 
-def largest_entries(root: Path, limit: int = 8) -> list[tuple[Path, int]]:
+def root_entry_sizes(root: Path, scan: Scan | None = None) -> list[tuple[Path, int]]:
+    """Size every top-level entry of a provider root in a single pass."""
     if not root.exists() or root.is_symlink():
         return []
-    entries: list[tuple[Path, int]] = []
     try:
         children = list(root.iterdir())
-    except OSError:
+    except OSError as exc:
+        if scan is not None:
+            scan.record(root, exc)
         return []
-    for p in children:
-        entries.append((p, safe_lstat_size(p)))
-    entries.sort(key=lambda item: item[1], reverse=True)
-    return entries[:limit]
+    return [(p, safe_lstat_size(p, scan)) for p in children]
 
 
-def protected_codex_db_entries(codex_home: Path) -> list[tuple[Path, int]]:
+def largest_entries(entries: Sequence[tuple[Path, int]], limit: int = 8) -> list[tuple[Path, int]]:
+    return sorted(entries, key=lambda item: item[1], reverse=True)[:limit]
+
+
+def coverage_state(name: str, tool: str) -> str:
+    """Classify one top-level provider entry against what this build actually knows.
+
+    The vocabulary is deliberately narrow so the report cannot overclaim:
+
+    - `cleanable` - a deletion rule selects this entry as it stands;
+    - `aggressive-only` - a deletion rule selects it, but only under `--aggressive`;
+    - `trimmed` - never deleted; individual lines are rewritten when their session goes;
+    - `protected` - an unconditional barrier covers it;
+    - `reported` - shown in status, never touched;
+    - `unknown` - this build does not classify it at all.
+
+    Reporting `unknown` is the point: a provider that adds a directory must show up as
+    unclassified rather than disappearing from the picture. No discovery path reads this
+    function, so no state here can create a cleanup candidate.
+    """
+    if name in protected_names_for(tool):
+        return "protected"
+    if tool == "codex":
+        if name in CODEX_CLEANABLE_NAMES:
+            return "cleanable"
+        if name.startswith(CODEX_REPORTED_PREFIXES):
+            return "reported"
+        return "unknown"
+    if name in CLAUDE_TRIMMED_NAMES:
+        return "trimmed"
+    if name in CLAUDE_CLEANABLE_NAMES:
+        return "cleanable"
+    if name in CLAUDE_AGGRESSIVE_ONLY_NAMES:
+        return "aggressive-only"
+    return "unknown"
+
+
+def coverage_report(entries: Sequence[tuple[Path, int]], tool: str) -> list[CoverageBucket]:
+    grouped: dict[str, list[tuple[str, int]]] = {}
+    for path, size in entries:
+        grouped.setdefault(coverage_state(path.name, tool), []).append((path.name, size))
+    return [
+        CoverageBucket(
+            state=state,
+            entries=len(items),
+            bytes=sum(size for _name, size in items),
+            names=sorted(name for name, _size in items),
+        )
+        for state in COVERAGE_STATES
+        if (items := grouped.get(state))
+    ]
+
+
+def coverage_payload(entries: Sequence[tuple[Path, int]], tool: str) -> dict[str, dict[str, object]]:
+    return {bucket.state: {"entries": bucket.entries, "bytes": bucket.bytes, "names": bucket.names} for bucket in coverage_report(entries, tool)}
+
+
+COVERAGE_LEGEND = {
+    "cleanable": "a deletion rule selects these as they stand",
+    "aggressive-only": "selected only under --aggressive",
+    "trimmed": "never deleted; lines tied to deleted sessions are removed",
+    "protected": "unconditional barrier, never deleted",
+    "reported": "shown here, never touched",
+    "unknown": "not classified by this build; never a cleanup candidate",
+}
+
+
+def print_coverage(tool: str, root: Path, entries: Sequence[tuple[Path, int]]) -> None:
+    print(f"\n{tool} coverage  {root}")
+    for bucket in coverage_report(entries, tool):
+        print(f"  {bucket.state:15} {format_bytes(bucket.bytes):>10}  {bucket.entries:3} entry(ies)  - {COVERAGE_LEGEND[bucket.state]}")
+        if bucket.state == "unknown":
+            print(f"    {', '.join(bucket.names)}")
+    print("  Unknown entries are reported so provider layout drift stays visible.")
+
+
+def protected_codex_db_entries(codex_home: Path, scan: Scan | None = None) -> list[tuple[Path, int]]:
     if not codex_home.exists():
         return []
     entries: list[tuple[Path, int]] = []
@@ -1013,9 +1622,10 @@ def protected_codex_db_entries(codex_home: Path) -> list[tuple[Path, int]]:
                 or p.name.startswith("queue_")
                 or p.name.startswith("thread_history_")
             ):
-                entries.append((p, safe_lstat_size(p)))
-    except OSError:
-        pass
+                entries.append((p, safe_lstat_size(p, scan)))
+    except OSError as exc:
+        if scan is not None:
+            scan.record(codex_home, exc)
     return sorted(entries, key=lambda item: item[1], reverse=True)
 
 
@@ -1046,6 +1656,22 @@ def plan_summary_dict(plan: Plan) -> dict[str, object]:
         "by_category": by_category,
         "claude_history_lines": plan.claude_history_lines,
         "notes": plan.notes,
+        "withheld_tools": plan.withheld,
+        "scan": {
+            "complete": plan.scan_complete,
+            "incomplete_scopes": plan.incomplete_scopes,
+            "unreadable": plan.scan_errors,
+        },
+        "roots": {
+            tool: {
+                "path": str(authority.path),
+                "origin": authority.origin,
+                "confidence": authority.confidence,
+                "markers": list(authority.markers),
+                "destructive_allowed": authority.destructive_allowed(acknowledged=plan.allow_custom_roots),
+            }
+            for tool, authority in sorted(plan.root_authority.items())
+        },
     }
 
 
@@ -1060,6 +1686,12 @@ def print_plan(plan: Plan, *, show_paths: bool, max_paths: int = 20) -> None:
         print(f"  {tool:6}  {category:20} {len(actions):5}  {format_bytes(total):>10}")
     if plan.claude_history_lines:
         print(f"  claude  history.jsonl        {plan.claude_history_lines:5}  linked prompt line(s) to trim")
+    if not plan.scan_complete:
+        print(f"SCAN INCOMPLETE: {len(plan.scan_errors)} unreadable path(s) in {', '.join(plan.incomplete_scopes)}")
+        for error in plan.scan_errors[:10]:
+            print(f"  unreadable: {error}")
+        if len(plan.scan_errors) > 10:
+            print(f"  ... and {len(plan.scan_errors) - 10} more")
     for note in plan.notes:
         print(f"NOTE: {note}")
     if show_paths and plan.actions:
@@ -1128,6 +1760,11 @@ def build_parser() -> argparse.ArgumentParser:
             help="auto/cli prefer official 'codex delete --force'; filesystem is an explicit unsafe-compatibility fallback",
         )
         p.add_argument("--aggressive", action="store_true", help="Also remove Claude legacy/rebuildable caches")
+        p.add_argument(
+            "--allow-custom-root",
+            action="store_true",
+            help="Permit mutation of a non-default CODEX_HOME/CLAUDE_CONFIG_DIR that still passes provider fingerprinting",
+        )
         p.add_argument("--json", action="store_true", help="Machine-readable summary")
 
     clean = sub.add_parser("clean", help="Clean old session data (default when other args are given without a subcommand)")
@@ -1141,25 +1778,42 @@ def build_parser() -> argparse.ArgumentParser:
     status = sub.add_parser("status", help="Show disk usage and cleanup candidates (default command)")
     add_common(status)
     status.add_argument("--paths", action="store_true", help="Show largest candidate paths")
+    status.add_argument(
+        "--coverage",
+        action="store_true",
+        help="Report which top-level provider entries this build classifies, including unknown ones",
+    )
     status.add_argument("--top", type=int, default=8, help="Number of top-level disk consumers to show")
 
     configure = sub.add_parser("configure", help="Configure Claude Code's built-in retention")
     configure.add_argument("--claude-retention", type=int, required=True, metavar="DAYS")
+    configure.add_argument(
+        "--allow-custom-root",
+        action="store_true",
+        help="Permit writing to a non-default CLAUDE_CONFIG_DIR that still passes provider fingerprinting",
+    )
 
     sub.add_parser("version", help="Print version")
     return parser
 
 
 def normalize_argv(argv: Sequence[str]) -> list[str]:
+    """Resolve a missing subcommand toward observation, never toward deletion.
+
+    Earlier releases turned `cancellai --days 14` into `clean --days 14`. Destructive
+    intent must be typed, so a leading flag now selects the read-only `status` view and an
+    unrecognized verb is left to argparse as a usage error.
+    """
     args = list(argv)
     if not args:
-        # No subcommand and no flags: default to the non-destructive status view.
         return ["status"]
-    # Global --version remains global.
+    # Global --version/--help remain global.
     if args[0] in {"--version", "-h", "--help"}:
         return args
-    if args[0] not in KNOWN_COMMANDS:
-        return ["clean", *args]
+    if args[0] in KNOWN_COMMANDS:
+        return args
+    if args[0].startswith("-"):
+        return ["status", *args]
     return args
 
 
@@ -1184,44 +1838,83 @@ def cmd_status(args: argparse.Namespace) -> int:
             claude_home=claude_home,
             codex_backend=args.codex_backend,
             aggressive=args.aggressive,
+            for_mutation=False,
         )
     except (SafetyError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
-        return 2
+        return EXIT_USAGE
+
+    root_scans = {"codex": Scan(scope="codex root"), "claude": Scan(scope="claude root")}
+    codex_entries = root_entry_sizes(codex_home, root_scans["codex"])
+    claude_entries = root_entry_sizes(claude_home, root_scans["claude"])
+    codex_bytes = sum(size for _p, size in codex_entries)
+    claude_bytes = sum(size for _p, size in claude_entries)
+
+    roots: dict[str, dict[str, object]] = {}
+    for tool, entries, total in (("codex", codex_entries, codex_bytes), ("claude", claude_entries, claude_bytes)):
+        authority = plan.root_authority[tool]
+        roots[tool] = {
+            "path": str(authority.path),
+            "origin": authority.origin,
+            "confidence": authority.confidence,
+            "markers": list(authority.markers),
+            "destructive_allowed": authority.destructive_allowed(acknowledged=False),
+            "bytes": total,
+            "bytes_complete": root_scans[tool].complete,
+            "unreadable": root_scans[tool].errors,
+            "coverage": coverage_payload(entries, tool),
+        }
 
     if args.json:
         payload = plan_summary_dict(plan)
-        payload["roots"] = {
-            "codex": {"path": str(codex_home), "bytes": directory_size(codex_home)},
-            "claude": {"path": str(claude_home), "bytes": directory_size(claude_home)},
-        }
-        payload["running"] = active_processes()
+        payload["roots"] = roots
+        observation = active_processes()
+        payload["running"] = {"pids": observation.pids, "observed": observation.complete}
         print(json.dumps(payload, indent=2))
-        return 0
+        return EXIT_OK
+
+    def total_label(tool: str, total: int) -> str:
+        # An incomplete traversal produces a lower bound, and must not be printed as a fact.
+        return f"{format_bytes(total)}{'' if root_scans[tool].complete else ' (at least; scan incomplete)'}"
 
     print("cancellAI status")
-    print(f"Codex:  {codex_home}  {format_bytes(directory_size(codex_home))}")
-    print(f"Claude: {claude_home}  {format_bytes(directory_size(claude_home))}")
+    print(f"Codex:  {codex_home}  {total_label('codex', codex_bytes)}")
+    print(f"Claude: {claude_home}  {total_label('claude', claude_bytes)}")
+    for tool, scan in root_scans.items():
+        if not scan.complete:
+            print(f"WARNING: {len(scan.errors)} unreadable path(s) under the {tool} root; reported sizes are lower bounds.")
+            for error in scan.errors[:5]:
+                print(f"  unreadable: {error}")
+    for tool in ("codex", "claude"):
+        authority = plan.root_authority[tool]
+        if not authority.destructive_allowed(acknowledged=False):
+            print(f"WARNING: {authority.explain(acknowledged=False)}")
     running = active_processes()
-    if running["codex"] or running["claude"]:
-        print(f"Running processes: codex={running['codex'] or '-'} claude={running['claude'] or '-'}")
+    if not running.complete:
+        print("Running processes: unknown (process enumeration failed; cleanup will refuse to run)")
+    elif running.any_running:
+        print(f"Running processes: codex={running.running('codex') or '-'} claude={running.running('claude') or '-'}")
     print()
     print_plan(plan, show_paths=args.paths)
 
     print("\nLargest top-level Codex entries:")
-    for p, size in largest_entries(codex_home, args.top):
+    for p, size in largest_entries(codex_entries, args.top):
         print(f"  {format_bytes(size):>10}  {p.name}")
     print("Largest top-level Claude entries:")
-    for p, size in largest_entries(claude_home, args.top):
+    for p, size in largest_entries(claude_entries, args.top):
         print(f"  {format_bytes(size):>10}  {p.name}")
 
-    protected = protected_codex_db_entries(codex_home)
+    protected = protected_codex_db_entries(codex_home, root_scans["codex"])
     big = [(p, s) for p, s in protected if s >= 100 * 1024 * 1024]
     if big:
         print("\nProtected Codex SQLite state (reported, never deleted automatically):")
         for p, size in big:
             print(f"  {format_bytes(size):>10}  {p.name}")
-    return 0
+
+    if args.coverage:
+        print_coverage("codex", codex_home, codex_entries)
+        print_coverage("claude", claude_home, claude_entries)
+    return EXIT_OK
 
 
 def cmd_clean(args: argparse.Namespace) -> int:
@@ -1236,84 +1929,126 @@ def cmd_clean(args: argparse.Namespace) -> int:
             claude_home=claude_home,
             codex_backend=args.codex_backend,
             aggressive=args.aggressive,
+            allow_custom_roots=args.allow_custom_root,
         )
     except (SafetyError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
-        return 2
+        return EXIT_USAGE
 
     if args.json and not args.dry_run and not args.yes:
         print("ERROR: --json with destructive clean requires --yes or --dry-run", file=sys.stderr)
-        return 2
+        return EXIT_USAGE
 
     if args.json and args.dry_run:
-        print(json.dumps({"dry_run": True, **plan_summary_dict(plan)}, indent=2))
-        return 0
+        dry_code = EXIT_BLOCKED if plan.withheld else EXIT_OK
+        print(json.dumps({"dry_run": True, "exit_code": dry_code, **plan_summary_dict(plan)}, indent=2))
+        return dry_code
 
     if not args.json:
         print_plan(plan, show_paths=args.dry_run or args.verbose)
 
     if not plan.actions:
+        empty_code = EXIT_BLOCKED if plan.withheld else EXIT_OK
         if args.json:
-            print(json.dumps({"dry_run": bool(args.dry_run), **plan_summary_dict(plan), "result": "nothing-to-do"}, indent=2))
+            print(
+                json.dumps(
+                    {
+                        "dry_run": bool(args.dry_run),
+                        "exit_code": empty_code,
+                        **plan_summary_dict(plan),
+                        "result": "safety-withheld" if plan.withheld else "nothing-to-do",
+                    },
+                    indent=2,
+                )
+            )
         else:
-            print("Nothing to clean.")
-        return 0
+            print("Nothing to clean." if not plan.withheld else "Nothing was cleaned: safety withheld the requested work.")
+        return empty_code
 
     if args.dry_run:
         if not args.json:
             print("\nDry-run only. No files were changed.")
-        return 0
+        return EXIT_BLOCKED if plan.withheld else EXIT_OK
 
     if not args.yes:
         warning = f"Delete {len(plan.actions)} old item(s), approximately {format_bytes(plan.estimated_bytes)}? This cannot be undone."
         if not confirm(warning):
             print("Cancelled.")
-            return 1
+            return EXIT_CANCELLED
 
-    result = execute_plan(
-        plan,
-        codex_home=codex_home,
-        claude_home=claude_home,
-        dry_run=False,
-        allow_running=args.allow_running,
-        trim_history=not args.keep_claude_history,
-        verbose=args.verbose and not args.json,
-    )
+    try:
+        result = execute_plan(
+            plan,
+            codex_home=codex_home,
+            claude_home=claude_home,
+            dry_run=False,
+            allow_running=args.allow_running,
+            trim_history=not args.keep_claude_history,
+            verbose=args.verbose and not args.json,
+        )
+    except SafetyError as exc:
+        # A boundary that re-fired between planning and execution is a safety block, not a
+        # crash: it must reach automation through the documented exit code and JSON shape.
+        result = CleanResult()
+        result.deferred.append(str(exc))
+        result.errors.append(str(exc))
+    if plan.withheld:
+        withheld_note = f"Safety withheld all work for: {', '.join(plan.withheld)}. See the notes above."
+        result.deferred.append(withheld_note)
+        result.errors.append(withheld_note)
+
+    # A run that safety refused to perform is not a success. Automation must be able to
+    # tell "cleaned" from "deliberately did not clean" without parsing warning text.
+    if result.failed:
+        exit_code = EXIT_FAILED
+    elif result.partial:
+        exit_code = EXIT_BLOCKED
+    else:
+        exit_code = EXIT_OK
 
     if args.json:
         payload = {
             "dry_run": False,
+            "exit_code": exit_code,
             **plan_summary_dict(plan),
             "result": {
                 "attempted": result.attempted,
                 "succeeded": result.succeeded,
                 "failed": result.failed,
                 "skipped": result.skipped,
+                "blocked_tools": sorted(result.blocked_tools),
+                "deferred": result.deferred,
                 "freed_bytes": result.freed_bytes,
                 "errors": result.errors,
             },
         }
         print(json.dumps(payload, indent=2))
     else:
-        print("\nCleanup complete")
+        print("\nCleanup complete" if exit_code == EXIT_OK else "\nCleanup incomplete")
         print(f"  succeeded: {result.succeeded}")
         print(f"  failed:    {result.failed}")
         print(f"  skipped:   {result.skipped}")
         print(f"  reclaimed: {format_bytes(result.freed_bytes)}")
         for err in result.errors:
             print(f"  WARNING: {err}")
-    return 2 if result.failed else 0
+        if exit_code != EXIT_OK:
+            print(f"  exit code: {exit_code}")
+    return exit_code
 
 
 def cmd_configure(args: argparse.Namespace) -> int:
     try:
         claude_home = validate_config_root(get_claude_home(), "Claude")
+        # Writing provider configuration is a mutation, so it uses the same root boundary.
+        authority = fingerprint_root(claude_home, "claude")
+        if not authority.destructive_allowed(acknowledged=args.allow_custom_root):
+            raise SafetyError(authority.explain(acknowledged=args.allow_custom_root))
         settings = configure_claude_retention(claude_home, args.claude_retention)
     except (SafetyError, ValueError, OSError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
-        return 2
+        return EXIT_USAGE
     print(f"Set Claude Code cleanupPeriodDays={args.claude_retention} in {settings}")
-    return 0
+    return EXIT_OK
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -1327,7 +2062,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return cmd_configure(args)
     if command == "version":
         print(VERSION)
-        return 0
+        return EXIT_OK
     return cmd_clean(args)
 
 
