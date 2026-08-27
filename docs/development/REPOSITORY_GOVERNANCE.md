@@ -27,55 +27,53 @@ Target for `main`:
 
 For a single-maintainer repository, mandatory approval by a separate human may be impossible. Do not fake separation of duties. Independent Claude/Codex verification is engineering evidence, not a GitHub human-review identity.
 
-## Applying the ruleset
+## Applying branch protection
 
 The controls above are GitHub settings, so nothing in this repository can enforce them.
-Owner action is required once, and the exact commands are recorded here so the desired
-state is reproducible rather than remembered:
+`main` currently uses **classic branch protection**, not a ruleset; documenting the
+mechanism the repository does not use is the drift this page exists to prevent.
+
+The required checks are listed below, and `scripts/check_workflows.py` verifies that each
+name matches a context a workflow can actually report - including matrix expansion. This
+guard exists because the repository was found requiring a check named `test` while the
+matrix produces `test (3.10)` and `test (3.14)`: a name that matches no job never reports,
+is indistinguishable from a slow check, and blocks every pull request permanently.
+
+<!-- required-checks:start -->
+- `test (3.10)`
+- `test (3.14)`
+- `lint`
+- `homebrew`
+- `project-os`
+- `pre-commit`
+- `commit-convention`
+- `Python reference security analysis`
+<!-- required-checks:end -->
+
+Apply, or reapply after drift:
 
 ```sh
-gh api -X PUT repos/matteo-dritara/homebrew-cancellai/rulesets --input - <<'JSON'
+gh api -X PUT repos/matteo-dritara/homebrew-cancellai/branches/main/protection --input - <<'JSON'
 {
-  "name": "main",
-  "target": "branch",
-  "enforcement": "active",
-  "conditions": { "ref_name": { "include": ["~DEFAULT_BRANCH"], "exclude": [] } },
-  "rules": [
-    { "type": "deletion" },
-    { "type": "non_fast_forward" },
-    { "type": "required_linear_history" },
-    {
-      "type": "pull_request",
-      "parameters": {
-        "required_approving_review_count": 0,
-        "dismiss_stale_reviews_on_push": true,
-        "require_code_owner_review": true,
-        "require_last_push_approval": false,
-        "required_review_thread_resolution": true,
-        "allowed_merge_methods": ["squash"]
-      }
-    },
-    {
-      "type": "required_status_checks",
-      "parameters": {
-        "strict_required_status_checks_policy": true,
-        "required_status_checks": [
-          { "context": "test (3.10)" },
-          { "context": "test (3.14)" },
-          { "context": "lint" },
-          { "context": "homebrew" },
-          { "context": "project-os" },
-          { "context": "commit-convention" },
-          { "context": "pre-commit" },
-          { "context": "Python reference security analysis" }
-        ]
-      }
-    }
-  ]
+  "required_status_checks": {
+    "strict": true,
+    "contexts": [
+      "test (3.10)", "test (3.14)", "lint", "homebrew",
+      "project-os", "pre-commit", "commit-convention",
+      "Python reference security analysis"
+    ]
+  },
+  "enforce_admins": false,
+  "required_pull_request_reviews": null,
+  "restrictions": null,
+  "required_linear_history": true,
+  "allow_force_pushes": false,
+  "allow_deletions": false,
+  "required_conversation_resolution": true
 }
 JSON
 
-# Tags that name a published release are immutable history.
+# Tags naming a published release are immutable history.
 gh api -X PUT repos/matteo-dritara/homebrew-cancellai/rulesets --input - <<'JSON'
 {
   "name": "release tags",
@@ -87,16 +85,19 @@ gh api -X PUT repos/matteo-dritara/homebrew-cancellai/rulesets --input - <<'JSON
 JSON
 ```
 
-`required_approving_review_count` is `0` deliberately. A single-maintainer repository cannot
-produce a second human approver, and setting a number that is satisfied by self-approval
-would be theatre. Independent Claude/Codex verification is engineering evidence recorded
-under `project/evidence/`; it is not a GitHub review identity, and this document does not
-pretend otherwise. Raise the count the day a second maintainer exists.
+`required_pull_request_reviews` is null deliberately. A single-maintainer repository cannot
+produce a second human approver, and a required count satisfied by self-approval would be
+theatre. Independent Claude/Codex verification is engineering evidence recorded under
+`project/evidence/`; it is not a GitHub review identity, and this document does not pretend
+otherwise. Add a required review the day a second maintainer exists.
 
-Verify the applied state with:
+Adding a job to a workflow does not add it to this list. Update the block above, run
+`python3 scripts/check_workflows.py check`, and reapply the command.
+
+Inspect the live state with:
 
 ```sh
-gh api repos/matteo-dritara/homebrew-cancellai/rulesets
+gh api repos/matteo-dritara/homebrew-cancellai/branches/main/protection
 ```
 
 ## Required checks in the Python/reference stage
