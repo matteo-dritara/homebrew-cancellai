@@ -18,6 +18,7 @@ Supported platform: macOS. Other platforms are untested.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import re
@@ -27,17 +28,15 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterator, Optional, Sequence
 
 VERSION = "1.0.0"
 DEFAULT_DAYS = 7
 DEFAULT_KEEP_LATEST = 2
-UUID_RE = re.compile(
-    r"(?P<uuid>[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
-)
+UUID_RE = re.compile(r"(?P<uuid>[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})")
 KNOWN_COMMANDS = {"clean", "status", "configure", "version"}
 
 # Claude Code paths documented as session/application data. Auto-memory is deliberately excluded.
@@ -88,9 +87,9 @@ class Action:
     path: Path
     size: int
     mtime: float
-    session_id: Optional[str] = None
+    session_id: str | None = None
     strategy: str = "filesystem"  # filesystem | codex-cli
-    parent_session_id: Optional[str] = None
+    parent_session_id: str | None = None
 
 
 @dataclass
@@ -142,7 +141,7 @@ def format_bytes(num: int) -> str:
     return f"{value:.2f} TB"
 
 
-def format_age(mtime: float, reference: Optional[float] = None) -> str:
+def format_age(mtime: float, reference: float | None = None) -> str:
     reference = reference or now_ts()
     days = max(0.0, (reference - mtime) / 86400.0)
     if days < 1:
@@ -227,10 +226,8 @@ def directory_size(root: Path) -> int:
             dirs[:] = keep_dirs
             for name in files:
                 p = base_p / name
-                try:
+                with contextlib.suppress(OSError):
                     total += p.lstat().st_size
-                except OSError:
-                    pass
     except OSError:
         pass
     return total
@@ -260,16 +257,14 @@ def latest_mtime(path: Path) -> float:
                     keep_dirs.append(name)
             dirs[:] = keep_dirs
             for name in files:
-                try:
+                with contextlib.suppress(OSError):
                     latest = max(latest, (base_p / name).lstat().st_mtime)
-                except OSError:
-                    pass
     except OSError:
         pass
     return latest
 
 
-def iter_files(root: Path, suffix: Optional[str] = None) -> Iterator[Path]:
+def iter_files(root: Path, suffix: str | None = None) -> Iterator[Path]:
     if not root.exists() or root.is_symlink():
         return
     for base, dirs, files in os.walk(root, followlinks=False):
@@ -281,12 +276,12 @@ def iter_files(root: Path, suffix: Optional[str] = None) -> Iterator[Path]:
                 yield p
 
 
-def extract_uuid(text: str) -> Optional[str]:
+def extract_uuid(text: str) -> str | None:
     matches = list(UUID_RE.finditer(text))
     return matches[-1].group("uuid").lower() if matches else None
 
 
-def read_codex_parent_session_id(path: Path) -> Optional[str]:
+def read_codex_parent_session_id(path: Path) -> str | None:
     """Read parent_thread_id from Codex session_meta without scanning the full rollout.
 
     Current Codex rollouts put session metadata near the head of the JSONL file.
@@ -411,10 +406,7 @@ def choose_codex_old_sessions(
             # Raw filesystem removal must remove each rollout independently. Include all
             # copies belonging to selected thread ids, not just graph representatives.
             member_ids = {a.session_id for a in members if a.session_id}
-            selected.extend(
-                a for a in actions
-                if a.session_id in member_ids and a.mtime < cutoff
-            )
+            selected.extend(a for a in actions if a.session_id in member_ids and a.mtime < cutoff)
 
     selected.extend(choose_old_sessions(no_id, cutoff, keep_latest=0))
 
@@ -471,12 +463,13 @@ def choose_old_sessions(actions: list[Action], cutoff: float, keep_latest: int) 
     return selected
 
 
-def codex_delete_supported(codex_bin: Optional[str] = None) -> tuple[bool, Optional[str]]:
+def codex_delete_supported(codex_bin: str | None = None) -> tuple[bool, str | None]:
     codex_bin = codex_bin or shutil.which("codex")
     if not codex_bin:
         return False, None
     try:
-        proc = subprocess.run(
+        # codex_bin is a PATH-resolved absolute path, not shell-interpreted; no untrusted input.
+        proc = subprocess.run(  # noqa: S603
             [codex_bin, "delete", "--help"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -573,7 +566,7 @@ def discover_aged_top_entries(
     tool: str,
     category: str,
     cutoff: float,
-    protected_session_ids: Optional[set[str]] = None,
+    protected_session_ids: set[str] | None = None,
 ) -> list[Action]:
     if not root.exists() or root.is_symlink():
         return []
@@ -615,22 +608,14 @@ def discover_claude_aux(
     claude_home: Path,
     cutoff: float,
     aggressive: bool,
-    protected_session_ids: Optional[set[str]] = None,
+    protected_session_ids: set[str] | None = None,
 ) -> list[Action]:
     actions: list[Action] = []
     for rel in CLAUDE_RETENTION_PATHS:
-        actions.extend(
-            discover_aged_top_entries(
-                claude_home / rel, "claude", rel, cutoff, protected_session_ids
-            )
-        )
+        actions.extend(discover_aged_top_entries(claude_home / rel, "claude", rel, cutoff, protected_session_ids))
 
     if aggressive:
-        actions.extend(
-            discover_aged_top_entries(
-                claude_home / "backups", "claude", "backups", cutoff, protected_session_ids
-            )
-        )
+        actions.extend(discover_aged_top_entries(claude_home / "backups", "claude", "backups", cutoff, protected_session_ids))
         # Legacy directories are no longer written by current Claude Code.
         for rel in CLAUDE_LEGACY_PATHS:
             root = claude_home / rel
@@ -701,10 +686,7 @@ def build_plan(
     plan = Plan(cutoff=cutoff, days=days, keep_latest=keep_latest)
 
     if "codex" in tools:
-        if codex_backend == "auto":
-            supported, _ = codex_delete_supported()
-            strategy = "codex-cli" if supported else "unavailable"
-        elif codex_backend == "cli":
+        if codex_backend in ("auto", "cli"):
             supported, _ = codex_delete_supported()
             strategy = "codex-cli" if supported else "unavailable"
         else:
@@ -737,13 +719,9 @@ def build_plan(
         selected_ids = {a.session_id for a in selected if a.session_id}
         protected_ids = {a.session_id for a in sessions if a.session_id and a.session_id not in selected_ids}
         plan.actions.extend(selected)
-        plan.actions.extend(
-            discover_claude_aux(claude_home, cutoff, aggressive, protected_session_ids=protected_ids)
-        )
+        plan.actions.extend(discover_claude_aux(claude_home, cutoff, aggressive, protected_session_ids=protected_ids))
         plan.claude_history_session_ids = selected_ids
-        plan.claude_history_lines = count_claude_history_matches(
-            claude_home / "history.jsonl", plan.claude_history_session_ids
-        )
+        plan.claude_history_lines = count_claude_history_matches(claude_home / "history.jsonl", plan.claude_history_session_ids)
 
     # De-duplicate exact filesystem paths while preserving the first action.
     deduped: list[Action] = []
@@ -761,10 +739,12 @@ def build_plan(
 def active_processes() -> dict[str, list[int]]:
     """Best-effort exact-process-name detection. False negatives are possible; never used as sole safety control."""
     targets = {"codex": {"codex", "Codex"}, "claude": {"claude"}}
-    result = {"codex": [], "claude": []}
+    result: dict[str, list[int]] = {"codex": [], "claude": []}
+    ps_bin = shutil.which("ps") or "/bin/ps"
     try:
-        proc = subprocess.run(
-            ["ps", "-axo", "pid=,comm="],
+        # Fixed argument list, no untrusted input; ps_bin is PATH-resolved above.
+        proc = subprocess.run(  # noqa: S603
+            [ps_bin, "-axo", "pid=,comm="],
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             text=True,
@@ -840,16 +820,17 @@ def prune_empty_dirs(root: Path) -> None:
             p = base_p / name
             if p.is_symlink():
                 continue
-            try:
+            with contextlib.suppress(OSError):
                 p.rmdir()
-            except OSError:
-                pass
 
 
 def delete_codex_via_cli(action: Action, codex_bin: str) -> tuple[bool, str]:
-    assert action.session_id
+    if not action.session_id:
+        raise ValueError("delete_codex_via_cli requires an action with a session_id")
     try:
-        proc = subprocess.run(
+        # session_id was extracted via UUID_RE upstream and codex_bin is PATH-resolved;
+        # neither is untrusted/shell-interpreted input.
+        proc = subprocess.run(  # noqa: S603
             [codex_bin, "delete", action.session_id, "--force"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -905,10 +886,8 @@ def trim_claude_history(history_path: Path, deleted_session_ids: set[str], dry_r
         os.chmod(tmp_name, stat.S_IMODE(original_stat.st_mode))
         os.replace(tmp_name, history_path)
     finally:
-        try:
+        with contextlib.suppress(FileNotFoundError):
             os.unlink(tmp_name)
-        except FileNotFoundError:
-            pass
     return removed, removed_bytes
 
 
@@ -929,9 +908,7 @@ def execute_plan(
 
     running = active_processes()
     target_tools = {action.tool for action in plan.actions}
-    blocked_tools = {
-        tool for tool, pids in running.items() if tool in target_tools and pids and not allow_running
-    }
+    blocked_tools = {tool for tool, pids in running.items() if tool in target_tools and pids and not allow_running}
     codex_ok, codex_bin = codex_delete_supported()
 
     before_size = 0
@@ -974,9 +951,7 @@ def execute_plan(
             print(f"  progress: {idx}/{len(plan.actions)} actions")
 
     if trim_history and result.deleted_claude_session_ids and "claude" not in blocked_tools:
-        removed_lines, _removed_bytes = trim_claude_history(
-            claude_home / "history.jsonl", result.deleted_claude_session_ids
-        )
+        removed_lines, _removed_bytes = trim_claude_history(claude_home / "history.jsonl", result.deleted_claude_session_ids)
         if verbose and removed_lines:
             print(f"  trimmed {removed_lines} Claude history line(s) linked to deleted sessions")
 
@@ -1045,7 +1020,7 @@ def parse_tools(value: str) -> set[str]:
     return {value}
 
 
-def plan_summary_dict(plan: Plan) -> dict:
+def plan_summary_dict(plan: Plan) -> dict[str, object]:
     by_tool: dict[str, dict[str, int]] = {}
     by_category: dict[str, dict[str, int]] = {}
     for action in plan.actions:
@@ -1085,10 +1060,7 @@ def print_plan(plan: Plan, *, show_paths: bool, max_paths: int = 20) -> None:
     if show_paths and plan.actions:
         print("\nLargest candidates:")
         for action in sorted(plan.actions, key=lambda a: a.size, reverse=True)[:max_paths]:
-            print(
-                f"  {format_bytes(action.size):>10}  {format_age(action.mtime):>7}  "
-                f"[{action.tool}/{action.category}] {action.path}"
-            )
+            print(f"  {format_bytes(action.size):>10}  {format_age(action.mtime):>7}  [{action.tool}/{action.category}] {action.path}")
 
 
 def configure_claude_retention(claude_home: Path, days: int) -> Path:
@@ -1096,7 +1068,7 @@ def configure_claude_retention(claude_home: Path, days: int) -> Path:
         raise ValueError("Claude cleanupPeriodDays must be >= 1")
     claude_home.mkdir(parents=True, exist_ok=True)
     settings = claude_home / "settings.json"
-    data: dict = {}
+    data: dict[str, object] = {}
     mode = 0o600
     if settings.exists():
         try:
@@ -1111,7 +1083,7 @@ def configure_claude_retention(claude_home: Path, days: int) -> Path:
     return settings
 
 
-def atomic_write_json(path: Path, data: dict, mode: int = 0o600) -> None:
+def atomic_write_json(path: Path, data: dict[str, object], mode: int = 0o600) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
     try:
@@ -1123,10 +1095,8 @@ def atomic_write_json(path: Path, data: dict, mode: int = 0o600) -> None:
         os.chmod(tmp_name, mode)
         os.replace(tmp_name, path)
     finally:
-        try:
+        with contextlib.suppress(FileNotFoundError):
             os.unlink(tmp_name)
-        except FileNotFoundError:
-            pass
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1290,10 +1260,7 @@ def cmd_clean(args: argparse.Namespace) -> int:
         return 0
 
     if not args.yes:
-        warning = (
-            f"Delete {len(plan.actions)} old item(s), approximately {format_bytes(plan.estimated_bytes)}? "
-            "This cannot be undone."
-        )
+        warning = f"Delete {len(plan.actions)} old item(s), approximately {format_bytes(plan.estimated_bytes)}? This cannot be undone."
         if not confirm(warning):
             print("Cancelled.")
             return 1
@@ -1344,7 +1311,7 @@ def cmd_configure(args: argparse.Namespace) -> int:
     return 0
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     argv = normalize_argv(sys.argv[1:] if argv is None else argv)
     parser = build_parser()
     args = parser.parse_args(argv)

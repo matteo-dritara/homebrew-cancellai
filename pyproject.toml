@@ -1,0 +1,33 @@
+[project]
+name = "cancellai"
+version = "1.0.0"
+description = "Safely reclaim disk space from old Codex CLI and Claude Code session data."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+
+# cancellai ships as a single stdlib-only script (see cancellai.py) and is
+# distributed via the Homebrew formula in Formula/cancellai.rb, not via PyPI.
+# This file exists purely to configure dev tooling (ruff, mypy) and to declare
+# the minimum supported Python version -- it adds no runtime dependencies.
+
+[tool.ruff]
+line-length = 145
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4", "RUF", "S"]
+# TRY004 would push us to raise TypeError for config-shape errors that this
+# codebase deliberately reports as ValueError everywhere else (uniform
+# handling by every caller); not worth the inconsistency for one call site.
+ignore = ["TRY004"]
+
+[tool.ruff.lint.per-file-ignores]
+# assert is the standard unittest idiom, and fixture literals like "/tmp/x"
+# are not real filesystem usage -- both are expected in the test file.
+"test_cancellai.py" = ["S101", "S108"]
+
+[tool.mypy]
+python_version = "3.10"
+files = ["cancellai.py", "scripts/gen_docs.py"]
+strict = true

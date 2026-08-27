@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  pytest:
+  test:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -14,3 +14,26 @@ jobs:
         with:
           python-version: "3.x"
       - run: python3 -m pytest test_cancellai.py -v
+
+  lint:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - run: pip install ruff mypy
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy cancellai.py scripts/gen_docs.py
+      - run: python3 scripts/gen_docs.py --check
+
+  homebrew:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      # `brew audit`/`brew style` only accept a tapped formula name, not a
+      # bare path, so tap this checkout locally before checking it.
+      - run: brew tap matteo-dritara/cancellai "$GITHUB_WORKSPACE"
+      - run: brew audit --strict matteo-dritara/cancellai/cancellai
+      - run: brew style matteo-dritara/cancellai/cancellai
