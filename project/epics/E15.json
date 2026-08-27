@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "id": "E15",
+  "phase": "P4",
+  "title": "Guardian Runtime and Bounded Remediation",
+  "objective": "Run monitoring continuously using OS-native user services while keeping all actions within Effective Policy.",
+  "dependencies": [
+    "E14",
+    "E12"
+  ],
+  "status": "planned",
+  "stories": [
+    {
+      "id": "E15-S01",
+      "title": "Cross-platform user-service runtime",
+      "status": "planned",
+      "outcome": "Implement launchd/systemd-user/Windows task-or-service adapters with one Guardian engine.",
+      "change_risk": "CR3",
+      "dependencies": [
+        "E14-S04",
+        "E07-S04"
+      ],
+      "acceptance_criteria": [
+        "Guardian can be enabled/disabled and status inspected consistently.",
+        "Service failure does not block manual CLI operation."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Platform service install/uninstall smoke tests."
+      ],
+      "documentation_impact": [
+        "docs/architecture/GUARDIAN_MODEL.md",
+        "docs/PLATFORMS.md"
+      ]
+    },
+    {
+      "id": "E15-S02",
+      "title": "Notification abstraction",
+      "status": "planned",
+      "outcome": "Provide OS-appropriate notifications with terminal fallback and privacy-safe messages.",
+      "change_risk": "CR1",
+      "dependencies": [
+        "E15-S01"
+      ],
+      "acceptance_criteria": [
+        "Notifications never include sensitive transcript/source content.",
+        "Notification unavailability does not trigger stronger remediation."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Notification payload privacy tests."
+      ],
+      "documentation_impact": [
+        "docs/PRODUCT.md"
+      ]
+    },
+    {
+      "id": "E15-S03",
+      "title": "Bounded remediation planner",
+      "status": "planned",
+      "outcome": "Translate pressure/anomaly signals into recommendations or pre-authorized quarantine/reclaim plans without authority escalation.",
+      "change_risk": "CR4",
+      "dependencies": [
+        "E15-S01",
+        "E11-S04",
+        "E12-S01"
+      ],
+      "acceptance_criteria": [
+        "Guardian action authority exactly equals or is below Effective Policy.",
+        "RED pressure cannot bypass artifact ceiling or unknown-state protections."
+      ],
+      "safety_obligations": [
+        "SI-027",
+        "SI-028"
+      ],
+      "verification": [
+        "Pressure \u00d7 policy \u00d7 artifact exhaustive matrix."
+      ],
+      "documentation_impact": [
+        "docs/security/SAFETY_INVARIANTS.md"
+      ]
+    },
+    {
+      "id": "E15-S04",
+      "title": "Guardian kill-switch and audit",
+      "status": "planned",
+      "outcome": "Provide immediate local disable and complete ledger trace for every autonomous recommendation/action.",
+      "change_risk": "CR3",
+      "dependencies": [
+        "E15-S03"
+      ],
+      "acceptance_criteria": [
+        "Kill-switch stops future autonomous mutations without corrupting current state.",
+        "Every action links detection evidence, policy decision, and sealed plan."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Kill during planning/execution fault tests."
+      ],
+      "documentation_impact": [
+        "docs/architecture/GUARDIAN_MODEL.md"
+      ]
+    }
+  ]
+}

@@ -1,36 +1,38 @@
 # Security Policy
 
-cancellai deletes files in your home directory. Its entire value proposition
-is "does that safely" — so a way to make it delete something it explicitly
-promises not to (see [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md#the-safety-critical-core)
-for what that list actually is) is treated as a security issue, not a
-regular bug.
+cancellAI can receive authority to mutate agent-generated state. Violating its safety boundary is therefore a security issue even when no code execution is involved.
 
-## Reporting a vulnerability
+## Report privately
 
-Please use GitHub's private vulnerability reporting for this repository
-(the **Security** tab → **Report a vulnerability**) rather than a public
-issue, so it can be assessed and fixed before the details are public.
+Use GitHub private vulnerability reporting (Security tab -> Report a vulnerability) for issues that can bypass a documented safety property. Do not publish destructive proof-of-concept details before triage.
 
-In scope, for example:
+## In scope
 
-- A `clean` run (with or without unusual flags) deleting a file or
-  directory in `CLAUDE_PROTECTED_NAMES` / `CODEX_PROTECTED_NAMES`, Claude's
-  auto-memory, or anything outside the resolved `$CODEX_HOME` /
-  `$CLAUDE_CONFIG_DIR` root.
-- A symlink causing deletion of a file outside the approved root
-  (see `safe_remove` in `cancellai.py`).
-- `validate_config_root` accepting a root that is `/`, the user's home
-  directory, or another catastrophically broad path.
-- Command injection via `--tool`, `--codex-backend`, or any other flag
-  reaching a subprocess call.
+Examples include:
 
-Not in scope: the tool doing exactly what `--dry-run`/`--verbose` output
-said it would do, or platform issues on operating systems this project
-doesn't yet support (see the Platform support section of
-[README.md](../README.md)).
+- deletion/mutation outside an approved provider root;
+- deletion of protected, unknown, active, or partial-scan state contrary to `docs/security/SAFETY_INVARIANTS.md`;
+- symlink/junction/mount/reparse escape;
+- TOCTOU identity swap that defeats sealed-plan revalidation;
+- custom root confusion that causes unrelated user data to be treated as provider data;
+- policy/configuration/Guardian behavior that elevates authority above constitutional ceilings;
+- malicious provider manifest/knowledge bundle gaining unearned authority or command execution;
+- remote/fleet request bypassing local node safety;
+- release/update provenance or channel constraints being bypassed;
+- command injection or unsafe provider-native invocation;
+- quarantine/restore behavior that silently overwrites unrelated state.
+
+## Security contract
+
+The canonical rules are:
+
+- [Product Constitution](../docs/CONSTITUTION.md)
+- [Safety Invariants](../docs/security/SAFETY_INVARIANTS.md)
+- [Threat Model](../docs/security/THREAT_MODEL.md)
+- [Incident Response](../docs/security/INCIDENT_RESPONSE.md)
+
+A security fix that changes destructive behavior is CR4 and follows the expedited-but-not-bypassed safety workflow in `docs/development/RELEASE_GATES.md`.
 
 ## Supported versions
 
-Only the latest tagged release is supported. There is no long-term-support
-branch for a single-maintainer CLI tool at this stage.
+Until a formal support policy is introduced, only the latest stable tagged release is supported for security fixes. Beta/nightly channels may intentionally carry lower default authority and different support expectations.

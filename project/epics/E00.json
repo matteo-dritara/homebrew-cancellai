@@ -1,0 +1,253 @@
+{
+  "schema_version": 1,
+  "id": "E00",
+  "phase": "P0",
+  "title": "Trust Floor Remediation",
+  "objective": "Correct known P0 safety and contract defects in Python without broadening product scope.",
+  "dependencies": [],
+  "status": "in_progress",
+  "stories": [
+    {
+      "id": "E00-S01",
+      "title": "Enforce protected-name barriers",
+      "status": "ready_for_review",
+      "outcome": "Make documented protected names an executable defense at discovery and execution time.",
+      "change_risk": "CR4",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "Protected names are rejected even if a future scanner emits them as candidate actions.",
+        "Protection is checked again immediately before filesystem mutation.",
+        "Claude auto-memory and Codex auth/config/plugins remain non-destructive under every flag."
+      ],
+      "safety_obligations": [
+        "SI-001",
+        "SI-003",
+        "SI-006"
+      ],
+      "verification": [
+        "Unit tests inject protected actions directly into execution.",
+        "Adversarial tests cover nested protected paths, symlinks, and aggressive mode."
+      ],
+      "documentation_impact": [
+        "docs/security/SAFETY_INVARIANTS.md",
+        "docs/architecture/AS_IS.md"
+      ]
+    },
+    {
+      "id": "E00-S02",
+      "title": "Fingerprint custom provider roots",
+      "status": "ready_for_review",
+      "outcome": "Reject destructive use of custom roots that do not credibly match the selected provider layout.",
+      "change_risk": "CR4",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "Default roots remain accepted when structurally valid.",
+        "Custom roots receive a deterministic provider fingerprint result.",
+        "Unknown or low-confidence roots allow inspection but refuse destructive planning/execution."
+      ],
+      "safety_obligations": [
+        "SI-002",
+        "SI-004",
+        "SI-009"
+      ],
+      "verification": [
+        "Fixtures include ordinary project directories containing tmp/log folders.",
+        "Negative tests prove no destructive plan is emitted for unrecognized roots."
+      ],
+      "documentation_impact": [
+        "docs/architecture/PROVIDER_MODEL.md",
+        "docs/security/THREAT_MODEL.md"
+      ]
+    },
+    {
+      "id": "E00-S03",
+      "title": "Make aggressive mode retention-safe",
+      "status": "done",
+      "outcome": "Ensure aggressive expands eligible categories but never silently bypasses age retention.",
+      "change_risk": "CR3",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "Every aggressive candidate is subject to the configured retention cutoff unless a future explicitly named all-ages mode exists.",
+        "Fresh legacy/cache artifacts remain excluded.",
+        "Dry-run and clean select the same artifact set."
+      ],
+      "safety_obligations": [
+        "SI-005",
+        "SI-012"
+      ],
+      "verification": [
+        "Boundary tests at cutoff-1s, cutoff, and cutoff+1s.",
+        "Property-style fixture sweep across aggressive categories."
+      ],
+      "documentation_impact": [
+        "docs/CLI.md",
+        "CHANGELOG.md"
+      ]
+    },
+    {
+      "id": "E00-S04",
+      "title": "Remove ambiguous destructive CLI escalation",
+      "status": "ready_for_review",
+      "outcome": "Require the clean subcommand for all destructive behavior and publish stable exit semantics.",
+      "change_risk": "CR3",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "Flags without a subcommand never normalize to clean.",
+        "Bare cancellai and status remain read-only.",
+        "Blocked or partial execution produces a documented non-zero machine-readable exit code distinct from validation failure."
+      ],
+      "safety_obligations": [
+        "SI-007",
+        "SI-014"
+      ],
+      "verification": [
+        "CLI table tests cover every global/common flag without a subcommand.",
+        "Automation tests assert exit codes for success, blocked, partial, failure, and invalid usage."
+      ],
+      "documentation_impact": [
+        "docs/CLI.md",
+        "docs/development/ENGINEERING_SYSTEM.md",
+        "CHANGELOG.md"
+      ]
+    },
+    {
+      "id": "E00-S05",
+      "title": "Represent incomplete scans and fail closed",
+      "status": "ready_for_review",
+      "outcome": "Stop treating unreadable or partially scanned trees as implicitly safe.",
+      "change_risk": "CR4",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "Discovery reports completeness for each scanned scope.",
+        "PARTIAL and UNKNOWN scan states cannot yield destructive authority.",
+        "Status explains unreadable paths without crashing."
+      ],
+      "safety_obligations": [
+        "SI-008",
+        "SI-009",
+        "SI-010"
+      ],
+      "verification": [
+        "Permission-denied and disappearing-path fixtures.",
+        "Execution tests prove partial inventory cannot produce irreversible actions."
+      ],
+      "documentation_impact": [
+        "docs/architecture/DOMAIN_MODEL.md",
+        "docs/security/SAFETY_INVARIANTS.md"
+      ]
+    },
+    {
+      "id": "E00-S06",
+      "title": "Protect concurrent Claude metadata rewrites",
+      "status": "ready_for_review",
+      "outcome": "Make history trimming streaming and safe in the presence of active writers.",
+      "change_risk": "CR3",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "history.jsonl is streamed to a temporary sibling rather than loaded as a whole.",
+        "Shared mutable metadata is never rewritten while Claude is detected active, even with allow-running.",
+        "Atomic replace preserves mode and survives malformed lines."
+      ],
+      "safety_obligations": [
+        "SI-011",
+        "SI-015"
+      ],
+      "verification": [
+        "Large synthetic history file test.",
+        "Concurrent mutation simulation verifies new lines are not lost."
+      ],
+      "documentation_impact": [
+        "docs/security/THREAT_MODEL.md",
+        "CHANGELOG.md"
+      ]
+    },
+    {
+      "id": "E00-S09",
+      "title": "Fail closed when provider activity is unknown",
+      "status": "ready_for_review",
+      "outcome": "Stop treating an unusable process observation as proof that no provider is running.",
+      "change_risk": "CR4",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "Process enumeration reports whether it succeeded, separately from which processes it found.",
+        "An unusable observation blocks destructive work exactly as a detected running provider does.",
+        "Status distinguishes 'no provider running' from 'could not tell'."
+      ],
+      "safety_obligations": [
+        "SI-009",
+        "SI-014",
+        "SI-011"
+      ],
+      "verification": [
+        "Tests simulate ps being absent, failing, timing out, and returning unparsable output.",
+        "Execution tests prove no mutation occurs while activity is unknown unless explicitly allowed."
+      ],
+      "documentation_impact": [
+        "docs/CLI.md",
+        "docs/architecture/AS_IS.md",
+        "CHANGELOG.md"
+      ]
+    },
+    {
+      "id": "E00-S07",
+      "title": "P0 regression evidence packet",
+      "status": "planned",
+      "outcome": "Close Trust Floor only with explicit evidence for every P0 defect.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E00-S01",
+        "E00-S02",
+        "E00-S03",
+        "E00-S04",
+        "E00-S05",
+        "E00-S06"
+      ],
+      "acceptance_criteria": [
+        "All P0 reproduction cases are converted to permanent regression tests.",
+        "No runtime feature beyond P0 remediation is introduced.",
+        "Owner-visible Safety Verdict records residual risks and release recommendation."
+      ],
+      "safety_obligations": [
+        "SI-019"
+      ],
+      "verification": [
+        "Full Python suite, lint/type/docs gates.",
+        "Independent verifier reruns P0 adversarial scenarios from specification."
+      ],
+      "documentation_impact": [
+        "project/evidence/README.md",
+        "docs/audits/2026-08-27-CODE_REVIEW.md"
+      ]
+    },
+    {
+      "id": "E00-S08",
+      "title": "Report provider layout coverage",
+      "status": "ready_for_review",
+      "outcome": "Make the gap between observed provider state and cancellAI-classified state visible instead of silent.",
+      "change_risk": "CR1",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "Status classifies every top-level provider entry with a state that matches what cleanup actually does to it, with size.",
+        "A container whose contents are selected by age and policy is never classified as deletable in its own right.",
+        "Conditional categories state the condition rather than being reported as unconditional.",
+        "Unknown entries are reported and never become cleanup candidates.",
+        "Machine-readable status output exposes the same coverage classification."
+      ],
+      "safety_obligations": [
+        "SI-004",
+        "SI-009",
+        "SI-010"
+      ],
+      "verification": [
+        "Fixtures include provider directories this build does not classify.",
+        "Tests prove an unknown entry cannot enter a destructive plan, including under --aggressive.",
+        "Tests prove no container carrying a selective state is ever selected for deletion itself."
+      ],
+      "documentation_impact": [
+        "docs/CLI.md",
+        "docs/architecture/AS_IS.md",
+        "CHANGELOG.md"
+      ]
+    }
+  ]
+}

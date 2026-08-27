@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Protected names (`CLAUDE_PROTECTED_NAMES` / `CODEX_PROTECTED_NAMES`) are now an executable barrier instead of documentation. They are enforced when the plan is built and again inside `safe_remove`, immediately before any deletion, so a future discovery change cannot silently invalidate them (E00-S01).
+- `--aggressive` no longer bypasses the age cutoff for Claude legacy directories and rebuildable cache files. It widens which categories are eligible; retention is applied independently (E00-S03).
+- Only the provider's own default directory is mutated. A root relocated with `CODEX_HOME` or `CLAUDE_CONFIG_DIR` is fully inspectable but is never deleted from or written to: nothing observable in a filesystem proves a directory belongs to a provider, so this release refuses to act on structural resemblance. Two weaker schemes were tried and rejected by independent review before this one (E00-S02, ADR-0013 superseding ADR-0012).
+- The protected-name barrier is applied to the path as written as well as after resolution, and matches case-insensitively. Previously a protected entry that was itself a symlink lost its protection entirely, and a candidate spelled `Plugins` bypassed the barrier on case-insensitive APFS (E00-S01).
+- An unusable process observation is no longer read as "no provider is running". `ps` output that does not contain this process is not a full listing, so a missing, failing, filtered or stubbed enumeration refuses cleanup unless `--allow-running` is given (E00-S09).
+- `history.jsonl` is never rewritten through a symlink. `os.replace` would have swapped the link for a regular file and silently detached whatever it pointed at (E00-S06).
+- Filesystem observation errors are no longer silently flattened into zero. Every discovery guard goes through an `lstat` that separates "not there" from "could not look" - `Path.exists()` answers False for both, so using it as a guard turned an unreadable directory into an empty one. An unreadable path now withholds destructive authority for that provider, and `status` lists the unreadable paths and prints partial totals as lower bounds (E00-S05).
+- Claude `history.jsonl` trimming now streams bytes instead of loading and re-encoding the file, so retained lines - including CRLF endings and a missing trailing newline - are preserved verbatim. It re-identifies the source immediately before the atomic replace and abandons the rewrite if a provider wrote concurrently. Trimming is skipped entirely while a Claude process is running, even under `--allow-running`, and a failed trim is reported instead of looking like "nothing to do" (E00-S06).
+
+### Changed
+
+- **Breaking:** flags without a subcommand no longer normalize to `clean`. `cancellai --days 14` now runs the read-only `status` view; deletion requires typing `clean`. An unrecognized verb is a usage error (E00-S04).
+- **Breaking:** a relocated `$CODEX_HOME` / `$CLAUDE_CONFIG_DIR` can no longer be cleaned or configured, only inspected. This is a capability regression, taken deliberately: see ADR-0013. Default roots are unaffected.
+- **Breaking:** `clean` exits `3` on mutation failure (previously `2`) and `4` when safety blocked or deferred the requested work. No failure path escapes the taxonomy: an unexpected bug also reports `3` rather than Python's exit code `1`, which automation cannot distinguish from a declined prompt. Exit `2` is now reserved for invalid usage and refused configuration roots. `--json` output carries `exit_code`, `blocked_tools` and `deferred` (E00-S04).
+- `status` reads each provider root in a single pass instead of traversing it for the total and again for the largest entries.
+- `status --json` and `clean --json` now report per-root `origin`, `confidence`, provider `markers` and `destructive_allowed`, plus a `scan` object and `withheld_tools`.
+
+### Added
+
+- `status --coverage` classifies every top-level provider entry as `selective`, `selective-aggressive`, `aggressive-only`, `trimmed`, `protected`, `reported` or `unknown`, with a legend. There is deliberately no state meaning "deleted as it stands", because no top-level entry is treated that way: `projects/` and `sessions/` are containers whose *contents* are selected by age and policy, and `history.jsonl` is trimmed rather than deleted. Unknown entries are reported so provider layout drift stays visible and are never cleanup candidates. The same classification is exposed in `status --json` (E00-S08).
+
+### Changed
+
+- Added the cancellAI Engineering Operating System (cEOS): product constitution, decision register, target architecture, threat model, safety invariants, evidence-gated development model, Claude/Codex executor-verifier protocol, and machine-readable roadmap/backlog control plane.
+- Reframed the long-term product from a macOS Claude/Codex cleanup script to a local-first, cross-platform, provider-agnostic Agent State Control Plane while clearly separating that target from the currently released Python v1 feature set.
+- Documented the spec-first Python-to-Rust migration and the P0 trust-floor work that must land before the reference implementation is frozen.
+- Added governance/document integrity automation, story-specific executor/verifier briefs, CodeQL scanning, CODEOWNERS, incident response, synthetic-fixture policy, and supply-chain-aware CI foundations.
+- Replaced automatic Dependabot merge behavior with review-gated dependency updates and pinned first-party GitHub Actions to immutable revisions in active workflows.
+
+
 ## [1.0.2] - 2026-08-27
 
 ### Fixed

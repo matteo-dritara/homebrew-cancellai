@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "id": "E11",
+  "phase": "P3",
+  "title": "Deterministic Policy Engine",
+  "objective": "Compile human-readable policy into typed constraints and a fully explainable Effective Policy.",
+  "dependencies": [
+    "E09"
+  ],
+  "status": "planned",
+  "stories": [
+    {
+      "id": "E11-S01",
+      "title": "Policy schema and scopes",
+      "status": "planned",
+      "outcome": "Define global, machine, provider, project, artifact-type, session/pin scopes and versioned policy schema.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E08-S01"
+      ],
+      "acceptance_criteria": [
+        "Unknown policy keys fail validation rather than being ignored.",
+        "Policies are data, not executable code."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Schema/version migration tests."
+      ],
+      "documentation_impact": [
+        "docs/architecture/POLICY_MODEL.md"
+      ]
+    },
+    {
+      "id": "E11-S02",
+      "title": "Constraint resolver",
+      "status": "planned",
+      "outcome": "Implement constitutional precedence and monotonic authority resolution.",
+      "change_risk": "CR4",
+      "dependencies": [
+        "E11-S01",
+        "E03-S04"
+      ],
+      "acceptance_criteria": [
+        "Safety invariants cannot be overridden by configuration.",
+        "More specific user policy cannot exceed artifact/provider/trust ceilings.",
+        "Conflicts resolve deterministically."
+      ],
+      "safety_obligations": [
+        "SI-001",
+        "SI-025"
+      ],
+      "verification": [
+        "Exhaustive precedence matrix and fuzz/property tests."
+      ],
+      "documentation_impact": [
+        "docs/architecture/POLICY_MODEL.md"
+      ]
+    },
+    {
+      "id": "E11-S03",
+      "title": "Policy explanation graph",
+      "status": "planned",
+      "outcome": "Return a trace showing every rule/evidence item that contributed to the final result.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E11-S02"
+      ],
+      "acceptance_criteria": [
+        "Explanation order is deterministic.",
+        "Suppressed higher-authority requests explain exactly which ceiling won."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Golden explain-policy fixtures."
+      ],
+      "documentation_impact": [
+        "docs/PRODUCT.md"
+      ]
+    },
+    {
+      "id": "E11-S04",
+      "title": "Budgets, retention, pinning",
+      "status": "planned",
+      "outcome": "Implement total/provider/project budgets, age/count retention, and explicit pin/protect semantics.",
+      "change_risk": "CR3",
+      "dependencies": [
+        "E11-S02"
+      ],
+      "acceptance_criteria": [
+        "Pinned/protected state outranks cleanup policy.",
+        "Budget pressure chooses only artifacts already eligible under safety/lifecycle rules."
+      ],
+      "safety_obligations": [
+        "SI-001",
+        "SI-025"
+      ],
+      "verification": [
+        "Budget conflict and pinning scenarios."
+      ],
+      "documentation_impact": [
+        "docs/architecture/POLICY_MODEL.md"
+      ]
+    }
+  ]
+}

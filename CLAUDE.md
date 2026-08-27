@@ -1,6 +1,5 @@
 # CLAUDE.md
 
-This project's instructions for coding agents live in one place to avoid the
-two files drifting apart. See:
-
 @AGENTS.md
+
+When Claude is the executor or verifier, also follow `docs/development/AGENT_PROTOCOL.md` and use the relevant prompt/evidence templates in `project/templates/`.

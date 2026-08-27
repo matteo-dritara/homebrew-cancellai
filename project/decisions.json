@@ -1,0 +1,237 @@
+{
+  "schema_version": 1,
+  "project": "cancellAI",
+  "updated": "2026-08-27",
+  "decisions": [
+    {
+      "id": "PD-001",
+      "title": "Agent State Control Plane",
+      "status": "accepted",
+      "decision": "cancellAI evolves from a cleaner into a local-first, cross-platform, provider-agnostic Agent State Control Plane. The product sequence is storage control plane first, cross-platform Guardian second, broader AI-developer hygiene only where it remains directly tied to agent-generated state.",
+      "rationale": "Vendor-native cleanup will improve and commoditize narrow deletion. Cross-provider visibility, governance, prevention, and lifecycle control remain structurally underserved.",
+      "implications": [
+        "Provider adapters are replaceable edges, not the product core.",
+        "The product boundary is agent-generated local state, not generic system cleanup.",
+        "Cross-platform architecture is required from the core model onward."
+      ]
+    },
+    {
+      "id": "PD-002",
+      "title": "Wedge market sequence",
+      "status": "accepted",
+      "decision": "Start obsessively with power developers and AI-native builders, design the architecture to expand to mainstream developers, and preserve a natural path to team and enterprise governance.",
+      "rationale": "Power users experience the problem earliest and most intensely while providing the best feedback surface for a developer-first product.",
+      "implications": [
+        "CLI/TUI quality is a first-order product concern.",
+        "Zero-config experiences are added without weakening advanced controls.",
+        "Fleet features must not compromise the local OSS core."
+      ]
+    },
+    {
+      "id": "PD-003",
+      "title": "Progressive value promise",
+      "status": "accepted",
+      "decision": "Enter with safe reclaim plus complete visibility, evolve into prevention, then into full lifecycle governance of agent state.",
+      "rationale": "Immediate reclaim solves a concrete pain while observability creates a durable path beyond cleanup.",
+      "implications": [
+        "SEE and RECLAIM precede PREVENT and GOVERN.",
+        "Every roadmap phase must preserve prior explainability."
+      ]
+    },
+    {
+      "id": "PD-004",
+      "title": "Adaptive authority with quarantine-first",
+      "status": "accepted",
+      "decision": "Authority progresses from Observe to Recommend to Quarantine to Govern to Autopilot. Quarantine is preferred when technically possible. Authority depends on confidence, artifact type, reversibility, provider capability, and user policy.",
+      "rationale": "Power should increase only when safety evidence supports it.",
+      "implications": [
+        "Autopilot is never a global bypass.",
+        "Unknown or protected artifacts remain Observe Only.",
+        "Irreversible actions require stronger gates than reversible ones."
+      ]
+    },
+    {
+      "id": "PD-005",
+      "title": "Multidimensional artifact model",
+      "status": "accepted",
+      "decision": "The internal model is artifact-centric and multidimensional across machine, project, provider, artifact, and session. Primary UX is machine/project-centric with immediate alternative views.",
+      "rationale": "A single provider hierarchy reproduces the fragmentation cancellAI is intended to overcome.",
+      "implications": [
+        "Project attribution is evidence-based and may remain Unattributed.",
+        "No aggressive inference is allowed merely to make dashboards look complete."
+      ]
+    },
+    {
+      "id": "PD-006",
+      "title": "Three-tier knowledge model",
+      "status": "accepted",
+      "decision": "Classification uses Verified Knowledge, Observed Evidence, and Inferred Signals. Every conclusion carries provenance and confidence; inference may improve recommendations but cannot silently elevate destructive authority.",
+      "rationale": "Intelligence must remain explainable and safe under provider drift.",
+      "implications": [
+        "Every classified artifact has evidence provenance.",
+        "Low-confidence classifications are non-destructive.",
+        "AI assistance, if introduced, remains advisory in destructive paths."
+      ]
+    },
+    {
+      "id": "PD-007",
+      "title": "Local authority, federated intelligence",
+      "status": "accepted",
+      "decision": "The full local core works offline. Optional network intelligence may distribute signed/versioned provider knowledge and receive privacy-minimized opt-in signals. Cloud knowledge can inform but never directly authorize deletion.",
+      "rationale": "Local-first execution preserves trust while a network knowledge plane can improve compatibility across a fast-moving ecosystem.",
+      "implications": [
+        "No account is required for local product functionality.",
+        "Knowledge updates are separated from software updates.",
+        "Remote control never bypasses local safety invariants."
+      ]
+    },
+    {
+      "id": "PD-008",
+      "title": "Open local ecosystem, commercial fleet plane",
+      "status": "accepted",
+      "decision": "Scanner, safety kernel, artifact model, provider SDK/adapters, CLI/TUI, quarantine, Guardian, and local policy engine remain open source. Future commercial value lives in multi-machine governance, organization visibility, audit aggregation, and enterprise integration.",
+      "rationale": "A filesystem tool must be inspectable by individual developers; monetization should come from coordination rather than removing local capability.",
+      "implications": [
+        "OSS must remain independently useful and complete on one machine.",
+        "Commercial boundaries are architectural, not arbitrary feature locks."
+      ]
+    },
+    {
+      "id": "PD-009",
+      "title": "CLI and TUI are first-class clients",
+      "status": "accepted",
+      "decision": "CLI and TUI share one domain engine and contain no safety or domain logic of their own. Guardian and Desktop are later clients of the same core.",
+      "rationale": "Power users need scriptability and rich exploration without semantic drift between interfaces.",
+      "implications": [
+        "All operations expose structured engine APIs.",
+        "CLI JSON contracts are stable and versioned.",
+        "A TUI-generated plan and CLI-generated plan must be semantically equivalent."
+      ]
+    },
+    {
+      "id": "PD-010",
+      "title": "Spec-first clean migration to Rust",
+      "status": "accepted",
+      "decision": "Fix only P0 safety defects in the Python implementation, extract an executable behavioral contract and adversarial fixtures, freeze Python as the reference implementation, then build a Rust core and switch only after differential parity and explicit documented divergences.",
+      "rationale": "A rewrite without a behavioral oracle would throw away proven safety knowledge; indefinitely extending the monolith would undermine the target architecture.",
+      "implications": [
+        "Python v1 is a reference, not the target architecture.",
+        "No large new feature belongs in the Python monolith.",
+        "Differential testing is a release gate for the migration."
+      ]
+    },
+    {
+      "id": "PD-011",
+      "title": "Composite formal safety model",
+      "status": "accepted",
+      "decision": "Every AgentArtifact has Risk Class, Reversibility, Knowledge Confidence, Activity State, and Authority Ceiling. Effective authority is the minimum allowed by user policy, artifact ceiling, confidence, reversibility, provider capability, and trust.",
+      "rationale": "A scalar SAFE/UNSAFE label cannot capture a destructive lifecycle tool's real constraints.",
+      "implications": [
+        "Safety limits are first-class data, not scattered conditionals.",
+        "UNKNOWN, ACTIVE, PROTECTED, PARTIAL SCAN, STALE PLAN, PATH ESCAPE, and IDENTITY CHANGED states are non-destructive."
+      ]
+    },
+    {
+      "id": "PD-012",
+      "title": "Multidimensional lifecycle plus event history",
+      "status": "accepted",
+      "decision": "Current lifecycle is modeled independently across Activity, Residency, Protection, and Integrity. Significant transitions are append-only events. Purged artifacts retain only contentless tombstones needed for audit and aggregate intelligence.",
+      "rationale": "State such as ORPHANED and PINNED must coexist without forcing one ambiguous status field.",
+      "implications": [
+        "Lifecycle transitions are explicit domain operations.",
+        "Purge does not require forgetting that space was reclaimed."
+      ]
+    },
+    {
+      "id": "PD-013",
+      "title": "Capability-based provider ecosystem",
+      "status": "accepted",
+      "decision": "Providers declare granular capabilities. Simple integrations may be manifest-only; complex integrations use native adapters. Trust levels are Built-in Verified, Community Verified, Local Custom, and Untrusted, and directly bound authority.",
+      "rationale": "Provider support must be evolvable and honest rather than all-or-nothing.",
+      "implications": [
+        "Manifest knowledge never implies destructive trust by itself.",
+        "Claude Code and Codex are reference providers; Gemini CLI, GitHub Copilot CLI, and OpenCode follow."
+      ]
+    },
+    {
+      "id": "PD-014",
+      "title": "Declarative hierarchical policy with deterministic resolution",
+      "status": "accepted",
+      "decision": "Human-readable policies are hierarchical and compiled into typed internal policy. Deterministic constraint resolution produces an Effective Policy with complete explanation. Precedence is Safety Invariants > Artifact Authority Ceiling > Provider/Trust Capability > Explicit Pin/Protection > Specific Policy > General Policy > Default.",
+      "rationale": "Configuration cannot become a backdoor around the safety kernel.",
+      "implications": [
+        "Policy decisions are reproducible.",
+        "An explain-policy path is part of the public contract."
+      ]
+    },
+    {
+      "id": "PD-015",
+      "title": "Predictive pressure-aware Guardian with bounded autonomy",
+      "status": "accepted",
+      "decision": "Guardian separates detection, decision, and authority. It may use capacity, velocity, behavioral anomaly, structural anomaly, local baselines, and pressure states, but cannot self-escalate beyond Effective Policy and safety ceilings.",
+      "rationale": "The product should prevent runaway storage before disk exhaustion without turning prediction into destructive permission.",
+      "implications": [
+        "Forecasts are advisory evidence, not authorization.",
+        "Guardian can be intelligent while remaining operationally constrained."
+      ]
+    },
+    {
+      "id": "PD-016",
+      "title": "Bounded local memory",
+      "status": "accepted",
+      "decision": "Persistence has three layers: reconstructible Current State, append-only Operational Event Ledger, and aggregated Analytical Memory. Retention and compaction are automatic and cancellAI has a strict self-budget. State is contentless by default and ephemeral inspection is supported.",
+      "rationale": "The product must remember enough to improve without becoming another storage leak.",
+      "implications": [
+        "Filesystem/provider state remains authoritative.",
+        "Local reset deletes cancellAI state only and inventory can be rebuilt."
+      ]
+    },
+    {
+      "id": "PD-017",
+      "title": "Signed canonical releases and multi-channel distribution",
+      "status": "accepted",
+      "decision": "Canonical releases produce signed/attested artifacts, checksums, SBOM, provenance, and a release manifest. Distribution is multi-channel. Knowledge updates are separate from software updates. Installation source is tracked. Stable, beta, and nightly channels have different authority ceilings; WSL is modeled as a distinct environment.",
+      "rationale": "A destructive local tool needs a verifiable supply chain and cross-platform distribution without granting experimental builds stable-level authority.",
+      "implications": [
+        "The release factory becomes evidence-driven.",
+        "Package-manager and direct-install upgrades respect their original installation source."
+      ]
+    },
+    {
+      "id": "PD-018",
+      "title": "Evidence-gated development and independent verification",
+      "status": "accepted",
+      "decision": "Every work item has Change Risk Level CR0-CR4, separate Definition of Done and Definition of Safe, an independent verifier, evidence-driven functional/safety/compatibility/operability gates, and an owner-visible Safety Verdict for high-risk changes.",
+      "rationale": "Passing tests alone is not adequate evidence for software that can irreversibly mutate user data.",
+      "implications": [
+        "Executor and verifier roles are separate and may rotate.",
+        "Verifier works primarily from specification, criteria, invariants, and threat cases rather than executor reasoning.",
+        "CR4 work cannot become release-eligible without explicit safety evidence."
+      ]
+    },
+    {
+      "id": "PD-019",
+      "title": "Custom provider roots require validated structure and explicit intent",
+      "status": "superseded",
+      "decision": "Superseded by PD-020. A non-default root was to be mutated when it contained content-validated provider markers and the operator passed --allow-custom-root.",
+      "rationale": "Independent review produced a lookalike satisfying both conditions. Structural evidence is forgeable, so it cannot be positive provider identity, and operator intent cannot supply the missing proof when the failure mode is intent based on a wrong value.",
+      "implications": [
+        "Relocated provider roots require an explicit flag in scripts and cron entries.",
+        "Refusal is visible and non-destructive: exit code 4 naming the missing condition.",
+        "Provider-native identity remains the target for the Rust core once the provider capability contract exists."
+      ]
+    },
+    {
+      "id": "PD-020",
+      "title": "Custom provider roots are inspection-only in the Python reference",
+      "status": "accepted",
+      "decision": "Only the provider's own default directory may be mutated by the Python reference. A relocated CODEX_HOME/CLAUDE_CONFIG_DIR is fully inspectable and never deleted from or written to.",
+      "rationale": "SI-002 requires proof that a directory belongs to the provider. Everything the filesystem can show is forgeable, and an operator flag supplies intent rather than proof. Positive identity needs the provider capability contract that E05 defines and this reference does not have.",
+      "implications": [
+        "Operators who relocated a provider root lose clean and configure until the Rust core ships provider-native identity.",
+        "The structural fingerprint remains as reported information and is documented as non-authoritative.",
+        "--allow-custom-root is removed rather than kept as a switch that cannot make the operation safe."
+      ]
+    }
+  ]
+}

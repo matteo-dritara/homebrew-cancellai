@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "id": "E09",
+  "phase": "P2",
+  "title": "Atlas TUI",
+  "objective": "Deliver the first rich exploratory interface without duplicating engine logic.",
+  "dependencies": [
+    "E08"
+  ],
+  "status": "planned",
+  "stories": [
+    {
+      "id": "E09-S01",
+      "title": "TUI shell and navigation",
+      "status": "planned",
+      "outcome": "Build keyboard-first terminal UI over engine query APIs.",
+      "change_risk": "CR1",
+      "dependencies": [
+        "E08-S04"
+      ],
+      "acceptance_criteria": [
+        "No direct filesystem/provider access from TUI crate.",
+        "All displayed actions derive from engine plans.",
+        "Works on tier-1 terminals with graceful capability fallback."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Snapshot/render tests plus manual accessibility checklist."
+      ],
+      "documentation_impact": [
+        "docs/architecture/TARGET.md"
+      ]
+    },
+    {
+      "id": "E09-S02",
+      "title": "Machine and project atlas",
+      "status": "planned",
+      "outcome": "Show total footprint, reclaimable estimates, providers, projects, unattributed state, and top contributors.",
+      "change_risk": "CR1",
+      "dependencies": [
+        "E09-S01"
+      ],
+      "acceptance_criteria": [
+        "Logical and estimated reclaimable values are visually distinct.",
+        "Unknown/incomplete scans are prominent and never hidden in totals."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Golden view models from fixture inventory."
+      ],
+      "documentation_impact": [
+        "docs/PRODUCT.md"
+      ]
+    },
+    {
+      "id": "E09-S03",
+      "title": "Artifact explain view",
+      "status": "planned",
+      "outcome": "Expose why an artifact exists, classification, evidence, risk, reversibility, allowed authority, and policy outcome.",
+      "change_risk": "CR1",
+      "dependencies": [
+        "E09-S01",
+        "E08-S01"
+      ],
+      "acceptance_criteria": [
+        "Every destructive recommendation has a human-readable explanation path.",
+        "Low-confidence data is visibly differentiated."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Explanation golden tests."
+      ],
+      "documentation_impact": [
+        "docs/PRODUCT.md"
+      ]
+    },
+    {
+      "id": "E09-S04",
+      "title": "Plan review workflow",
+      "status": "planned",
+      "outcome": "Allow select/inspect/plan handoff while execution remains in the shared safety engine.",
+      "change_risk": "CR3",
+      "dependencies": [
+        "E09-S03"
+      ],
+      "acceptance_criteria": [
+        "TUI cannot mutate without a sealed engine plan.",
+        "Irreversible actions receive stronger confirmation than quarantine."
+      ],
+      "safety_obligations": [
+        "SI-016"
+      ],
+      "verification": [
+        "TUI-to-engine semantic equivalence tests."
+      ],
+      "documentation_impact": [
+        "docs/security/SAFETY_INVARIANTS.md"
+      ]
+    }
+  ]
+}

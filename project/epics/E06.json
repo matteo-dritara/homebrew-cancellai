@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "id": "E06",
+  "phase": "P1",
+  "title": "Rust CLI Parity and Cutover",
+  "objective": "Make Rust the canonical engine only after observable parity, migration, and rollback evidence.",
+  "dependencies": [
+    "E05"
+  ],
+  "status": "planned",
+  "stories": [
+    {
+      "id": "E06-S01",
+      "title": "Rust CLI contract parity",
+      "status": "planned",
+      "outcome": "Implement status/inspect/plan/clean/configure equivalents against the new engine without TUI concerns.",
+      "change_risk": "CR3",
+      "dependencies": [
+        "E05-S03",
+        "E05-S04"
+      ],
+      "acceptance_criteria": [
+        "Read-only default is explicit and no flag implies clean.",
+        "JSON schemas match versioned contract.",
+        "Exit codes match the documented taxonomy."
+      ],
+      "safety_obligations": [
+        "SI-007"
+      ],
+      "verification": [
+        "Golden CLI snapshots on all tier-1 OSes."
+      ],
+      "documentation_impact": [
+        "docs/CLI.md"
+      ]
+    },
+    {
+      "id": "E06-S02",
+      "title": "Differential parity gate",
+      "status": "planned",
+      "outcome": "Run Python and Rust over the full normative fixture corpus in CI.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E06-S01",
+        "E01-S05"
+      ],
+      "acceptance_criteria": [
+        "All unexplained semantic differences fail CI.",
+        "Approved divergences reference ADR/RFC IDs."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Injected divergence proves gate effectiveness."
+      ],
+      "documentation_impact": [
+        "docs/development/MIGRATION_PYTHON_RUST.md"
+      ]
+    },
+    {
+      "id": "E06-S03",
+      "title": "Migration and rollback packaging",
+      "status": "planned",
+      "outcome": "Define side-by-side invocation, data compatibility, and rollback from Rust candidate to Python reference during beta.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E06-S02"
+      ],
+      "acceptance_criteria": [
+        "Beta users can identify active engine/version.",
+        "No local state migration is irreversible before cutover."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Install/rollback smoke tests."
+      ],
+      "documentation_impact": [
+        "docs/development/MIGRATION_PYTHON_RUST.md",
+        "docs/RELEASING.md"
+      ]
+    },
+    {
+      "id": "E06-S04",
+      "title": "Canonical engine switch",
+      "status": "planned",
+      "outcome": "Promote Rust to stable only after functional, safety, compatibility, and operability gates pass.",
+      "change_risk": "CR4",
+      "dependencies": [
+        "E06-S03"
+      ],
+      "acceptance_criteria": [
+        "Owner-visible migration Safety Verdict is accepted.",
+        "Python remains tagged/archiveable as reference for at least one transition window.",
+        "Release notes state any intentional contract change."
+      ],
+      "safety_obligations": [
+        "SI-019"
+      ],
+      "verification": [
+        "Full release evidence packet and independent verifier sign-off."
+      ],
+      "documentation_impact": [
+        "CHANGELOG.md",
+        "docs/development/RELEASE_GATES.md"
+      ]
+    }
+  ]
+}

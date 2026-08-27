@@ -8,8 +8,8 @@ license = { file = "LICENSE" }
 
 # cancellai ships as a single stdlib-only script (see cancellai.py) and is
 # distributed via the Homebrew formula in Formula/cancellai.rb, not via PyPI.
-# This file exists purely to configure dev tooling (ruff, mypy) and to declare
-# the minimum supported Python version -- it adds no runtime dependencies.
+# This file configures dev tooling and declares the minimum supported Python version.
+# Exact development/CI tool versions are pinned in requirements-dev.txt; there are no runtime dependencies.
 
 [tool.ruff]
 line-length = 145
@@ -25,9 +25,16 @@ ignore = ["TRY004"]
 [tool.ruff.lint.per-file-ignores]
 # assert is the standard unittest idiom, and fixture literals like "/tmp/x"
 # are not real filesystem usage -- both are expected in the test file.
-"tests/test_cancellai.py" = ["S101", "S108"]
+"tests/*.py" = ["S101", "S108"]
 
 [tool.mypy]
 python_version = "3.10"
-files = ["cancellai.py", "scripts/gen_docs.py"]
+files = [
+  "cancellai.py",
+  "scripts/gen_docs.py",
+  "scripts/project_os.py",
+  "scripts/check_docs.py",
+  "scripts/check_workflows.py",
+  "scripts/check_process.py",
+]
 strict = true

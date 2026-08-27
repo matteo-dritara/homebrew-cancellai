@@ -53,7 +53,7 @@ options:
 ```text
 usage: cancellai status [-h] [--days DAYS] [--keep-latest KEEP_LATEST] [--tool {all,codex,claude}]
                         [--codex-backend {auto,cli,filesystem}] [--aggressive] [--json] [--paths]
-                        [--top TOP]
+                        [--coverage] [--top TOP]
 
 options:
   -h, --help            show this help message and exit
@@ -67,6 +67,8 @@ options:
   --aggressive          Also remove Claude legacy/rebuildable caches
   --json                Machine-readable summary
   --paths               Show largest candidate paths
+  --coverage            Report which top-level provider entries this build classifies, including
+                        unknown ones
   --top TOP             Number of top-level disk consumers to show
 ```
 

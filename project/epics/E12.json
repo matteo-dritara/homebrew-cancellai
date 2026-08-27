@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "id": "E12",
+  "phase": "P3",
+  "title": "Quarantine, Archive, Restore, Purge",
+  "objective": "Introduce reversible lifecycle operations before expanding autonomy.",
+  "dependencies": [
+    "E11"
+  ],
+  "status": "planned",
+  "stories": [
+    {
+      "id": "E12-S01",
+      "title": "Quarantine store semantics",
+      "status": "planned",
+      "outcome": "Define same-volume move-first quarantine with explicit capacity and boundary checks.",
+      "change_risk": "CR4",
+      "dependencies": [
+        "E11-S02",
+        "E03-S05"
+      ],
+      "acceptance_criteria": [
+        "Quarantine never copies huge data when atomic/same-volume move is required by policy.",
+        "Insufficient space or cross-volume uncertainty fails closed.",
+        "Original identity and restore metadata are recorded contentlessly."
+      ],
+      "safety_obligations": [
+        "SI-018",
+        "SI-020"
+      ],
+      "verification": [
+        "Cross-volume, full-disk, rename-failure, and crash-injection tests."
+      ],
+      "documentation_impact": [
+        "docs/architecture/PERSISTENCE_MODEL.md"
+      ]
+    },
+    {
+      "id": "E12-S02",
+      "title": "Restore protocol",
+      "status": "planned",
+      "outcome": "Restore quarantined artifacts only if destination safety and conflict policy are satisfied.",
+      "change_risk": "CR4",
+      "dependencies": [
+        "E12-S01"
+      ],
+      "acceptance_criteria": [
+        "Restore never overwrites unrelated current provider state silently.",
+        "Conflict outcomes are explicit: refuse, alternate location, or provider-specific restore."
+      ],
+      "safety_obligations": [
+        "SI-013"
+      ],
+      "verification": [
+        "Destination-recreated and identity-conflict tests."
+      ],
+      "documentation_impact": [
+        "docs/security/THREAT_MODEL.md"
+      ]
+    },
+    {
+      "id": "E12-S03",
+      "title": "Archive/compression lifecycle",
+      "status": "planned",
+      "outcome": "Support cold archival for eligible artifacts with verifiable archive integrity.",
+      "change_risk": "CR3",
+      "dependencies": [
+        "E12-S01"
+      ],
+      "acceptance_criteria": [
+        "Archive format/version is explicit.",
+        "Compression never changes semantic classification to disposable.",
+        "Restore integrity is checked before source purge."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Round-trip and corruption tests."
+      ],
+      "documentation_impact": [
+        "docs/architecture/PERSISTENCE_MODEL.md"
+      ]
+    },
+    {
+      "id": "E12-S04",
+      "title": "Purge and tombstones",
+      "status": "planned",
+      "outcome": "Permanently purge only within authority ceilings and preserve a minimal contentless tombstone.",
+      "change_risk": "CR4",
+      "dependencies": [
+        "E12-S01",
+        "E13-S02"
+      ],
+      "acceptance_criteria": [
+        "Tombstones contain no prompts/source/file contents.",
+        "Irreversible purge is distinguishable from vendor-native conditionally reversible operations."
+      ],
+      "safety_obligations": [
+        "SI-020"
+      ],
+      "verification": [
+        "Privacy field allowlist test and purge evidence tests."
+      ],
+      "documentation_impact": [
+        "docs/architecture/PERSISTENCE_MODEL.md"
+      ]
+    }
+  ]
+}

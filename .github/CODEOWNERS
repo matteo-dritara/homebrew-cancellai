@@ -1,0 +1,9 @@
+# Repository owner. As the project grows, narrow paths can be delegated while
+# constitutional/safety/release boundaries retain explicit owner review.
+* @matteo-dritara
+
+/docs/CONSTITUTION.md @matteo-dritara
+/docs/security/ @matteo-dritara
+/project/decisions.json @matteo-dritara
+/project/roadmap.json @matteo-dritara
+/.github/workflows/ @matteo-dritara

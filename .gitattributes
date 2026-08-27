@@ -1,0 +1,20 @@
+# Source files are normalized to LF on checkout so the repository is byte-identical
+# across platforms.
+* text=auto eol=lf
+
+# Test fixtures are exempt. cancellAI preserves the exact bytes of the provider metadata
+# it rewrites, so a committed fixture asserting on CRLF or on a missing trailing newline
+# must reach the test runner unmodified. (Tests that build such bytes at runtime are
+# unaffected by Git either way; this protects the committed case.)
+tests/fixtures/** -text
+
+*.png binary
+*.jpg binary
+*.gz binary
+
+# Generated from the machine-readable control plane; do not hand-edit.
+docs/BACKLOG.md linguist-generated=true
+docs/ROADMAP.md linguist-generated=true
+docs/DECISION_REGISTER.md linguist-generated=true
+docs/CLI.md linguist-generated=true
+project/generated/PROJECT_STATUS.md linguist-generated=true

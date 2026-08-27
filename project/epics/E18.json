@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "id": "E18",
+  "phase": "P6",
+  "title": "Remote Targets and Fleet Boundary",
+  "objective": "Extend observation/governance to remote development environments without weakening local authority or OSS boundaries.",
+  "dependencies": [
+    "E16",
+    "E17"
+  ],
+  "status": "planned",
+  "stories": [
+    {
+      "id": "E18-S01",
+      "title": "Remote target abstraction",
+      "status": "planned",
+      "outcome": "Model SSH/dev-container/CI-runner targets as explicit machines with independent capabilities and trust.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E16-S02"
+      ],
+      "acceptance_criteria": [
+        "Remote inventory never masquerades as local state.",
+        "Disconnected targets preserve last-seen state as stale, not current."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Mock remote lifecycle tests."
+      ],
+      "documentation_impact": [
+        "docs/architecture/TARGET.md"
+      ]
+    },
+    {
+      "id": "E18-S02",
+      "title": "Local-agent remote execution boundary",
+      "status": "planned",
+      "outcome": "Keep mutation execution on the target node under its local safety kernel even when a remote controller requests policy evaluation.",
+      "change_risk": "CR4",
+      "dependencies": [
+        "E18-S01"
+      ],
+      "acceptance_criteria": [
+        "Remote control cannot bypass target safety invariants.",
+        "Every remote request is authenticated, authorized, and audit-linked."
+      ],
+      "safety_obligations": [
+        "SI-031"
+      ],
+      "verification": [
+        "Replay, stale-policy, and unauthorized-controller tests."
+      ],
+      "documentation_impact": [
+        "docs/security/THREAT_MODEL.md"
+      ]
+    },
+    {
+      "id": "E18-S03",
+      "title": "OSS/commercial protocol boundary",
+      "status": "planned",
+      "outcome": "Define an open local node protocol and separate optional fleet-control services without reducing local functionality.",
+      "change_risk": "CR1",
+      "dependencies": [
+        "E18-S02"
+      ],
+      "acceptance_criteria": [
+        "Single-machine workflows remain fully functional without account/cloud.",
+        "Commercial services add coordination, not local destructive capabilities."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Offline conformance tests."
+      ],
+      "documentation_impact": [
+        "docs/PRODUCT.md"
+      ]
+    }
+  ]
+}

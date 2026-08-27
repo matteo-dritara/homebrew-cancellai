@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "id": "E13",
+  "phase": "P3",
+  "title": "Local State, Event Ledger, Analytical Memory",
+  "objective": "Persist only bounded metadata required for lifecycle, audit, undo, and Guardian intelligence.",
+  "dependencies": [
+    "E11"
+  ],
+  "status": "planned",
+  "stories": [
+    {
+      "id": "E13-S01",
+      "title": "Reconstructible current-state store",
+      "status": "planned",
+      "outcome": "Introduce SQLite current state as a cache/index that can be dropped and rebuilt.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E08-S01"
+      ],
+      "acceptance_criteria": [
+        "Deleting the DB never deletes provider artifacts.",
+        "Rebuild from filesystem/provider produces equivalent current-state semantics.",
+        "Schema migrations are transactional."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Drop/rebuild equivalence and migration tests."
+      ],
+      "documentation_impact": [
+        "docs/architecture/PERSISTENCE_MODEL.md"
+      ]
+    },
+    {
+      "id": "E13-S02",
+      "title": "Append-only operational ledger",
+      "status": "planned",
+      "outcome": "Record significant classification/policy/mutation/lifecycle events without storing artifact content.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E13-S01"
+      ],
+      "acceptance_criteria": [
+        "Events are immutable after commit except compaction into signed/hashed summary records as specified.",
+        "Every mutation references plan/evidence IDs."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Crash recovery and append-order tests."
+      ],
+      "documentation_impact": [
+        "docs/architecture/PERSISTENCE_MODEL.md"
+      ]
+    },
+    {
+      "id": "E13-S03",
+      "title": "Analytical rollups and retention",
+      "status": "planned",
+      "outcome": "Aggregate fine-grained measurements into hourly/daily/long-term statistics with bounded retention.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E13-S01"
+      ],
+      "acceptance_criteria": [
+        "Raw samples expire according to policy.",
+        "Aggregates support growth baseline without retaining sensitive content."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Time-travel compaction tests."
+      ],
+      "documentation_impact": [
+        "docs/architecture/PERSISTENCE_MODEL.md"
+      ]
+    },
+    {
+      "id": "E13-S04",
+      "title": "Self-budget and local reset",
+      "status": "planned",
+      "outcome": "Enforce cancellAI state/log budgets and provide reset of cancellAI state only.",
+      "change_risk": "CR3",
+      "dependencies": [
+        "E13-S02",
+        "E13-S03"
+      ],
+      "acceptance_criteria": [
+        "Budget overrun triggers compaction before growth continues.",
+        "reset --local-state cannot target provider roots.",
+        "Ephemeral inspect performs no persistent writes."
+      ],
+      "safety_obligations": [
+        "SI-026"
+      ],
+      "verification": [
+        "Self-budget stress test and reset boundary tests."
+      ],
+      "documentation_impact": [
+        "docs/architecture/PERSISTENCE_MODEL.md",
+        "docs/CLI.md"
+      ]
+    },
+    {
+      "id": "E13-S05",
+      "title": "Incremental inventory reuse",
+      "status": "planned",
+      "outcome": "Reuse persisted facts safely between scans while invalidating on identity, metadata, provider-knowledge, and completeness changes.",
+      "change_risk": "CR3",
+      "dependencies": [
+        "E13-S01",
+        "E04-S03"
+      ],
+      "acceptance_criteria": [
+        "Cached facts are performance hints only and never a source of destructive truth.",
+        "Identity, mtime/metadata, provider fingerprint, knowledge version, or completeness uncertainty invalidates the relevant cache scope.",
+        "Fresh execution-time observation remains mandatory for mutation preconditions."
+      ],
+      "safety_obligations": [
+        "SI-024"
+      ],
+      "verification": [
+        "Stale-cache, provider-layout-change, clock/mtime edge, and partial-scan adversarial tests."
+      ],
+      "documentation_impact": [
+        "docs/architecture/PERSISTENCE_MODEL.md"
+      ]
+    }
+  ]
+}
