@@ -27,6 +27,78 @@ Target for `main`:
 
 For a single-maintainer repository, mandatory approval by a separate human may be impossible. Do not fake separation of duties. Independent Claude/Codex verification is engineering evidence, not a GitHub human-review identity.
 
+## Applying the ruleset
+
+The controls above are GitHub settings, so nothing in this repository can enforce them.
+Owner action is required once, and the exact commands are recorded here so the desired
+state is reproducible rather than remembered:
+
+```sh
+gh api -X PUT repos/matteo-dritara/homebrew-cancellai/rulesets --input - <<'JSON'
+{
+  "name": "main",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": { "ref_name": { "include": ["~DEFAULT_BRANCH"], "exclude": [] } },
+  "rules": [
+    { "type": "deletion" },
+    { "type": "non_fast_forward" },
+    { "type": "required_linear_history" },
+    {
+      "type": "pull_request",
+      "parameters": {
+        "required_approving_review_count": 0,
+        "dismiss_stale_reviews_on_push": true,
+        "require_code_owner_review": true,
+        "require_last_push_approval": false,
+        "required_review_thread_resolution": true,
+        "allowed_merge_methods": ["squash"]
+      }
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": true,
+        "required_status_checks": [
+          { "context": "test (3.10)" },
+          { "context": "test (3.14)" },
+          { "context": "lint" },
+          { "context": "homebrew" },
+          { "context": "project-os" },
+          { "context": "commit-convention" },
+          { "context": "pre-commit" },
+          { "context": "Python reference security analysis" }
+        ]
+      }
+    }
+  ]
+}
+JSON
+
+# Tags that name a published release are immutable history.
+gh api -X PUT repos/matteo-dritara/homebrew-cancellai/rulesets --input - <<'JSON'
+{
+  "name": "release tags",
+  "target": "tag",
+  "enforcement": "active",
+  "conditions": { "ref_name": { "include": ["refs/tags/v*"], "exclude": [] } },
+  "rules": [{ "type": "deletion" }, { "type": "non_fast_forward" }, { "type": "update" }]
+}
+JSON
+```
+
+`required_approving_review_count` is `0` deliberately. A single-maintainer repository cannot
+produce a second human approver, and setting a number that is satisfied by self-approval
+would be theatre. Independent Claude/Codex verification is engineering evidence recorded
+under `project/evidence/`; it is not a GitHub review identity, and this document does not
+pretend otherwise. Raise the count the day a second maintainer exists.
+
+Verify the applied state with:
+
+```sh
+gh api repos/matteo-dritara/homebrew-cancellai/rulesets
+```
+
 ## Required checks in the Python/reference stage
 
 Use the exact check names reported by GitHub, covering at least:
@@ -35,7 +107,9 @@ Use the exact check names reported by GitHub, covering at least:
 - lint/type/format/docs drift;
 - Homebrew formula audit/style;
 - governance/project control-plane validation;
-- documentation/workflow policy validation;
+- documentation/workflow/process policy validation;
+- commit-message convention over the pull-request range;
+- the full pre-commit hook set, so hooks bind contributors who never installed them;
 - CodeQL/security scanning where GitHub exposes it as a required compatible check.
 
 When Rust becomes canonical, E02/E17 replace/extend these with workspace, dependency, cross-platform, differential, installer, provenance and release-evidence gates.
