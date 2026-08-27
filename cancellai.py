@@ -77,6 +77,11 @@ CODEX_PROTECTED_NAMES = {
     "skills",
     "rules",
     "memories",
+    # Installed Codex plugin state (observed layout: plugins/, plugins/cache,
+    # plugins/.plugin-appserver). No current code path sweeps this, but it
+    # mirrors CLAUDE_PROTECTED_NAMES's "plugins" entry as a deliberate guard
+    # against any future broader top-level scan treating it as disposable.
+    "plugins",
 }
 
 

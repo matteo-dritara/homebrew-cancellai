@@ -241,6 +241,12 @@ class CleanerTests(unittest.TestCase):
             cleaner.configure_claude_retention(self.claude, 3)
         self.assertEqual(settings.read_text(encoding="utf-8"), "{bad json")
 
+    def test_codex_protected_names_include_plugins_for_parity_with_claude(self):
+        # Found via real-world dogfooding: ~/.codex/plugins is genuine installed
+        # plugin state (plugins/cache, plugins/.plugin-appserver), not disposable
+        # cache, mirroring Claude's own "plugins" protection.
+        self.assertIn("plugins", cleaner.CODEX_PROTECTED_NAMES)
+
     def test_validate_root_rejects_home_and_root(self):
         with self.assertRaises(cleaner.SafetyError):
             cleaner.validate_config_root(Path("/"), "test")
