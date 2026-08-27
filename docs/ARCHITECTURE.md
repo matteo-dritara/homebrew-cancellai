@@ -102,7 +102,7 @@ Codex threads can have subagents whose rollout files reference a
 | Path | What |
 | --- | --- |
 | `cancellai.py` | The entire implementation. |
-| `test_cancellai.py` | The test suite (`unittest`, stdlib only). |
+| `tests/test_cancellai.py` | The test suite (`unittest`, stdlib only). |
 | `scripts/gen_docs.py` | Regenerates `docs/CLI.md` from the real argparse definitions. |
 | `Formula/cancellai.rb` | The Homebrew formula (this repo doubles as its own tap). |
 | `docs/` | This architecture doc, the release runbook, and the generated CLI reference. |

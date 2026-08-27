@@ -2,7 +2,7 @@
 
 cancellai deletes files in your home directory. Its entire value proposition
 is "does that safely" — so a way to make it delete something it explicitly
-promises not to (see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#the-safety-critical-core)
+promises not to (see [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md#the-safety-critical-core)
 for what that list actually is) is treated as a security issue, not a
 regular bug.
 
@@ -28,7 +28,7 @@ In scope, for example:
 Not in scope: the tool doing exactly what `--dry-run`/`--verbose` output
 said it would do, or platform issues on operating systems this project
 doesn't yet support (see the Platform support section of
-[README.md](README.md)).
+[README.md](../README.md)).
 
 ## Supported versions
 

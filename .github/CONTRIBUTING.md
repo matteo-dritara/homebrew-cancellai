@@ -2,7 +2,7 @@
 
 Thanks for considering a contribution to cancellai. The short version: this
 repo's technical conventions are documented once, in
-[AGENTS.md](AGENTS.md), and apply equally to human contributors and to AI
+[AGENTS.md](../AGENTS.md), and apply equally to human contributors and to AI
 coding agents — read that first for testing, linting, changelog, and style
 rules.
 
@@ -19,7 +19,7 @@ pip install ruff mypy pytest
 ## Before opening a pull request
 
 ```sh
-python3 -m pytest test_cancellai.py -v
+python3 -m pytest tests/test_cancellai.py -v
 ruff check .
 ruff format --check .
 mypy cancellai.py scripts/gen_docs.py
@@ -27,7 +27,7 @@ python3 scripts/gen_docs.py --check   # only relevant if you touched build_parse
 ```
 
 All four are exactly what CI checks. Also add a line under
-`## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md) if your change is
+`## [Unreleased]` in [CHANGELOG.md](../CHANGELOG.md) if your change is
 user-visible.
 
 ## What kind of changes need extra care
@@ -37,7 +37,7 @@ This tool deletes files in the user's home directory. A change to
 `choose_codex_old_sessions`, or either protected-name set
 (`CLAUDE_PROTECTED_NAMES`, `CODEX_PROTECTED_NAMES`) needs new or updated
 tests in the same PR — see
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#the-safety-critical-core) for
+[docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md#the-safety-critical-core) for
 why those specific functions are the ones that matter most.
 
 ## Reporting a bug
@@ -54,6 +54,6 @@ please see [SECURITY.md](SECURITY.md) instead of opening a public issue.
 
 ## Platform scope
 
-macOS only for now (see [AGENTS.md](AGENTS.md#non-negotiables) for why).
+macOS only for now (see [AGENTS.md](../AGENTS.md#non-negotiables) for why).
 Linux support is welcome as a contribution, but needs to be actually tested
 on Linux, not just assumed to work.

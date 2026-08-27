@@ -25,7 +25,7 @@ ignore = ["TRY004"]
 [tool.ruff.lint.per-file-ignores]
 # assert is the standard unittest idiom, and fixture literals like "/tmp/x"
 # are not real filesystem usage -- both are expected in the test file.
-"test_cancellai.py" = ["S101", "S108"]
+"tests/test_cancellai.py" = ["S101", "S108"]
 
 [tool.mypy]
 python_version = "3.10"

@@ -61,8 +61,8 @@ cancellai never modifies your shell configuration or installs itself outside of 
 - [docs/CLI.md](docs/CLI.md) — full command reference, generated from the CLI itself
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how the discover/plan/execute pipeline and the safety model work
 - [CHANGELOG.md](CHANGELOG.md) — what changed, per release
-- [CONTRIBUTING.md](CONTRIBUTING.md) / [AGENTS.md](AGENTS.md) — how to work on this repo, for humans and AI coding agents alike
-- [SECURITY.md](SECURITY.md) — how to report a way this tool deletes something it shouldn't
+- [CONTRIBUTING.md](.github/CONTRIBUTING.md) / [AGENTS.md](AGENTS.md) — how to work on this repo, for humans and AI coding agents alike
+- [SECURITY.md](.github/SECURITY.md) — how to report a way this tool deletes something it shouldn't
 
 ## License
 

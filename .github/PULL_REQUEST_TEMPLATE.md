@@ -2,7 +2,7 @@
 
 ## Checklist
 
-- [ ] `python3 -m pytest test_cancellai.py -v` passes
+- [ ] `python3 -m pytest tests/test_cancellai.py -v` passes
 - [ ] `ruff check .` and `ruff format --check .` pass
 - [ ] `mypy cancellai.py scripts/gen_docs.py` passes
 - [ ] `python3 scripts/gen_docs.py --check` passes (only relevant if `build_parser()` changed)

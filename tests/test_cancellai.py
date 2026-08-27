@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-SCRIPT = Path(__file__).resolve().parent / "cancellai.py"
+SCRIPT = Path(__file__).resolve().parent.parent / "cancellai.py"
 spec = importlib.util.spec_from_file_location("cleaner", SCRIPT)
 cleaner = importlib.util.module_from_spec(spec)
 assert spec and spec.loader

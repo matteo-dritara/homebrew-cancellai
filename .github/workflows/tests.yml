@@ -14,7 +14,7 @@ jobs:
         with:
           python-version: "3.x"
       - run: python3 -m pip install pytest
-      - run: python3 -m pytest test_cancellai.py -v
+      - run: python3 -m pytest tests/test_cancellai.py -v
 
   lint:
     runs-on: macos-latest

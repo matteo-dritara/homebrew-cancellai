@@ -32,5 +32,5 @@ rather not share them):
 ---
 
 If this report is about `clean` deleting something it explicitly promises
-not to (see [SECURITY.md](../../SECURITY.md)), please use private
+not to (see [SECURITY.md](../SECURITY.md)), please use private
 vulnerability reporting instead of a public issue.

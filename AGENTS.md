@@ -2,7 +2,7 @@
 
 Instructions for AI coding agents (Claude Code, Codex, Cursor, or any other
 tool that reads this file) working in this repository. Human contributors
-follow the same rules — see [CONTRIBUTING.md](CONTRIBUTING.md) for the
+follow the same rules — see [CONTRIBUTING.md](.github/CONTRIBUTING.md) for the
 human-facing version.
 
 ## What this project is
@@ -45,7 +45,7 @@ oversights. Do not "fix" them without discussing it first:
 
 ## Before you're done with any change
 
-1. **Run the tests**: `python3 -m pytest test_cancellai.py -v`. Add tests
+1. **Run the tests**: `python3 -m pytest tests/test_cancellai.py -v`. Add tests
    for new behavior — anything touching `safe_remove`, `validate_config_root`,
    `choose_old_sessions`/`choose_codex_old_sessions`, or a protected-name set
    needs matching test coverage in the same change, not a follow-up.
