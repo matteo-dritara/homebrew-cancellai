@@ -1,36 +1,37 @@
 ---
 name: Bug report
-about: Something didn't work the way cancellai says it should
-title: ""
+about: Something did not behave according to cancellAI's documented contract
 labels: bug
 ---
 
-**What happened**
+## What happened
 
-**What you expected instead**
+## What you expected instead
 
-**`cancellai status --json` output** (redact real paths/usernames if you'd
-rather not share them):
+## Reproduction
 
-```json
+Prefer synthetic/minimized paths and redact personal repository names, usernames, prompts, source code, credentials, and provider payload content.
 
-```
+## Evidence
 
-**If this is about `clean` deleting the wrong thing**, the output of
-`cancellai clean --dry-run --verbose` beforehand, if you still have it:
+If available:
 
-```
+- `cancellai --version` / commit:
+- `cancellai status --json` (redacted):
+- dry-run/plan output before a mutation (redacted):
+- relevant story/provider capability/version:
 
-```
+## Environment
 
-**Environment**
+- OS and version:
+- Environment: native / WSL / container / remote / other:
+- Architecture:
+- Installed via: Homebrew / direct / package manager / source / other:
+- Provider(s) and version(s):
+- Filesystem/volume details if relevant:
 
-- `cancellai --version`:
-- macOS version:
-- Installed via: `brew install` / other (specify)
+## Safety impact
 
----
+Did this involve an unexpected classification, mutation, quarantine/restore failure, protected/active/unknown data, root/path escape, policy authority, or possible data loss?
 
-If this report is about `clean` deleting something it explicitly promises
-not to (see [SECURITY.md](../SECURITY.md)), please use private
-vulnerability reporting instead of a public issue.
+If the report describes a credible Safety Invariant bypass or unintended mutation of protected/unrelated data, use private vulnerability reporting instead of a public issue. See [`SECURITY.md`](../SECURITY.md).
