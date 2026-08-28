@@ -33,7 +33,7 @@
     {
       "id": "E01-S02",
       "title": "Build provider layout fixture corpus",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Capture synthetic, privacy-safe Claude/Codex layouts for supported and adversarial cases.",
       "change_risk": "CR1",
       "dependencies": [

@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "fixtures": [
+    {
+      "id": "claude-normal-session",
+      "tool": "claude",
+      "category": "normal_session",
+      "layout": "default",
+      "description": "One well-formed session inside the retention window; nothing is eligible for any action."
+    },
+    {
+      "id": "codex-normal-session",
+      "tool": "codex",
+      "category": "normal_session",
+      "layout": "default",
+      "description": "One well-formed rollout inside the retention window; nothing is eligible for any action."
+    },
+    {
+      "id": "codex-subagent-tree",
+      "tool": "codex",
+      "category": "subagent_tree",
+      "layout": "default",
+      "description": "A root rollout with two subagent children linked by parent_thread_id; --keep-latest must count the tree, not the files."
+    },
+    {
+      "id": "claude-active-data",
+      "tool": "claude",
+      "category": "active_data",
+      "layout": "default",
+      "description": "A session touched moments ago, standing in for a provider that is mid-write."
+    },
+    {
+      "id": "claude-protected-state",
+      "tool": "claude",
+      "category": "protected_state",
+      "layout": "default",
+      "description": "Every CLAUDE_PROTECTED_NAMES entry, aged far past any cutoff, to prove age never overrides protection."
+    },
+    {
+      "id": "codex-protected-state",
+      "tool": "codex",
+      "category": "protected_state",
+      "layout": "default",
+      "description": "Every CODEX_PROTECTED_NAMES entry, aged far past any cutoff, to prove age never overrides protection."
+    },
+    {
+      "id": "claude-partial-tree",
+      "tool": "claude",
+      "category": "partial_tree",
+      "layout": "default",
+      "description": "One session subtree this build cannot list alongside two sessions it can; the scan must record the scope as incomplete, not as empty."
+    },
+    {
+      "id": "codex-symlink-escape",
+      "tool": "codex",
+      "category": "symlink",
+      "layout": "default",
+      "description": "A symlink inside sessions/ pointing outside the approved root; must never be followed for deletion or size accounting."
+    },
+    {
+      "id": "claude-symlink-protected-name",
+      "tool": "claude",
+      "category": "symlink",
+      "layout": "default",
+      "description": "A case-variant symlink of a protected name, pointing outside the root; protection must survive case/decomposition variants."
+    },
+    {
+      "id": "codex-layout-drift",
+      "tool": "codex",
+      "category": "layout_drift",
+      "layout": "unknown_version",
+      "description": "An unrecognized top-level entry alongside the known layout; must be reported as unknown, never treated as cleanable."
+    }
+  ]
+}

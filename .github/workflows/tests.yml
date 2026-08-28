@@ -37,11 +37,12 @@ jobs:
       - run: python3 -m pip install -r requirements-dev.txt
       - run: python3 -m ruff check .
       - run: python3 -m ruff format --check .
-      - run: python3 -m mypy cancellai.py scripts/gen_docs.py scripts/project_os.py scripts/check_docs.py scripts/check_workflows.py scripts/check_process.py scripts/release.py
+      - run: python3 -m mypy cancellai.py scripts/gen_docs.py scripts/project_os.py scripts/check_docs.py scripts/check_workflows.py scripts/check_process.py scripts/release.py scripts/check_fixtures.py
       - run: python3 scripts/gen_docs.py --check
       - run: python3 scripts/project_os.py check
       - run: python3 scripts/check_docs.py check
       - run: python3 scripts/check_workflows.py check
+      - run: python3 scripts/check_fixtures.py check
 
   homebrew:
     runs-on: macos-latest

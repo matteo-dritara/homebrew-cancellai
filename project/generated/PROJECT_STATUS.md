@@ -9,8 +9,8 @@ Epics: **20** | Stories: **90**
 ## Story status
 
 - `done`: 9
-- `planned`: 80
-- `ready_for_review`: 1
+- `planned`: 79
+- `ready_for_review`: 2
 
 ## Change risk distribution
 
@@ -27,3 +27,4 @@ Epics: **20** | Stories: **90**
 ## Awaiting independent review
 
 - **E01-S01** - Freeze domain vocabulary (CR1)
+- **E01-S02** - Build provider layout fixture corpus (CR1)

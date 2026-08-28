@@ -112,11 +112,12 @@ python3 -m pip install -r requirements-dev.txt
 python3 -m pytest tests -v
 python3 -m ruff check .
 python3 -m ruff format --check .
-python3 -m mypy cancellai.py scripts/gen_docs.py scripts/project_os.py scripts/check_docs.py scripts/check_workflows.py
+python3 -m mypy cancellai.py scripts/gen_docs.py scripts/project_os.py scripts/check_docs.py scripts/check_workflows.py scripts/check_fixtures.py
 python3 scripts/gen_docs.py --check
 python3 scripts/project_os.py check
 python3 scripts/check_docs.py check
 python3 scripts/check_workflows.py check
+python3 scripts/check_fixtures.py check
 python3 scripts/check_process.py check
 python3 scripts/release.py check
 ```

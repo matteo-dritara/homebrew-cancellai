@@ -19,7 +19,7 @@ repos:
     hooks:
       - id: mypy
         args: [--strict]
-        files: ^(cancellai\.py|scripts/(gen_docs|project_os|check_docs|check_workflows|check_process|release)\.py)$
+        files: ^(cancellai\.py|scripts/(gen_docs|project_os|check_docs|check_workflows|check_process|release|check_fixtures)\.py)$
 
   - repo: local
     hooks:
@@ -49,6 +49,13 @@ repos:
         entry: python3 scripts/check_workflows.py check
         language: system
         files: ^(.github/workflows/.*\.ya?ml|scripts/check_workflows\.py)$
+        pass_filenames: false
+
+      - id: fixtures-check
+        name: synthetic fixture corpus covers required categories and leaks nothing real
+        entry: python3 scripts/check_fixtures.py check
+        language: system
+        files: ^(tests/fixtures/.*|scripts/check_fixtures\.py)$
         pass_filenames: false
 
       - id: process-check

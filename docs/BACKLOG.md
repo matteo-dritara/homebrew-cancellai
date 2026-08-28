@@ -241,7 +241,7 @@ Turn Python v1 into a behavioral oracle before Rust implementation begins.
 
 ### E01-S02 - Build provider layout fixture corpus
 
-**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E01-S01 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E01-S01 | **Safety obligations:** none
 
 **Outcome.** Capture synthetic, privacy-safe Claude/Codex layouts for supported and adversarial cases.
 
