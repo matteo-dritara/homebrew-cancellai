@@ -19,7 +19,7 @@ repos:
     hooks:
       - id: mypy
         args: [--strict]
-        files: ^(cancellai\.py|scripts/(gen_docs|project_os|check_docs|check_workflows|check_process)\.py)$
+        files: ^(cancellai\.py|scripts/(gen_docs|project_os|check_docs|check_workflows|check_process|release)\.py)$
 
   - repo: local
     hooks:
@@ -56,6 +56,13 @@ repos:
         entry: python3 scripts/check_process.py check
         language: system
         files: ^(docs/adrs/|project/|scripts/check_process\.py|docs/(DECISION_REGISTER|ROADMAP|BACKLOG|CLI)\.md)
+        pass_filenames: false
+
+      - id: release-consistency
+        name: versions agree and every closed epic has a release
+        entry: python3 scripts/release.py check
+        language: system
+        files: ^(cancellai\.py|pyproject\.toml|CHANGELOG\.md|Formula/|project/(epics/|roadmap\.json|evidence/RELEASE-)|scripts/release\.py)
         pass_filenames: false
 
       - id: conventional-commit

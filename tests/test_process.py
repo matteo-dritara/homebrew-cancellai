@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from scripts import check_process
 
@@ -10,6 +11,27 @@ from scripts import check_process
 class ProcessConventionTests(unittest.TestCase):
     def test_repository_process_conventions_hold(self) -> None:
         check_process.check_process()
+
+    def test_review_rounds_are_bounded(self) -> None:
+        errors: list[str] = []
+        warnings: list[str] = []
+        check_process.check_review_rounds(errors, warnings)
+        # E00 is the recorded exception: it ran three rounds and is why the rule exists.
+        self.assertEqual(errors, [])
+        self.assertTrue(any("E00" in w for w in warnings))
+        self.assertEqual(check_process.MAX_REVIEW_ROUNDS, 2)
+
+    def test_an_unexcepted_epic_cannot_exceed_the_review_ceiling(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            for round_number in range(1, check_process.MAX_REVIEW_ROUNDS + 2):
+                (base / f"E11-VERIFIER-REVIEW-ROUND{round_number}.md").write_text("x", encoding="utf-8")
+            errors: list[str] = []
+            warnings: list[str] = []
+            with mock.patch.object(check_process, "EVIDENCE", base):
+                check_process.check_review_rounds(errors, warnings)
+            self.assertTrue(errors)
+            self.assertEqual(warnings, [])
 
     def test_conventional_commit_subjects(self) -> None:
         valid = [

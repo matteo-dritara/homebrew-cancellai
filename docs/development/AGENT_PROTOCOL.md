@@ -18,7 +18,9 @@ Attempts to falsify the implementation from the story, acceptance criteria, inva
 
 Roles may rotate between Claude and Codex across stories/sprints to reduce systematic bias.
 
-**Current standing assignment:** Claude is the executor and hands each story over at `ready_for_review`; Codex performs the independent review.
+**Current standing assignment:** Claude is the executor and hands work over at
+`ready_for_review`; Codex performs the independent review, once the whole epic is ready and
+at most twice per epic.
 
 ## Context isolation
 
@@ -66,6 +68,11 @@ An executor's work is finished at `ready_for_review`. It does not set `verificat
 
 ## Verifier procedure
 
+Review runs at **epic** scope, when every story in the epic is `ready_for_review`, and at
+most **twice** per epic (ADR-0014 / PD-022). Do not review a story in isolation while its
+neighbours are still moving, and do not open a third round: findings that survive round 2
+become new backlog work items recorded as accepted residual risk.
+
 Pick up work from the review queue rather than from chat context:
 
 ```sh
@@ -73,7 +80,9 @@ python3 scripts/project_os.py review
 python3 scripts/project_os.py brief <STORY-ID> --role verifier
 ```
 
-Move the story to `verification` while reviewing it, then to `done` on a passing verdict with evidence committed, or back to `in_progress` on `FAIL`.
+Move the epic's stories to `verification` while reviewing, then to `done` on a passing
+verdict with evidence committed, or back to `in_progress` on a rejection. Closing the epic
+cuts a release; see [WORK_ITEM_MODEL.md](WORK_ITEM_MODEL.md).
 
 1. Ignore the executor's intended mechanism; start from required behavior.
 2. Reproduce the baseline/claimed fix independently.

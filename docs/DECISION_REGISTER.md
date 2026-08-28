@@ -273,3 +273,31 @@ Only the provider's own default directory may be mutated by the Python reference
 - Operators who relocated a provider root lose clean and configure until the Rust core ships provider-native identity.
 - The structural fingerprint remains as reported information and is documented as non-authoritative.
 - --allow-custom-root is removed rather than kept as a switch that cannot make the operation safe.
+
+## PD-021 - Closing an epic cuts a release
+
+**Status:** accepted
+
+An epic reaching done produces a version tag and everything that follows it: version bump, cut changelog section, updated Homebrew formula, GitHub release, and a committed release evidence packet. scripts/release.py automates the sequence and scripts/check_process.py refuses a done epic without release evidence naming it.
+
+**Rationale.** E00 closed with every P0 defect repaired and none of it released, while the shipped formula still pointed at a build whose protected-name constants were documentation rather than a barrier. Finished work that does not reach users is not a neutral state: the gap between verified and released grows until releasing becomes its own project.
+
+**Implications**
+
+- Version numbers move at the cadence of epics rather than of user-visible feature changes.
+- The release is verified at the commit it was cut from, by re-running every gate at the tag.
+- A release requires two commands because the archive checksum cannot exist before the tag does.
+
+## PD-022 - Review is per epic and bounded to two rounds
+
+**Status:** accepted
+
+An epic is reviewed once all its stories are implemented, not story by story, and at most twice. Findings that survive round two become new backlog work items recorded as accepted residual risk in the closure packet, rather than triggering a third round.
+
+**Rationale.** E00 ran three review rounds with no rule that would ever stop it; the loop ended because the owner stopped it, not because the process had a completion criterion. Per-story review also made the reviewer re-read overlapping code while the epic could not converge.
+
+**Implications**
+
+- A second round can miss what a third would have caught; E00's third round found a real defect. The risk is accepted explicitly and mitigated by converting survivors into scheduled work.
+- Each review round is larger, covering a whole epic rather than one story.
+- Story status ready_for_review now means waiting for the epic's review round, not requesting an individual one.

@@ -2,23 +2,57 @@
 
 This document has two release modes because cancellAI is transitioning from the current Python/Homebrew v1 to a future cross-platform Rust release factory.
 
+## When a release happens
+
+**Closing an epic cuts a release.** An epic reaching `done` produces a version tag and
+everything that follows it; this is not an optional follow-up (ADR-0014, PD-021).
+`scripts/release.py check` fails when a closed epic has no release evidence naming it, and
+that check runs in `pre-commit` and in the governance workflow.
+
+A closed epic is at least a **minor** release. Safety and authority behaviour is part of the
+public contract, so an epic that changes what the tool is willing to do is never a patch
+release even when the command spelling is unchanged.
+
 ## Current Python v1 release process
 
-Until the Rust cutover, the release artifact remains the tagged source used by the Homebrew formula.
+Until the Rust cutover the release artifact is the tagged source the Homebrew formula points
+at. The sequence is automated because it is four files that must agree plus a checksum that
+cannot exist before the tag does - exactly the shape of task that gets done wrong by hand.
 
-1. All required story/release gates are green.
-2. `python3 scripts/project_os.py check` passes.
-3. Python tests/lint/type/docs/Homebrew checks pass.
-4. Update `VERSION` in `cancellai.py` and `version` in `pyproject.toml` together.
-5. Move changelog entries from Unreleased to `X.Y.Z` with date and create a new Unreleased section.
-6. Commit the release metadata.
-7. Tag `vX.Y.Z` and push.
-8. Download the GitHub tag tarball and calculate SHA-256.
-9. Update `Formula/cancellai.rb` URL/SHA in a separate commit.
-10. Run Homebrew audit/style/install/test end to end.
-11. If the release contains CR4 work, ensure its owner-visible Safety Verdict is part of durable release evidence before declaring the release complete.
+```sh
+# 1. everything green, epic closed
+pre-commit run --all-files && python3 -m pytest tests -v
 
-Do not add future product features to Python merely because the Python release path is simpler.
+# 2. bump versions, cut the changelog, write the release evidence packet
+python3 scripts/release.py prepare --version X.Y.Z --epic EXX
+
+# 3. review the diff, then commit and tag
+git commit -am "chore(release): X.Y.Z"
+git tag -a vX.Y.Z -m "cancellAI X.Y.Z" && git push --follow-tags
+
+# 4. write the archive checksum into the formula
+python3 scripts/release.py finalize --version X.Y.Z
+git commit -am "chore(release): point formula at the vX.Y.Z tarball" && git push
+```
+
+Step 2 writes `project/evidence/RELEASE-vX.Y.Z.md` from the epic's contract: stories, CR4
+Safety Verdict links, gate results, compatibility, residual risks and rollback.
+
+Pushing the tag triggers `.github/workflows/release.yml`, which re-runs every gate **at the
+tagged commit**, verifies that the tag matches `VERSION` and that the evidence packet exists,
+then publishes the GitHub release from that packet with the archive checksum appended. A
+release verified against whatever `main` looked like afterwards is not evidence about the
+artifact users install.
+
+`finalize` refuses to leave the repository inconsistent: it re-runs `release.py check` and
+fails if the source, the packaging metadata and the formula disagree.
+
+If the release contains CR4 work, its owner-visible Safety Verdict is part of the durable
+release evidence before the release is complete. `scripts/project_os.py` already refuses to
+close a CR4 story without one that records a pass.
+
+Do not add future product features to Python merely because the Python release path is
+simpler.
 
 ## Target Rust release factory
 
