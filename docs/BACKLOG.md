@@ -216,7 +216,7 @@ Correct known P0 safety and contract defects in Python without broadening produc
 
 ## E01 - Executable Reference Contract
 
-**Phase:** `P0` | **Status:** `ready` | **Epic dependencies:** E00
+**Phase:** `P0` | **Status:** `done` | **Epic dependencies:** E00
 
 Turn Python v1 into a behavioral oracle before Rust implementation begins.
 
@@ -300,7 +300,7 @@ Turn Python v1 into a behavioral oracle before Rust implementation begins.
 
 ### E01-S05 - Create differential test harness contract
 
-**Status:** `in_progress` | **Change Risk:** `CR2` | **Dependencies:** E01-S04 | **Safety obligations:** SI-019
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E01-S04 | **Safety obligations:** SI-019
 
 **Outcome.** Define how Python reference and Rust candidate outputs are normalized and compared.
 
@@ -319,7 +319,7 @@ Turn Python v1 into a behavioral oracle before Rust implementation begins.
 
 ### E01-S06 - Freeze Python feature scope
 
-**Status:** `blocked` | **Change Risk:** `CR0` | **Dependencies:** E01-S05 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR0` | **Dependencies:** E01-S05 | **Safety obligations:** none
 
 **Outcome.** Declare Python reference maintenance-only after contract extraction.
 

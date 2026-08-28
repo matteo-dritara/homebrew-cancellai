@@ -7,7 +7,7 @@
   "dependencies": [
     "E00"
   ],
-  "status": "ready",
+  "status": "done",
   "stories": [
     {
       "id": "E01-S01",
@@ -102,7 +102,7 @@
     {
       "id": "E01-S05",
       "title": "Create differential test harness contract",
-      "status": "in_progress",
+      "status": "done",
       "outcome": "Define how Python reference and Rust candidate outputs are normalized and compared.",
       "change_risk": "CR2",
       "dependencies": [
@@ -125,7 +125,7 @@
     {
       "id": "E01-S06",
       "title": "Freeze Python feature scope",
-      "status": "blocked",
+      "status": "done",
       "outcome": "Declare Python reference maintenance-only after contract extraction.",
       "change_risk": "CR0",
       "dependencies": [

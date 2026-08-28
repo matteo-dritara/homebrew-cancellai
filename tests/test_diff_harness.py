@@ -86,5 +86,72 @@ class DiffHarnessUnitTests(unittest.TestCase):
         self.assertEqual([], with_index)
 
 
+class DiffHarnessActionCorrelationRegressionTests(unittest.TestCase):
+    """E01-S05 round-one review (project/evidence/E01-VERIFIER-REVIEW.md): the comparator
+    keyed explanation/result records by opaque action_id, so renaming only the id on
+    semantically identical records produced false divergences. Reproduces the review's exact
+    repro and proves the fix, using plan_a/plan_b to resolve action_id to a content-derived key.
+    """
+
+    def setUp(self):
+        self.plan = diff_harness._load_golden("plan.golden.json")
+        self.explanation = diff_harness._load_golden("explanation.golden.json")
+        self.result = diff_harness._load_golden("result.golden.json")
+
+    def _renamed_plan(self):
+        renamed = copy.deepcopy(self.plan)
+        renamed["plan_id"] = "rust-plan-id"
+        for action in renamed["actions"]:
+            action["action_id"] = f"rust-{action['action_id']}"
+        return renamed
+
+    def test_review_repro_explanation_id_only_rename_no_longer_diverges(self):
+        renamed_plan = self._renamed_plan()
+        renamed = copy.deepcopy(self.explanation)
+        renamed["plan_id"] = "rust-plan-id"
+        for item in renamed["explanations"]:
+            item["action_id"] = f"rust-{item['action_id']}"
+        errors = diff_harness.compare_documents(self.explanation, renamed, plan_a=self.plan, plan_b=renamed_plan)
+        self.assertEqual([], errors)
+
+    def test_review_repro_result_id_only_rename_no_longer_diverges(self):
+        renamed_plan = self._renamed_plan()
+        renamed = copy.deepcopy(self.result)
+        renamed["plan_id"] = "rust-plan-id"
+        for item in renamed["action_results"]:
+            item["action_id"] = f"rust-{item['action_id']}"
+        errors = diff_harness.compare_documents(self.result, renamed, plan_a=self.plan, plan_b=renamed_plan)
+        self.assertEqual([], errors)
+
+    def test_explanation_comparison_without_plan_context_refuses_rather_than_falling_back(self):
+        errors = diff_harness.compare_documents(self.explanation, copy.deepcopy(self.explanation))
+        self.assertTrue(any("requires plan_a and plan_b" in e for e in errors), errors)
+
+    def test_result_comparison_without_plan_context_refuses_rather_than_falling_back(self):
+        errors = diff_harness.compare_documents(self.result, copy.deepcopy(self.result))
+        self.assertTrue(any("requires plan_a and plan_b" in e for e in errors), errors)
+
+    def test_a_real_divergence_is_still_caught_alongside_a_renamed_id(self):
+        renamed_plan = self._renamed_plan()
+        renamed = copy.deepcopy(self.explanation)
+        renamed["plan_id"] = "rust-plan-id"
+        for item in renamed["explanations"]:
+            item["action_id"] = f"rust-{item['action_id']}"
+        renamed["explanations"][0]["final_authority"] = "AUTOPILOT"  # golden value is QUARANTINE
+        errors = diff_harness.compare_documents(self.explanation, renamed, plan_a=self.plan, plan_b=renamed_plan)
+        self.assertTrue(any("fields differ" in e for e in errors), errors)
+
+    def test_action_id_field_itself_is_not_compared_once_records_are_matched(self):
+        # Matched-by-content-key records legitimately carry different opaque action_id
+        # values; the field-level comparison must not reintroduce that as a false divergence.
+        renamed_plan = self._renamed_plan()
+        renamed = copy.deepcopy(self.result)
+        renamed["plan_id"] = "rust-plan-id"
+        for item in renamed["action_results"]:
+            item["action_id"] = f"different-{item['action_id']}"
+        errors = diff_harness.compare_documents(self.result, renamed, plan_a=self.plan, plan_b=renamed_plan)
+        self.assertFalse(any("action_id" in e for e in errors), errors)
+
+
 if __name__ == "__main__":
     unittest.main()
