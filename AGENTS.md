@@ -26,16 +26,23 @@ Do not begin implementation from chat context alone. The repository contract is 
 
 ## Current transition state
 
-The shipping implementation is the stdlib-only Python file `cancellai.py`. It is being converted into an executable reference before a spec-first migration to Rust.
+The shipping implementation is the stdlib-only Python file `cancellai.py`. Epic E01 converted it into an executable, characterized reference ahead of a spec-first migration to Rust.
 
-Until epic E01 is complete:
+### Python reference freeze
 
-- implement only P0 trust-floor fixes or work explicitly listed in P0;
-- do not perform a broad Python refactor for architectural cleanliness;
-- do not add future product features to the Python monolith;
-- preserve current user-facing behavior except where the story explicitly corrects a defect.
+`cancellai.py` is maintenance-only, not an active product surface. This is the standing rule from here forward, not a restriction scoped to E01 - it does not relax once E01 closes. Accepted changes:
 
-After E01 freezes Python, new product capability belongs in the Rust target architecture.
+- a fix that keeps `cancellai.py` matching its own committed characterization (`tests/fixtures/characterization/`, [Python reference contract](docs/development/VERIFICATION_STRATEGY.md#python-reference-contract)) - a change that turns a `NORMATIVE` record into `KNOWN_DEFECT`, or the reverse, updates that record and its rationale in the same change (`python3 scripts/characterize.py generate`), never silently;
+- a safety/security fix;
+- test/fixture/tooling work required to preserve the reference and its differential comparison harness (`scripts/diff_harness.py`) through migration;
+- a change necessary to keep the reference runnable (dependency/platform compatibility).
+
+Everything else is out of scope, without exception - most importantly:
+
+- new product capability/features;
+- a broad refactor for architectural cleanliness alone, with no accompanying fix in the categories above.
+
+New product capability targets the Rust implementation. See [`docs/development/MIGRATION_PYTHON_RUST.md`](docs/development/MIGRATION_PYTHON_RUST.md) for the migration gate (M6: an unexplained semantic divergence on a `NORMATIVE` fixture blocks cutover) and rollback strategy, and ADR-0007 for the spec-first decision this freeze completes.
 
 The old statement that the single-file Python architecture is a permanent non-negotiable no longer applies. ADR-0007 supersedes it.
 

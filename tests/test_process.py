@@ -33,6 +33,34 @@ class ProcessConventionTests(unittest.TestCase):
             self.assertTrue(errors)
             self.assertEqual(warnings, [])
 
+    def test_reference_freeze_marker_present_in_the_real_repo(self) -> None:
+        errors: list[str] = []
+        check_process.check_reference_freeze_marker(errors)
+        self.assertEqual([], errors)
+
+    def test_reference_freeze_marker_missing_is_flagged(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            (base / "AGENTS.md").write_text("# AGENTS\n\nNothing about a freeze here.\n", encoding="utf-8")
+            (base / "docs" / "development").mkdir(parents=True)
+            (base / "docs" / "development" / "MIGRATION_PYTHON_RUST.md").write_text("gate\nrollback\n", encoding="utf-8")
+            errors: list[str] = []
+            with mock.patch.object(check_process, "ROOT", base):
+                check_process.check_reference_freeze_marker(errors)
+            self.assertTrue(any(check_process.REFERENCE_FREEZE_MARKER in e for e in errors), errors)
+
+    def test_migration_doc_missing_gate_or_rollback_is_flagged(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            (base / "AGENTS.md").write_text(f"# AGENTS\n\n## {check_process.REFERENCE_FREEZE_MARKER}\n", encoding="utf-8")
+            (base / "docs" / "development").mkdir(parents=True)
+            (base / "docs" / "development" / "MIGRATION_PYTHON_RUST.md").write_text("neither concept mentioned\n", encoding="utf-8")
+            errors: list[str] = []
+            with mock.patch.object(check_process, "ROOT", base):
+                check_process.check_reference_freeze_marker(errors)
+            self.assertTrue(any("rollback" in e for e in errors), errors)
+            self.assertTrue(any("gate" in e for e in errors), errors)
+
     def test_conventional_commit_subjects(self) -> None:
         valid = [
             "feat: add a thing",

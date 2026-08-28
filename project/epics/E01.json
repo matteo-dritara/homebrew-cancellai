@@ -125,7 +125,7 @@
     {
       "id": "E01-S06",
       "title": "Freeze Python feature scope",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Declare Python reference maintenance-only after contract extraction.",
       "change_risk": "CR0",
       "dependencies": [

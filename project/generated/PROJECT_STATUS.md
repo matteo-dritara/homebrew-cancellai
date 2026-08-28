@@ -9,8 +9,8 @@ Epics: **20** | Stories: **90**
 ## Story status
 
 - `done`: 9
-- `planned`: 76
-- `ready_for_review`: 5
+- `planned`: 75
+- `ready_for_review`: 6
 
 ## Change risk distribution
 
@@ -31,3 +31,4 @@ Epics: **20** | Stories: **90**
 - **E01-S03** - Define versioned plan/result JSON contracts (CR2)
 - **E01-S04** - Characterize Python behavior (CR2)
 - **E01-S05** - Create differential test harness contract (CR2)
+- **E01-S06** - Freeze Python feature scope (CR0)

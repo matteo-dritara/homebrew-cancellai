@@ -32,7 +32,7 @@ per [Story changes during implementation](WORK_ITEM_MODEL.md#story-changes-durin
 
 ### M2 - Freeze Python
 
-Python becomes maintenance-only. Add a visible marker in `AGENTS.md`/project state. New features target Rust.
+Python becomes maintenance-only (E01-S06). `AGENTS.md`'s "Python reference freeze" section is the visible marker; `scripts/check_process.py check` fails if it goes missing. Only parity fixes (matching the committed characterization), safety/security fixes, and migration-support tooling are accepted from here forward - not merely until this epic closes. New features target Rust.
 
 ### M3 - Bootstrap Rust
 

@@ -63,6 +63,11 @@ GENERATED_FILES = (
     "project/generated/PROJECT_STATUS.md",
 )
 
+# E01-S06: the Python reference freeze is a standing rule, not prose an agent can miss. The
+# marker is a heading, checked case-insensitively like check_generated_banners checks for
+# "generated"/"do not edit" - simple text presence, not parsed structure.
+REFERENCE_FREEZE_MARKER = "python reference freeze"
+
 
 class ProcessError(RuntimeError):
     pass
@@ -189,6 +194,19 @@ def check_generated_banners(errors: list[str]) -> None:
             errors.append(f"{rel}: generated file must carry a visible 'do not edit by hand' banner")
 
 
+def check_reference_freeze_marker(errors: list[str]) -> None:
+    agents_path = ROOT / "AGENTS.md"
+    if REFERENCE_FREEZE_MARKER not in read(agents_path).lower():
+        errors.append(f"{agents_path.relative_to(ROOT)}: missing the {REFERENCE_FREEZE_MARKER!r} marker (E01-S06)")
+
+    migration_path = ROOT / "docs" / "development" / "MIGRATION_PYTHON_RUST.md"
+    migration_text = read(migration_path).lower()
+    if "rollback" not in migration_text:
+        errors.append(f"{migration_path.relative_to(ROOT)}: missing a documented rollback strategy (E01-S06 AC)")
+    if "gate" not in migration_text:
+        errors.append(f"{migration_path.relative_to(ROOT)}: missing a documented migration gate (E01-S06 AC)")
+
+
 def validate_commit_subject(subject: str) -> list[str]:
     problems: list[str] = []
     if subject.startswith(("Merge ", "Revert ", "fixup!", "squash!")):
@@ -211,6 +229,7 @@ def check_process() -> list[str]:
     check_evidence(errors, work_ids)
     check_review_rounds(errors, warnings)
     check_generated_banners(errors)
+    check_reference_freeze_marker(errors)
     if errors:
         raise ProcessError("\n".join(errors))
     return warnings

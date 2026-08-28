@@ -319,7 +319,7 @@ Turn Python v1 into a behavioral oracle before Rust implementation begins.
 
 ### E01-S06 - Freeze Python feature scope
 
-**Status:** `planned` | **Change Risk:** `CR0` | **Dependencies:** E01-S05 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR0` | **Dependencies:** E01-S05 | **Safety obligations:** none
 
 **Outcome.** Declare Python reference maintenance-only after contract extraction.
 
