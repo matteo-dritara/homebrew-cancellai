@@ -62,9 +62,12 @@ The brief is generated from the story contract and canonical Safety Invariants. 
 7. Update docs/changelog/ADR/RFC as required.
 8. Run all required local gates for the CR level.
 9. Produce evidence using `project/templates/EVIDENCE_PACKET.md` and commit it under `project/evidence/`.
-10. Set the story status to `ready_for_review` in `project/epics/*.json`, regenerate, and hand off the final diff + spec to the verifier.
+10. Set the story status to `ready_for_review` in `project/epics/*.json`, regenerate.
+11. Commit the story as a checkpoint - code/docs, generated files, evidence packet, and the status change together - before starting the next story.
 
 An executor's work is finished at `ready_for_review`. It does not set `verification` or `done` for its own change, and it does not write its own Safety Verdict. `python3 scripts/project_os.py check` refuses a `ready_for_review` story that has no committed executor evidence.
+
+**Every story ends in a commit.** The commit is the checkpoint that keeps `main` an accurate record of what is implemented versus what is still contract-only, independent of when the epic's review round happens. It is not a handoff signal to the verifier by itself - review only starts once every story in the epic is `ready_for_review`, per [Review is per epic](../development/WORK_ITEM_MODEL.md#review-is-per-epic-and-bounded-to-two-rounds) - so a same-epic story may commit at `ready_for_review` and the next story may start immediately without waiting for a review round. See [Intra-epic dependency chains](../development/WORK_ITEM_MODEL.md#intra-epic-dependency-chains-are-satisfied-at-ready_for_review) for how a chained story's dependency is satisfied before that review round happens.
 
 ## Verifier procedure
 

@@ -84,13 +84,71 @@ class ProjectOSTests(unittest.TestCase):
         with self.assertRaises(project_os.GovernanceError):
             project_os.validate(bad)
 
+    def test_same_epic_dependency_satisfied_by_ready_for_review(self) -> None:
+        # ADR-0014: review is per epic, not story by story. A story chained to a same-epic
+        # predecessor must be able to start (and reach ready_for_review itself) once that
+        # predecessor is ready_for_review - it does not have to wait for independent "done",
+        # since the whole epic is verified and closed together.
+        model = project_os.load_model()
+        epics = copy.deepcopy(model.epics)
+        epic = next(e for e in epics if e["id"] == "E01")
+        predecessor = next(s for s in epic["stories"] if s["id"] == "E01-S01")
+        dependent = next(s for s in epic["stories"] if s["id"] == "E01-S02")
+        self.assertIn("E01-S01", dependent["dependencies"])
+        predecessor["status"] = "ready_for_review"
+        # in_progress (not ready_for_review) so this exercises only the dependency gate,
+        # not the separate evidence-packet requirement.
+        dependent["status"] = "in_progress"
+        candidate = project_os.Model(model.decisions, model.roadmap, epics)
+        project_os.validate(candidate)  # must not raise
+
+    def test_same_epic_dependency_still_blocks_when_predecessor_is_unfinished(self) -> None:
+        model = project_os.load_model()
+        epics = copy.deepcopy(model.epics)
+        epic = next(e for e in epics if e["id"] == "E01")
+        predecessor = next(s for s in epic["stories"] if s["id"] == "E01-S01")
+        dependent = next(s for s in epic["stories"] if s["id"] == "E01-S02")
+        predecessor["status"] = "in_progress"
+        dependent["status"] = "in_progress"
+        candidate = project_os.Model(model.decisions, model.roadmap, epics)
+        with self.assertRaises(project_os.GovernanceError):
+            project_os.validate(candidate)
+
+    def test_cross_epic_dependency_still_requires_done(self) -> None:
+        # The ready_for_review relaxation is scoped to same-epic story chains. A dependency
+        # on a story in a *different* epic must still be "done" - that epic is independently
+        # closed and released (ADR-0014), not batch-reviewed alongside the dependent epic.
+        # Two same-phase planned epics, neither touched at the epic-status level, so only the
+        # story-dependency branch under test can produce the error.
+        model = project_os.load_model()
+        epics = copy.deepcopy(model.epics)
+        upstream_epic = next(e for e in epics if e["id"] == "E02")
+        downstream_epic = next(e for e in epics if e["id"] == "E03")
+        self.assertEqual(upstream_epic["phase"], downstream_epic["phase"])
+        upstream = upstream_epic["stories"][0]
+        downstream = downstream_epic["stories"][0]
+        downstream["dependencies"] = [upstream["id"]]
+        upstream["status"] = "ready_for_review"
+        downstream["status"] = "in_progress"
+        candidate = project_os.Model(model.decisions, model.roadmap, epics)
+        with self.assertRaises(project_os.GovernanceError):
+            project_os.validate(candidate)
+
     def test_ready_for_review_requires_committed_executor_evidence(self) -> None:
         model = project_os.load_model()
         epics = copy.deepcopy(model.epics)
         # An epic with no committed evidence at all, so neither the story-level nor the
-        # epic-level batch lookup can satisfy the gate.
+        # epic-level batch lookup can satisfy the gate. Story-level evidence lives under
+        # project/evidence/<story-id>/, so check every story's own subdirectory too, not
+        # just the flat "<epic-id>-*.md" batch-file pattern.
         evidence_root = project_os.PROJECT / "evidence"
-        epic = next(e for e in epics if not list(evidence_root.glob(f"{e['id']}-*.md")))
+
+        def has_evidence(epic: dict[str, object]) -> bool:
+            if list(evidence_root.glob(f"{epic['id']}-*.md")):
+                return True
+            return any(list((evidence_root / story["id"]).glob("*.md")) for story in epic["stories"])
+
+        epic = next(e for e in epics if not has_evidence(e))
         target = epic["stories"][0]
         target["status"] = "ready_for_review"
         target["dependencies"] = []

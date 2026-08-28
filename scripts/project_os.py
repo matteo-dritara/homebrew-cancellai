@@ -29,6 +29,10 @@ VALID_DECISION_STATUS = {"proposed", "accepted", "superseded", "deprecated"}
 VALID_EPIC_STATUS = {"planned", "ready", "in_progress", "ready_for_review", "verification", "blocked", "done", "cancelled"}
 VALID_STORY_STATUS = VALID_EPIC_STATUS
 VALID_RISKS = {"CR0", "CR1", "CR2", "CR3", "CR4"}
+# ADR-0014: review is per epic, at most twice, not story by story. A same-epic dependency is
+# therefore satisfied once the predecessor has reached ready_for_review, not "done" - the whole
+# epic is verified and closed together. Cross-epic and epic-level dependencies still require "done".
+SAME_EPIC_DEPENDENCY_SATISFIED_STATUSES = {"ready_for_review", "verification", "done"}
 DECISION_ID_RE = re.compile(r"^PD-\d{3}$")
 EPIC_ID_RE = re.compile(r"^E\d{2}$")
 STORY_ID_RE = re.compile(r"^E\d{2}-S\d{2}$")
@@ -350,11 +354,19 @@ def validate(model: Model) -> list[str]:
             if story["status"] in dependency_gated_statuses:
                 unfinished_story_deps: list[str] = []
                 for dep in story["dependencies"]:
-                    dep_status = epic_status[dep] if dep in epic_status else story_status[dep]
-                    if dep_status != "done":
-                        unfinished_story_deps.append(dep)
+                    if dep in story_ids and story_epic[dep] == epic["id"]:
+                        # Review is per epic (ADR-0014): a same-epic predecessor only needs to
+                        # have reached ready_for_review, since the whole epic is verified and
+                        # closed together. A cross-epic/epic-level dependency still needs the
+                        # independent close that "done" represents.
+                        if story_status[dep] not in SAME_EPIC_DEPENDENCY_SATISFIED_STATUSES:
+                            unfinished_story_deps.append(dep)
+                    else:
+                        dep_status = epic_status[dep] if dep in epic_status else story_status[dep]
+                        if dep_status != "done":
+                            unfinished_story_deps.append(dep)
                 if unfinished_story_deps:
-                    raise GovernanceError(f"{story['id']}: status {story['status']} but dependencies are not done: {unfinished_story_deps}")
+                    raise GovernanceError(f"{story['id']}: status {story['status']} but dependencies are not satisfied: {unfinished_story_deps}")
             if story["status"] in {"ready_for_review", "done"}:
                 evidence_root = PROJECT / "evidence"
                 candidates = list(evidence_root.glob(f"{story['id']}*.md"))

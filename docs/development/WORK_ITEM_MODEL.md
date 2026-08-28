@@ -24,7 +24,7 @@ Generated [`../BACKLOG.md`](../BACKLOG.md) renders these contracts for humans.
 | Status | Meaning | Owned by |
 | --- | --- | --- |
 | `planned` | contract exists, not scheduled | owner |
-| `ready` | contract is complete and dependencies are done; may be picked up | owner |
+| `ready` | contract is complete and dependencies are satisfied (see below); may be picked up | owner |
 | `in_progress` | an executor is implementing it | executor |
 | `ready_for_review` | implementation, tests and documentation are complete and all gates pass; the story is waiting for its **epic's** review round | executor |
 | `verification` | the independent reviewer is actively falsifying the epic this story belongs to | reviewer |
@@ -53,6 +53,23 @@ List the queue with:
 ```sh
 python3 scripts/project_os.py review
 ```
+
+### Intra-epic dependency chains are satisfied at `ready_for_review`
+
+A story dependency is satisfied - and unblocks `ready`/`in_progress`/`ready_for_review` on the
+dependent story - as soon as:
+
+- the dependency is a story in a **different** epic, or an epic-level dependency: it must be
+  `done` (that epic is independently closed and released, per ADR-0014);
+- the dependency is a story in the **same** epic: it must have reached `ready_for_review`, not
+  `done`.
+
+This is what makes epic-scope, once-at-the-end review (below) possible for an epic whose
+stories form a chain rather than sitting side by side: E01's stories depend on each other in
+sequence, so requiring each link to be independently `done` before the next could start would
+force a review round per story and contradict "review is per epic, not story by story."
+`scripts/project_os.py check` enforces exactly this distinction, not a uniform "done" rule
+across every dependency edge.
 
 ## Review is per epic, and bounded to two rounds
 
