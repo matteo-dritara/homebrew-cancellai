@@ -7,12 +7,12 @@
   "dependencies": [
     "E00"
   ],
-  "status": "planned",
+  "status": "ready",
   "stories": [
     {
       "id": "E01-S01",
       "title": "Freeze domain vocabulary",
-      "status": "planned",
+      "status": "ready",
       "outcome": "Define canonical terms for Artifact, ProviderRoot, Evidence, Confidence, Lifecycle, Authority, Plan, Action, and Result.",
       "change_risk": "CR1",
       "dependencies": [

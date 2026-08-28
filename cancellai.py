@@ -28,6 +28,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import unicodedata
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -455,6 +456,17 @@ def fingerprint_root(path: Path, tool: str) -> RootAuthority:
     return RootAuthority(tool=tool, path=resolved, origin=origin, confidence=confidence, markers=tuple(sorted(found)))
 
 
+def canonical_name(name: str) -> str:
+    """Unicode canonical caseless form, per UAX #15: NFD, casefold, NFD again.
+
+    Case folding alone is not enough to compare filenames. APFS returns decomposed forms,
+    so the same directory can arrive as `plu` + U+0308 + `gins` or as `plügins`, and folding
+    compares them as different names. Folding can itself emit composed characters, hence the
+    second normalization. Both sides of every protected-name comparison go through here.
+    """
+    return unicodedata.normalize("NFD", unicodedata.normalize("NFD", name).casefold())
+
+
 def protected_names_for(tool: str) -> set[str]:
     return CLAUDE_PROTECTED_NAMES if tool == "claude" else CODEX_PROTECTED_NAMES
 
@@ -483,11 +495,12 @@ def protected_component(path: Path, root: Path, protected_names: set[str]) -> st
     except OSError:
         return "<unresolvable>"
 
-    # macOS mounts APFS case-insensitively by default, so a candidate spelled `Plugins`
-    # names the same directory as `plugins`. Matching case-sensitively would make the
-    # barrier depend on which spelling a scanner happened to produce. On a case-sensitive
-    # filesystem this is merely over-inclusive, and over-inclusive is the safe direction.
-    folded = {name.casefold(): name for name in protected_names}
+    # macOS mounts APFS case-insensitively and stores decomposed Unicode, so `Plugins`,
+    # `plugins` and a decomposed spelling can all name the same directory. Comparing raw
+    # strings would make the barrier depend on which form a scanner happened to produce.
+    # On a case-sensitive filesystem this is merely over-inclusive, which is the safe
+    # direction for a barrier.
+    folded = {canonical_name(name): name for name in protected_names}
     for candidate, base in views:
         try:
             relative = candidate.relative_to(base)
@@ -495,7 +508,7 @@ def protected_component(path: Path, root: Path, protected_names: set[str]) -> st
             # This view falls outside the approved root; containment checks own that case.
             continue
         for part in relative.parts:
-            canonical = folded.get(part.casefold())
+            canonical = folded.get(canonical_name(part))
             if canonical is not None:
                 return canonical
     return None

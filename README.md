@@ -68,9 +68,13 @@ Exit code 4 is what you get when a Codex or Claude process is running or cannot 
 
 Codex CLI and Claude Code do not publish a stable spec for their local storage layout. cancellAI targets directories and file-naming patterns observed in current released versions of both tools, and reports the rest as unclassified. If a future version changes the layout, the fail-safe behavior is to find nothing to clean, not to guess - so review `clean --dry-run` output before trusting it on a new tool version.
 
-## Development safety notice
+## Trust floor
 
-The architecture review of 2026-08-27 identified seven P0 trust-floor defects in the Python implementation, scheduled in roadmap epic `E00`. They have been through two remediation rounds and two independent reviews. Round 1 rejected six of seven stories, round 2 rejected all seven, and every defect both reviews found is now repaired. One story is closed; the rest await a third review, and nothing is marked done until a reviewer issues a verdict. See [the baseline code review](docs/audits/2026-08-27-CODE_REVIEW.md), the [round-1](project/evidence/E00-VERIFIER-REVIEW.md) and [round-2](project/evidence/E00-VERIFIER-REVIEW-ROUND2.md) reviews, and [the as-is architecture](docs/architecture/AS_IS.md).
+The architecture review of 2026-08-27 found seven P0 defects in this implementation: protected names that were documented but never enforced, a config root accepted on path depth alone, an `--aggressive` flag that bypassed retention, flags that silently meant `clean`, filesystem errors that read as empty directories, a history rewrite that could lose concurrent writes, and safety-blocked runs that reported success.
+
+All seven are repaired, each with a permanent regression test. It took three rounds of independent adversarial review to get there, and the review history is committed: round 1 rejected six of seven stories, round 2 rejected all seven, round 3 rejected one. Every round found that the previous repair had closed the *reported case* and left the *class* of defect open.
+
+Read [the baseline review](docs/audits/2026-08-27-CODE_REVIEW.md), the verifier rounds [one](project/evidence/E00-VERIFIER-REVIEW.md), [two](project/evidence/E00-VERIFIER-REVIEW-ROUND2.md) and [three](project/evidence/E00-VERIFIER-REVIEW-ROUND3.md), and [the as-is architecture](docs/architecture/AS_IS.md). The closure packet, including the residual risks the owner accepted, is [here](project/evidence/E00-S07/EVIDENCE.md).
 
 ## Uninstall
 

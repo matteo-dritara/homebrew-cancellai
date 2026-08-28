@@ -1289,6 +1289,39 @@ class RoundTwoResponseTests(unittest.TestCase):
             "agent-memory",
         )
 
+    def test_protected_barrier_uses_canonical_caseless_comparison(self):
+        # Case folding alone is not filename comparison: APFS stores decomposed Unicode,
+        # so the same directory arrives in different forms. Both must resolve to the same
+        # protected name, in either direction and combined with case variance.
+        composed = "pl\u00fcgins"
+        decomposed = "plu\u0308gins"
+        for spelled, protected in (
+            (decomposed, composed),
+            (composed, decomposed),
+            (decomposed.upper(), composed),
+            (composed.upper(), decomposed),
+        ):
+            with tempfile.TemporaryDirectory() as td:
+                root = Path(td)
+                self.assertEqual(
+                    cleaner.protected_component(root / spelled / "state.json", root, {protected}),
+                    protected,
+                    (spelled, protected),
+                )
+
+    def test_canonical_name_is_stable_across_form_and_case(self):
+        forms = ["pl\u00fcgins", "plu\u0308gins", "PL\u00dcGINS", "PLU\u0308GINS"]
+        self.assertEqual(len({cleaner.canonical_name(form) for form in forms}), 1)
+        # Distinct names must stay distinct: normalization must not collapse everything.
+        self.assertNotEqual(cleaner.canonical_name("plugins"), cleaner.canonical_name("pl\u00fcgins"))
+
+    def test_decomposed_protected_directory_is_refused_at_deletion(self):
+        protected = {"pl\u00fcgins"}
+        target = write_file(self.codex / "plu\u0308gins" / "state.json", "keep")
+        with self.assertRaises(cleaner.SafetyError):
+            cleaner.safe_remove(target, self.codex, protected)
+        self.assertTrue(target.exists())
+
     def test_case_variant_protected_path_is_refused_at_deletion(self):
         target = write_file(self.codex / "Plugins" / "state.json", "keep")
         with self.assertRaises(cleaner.SafetyError):
@@ -1440,6 +1473,14 @@ class RoundTwoResponseTests(unittest.TestCase):
             completed = subprocess.CompletedProcess(args=["ps"], returncode=0, stdout=stdout)
             with mock.patch.object(cleaner.subprocess, "run", return_value=completed):
                 self.assertFalse(cleaner.active_processes().complete, label)
+
+    def test_protected_barrier_normalizes_unicode_before_casefolding(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self.assertEqual(
+                cleaner.protected_component(root / "plu\u0308gins" / "state", root, {"plügins"}),
+                "plügins",
+            )
 
 
 if __name__ == "__main__":

@@ -141,10 +141,42 @@ class ProjectOSTests(unittest.TestCase):
         # the executor to sign off on its own CR4 work.
         model = project_os.load_model()
         epics = copy.deepcopy(model.epics)
-        cr4 = next(s for epic in epics for s in epic["stories"] if s["change_risk"] == "CR4")
-        cr4["status"] = "ready_for_review"
+        target = next(s for epic in epics for s in epic["stories"] if s["change_risk"] == "CR4")
+        target["status"] = "ready_for_review"
+
+        # Reopening a story reopens everything downstream of it. Build the state a real
+        # reopening would produce, transitively, rather than an inconsistent one the
+        # validator would reject for reasons unrelated to what this test asserts.
+        def reopen_dependents() -> bool:
+            done_ids = {epic["id"] for epic in epics if epic["status"] == "done"}
+            done_ids |= {s["id"] for epic in epics for s in epic["stories"] if s["status"] == "done"}
+            changed = False
+            for epic in epics:
+                if epic["status"] != "planned" and not set(epic["dependencies"]) <= done_ids:
+                    epic["status"] = "planned"
+                    changed = True
+                if epic["status"] == "done" and any(s["status"] != "done" for s in epic["stories"]):
+                    epic["status"] = "in_progress"
+                    changed = True
+                for story in epic["stories"]:
+                    if story["status"] != "planned" and story is not target and not set(story["dependencies"]) <= done_ids:
+                        story["status"] = "planned"
+                        changed = True
+            return changed
+
+        while reopen_dependents():
+            pass
+
         ready_for_review = project_os.Model(model.decisions, model.roadmap, epics)
         project_os.validate(ready_for_review)
+
+    def test_an_epic_cannot_be_done_while_a_story_is_open(self) -> None:
+        model = project_os.load_model()
+        epics = copy.deepcopy(model.epics)
+        closed = next(epic for epic in epics if epic["status"] == "done")
+        closed["stories"][0]["status"] = "in_progress"
+        with self.assertRaises(project_os.GovernanceError):
+            project_os.validate(project_os.Model(model.decisions, model.roadmap, epics))
 
     def test_dependency_on_later_phase_is_rejected(self) -> None:
         model = project_os.load_model()

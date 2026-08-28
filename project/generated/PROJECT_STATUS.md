@@ -8,9 +8,9 @@ Epics: **20** | Stories: **90**
 
 ## Story status
 
-- `done`: 1
-- `planned`: 82
-- `ready_for_review`: 7
+- `done`: 9
+- `planned`: 80
+- `ready`: 1
 
 ## Change risk distribution
 
@@ -22,14 +22,8 @@ Epics: **20** | Stories: **90**
 
 ## Explicitly ready work
 
-- none
+- **E01-S01** - Freeze domain vocabulary (CR1)
 
 ## Awaiting independent review
 
-- **E00-S01** - Enforce protected-name barriers (CR4)
-- **E00-S02** - Fingerprint custom provider roots (CR4)
-- **E00-S04** - Remove ambiguous destructive CLI escalation (CR3)
-- **E00-S05** - Represent incomplete scans and fail closed (CR4)
-- **E00-S06** - Protect concurrent Claude metadata rewrites (CR3)
-- **E00-S09** - Fail closed when provider activity is unknown (CR4)
-- **E00-S08** - Report provider layout coverage (CR1)
+- none
