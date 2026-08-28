@@ -12,7 +12,7 @@
     {
       "id": "E01-S01",
       "title": "Freeze domain vocabulary",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Define canonical terms for Artifact, ProviderRoot, Evidence, Confidence, Lifecycle, Authority, Plan, Action, and Result.",
       "change_risk": "CR1",
       "dependencies": [
@@ -33,7 +33,7 @@
     {
       "id": "E01-S02",
       "title": "Build provider layout fixture corpus",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Capture synthetic, privacy-safe Claude/Codex layouts for supported and adversarial cases.",
       "change_risk": "CR1",
       "dependencies": [
@@ -54,7 +54,7 @@
     {
       "id": "E01-S03",
       "title": "Define versioned plan/result JSON contracts",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Specify machine-readable inventory, plan, explanation, and execution result schemas.",
       "change_risk": "CR2",
       "dependencies": [
@@ -80,7 +80,7 @@
     {
       "id": "E01-S04",
       "title": "Characterize Python behavior",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Record Python outputs for the complete fixture corpus without treating defects as desired behavior.",
       "change_risk": "CR2",
       "dependencies": [
@@ -102,7 +102,7 @@
     {
       "id": "E01-S05",
       "title": "Create differential test harness contract",
-      "status": "ready_for_review",
+      "status": "in_progress",
       "outcome": "Define how Python reference and Rust candidate outputs are normalized and compared.",
       "change_risk": "CR2",
       "dependencies": [
@@ -125,7 +125,7 @@
     {
       "id": "E01-S06",
       "title": "Freeze Python feature scope",
-      "status": "ready_for_review",
+      "status": "blocked",
       "outcome": "Declare Python reference maintenance-only after contract extraction.",
       "change_risk": "CR0",
       "dependencies": [

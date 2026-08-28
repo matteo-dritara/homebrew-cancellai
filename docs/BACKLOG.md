@@ -222,7 +222,7 @@ Turn Python v1 into a behavioral oracle before Rust implementation begins.
 
 ### E01-S01 - Freeze domain vocabulary
 
-**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E00-S07 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** E00-S07 | **Safety obligations:** none
 
 **Outcome.** Define canonical terms for Artifact, ProviderRoot, Evidence, Confidence, Lifecycle, Authority, Plan, Action, and Result.
 
@@ -241,7 +241,7 @@ Turn Python v1 into a behavioral oracle before Rust implementation begins.
 
 ### E01-S02 - Build provider layout fixture corpus
 
-**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E01-S01 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** E01-S01 | **Safety obligations:** none
 
 **Outcome.** Capture synthetic, privacy-safe Claude/Codex layouts for supported and adversarial cases.
 
@@ -260,7 +260,7 @@ Turn Python v1 into a behavioral oracle before Rust implementation begins.
 
 ### E01-S03 - Define versioned plan/result JSON contracts
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E01-S01 | **Safety obligations:** SI-013, SI-016
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E01-S01 | **Safety obligations:** SI-013, SI-016
 
 **Outcome.** Specify machine-readable inventory, plan, explanation, and execution result schemas.
 
@@ -281,7 +281,7 @@ Turn Python v1 into a behavioral oracle before Rust implementation begins.
 
 ### E01-S04 - Characterize Python behavior
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E01-S02, E01-S03 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E01-S02, E01-S03 | **Safety obligations:** none
 
 **Outcome.** Record Python outputs for the complete fixture corpus without treating defects as desired behavior.
 
@@ -300,7 +300,7 @@ Turn Python v1 into a behavioral oracle before Rust implementation begins.
 
 ### E01-S05 - Create differential test harness contract
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E01-S04 | **Safety obligations:** SI-019
+**Status:** `in_progress` | **Change Risk:** `CR2` | **Dependencies:** E01-S04 | **Safety obligations:** SI-019
 
 **Outcome.** Define how Python reference and Rust candidate outputs are normalized and compared.
 
@@ -319,7 +319,7 @@ Turn Python v1 into a behavioral oracle before Rust implementation begins.
 
 ### E01-S06 - Freeze Python feature scope
 
-**Status:** `ready_for_review` | **Change Risk:** `CR0` | **Dependencies:** E01-S05 | **Safety obligations:** none
+**Status:** `blocked` | **Change Risk:** `CR0` | **Dependencies:** E01-S05 | **Safety obligations:** none
 
 **Outcome.** Declare Python reference maintenance-only after contract extraction.
 

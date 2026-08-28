@@ -8,9 +8,10 @@ Epics: **20** | Stories: **90**
 
 ## Story status
 
-- `done`: 9
+- `blocked`: 1
+- `done`: 13
+- `in_progress`: 1
 - `planned`: 75
-- `ready_for_review`: 6
 
 ## Change risk distribution
 
@@ -26,9 +27,4 @@ Epics: **20** | Stories: **90**
 
 ## Awaiting independent review
 
-- **E01-S01** - Freeze domain vocabulary (CR1)
-- **E01-S02** - Build provider layout fixture corpus (CR1)
-- **E01-S03** - Define versioned plan/result JSON contracts (CR2)
-- **E01-S04** - Characterize Python behavior (CR2)
-- **E01-S05** - Create differential test harness contract (CR2)
-- **E01-S06** - Freeze Python feature scope (CR0)
+- none
