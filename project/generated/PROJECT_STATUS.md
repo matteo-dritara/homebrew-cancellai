@@ -10,7 +10,7 @@ Epics: **20** | Stories: **90**
 
 - `done`: 9
 - `planned`: 80
-- `ready`: 1
+- `ready_for_review`: 1
 
 ## Change risk distribution
 
@@ -22,8 +22,8 @@ Epics: **20** | Stories: **90**
 
 ## Explicitly ready work
 
-- **E01-S01** - Freeze domain vocabulary (CR1)
+- none
 
 ## Awaiting independent review
 
-- none
+- **E01-S01** - Freeze domain vocabulary (CR1)

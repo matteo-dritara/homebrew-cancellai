@@ -39,7 +39,7 @@ Seven things constitute the security boundary. Any change to them needs matching
 - **`Plan`** - the output of `build_plan`: selected actions plus bookkeeping (cutoff, notes about refused or skipped work, which `history.jsonl` lines are linked to selected sessions).
 - **`CleanResult`** - what actually happened: succeeded/failed/skipped counts, blocked tools, deferred work, bytes freed, and which Claude session ids were really deleted.
 - **`CoverageBucket`** - how much of a provider root this build can classify at all, including the entries it cannot.
-- **`RootAuthority`** - a root's origin (`default`/`custom`), the provider markers found in it, its confidence, and whether it may be mutated.
+- **`RootAuthority`** - a root's origin (`default`/`custom`), the provider markers found in it, its confidence, and whether it may be mutated. Canonical name: [`ProviderRoot`](DOMAIN_MODEL.md#providerroot); see [Legacy vocabulary](DOMAIN_MODEL.md#legacy-vocabulary).
 - **`Scan`** - one discovery scope's completeness plus the paths that could not be read.
 - **`ProcessObservation`** - which provider processes were found, and whether the enumeration worked at all.
 

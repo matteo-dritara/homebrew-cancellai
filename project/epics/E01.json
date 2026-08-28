@@ -12,7 +12,7 @@
     {
       "id": "E01-S01",
       "title": "Freeze domain vocabulary",
-      "status": "ready",
+      "status": "ready_for_review",
       "outcome": "Define canonical terms for Artifact, ProviderRoot, Evidence, Confidence, Lifecycle, Authority, Plan, Action, and Result.",
       "change_risk": "CR1",
       "dependencies": [

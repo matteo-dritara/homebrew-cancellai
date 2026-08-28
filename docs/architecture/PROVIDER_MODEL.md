@@ -42,7 +42,7 @@ A provider can therefore be verified for inventory but unsupported for native de
 
 ## Root fingerprinting
 
-Destructive operation on a provider root requires a credible root fingerprint. A path is not accepted merely because the environment variable names it.
+Destructive operation on a [`ProviderRoot`](DOMAIN_MODEL.md#providerroot) requires a credible root fingerprint. A path is not accepted merely because the environment variable names it.
 
 Fingerprint evidence may include:
 

@@ -222,7 +222,7 @@ Turn Python v1 into a behavioral oracle before Rust implementation begins.
 
 ### E01-S01 - Freeze domain vocabulary
 
-**Status:** `ready` | **Change Risk:** `CR1` | **Dependencies:** E00-S07 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E00-S07 | **Safety obligations:** none
 
 **Outcome.** Define canonical terms for Artifact, ProviderRoot, Evidence, Confidence, Lifecycle, Authority, Plan, Action, and Result.
 
