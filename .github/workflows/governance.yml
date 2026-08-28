@@ -22,6 +22,7 @@ jobs:
       - run: python3 scripts/check_docs.py check
       - run: python3 scripts/check_workflows.py check
       - run: python3 scripts/check_process.py check
+      - run: python3 scripts/release.py check
       - run: python3 -m unittest tests.test_project_os tests.test_docs tests.test_workflows tests.test_process -v
 
   commit-convention:

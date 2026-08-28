@@ -1,6 +1,6 @@
 [project]
 name = "cancellai"
-version = "1.0.2"
+version = "1.1.0"
 description = "Safely reclaim disk space from old Codex CLI and Claude Code session data."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -36,5 +36,6 @@ files = [
   "scripts/check_docs.py",
   "scripts/check_workflows.py",
   "scripts/check_process.py",
+  "scripts/release.py",
 ]
 strict = true

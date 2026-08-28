@@ -47,6 +47,14 @@ MAX_SUBJECT_LENGTH = 100
 # police formatting; requiring an invariant reference polices substance.
 SAFETY_VERDICT_SECTIONS = ("## verdict", "## owner decision")
 SAFETY_INVARIANT_RE = re.compile(r"\bSI-\d{3}\b")
+
+# ADR-0014 / PD-022: an epic gets at most two independent review rounds. An unbounded loop
+# hides defects behind a status that never changes; findings surviving round two become new
+# backlog work items instead. E00 predates the rule and ran three rounds - it is the reason
+# the rule exists, so it is recorded as an explicit exception rather than quietly exempted.
+MAX_REVIEW_ROUNDS = 2
+REVIEW_ROUND_EXCEPTIONS = {"E00": "ran three rounds before ADR-0014 bounded them"}
+VERIFIER_REVIEW_RE = re.compile(r"^(E\d{2})-VERIFIER-REVIEW.*\.md$")
 GENERATED_FILES = (
     "docs/DECISION_REGISTER.md",
     "docs/ROADMAP.md",
@@ -151,6 +159,25 @@ def check_evidence(errors: list[str], work_ids: set[str]) -> None:
                 errors.append(f"{rel}: Safety Verdict must reference at least one Safety Invariant (SI-xxx)")
 
 
+def check_review_rounds(errors: list[str], warnings: list[str]) -> None:
+    rounds: dict[str, list[str]] = {}
+    for path in sorted(EVIDENCE.glob("*.md")):
+        match = VERIFIER_REVIEW_RE.match(path.name)
+        if match:
+            rounds.setdefault(match.group(1), []).append(path.name)
+    for epic_id, records in sorted(rounds.items()):
+        if len(records) <= MAX_REVIEW_ROUNDS:
+            continue
+        reason = REVIEW_ROUND_EXCEPTIONS.get(epic_id)
+        message = (
+            f"{epic_id}: {len(records)} independent review rounds committed, above the ceiling of {MAX_REVIEW_ROUNDS} (ADR-0014): {records}"
+        )
+        if reason:
+            warnings.append(f"{message} - recorded exception: {reason}")
+        else:
+            errors.append(message)
+
+
 def check_generated_banners(errors: list[str]) -> None:
     for rel in GENERATED_FILES:
         path = ROOT / rel
@@ -175,15 +202,18 @@ def validate_commit_subject(subject: str) -> list[str]:
     return problems
 
 
-def check_process() -> None:
+def check_process() -> list[str]:
     errors: list[str] = []
+    warnings: list[str] = []
     decision_ids, work_ids = known_ids()
     check_adrs(errors, decision_ids, work_ids)
     check_superseded_decisions(errors)
     check_evidence(errors, work_ids)
+    check_review_rounds(errors, warnings)
     check_generated_banners(errors)
     if errors:
         raise ProcessError("\n".join(errors))
+    return warnings
 
 
 def check_commit_message(path: Path) -> None:
@@ -245,8 +275,10 @@ def main(argv: list[str] | None = None) -> int:
         if command == "commits":
             check_commit_range(args.range)
             return 0
-        check_process()
-        print("process OK: ADR lifecycle, decision supersession, evidence, and generated banners are consistent")
+        warnings = check_process()
+        print("process OK: ADR lifecycle, decision supersession, evidence, review rounds, and generated banners are consistent")
+        for warning in warnings:
+            print(f"WARNING: {warning}", file=sys.stderr)
         return 0
     except (ProcessError, OSError, KeyError, ValueError) as exc:
         print(f"PROCESS ERROR: {exc}", file=sys.stderr)
