@@ -5,12 +5,12 @@
   "title": "Trust Floor Remediation",
   "objective": "Correct known P0 safety and contract defects in Python without broadening product scope.",
   "dependencies": [],
-  "status": "in_progress",
+  "status": "done",
   "stories": [
     {
       "id": "E00-S01",
       "title": "Enforce protected-name barriers",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Make documented protected names an executable defense at discovery and execution time.",
       "change_risk": "CR4",
       "dependencies": [],
@@ -36,7 +36,7 @@
     {
       "id": "E00-S02",
       "title": "Fingerprint custom provider roots",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Reject destructive use of custom roots that do not credibly match the selected provider layout.",
       "change_risk": "CR4",
       "dependencies": [],
@@ -87,7 +87,7 @@
     {
       "id": "E00-S04",
       "title": "Remove ambiguous destructive CLI escalation",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Require the clean subcommand for all destructive behavior and publish stable exit semantics.",
       "change_risk": "CR3",
       "dependencies": [],
@@ -113,7 +113,7 @@
     {
       "id": "E00-S05",
       "title": "Represent incomplete scans and fail closed",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Stop treating unreadable or partially scanned trees as implicitly safe.",
       "change_risk": "CR4",
       "dependencies": [],
@@ -139,7 +139,7 @@
     {
       "id": "E00-S06",
       "title": "Protect concurrent Claude metadata rewrites",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Make history trimming streaming and safe in the presence of active writers.",
       "change_risk": "CR3",
       "dependencies": [],
@@ -164,7 +164,7 @@
     {
       "id": "E00-S09",
       "title": "Fail closed when provider activity is unknown",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Stop treating an unusable process observation as proof that no provider is running.",
       "change_risk": "CR4",
       "dependencies": [],
@@ -191,7 +191,7 @@
     {
       "id": "E00-S07",
       "title": "P0 regression evidence packet",
-      "status": "planned",
+      "status": "done",
       "outcome": "Close Trust Floor only with explicit evidence for every P0 defect.",
       "change_risk": "CR2",
       "dependencies": [
@@ -222,7 +222,7 @@
     {
       "id": "E00-S08",
       "title": "Report provider layout coverage",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Make the gap between observed provider state and cancellAI-classified state visible instead of silent.",
       "change_risk": "CR1",
       "dependencies": [],

@@ -6,13 +6,13 @@ Every story is a work contract. Implementation may refine internals, but changin
 
 ## E00 - Trust Floor Remediation
 
-**Phase:** `P0` | **Status:** `in_progress` | **Epic dependencies:** none
+**Phase:** `P0` | **Status:** `done` | **Epic dependencies:** none
 
 Correct known P0 safety and contract defects in Python without broadening product scope.
 
 ### E00-S01 - Enforce protected-name barriers
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-001, SI-003, SI-006
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-001, SI-003, SI-006
 
 **Outcome.** Make documented protected names an executable defense at discovery and execution time.
 
@@ -34,7 +34,7 @@ Correct known P0 safety and contract defects in Python without broadening produc
 
 ### E00-S02 - Fingerprint custom provider roots
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-002, SI-004, SI-009
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-002, SI-004, SI-009
 
 **Outcome.** Reject destructive use of custom roots that do not credibly match the selected provider layout.
 
@@ -78,7 +78,7 @@ Correct known P0 safety and contract defects in Python without broadening produc
 
 ### E00-S04 - Remove ambiguous destructive CLI escalation
 
-**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** none | **Safety obligations:** SI-007, SI-014
+**Status:** `done` | **Change Risk:** `CR3` | **Dependencies:** none | **Safety obligations:** SI-007, SI-014
 
 **Outcome.** Require the clean subcommand for all destructive behavior and publish stable exit semantics.
 
@@ -101,7 +101,7 @@ Correct known P0 safety and contract defects in Python without broadening produc
 
 ### E00-S05 - Represent incomplete scans and fail closed
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-008, SI-009, SI-010
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-008, SI-009, SI-010
 
 **Outcome.** Stop treating unreadable or partially scanned trees as implicitly safe.
 
@@ -123,7 +123,7 @@ Correct known P0 safety and contract defects in Python without broadening produc
 
 ### E00-S06 - Protect concurrent Claude metadata rewrites
 
-**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** none | **Safety obligations:** SI-011, SI-015
+**Status:** `done` | **Change Risk:** `CR3` | **Dependencies:** none | **Safety obligations:** SI-011, SI-015
 
 **Outcome.** Make history trimming streaming and safe in the presence of active writers.
 
@@ -145,7 +145,7 @@ Correct known P0 safety and contract defects in Python without broadening produc
 
 ### E00-S09 - Fail closed when provider activity is unknown
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-009, SI-014, SI-011
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-009, SI-014, SI-011
 
 **Outcome.** Stop treating an unusable process observation as proof that no provider is running.
 
@@ -168,7 +168,7 @@ Correct known P0 safety and contract defects in Python without broadening produc
 
 ### E00-S07 - P0 regression evidence packet
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E00-S01, E00-S02, E00-S03, E00-S04, E00-S05, E00-S06 | **Safety obligations:** SI-019
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E00-S01, E00-S02, E00-S03, E00-S04, E00-S05, E00-S06 | **Safety obligations:** SI-019
 
 **Outcome.** Close Trust Floor only with explicit evidence for every P0 defect.
 
@@ -190,7 +190,7 @@ Correct known P0 safety and contract defects in Python without broadening produc
 
 ### E00-S08 - Report provider layout coverage
 
-**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** SI-004, SI-009, SI-010
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** SI-004, SI-009, SI-010
 
 **Outcome.** Make the gap between observed provider state and cancellAI-classified state visible instead of silent.
 
@@ -216,13 +216,13 @@ Correct known P0 safety and contract defects in Python without broadening produc
 
 ## E01 - Executable Reference Contract
 
-**Phase:** `P0` | **Status:** `planned` | **Epic dependencies:** E00
+**Phase:** `P0` | **Status:** `ready` | **Epic dependencies:** E00
 
 Turn Python v1 into a behavioral oracle before Rust implementation begins.
 
 ### E01-S01 - Freeze domain vocabulary
 
-**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E00-S07 | **Safety obligations:** none
+**Status:** `ready` | **Change Risk:** `CR1` | **Dependencies:** E00-S07 | **Safety obligations:** none
 
 **Outcome.** Define canonical terms for Artifact, ProviderRoot, Evidence, Confidence, Lifecycle, Authority, Plan, Action, and Result.
 

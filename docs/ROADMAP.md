@@ -20,8 +20,8 @@ Repair the Python trust floor, extract executable behavior, and freeze the refer
 
 **Epics**
 
-- **E00 - Trust Floor Remediation** (`in_progress`): Correct known P0 safety and contract defects in Python without broadening product scope.
-- **E01 - Executable Reference Contract** (`planned`): Turn Python v1 into a behavioral oracle before Rust implementation begins.
+- **E00 - Trust Floor Remediation** (`done`): Correct known P0 safety and contract defects in Python without broadening product scope.
+- **E01 - Executable Reference Contract** (`ready`): Turn Python v1 into a behavioral oracle before Rust implementation begins.
 
 ## P1 - Rust Kernel
 

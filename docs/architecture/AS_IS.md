@@ -29,7 +29,7 @@ Seven things constitute the security boundary. Any change to them needs matching
 2. **`fingerprint_root` / `RootAuthority`** - only the provider's own default directory may be mutated. The structural fingerprint survives as *reported information* - it tells the operator what cancellAI sees - and is explicitly non-authoritative: nothing observable in a filesystem proves a directory belongs to a provider, and two schemes that assumed otherwise were rejected by independent review. Any relocated root is fully inspectable and never mutated. See [ADR-0013](../adrs/0013-custom-provider-roots-are-inspection-only-in-python-v1.md).
 3. **`Scan` / `observe`** - the completeness channel. Size and mtime helpers answer with numbers that cannot express "I could not look", so unreadable paths are recorded separately. Every discovery guard goes through `observe()` rather than `Path.exists()`, which answers False for both "absent" and "unreadable" and would reintroduce the collapse at the guard. An incomplete scope withholds destructive authority for that tool. A path that vanished mid-scan is recorded as a race, not as blindness, and the error list is bounded so a governance tool cannot become an unbounded log producer.
 4. **`safe_remove`** - the only function allowed to call `unlink`/`rmtree`. It never follows a symlink outside the approved root and re-resolves the path immediately before deleting, so a filesystem change between planning and acting is caught at the last possible moment rather than trusted from stale information.
-5. **`protected_component`** - the executable form of `CLAUDE_PROTECTED_NAMES` / `CODEX_PROTECTED_NAMES`. Applied twice: when the plan is assembled and again inside `safe_remove`. The name is checked both lexically and after resolution, so a protected entry that is itself a symlink keeps its protection instead of falling out of the relative-path computation, and matching is case-insensitive because APFS is. Over-inclusive is the safe direction here. `--aggressive` widens which categories are eligible; it can never reach a protected name.
+5. **`protected_component`** - the executable form of `CLAUDE_PROTECTED_NAMES` / `CODEX_PROTECTED_NAMES`. Applied twice: when the plan is assembled and again inside `safe_remove`. The name is checked both lexically and after resolution, so a protected entry that is itself a symlink keeps its protection instead of falling out of the relative-path computation. Comparison uses the Unicode canonical caseless form (UAX #15: NFD, casefold, NFD), because APFS is case-insensitive *and* stores decomposed filenames - folding alone compared `plügins` and its decomposed spelling as different names. Over-inclusive is the safe direction here. `--aggressive` widens which categories are eligible; it can never reach a protected name.
 6. **`active_processes`** - reports *whether it could observe* provider activity separately from what it found. An unusable `ps` marks the observation incomplete, and unknown activity blocks mutation exactly as a detected running provider does.
 7. **`normalize_argv`** - destructive intent must be typed. A leading flag resolves to the read-only `status` view; an unknown verb is a usage error.
 
@@ -94,20 +94,24 @@ The baseline code review in [`../audits/2026-08-27-CODE_REVIEW.md`](../audits/20
 
 | Defect | Story | State |
 | --- | --- | --- |
-Two independent review rounds have been performed. Round 1 rejected six of seven stories; round 2 rejected all seven. Every defect both rounds found is repaired. A story is closed only when a reviewer issues a verdict, and the CR4 ones additionally need a Safety Verdict.
+**E00 is closed.** Three independent review rounds were performed before closure; the fourth was waived by the owner, who accepted the residual risk explicitly. Each CR4 story carries an owner acceptance recording that decision beside the reviewer's earlier verdicts, which are retained unaltered.
 
-| Story | Round 1 | Round 2 | State |
-| --- | --- | --- | --- |
-| E00-S01 protected-name barrier (CR4) | FAIL - protected symlink escaped | FAIL - case variant `Plugins` escaped | repaired |
-| E00-S02 provider-root authority (CR4) | FAIL - filenames treated as identity | FAIL - validated lookalike still accepted | repaired, ADR-0013 |
-| E00-S03 aggressive retention (CR3) | **PASS** | - | **done** |
-| E00-S04 CLI and exit taxonomy (CR3) | FAIL - refusal escaped as an exception | FAIL - `OSError` still escaped | repaired |
-| E00-S05 scan completeness (CR4) | FAIL - three helpers swallowed errors | FAIL - `exists()` guards collapsed access errors | repaired |
-| E00-S06 concurrent metadata rewrite (CR3) | FAIL - CRLF bytes normalised | FAIL - symlink followed and replaced | repaired |
-| E00-S08 coverage vocabulary (CR1) | new | FAIL - container labelled cleanable | repaired |
-| E00-S09 activity observation (CR4) | new | FAIL - unrelated `ps` line marked it complete | repaired |
+| Story | Round 1 | Round 2 | Round 3 | State |
+| --- | --- | --- | --- | --- |
+| E00-S01 protected-name barrier (CR4) | FAIL - protected symlink escaped | FAIL - case variant `Plugins` escaped | FAIL - Unicode form escaped | done |
+| E00-S02 provider-root authority (CR4) | FAIL - filenames treated as identity | FAIL - validated lookalike accepted | PASS | done, ADR-0013 |
+| E00-S03 aggressive retention (CR3) | PASS | - | - | done |
+| E00-S04 CLI and exit taxonomy (CR3) | FAIL - refusal escaped as an exception | FAIL - `OSError` still escaped | PASS | done |
+| E00-S05 scan completeness (CR4) | FAIL - three helpers swallowed errors | FAIL - `exists()` guards collapsed errors | PASS | done |
+| E00-S06 concurrent metadata rewrite (CR3) | FAIL - CRLF bytes normalised | FAIL - symlink followed and replaced | PASS | done |
+| E00-S08 coverage vocabulary (CR1) | new | FAIL - container labelled cleanable | PASS | done |
+| E00-S09 activity observation (CR4) | new | FAIL - unrelated `ps` line accepted | PASS | done |
 
-The pattern across both rounds is worth recording: every round-1 repair closed the reported *instance* and left the defect *class* open. Round 2 was scoped to falsify classes rather than instances, and found one in each story. E00-S08 and E00-S09 were opened during remediation rather than folded into an existing story.
+The pattern across the rounds is the most useful thing this epic produced. Every round-1 repair closed the reported *instance* and left the defect *class* open; round 2 was scoped to falsify classes and found one in each story; round 3 found one more, in the story that had already been repaired twice. Rejection counts fell 6/7, then 7/7, then 1/7.
+
+Two consequences are permanent. `docs/development/WORK_ITEM_MODEL.md` makes `ready_for_review` the executor's exit state, so an implementer never grades its own work. And `scripts/project_os.py` refuses a handoff without evidence and a CR4 closure without a verdict that records a pass - the gate that made the owner's acceptance an explicit, committed decision rather than a silent status change.
+
+E00-S08 and E00-S09 were opened during remediation rather than folded into an existing story.
 
 Provider layout drift is tracked separately by E00-S08: `status --coverage` classifies every top-level provider entry and names the ones this build does not understand. Unknown entries are reported, never cleaned.
 
