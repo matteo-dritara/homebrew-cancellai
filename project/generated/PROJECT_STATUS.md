@@ -9,8 +9,8 @@ Epics: **20** | Stories: **90**
 ## Story status
 
 - `done`: 9
-- `planned`: 77
-- `ready_for_review`: 4
+- `planned`: 76
+- `ready_for_review`: 5
 
 ## Change risk distribution
 
@@ -30,3 +30,4 @@ Epics: **20** | Stories: **90**
 - **E01-S02** - Build provider layout fixture corpus (CR1)
 - **E01-S03** - Define versioned plan/result JSON contracts (CR2)
 - **E01-S04** - Characterize Python behavior (CR2)
+- **E01-S05** - Create differential test harness contract (CR2)

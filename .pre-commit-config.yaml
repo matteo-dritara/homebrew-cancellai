@@ -19,7 +19,7 @@ repos:
     hooks:
       - id: mypy
         args: [--strict]
-        files: ^(cancellai\.py|scripts/(gen_docs|project_os|check_docs|check_workflows|check_process|release|check_fixtures|check_schemas|characterize)\.py)$
+        files: ^(cancellai\.py|scripts/(gen_docs|project_os|check_docs|check_workflows|check_process|release|check_fixtures|check_schemas|characterize|diff_harness)\.py)$
 
   - repo: local
     hooks:
@@ -70,6 +70,13 @@ repos:
         entry: python3 scripts/characterize.py check
         language: system
         files: ^(cancellai\.py|tests/fixtures/(manifest\.json|recipes\.py|characterization/.*)|scripts/(characterize|check_fixtures)\.py)$
+        pass_filenames: false
+
+      - id: diff-harness-selftest
+        name: differential comparison harness self-test
+        entry: python3 scripts/diff_harness.py check
+        language: system
+        files: ^(scripts/diff_harness\.py|tests/fixtures/schemas/golden/.*|docs/development/VERIFICATION_STRATEGY\.md)$
         pass_filenames: false
 
       - id: process-check

@@ -102,7 +102,7 @@
     {
       "id": "E01-S05",
       "title": "Create differential test harness contract",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Define how Python reference and Rust candidate outputs are normalized and compared.",
       "change_risk": "CR2",
       "dependencies": [

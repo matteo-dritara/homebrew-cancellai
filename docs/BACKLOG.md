@@ -300,7 +300,7 @@ Turn Python v1 into a behavioral oracle before Rust implementation begins.
 
 ### E01-S05 - Create differential test harness contract
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E01-S04 | **Safety obligations:** SI-019
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E01-S04 | **Safety obligations:** SI-019
 
 **Outcome.** Define how Python reference and Rust candidate outputs are normalized and compared.
 

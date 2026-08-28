@@ -101,6 +101,7 @@ def check_inventory(doc: dict[str, Any], where: str, errors: list[str]) -> None:
         artifact_where = f"{where}.artifacts[{index}]"
         for key in (
             "artifact_id",
+            "identity_token",
             "provider_id",
             "artifact_type",
             "risk_class",

@@ -40,5 +40,6 @@ files = [
   "scripts/check_fixtures.py",
   "scripts/check_schemas.py",
   "scripts/characterize.py",
+  "scripts/diff_harness.py",
 ]
 strict = true

@@ -118,6 +118,14 @@ class SchemaContractTests(unittest.TestCase):
         errors = check_schemas.validate_document(doc, "synthetic")
         self.assertTrue(any("status" in e and "maybe" in e for e in errors), errors)
 
+    # --- inventory: identity_token is the content-derived key differential comparison needs ---
+
+    def test_checker_flags_an_artifact_missing_identity_token(self):
+        doc = copy.deepcopy(load("inventory.golden.json"))
+        del doc["artifacts"][0]["identity_token"]
+        errors = check_schemas.validate_document(doc, "synthetic")
+        self.assertTrue(any("identity_token" in e for e in errors), errors)
+
     def test_checker_flags_an_unknown_document_type(self):
         errors = check_schemas.validate_document({"document_type": "nonsense"}, "synthetic")
         self.assertTrue(any("unknown or missing document_type" in e for e in errors), errors)

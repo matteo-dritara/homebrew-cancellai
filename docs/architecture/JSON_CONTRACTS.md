@@ -68,9 +68,21 @@ scan_completeness: [ { scope, complete: bool, error_count: integer }, ... ]
 artifacts: [ AgentArtifact projection, ... ]
 ```
 
-Each `artifacts[]` entry carries at minimum: `artifact_id`, `provider_id`, `artifact_type`,
-`risk_class`, `reversibility`, `knowledge_confidence`, `activity_state`, `residency_state`,
-`protection_state`, `integrity_state`, `authority_ceiling`, `evidence_ids` (>= 1).
+Each `artifacts[]` entry carries at minimum: `artifact_id`, `identity_token`, `provider_id`,
+`artifact_type`, `risk_class`, `reversibility`, `knowledge_confidence`, `activity_state`,
+`residency_state`, `protection_state`, `integrity_state`, `authority_ceiling`, `evidence_ids`
+(>= 1).
+
+`artifact_id` is an opaque, engine-assigned identifier - two conformant engines observing the
+same fixture are never required to assign the same one. `identity_token` is not: it is
+[`AgentArtifact`](DOMAIN_MODEL.md#agentartifact)'s `IdentityToken` field, derived from stable
+provider-observable facts (for example a session UUID plus its provider-relative path), and
+two conformant engines observing the same underlying state MUST produce the same
+`identity_token` for the same artifact. This is what a differential comparator matches
+records on - see [`VERIFICATION_STRATEGY.md`](../development/VERIFICATION_STRATEGY.md#differential-comparison-contract).
+E01-S03's first draft of this document omitted `identity_token`; E01-S05 added it back
+before the epic's review round, once building the differential harness showed a document
+with no content-derived matching key cannot be differentially compared at all.
 
 An artifact produced from a `PARTIAL` or `UNKNOWN` `scan_completeness` scope must carry
 `knowledge_confidence` no higher than `LOW/UNKNOWN` for that scope (SI-008, SI-009) - the

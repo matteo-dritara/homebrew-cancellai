@@ -44,6 +44,22 @@ Inventory/plan/explanation/result document shapes are specified in [`../architec
 
 During Python->Rust migration, run both engines on the same normative fixtures and compare normalized semantic output. Known Python defects are explicitly non-normative.
 
+#### Differential comparison contract
+
+`scripts/diff_harness.py` compares two [`JSON_CONTRACTS.md`](../architecture/JSON_CONTRACTS.md)-shaped documents of the same `document_type` (a Python-reference output and a Rust-candidate output, in the eventual dual-engine setup) and reports every semantic divergence. Two rules bound what "divergence" means, matching E01-S05's acceptance criteria:
+
+- **Only explicitly documented fields are ignored.** `generated_at`, `generator`, and every top-level opaque engine-assigned id (`inventory_id`, `plan_id`) are never compared - they are expected to differ between any two runs, let alone two engines. Everything else is compared.
+- **Records are paired by natural key, never by opaque id.** Before comparing, each list of records (`artifacts`, `provider_roots`, `scan_completeness`, `actions`, `explanations`, `action_results`) is matched between the two documents using a key derived from stable content, not from an engine-assigned id:
+  - `inventory.artifacts` match on `identity_token` (never `artifact_id` - see [`JSON_CONTRACTS.md`](../architecture/JSON_CONTRACTS.md#inventory-document));
+  - `inventory.provider_roots` match on `provider_id`;
+  - `inventory.scan_completeness` match on `scope`;
+  - `plan.actions` match on `(target_artifact_ids resolved to identity_token, action_class)` - resolving `target_artifact_ids` requires the caller to supply an `artifact_id -> identity_token` index built from that side's own inventory document; `action_id` and the raw `target_artifact_ids` are then dropped before comparing the matched pair's remaining fields;
+  - `explanation.explanations` and `result.action_results` currently match on the plan's own `action_id` - a documented residual limitation until a real second engine exists to justify threading the same identity-token resolution through those two document types.
+  - A record present in only one side's list is always a divergence; it is never silently dropped as "the other engine just didn't produce it."
+- **Any remaining divergence fails** unless it is whitelisted by an accepted ADR/RFC recording it as `INTENTIONAL_DIVERGENCE` (the same four-value taxonomy `characterize.py` uses - see [Python reference contract](#python-reference-contract) below). A whitelist entry is a recorded decision, not a code path the comparator special-cases silently.
+
+`scripts/diff_harness.py check` runs the module's own self-test suite: an identical document must compare clean, changing only a documented-ignored field must still compare clean, and each divergence class above (changed field, extra/missing record, mismatched `document_type`, an artifact matched correctly despite a renamed opaque id) must be caught. This is the harness self-test the story's verification contract names.
+
 ### Adversarial tests
 
 Required for CR3/CR4. The verifier tries to violate named invariants rather than simply increasing line coverage.

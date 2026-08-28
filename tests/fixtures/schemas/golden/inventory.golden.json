@@ -19,6 +19,7 @@
   "artifacts": [
     {
       "artifact_id": "artifact-0001",
+      "identity_token": "codex:sessions/2026/05/01/rollout-...-33333333-3333-4333-8333-333333333333.jsonl",
       "provider_id": "codex",
       "artifact_type": "session",
       "risk_class": "R3_RESUMABLE",
