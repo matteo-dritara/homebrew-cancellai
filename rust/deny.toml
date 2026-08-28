@@ -1,0 +1,65 @@
+# cargo-deny configuration (E02-S02, ADR-0015).
+#
+# `cargo deny check` runs all four sections below. `advisories` is this workspace's RustSec
+# gate - a separate cargo-audit invocation is redundant with it (both read the RustSec
+# Advisory Database) and is not used here.
+
+[graph]
+all-features = false
+no-default-features = false
+
+[output]
+feature-depth = 1
+
+# RustSec advisory database. No workspace dependency exists yet to have an advisory against;
+# this section becomes load-bearing the first time one is added.
+[advisories]
+ignore = []
+
+# ADR-0015: strict permissive allow-list. Anything not listed here - including weak
+# copyleft (MPL-2.0) and strong copyleft (GPL-*, LGPL-*, AGPL-*) - is denied by default.
+# Widening this list is its own reviewed decision, not a default a dependency can quietly
+# rely on.
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+]
+confidence-threshold = 0.8
+
+[licenses.private]
+# Workspace crates are all `publish = false` (rust/Cargo.toml); their own license does not
+# need checking here, only their dependencies' do.
+ignore = true
+
+[bans]
+# A "*" version requirement pins nothing and lets a dependency update silently change what
+# ships; this workspace has no such requirement today and should not gain one by accident.
+wildcards = "deny"
+multiple-versions = "warn"
+highlight = "all"
+workspace-default-features = "allow"
+external-default-features = "allow"
+allow-workspace = true
+deny = []
+skip = []
+skip-tree = []
+
+# AC: unknown registries/git sources are denied unless explicitly approved. Every dependency
+# comes from crates.io until a specific registry or git source is added to the allow-lists
+# below with a reason.
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
+
+[sources.allow-org]
+github = []
+gitlab = []
+bitbucket = []

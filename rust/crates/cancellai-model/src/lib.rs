@@ -5,4 +5,9 @@
 //! depend on a provider adapter, UI, or store crate. It is the bottom of the dependency
 //! graph other than the standard library.
 //!
-//! Skeleton crate (E02-S01) - no types defined yet.
+//! `AgentArtifact`/`ProviderRoot`/`SealedPlan`/`Results` etc. are not defined yet (E02-S01
+//! skeleton); `diagnostic` (E02-S03) is the first real domain type in this crate.
+
+pub mod diagnostic;
+
+pub use diagnostic::{Diagnostic, ErrorCategory};

@@ -67,7 +67,7 @@ A canonical release records:
 - CR4 Safety Verdict links;
 - compatibility matrix;
 - benchmark summary;
-- dependency/security scan summary;
+- dependency/security scan summary (for the Rust workspace: `cargo deny check` - licenses, sources, bans, RustSec advisories - `rust/deny.toml`, ADR-0015);
 - SBOM/provenance/signature/attestation references;
 - installer smoke results;
 - known residual risks and rollback instructions.

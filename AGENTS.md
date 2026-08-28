@@ -142,30 +142,32 @@ If a dev tool is unavailable locally, say so in evidence; CI must still run it b
 
 ## Current Rust checks
 
-E02-S01 created the workspace at `rust/` (`docs/architecture/TARGET.md`, ADR-0015). From the
-`rust/` directory:
+E02-S01/E02-S02 created the workspace and its quality baseline at `rust/`
+(`docs/architecture/TARGET.md`, ADR-0015). From the `rust/` directory, before every change
+that touches `rust/`:
 
 ```sh
-cargo check --workspace --all-targets
-cargo test --workspace
-```
-
-CI (`.github/workflows/rust.yml`) runs `cargo check --workspace --all-targets` on macOS,
-Linux, and Windows, against both MSRV (1.85.0) and current stable (ADR-0015). `fmt`/`clippy`
-enforcement, `cargo-deny`, and a RustSec audit gate land in E02-S02 - once they do, run them
-locally the same way as the Python checks above before every change that touches `rust/`:
-
-```text
 cargo fmt --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo check --workspace --all-targets
+cargo test --workspace
 cargo deny check
-cargo audit (or equivalent RustSec gate)
 ```
+
+`cargo deny check` covers RustSec advisories, license allow-list enforcement, wildcard/
+duplicate dependency bans, and unknown-registry/unknown-git source denial in one command
+(`rust/deny.toml`); a separate `cargo audit` is redundant with it and is not used.
+
+CI (`.github/workflows/rust.yml`) runs `cargo check --workspace --all-targets` on macOS,
+Linux, and Windows against both MSRV (1.85.0) and current stable, and the full quality set
+above (`fmt`, `clippy -D warnings`, `cargo test`, `cargo deny check`) on all three platforms
+against stable (ADR-0015).
 
 Do not add a dependency merely to reduce implementation effort. Provider/safety/runtime
 dependencies require the review appropriate to their risk and supply-chain impact; any new
 dependency's license must be in the `cargo-deny` allow-list ADR-0015 fixes (MIT, Apache-2.0,
-BSD-2/3-Clause, ISC, Unicode-3.0, Zlib).
+BSD-2/3-Clause, ISC, Unicode-3.0, Zlib), or the license list in `rust/deny.toml` needs its
+own reviewed change first.
 
 ## Generated project docs
 

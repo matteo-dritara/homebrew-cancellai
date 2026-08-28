@@ -11,5 +11,5 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-cancellai-model = { path = "../cancellai-model" }
-cancellai-safety = { path = "../cancellai-safety" }
+cancellai-model = { path = "../cancellai-model", version = "0.1.0" }
+cancellai-safety = { path = "../cancellai-safety", version = "0.1.0" }

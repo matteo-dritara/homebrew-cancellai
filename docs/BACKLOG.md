@@ -365,7 +365,7 @@ Establish the target Rust workspace, coding standards, and build factory without
 
 ### E02-S02 - Establish Rust quality baseline
 
-**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E02-S01 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E02-S01 | **Safety obligations:** none
 
 **Outcome.** Adopt fmt, clippy, tests, cargo-deny, RustSec audit, MSRV policy, and dependency rules.
 
@@ -386,7 +386,7 @@ Establish the target Rust workspace, coding standards, and build factory without
 
 ### E02-S03 - Define error and diagnostic model
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E02-S01 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E02-S01 | **Safety obligations:** none
 
 **Outcome.** Create typed error categories and stable machine-facing exit mapping.
 
@@ -406,7 +406,7 @@ Establish the target Rust workspace, coding standards, and build factory without
 
 ### E02-S04 - Introduce deterministic clock and filesystem seams
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E02-S01 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E02-S01 | **Safety obligations:** none
 
 **Outcome.** Make time and filesystem observation injectable for tests without abstracting away security-critical OS semantics.
 

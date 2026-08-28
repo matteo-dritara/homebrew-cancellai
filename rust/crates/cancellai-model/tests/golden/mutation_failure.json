@@ -1,0 +1,4 @@
+{
+  "category": "MUTATION_FAILURE",
+  "message": "revalidation found the plan stale; the action was safely skipped"
+}

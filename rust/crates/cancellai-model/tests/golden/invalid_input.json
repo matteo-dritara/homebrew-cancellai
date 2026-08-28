@@ -1,0 +1,4 @@
+{
+  "category": "INVALID_INPUT",
+  "message": "requested provider root escapes the operator's home directory; refusing"
+}

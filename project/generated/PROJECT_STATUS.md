@@ -9,8 +9,8 @@ Epics: **20** | Stories: **90**
 ## Story status
 
 - `done`: 15
-- `planned`: 74
-- `ready_for_review`: 1
+- `planned`: 71
+- `ready_for_review`: 4
 
 ## Change risk distribution
 
@@ -27,3 +27,6 @@ Epics: **20** | Stories: **90**
 ## Awaiting independent review
 
 - **E02-S01** - Create Rust workspace skeleton (CR1)
+- **E02-S02** - Establish Rust quality baseline (CR1)
+- **E02-S03** - Define error and diagnostic model (CR2)
+- **E02-S04** - Introduce deterministic clock and filesystem seams (CR2)

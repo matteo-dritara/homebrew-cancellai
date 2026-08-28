@@ -7,6 +7,16 @@
 //! that need is isolated in a small, separately-justified submodule/crate here - it is not
 //! grounds for relaxing the default silently.
 //!
-//! Skeleton crate (E02-S01) - no types defined yet.
+//! E02-S04 adds the first two capability seams: [`Clock`] (time) and [`FsObserver`]
+//! (filesystem observation), each with a real OS-backed production implementation and a
+//! deterministic/synthetic test double. Neither abstraction hides the OS semantics that
+//! matter for safety: `FsObserver` keeps `docs/architecture/AS_IS.md`'s absent-vs-unreadable
+//! distinction (SI-008/SI-009/SI-010) as a typed contract, not an implementation convention.
 
-use cancellai_model as _;
+pub mod clock;
+pub mod fs_observer;
+pub mod snapshot;
+
+pub use clock::{Clock, FrozenClock, SystemClock, Timestamp};
+pub use fs_observer::{FsMetadata, FsObserver, Observation, SyntheticFsObserver, SystemFsObserver};
+pub use snapshot::{Snapshot, build_snapshot};

@@ -30,6 +30,28 @@ Synthetic temporary trees exercise:
 
 Tests never operate on the real user provider roots.
 
+#### Rust: deterministic clock/filesystem seams (E02-S04)
+
+`rust/crates/cancellai-platform` (`Clock`, `FsObserver`) is how the Rust target achieves the
+above without weakening what a filesystem integration test can observe:
+
+- production code takes `&dyn Clock`/`&dyn FsObserver` and is wired to `SystemClock`/
+  `SystemFsObserver` - real OS-backed implementations, never abstracted away;
+- tests take the same trait objects and use `FrozenClock`/`SyntheticFsObserver` instead, so a
+  time- or filesystem-dependent test is reproducible without mocking away the semantics that
+  matter for safety - `FsObserver::observe` keeps the absent-vs-unreadable distinction
+  `docs/architecture/AS_IS.md`'s `Scan`/`observe()` established for the Python reference
+  (SI-008, SI-009, SI-010) as a typed contract (`Observation::Absent` vs
+  `Observation::Unreadable`), not an implementation convention that a future call site could
+  quietly collapse;
+- a **determinism test** (`rust/crates/cancellai-platform/tests/determinism.rs`) proves two
+  independent runs against the same frozen clock reading and synthetic filesystem facts
+  produce byte-identical serialized output - and that changing either input changes the
+  output, so the equality check is falsifiable, not vacuous. This is the pattern real plan
+  generation (E03 safety kernel, E04 inventory engine) will reuse once it exists; the current
+  test exercises the seam composition itself via a minimal stand-in (`Snapshot`), not a
+  finished plan builder.
+
 ### Provider contract fixtures
 
 Privacy-safe fixture corpus for every supported provider/version/layout. Each fixture declares expected capabilities and normative behavior.

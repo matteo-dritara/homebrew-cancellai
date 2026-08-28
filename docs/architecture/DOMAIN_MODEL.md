@@ -198,6 +198,38 @@ Mutation results are per action and aggregate without hiding partial outcomes:
 
 A skipped safety block is not equivalent to success for automation exit semantics.
 
+## Diagnostics
+
+E02-S03 defines the canonical error taxonomy for the Rust target, implemented in
+`rust/crates/cancellai-model/src/diagnostic.rs`. Six categories, each with a stable string
+code and a stable exit code that is never renumbered or repurposed once released:
+
+```text
+InvalidInput           INVALID_INPUT           exit 2
+SafetyBlock             SAFETY_BLOCK             exit 4
+IncompleteInventory     INCOMPLETE_INVENTORY     exit 4
+CompatibilityFailure    COMPATIBILITY_FAILURE    exit 4
+MutationFailure         MUTATION_FAILURE         exit 3
+InternalFault           INTERNAL_FAULT           exit 3
+```
+
+This generalizes the exit taxonomy [`AS_IS.md`](AS_IS.md) documents for the Python reference
+(0 success / 1 declined / 2 invalid usage / 3 mutation failure / 4 safety block-or-defer):
+Python collapsed several distinct failure modes into the same exit code because it had no
+typed error model to keep them apart. The Rust taxonomy is not required to reuse Python's
+numeric codes 1:1 - `SafetyBlock`, `IncompleteInventory`, and `CompatibilityFailure` share
+exit code 4 (all withhold destructive authority, matching Python's exit 4), and
+`MutationFailure`/`InternalFault` share exit code 3 (both are failures of requested work),
+but each keeps a distinct machine-readable string code.
+
+A `Diagnostic` carries a category and a message. Both its human-readable (`Display`) and
+machine-facing (JSON `Serialize`) renderings read the string code from the same
+`ErrorCategory::code()` function - neither representation computes or stores its own copy,
+so they cannot drift apart. `docs/CLI.md` remains generated from the frozen Python reference
+(`AGENTS.md`'s Python reference freeze) and is not updated by this story; the Rust CLI's own
+reference documentation, once E06 (Rust CLI Parity and Cutover) exists, is what will expose
+this taxonomy at the CLI-docs layer.
+
 ## Legacy vocabulary
 
 This vocabulary is canonical: architecture, schemas, tests, and UI contracts define each term once, here, and reuse it rather than inventing synonyms. The Python v1 reference (`cancellai.py`) predates it and is not being renamed - [`AS_IS.md`](AS_IS.md) freezes Python as a behavioral oracle rather than a target for architectural cleanup - so every legacy name is mapped onto exactly one canonical term instead.

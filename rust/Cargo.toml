@@ -9,6 +9,13 @@ rust-version = "1.85.0"
 license = "MIT"
 publish = false
 
+# Centralized so every crate that needs serde uses the same version - a version drift
+# between workspace members is exactly the "multiple-versions" noise rust/deny.toml warns
+# about (E02-S02). Both are MIT OR Apache-2.0, already on the ADR-0015 license allow-list.
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
 # ADR-0015: unsafe is forbidden workspace-wide by default. A future crate that genuinely
 # needs it (e.g. OS-specific identity/reparse-point handling in cancellai-platform, E07)
 # overrides this locally with an explicit, reviewed justification - it is never removed here.

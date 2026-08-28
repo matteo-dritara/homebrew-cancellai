@@ -35,13 +35,23 @@ Current CI actions are immutable-SHA pinned and checked by `scripts/check_workfl
 
 ## Dependency policy after Rust bootstrap
 
-- committed `Cargo.lock` for application builds;
-- `cargo-deny` for licenses, sources, duplicate/banned dependencies, advisories;
-- RustSec `cargo audit`/advisory monitoring;
+E02-S02 implemented this policy at `rust/deny.toml` (ADR-0015), enforced by `cargo deny
+check` locally and in `.github/workflows/rust.yml`'s `quality` job on macOS/Linux/Windows:
+
+- committed `Cargo.lock` for application builds (`rust/Cargo.lock`);
+- `cargo-deny` for licenses, sources, duplicate/banned dependencies, advisories - one command
+  covers all four; a separate `cargo audit` is redundant with it (both read the RustSec
+  Advisory Database) and is not used;
+- strict permissive license allow-list (MIT, Apache-2.0, BSD-2/3-Clause, ISC, Unicode-3.0,
+  Zlib); anything else, including weak and strong copyleft, is denied by default;
 - minimize native/system dependencies where practical;
-- deny unknown registries/git sources by default;
-- pin or explicitly review Git dependencies;
-- document MSRV and update policy.
+- unknown registries/git sources denied by default (`[sources] unknown-registry =
+  "deny"`/`unknown-git = "deny"`); a specific registry or git source needs an explicit,
+  reviewed addition to the allow-list, not an implicit pass;
+- a wildcard (`*`) version requirement is denied (`[bans] wildcards = "deny"`), so a
+  dependency version is always pinned to something explicit;
+- MSRV is pinned at 1.85.0 (`rust/Cargo.toml`'s `rust-version`), bumped only by deliberate,
+  reviewed decision - never implicitly by a dependency update (ADR-0015).
 
 ## Canonical release evidence
 
