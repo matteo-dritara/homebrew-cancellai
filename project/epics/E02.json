@@ -7,12 +7,12 @@
   "dependencies": [
     "E01"
   ],
-  "status": "ready",
+  "status": "in_progress",
   "stories": [
     {
       "id": "E02-S01",
       "title": "Create Rust workspace skeleton",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Create crates for model, safety, inventory, policy, provider API, store, CLI, TUI, and later Guardian.",
       "change_risk": "CR1",
       "dependencies": [
@@ -34,7 +34,7 @@
     {
       "id": "E02-S02",
       "title": "Establish Rust quality baseline",
-      "status": "ready_for_review",
+      "status": "in_progress",
       "outcome": "Adopt fmt, clippy, tests, cargo-deny, RustSec audit, MSRV policy, and dependency rules.",
       "change_risk": "CR1",
       "dependencies": [
@@ -57,7 +57,7 @@
     {
       "id": "E02-S03",
       "title": "Define error and diagnostic model",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Create typed error categories and stable machine-facing exit mapping.",
       "change_risk": "CR2",
       "dependencies": [
@@ -79,7 +79,7 @@
     {
       "id": "E02-S04",
       "title": "Introduce deterministic clock and filesystem seams",
-      "status": "ready_for_review",
+      "status": "in_progress",
       "outcome": "Make time and filesystem observation injectable for tests without abstracting away security-critical OS semantics.",
       "change_risk": "CR2",
       "dependencies": [

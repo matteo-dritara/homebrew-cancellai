@@ -339,13 +339,13 @@ Turn Python v1 into a behavioral oracle before Rust implementation begins.
 
 ## E02 - Rust Workspace Bootstrap
 
-**Phase:** `P1` | **Status:** `ready` | **Epic dependencies:** E01
+**Phase:** `P1` | **Status:** `in_progress` | **Epic dependencies:** E01
 
 Establish the target Rust workspace, coding standards, and build factory without changing user-visible behavior.
 
 ### E02-S01 - Create Rust workspace skeleton
 
-**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E01-S06 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** E01-S06 | **Safety obligations:** none
 
 **Outcome.** Create crates for model, safety, inventory, policy, provider API, store, CLI, TUI, and later Guardian.
 
@@ -365,7 +365,7 @@ Establish the target Rust workspace, coding standards, and build factory without
 
 ### E02-S02 - Establish Rust quality baseline
 
-**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E02-S01 | **Safety obligations:** none
+**Status:** `in_progress` | **Change Risk:** `CR1` | **Dependencies:** E02-S01 | **Safety obligations:** none
 
 **Outcome.** Adopt fmt, clippy, tests, cargo-deny, RustSec audit, MSRV policy, and dependency rules.
 
@@ -386,7 +386,7 @@ Establish the target Rust workspace, coding standards, and build factory without
 
 ### E02-S03 - Define error and diagnostic model
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E02-S01 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E02-S01 | **Safety obligations:** none
 
 **Outcome.** Create typed error categories and stable machine-facing exit mapping.
 
@@ -406,7 +406,7 @@ Establish the target Rust workspace, coding standards, and build factory without
 
 ### E02-S04 - Introduce deterministic clock and filesystem seams
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E02-S01 | **Safety obligations:** none
+**Status:** `in_progress` | **Change Risk:** `CR2` | **Dependencies:** E02-S01 | **Safety obligations:** none
 
 **Outcome.** Make time and filesystem observation injectable for tests without abstracting away security-critical OS semantics.
 
