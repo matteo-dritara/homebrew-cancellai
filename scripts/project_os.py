@@ -341,6 +341,11 @@ def validate(model: Model) -> list[str]:
             unfinished = [dep for dep in epic["dependencies"] if epic_status[dep] != "done"]
             if unfinished:
                 raise GovernanceError(f"{epic['id']}: status {epic['status']} but epic dependencies are not done: {unfinished}")
+        if epic["status"] == "done":
+            # An epic closed over an unfinished story is a lie the roadmap would repeat.
+            open_stories = [story["id"] for story in epic["stories"] if story["status"] not in {"done", "cancelled"}]
+            if open_stories:
+                raise GovernanceError(f"{epic['id']}: cannot be done while stories are open: {open_stories}")
         for story in epic["stories"]:
             if story["status"] in dependency_gated_statuses:
                 unfinished_story_deps: list[str] = []
