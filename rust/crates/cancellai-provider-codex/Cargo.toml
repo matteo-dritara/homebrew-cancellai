@@ -1,0 +1,16 @@
+[package]
+name = "cancellai-provider-codex"
+description = "Codex CLI provider adapter."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+cancellai-model = { path = "../cancellai-model" }
+cancellai-provider-api = { path = "../cancellai-provider-api" }
+cancellai-inventory = { path = "../cancellai-inventory" }

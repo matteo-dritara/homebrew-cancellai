@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85.0"
+license = "MIT"
+publish = false
+
+# ADR-0015: unsafe is forbidden workspace-wide by default. A future crate that genuinely
+# needs it (e.g. OS-specific identity/reparse-point handling in cancellai-platform, E07)
+# overrides this locally with an explicit, reviewed justification - it is never removed here.
+[workspace.lints.rust]
+unsafe_code = "forbid"

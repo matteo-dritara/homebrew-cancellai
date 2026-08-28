@@ -19,7 +19,7 @@ repos:
     hooks:
       - id: mypy
         args: [--strict]
-        files: ^(cancellai\.py|scripts/(gen_docs|project_os|check_docs|check_workflows|check_process|release|check_fixtures|check_schemas|characterize|diff_harness)\.py)$
+        files: ^(cancellai\.py|scripts/(gen_docs|project_os|check_docs|check_workflows|check_process|release|check_fixtures|check_schemas|characterize|diff_harness|check_rust_workspace)\.py)$
 
   - repo: local
     hooks:
@@ -77,6 +77,13 @@ repos:
         entry: python3 scripts/diff_harness.py check
         language: system
         files: ^(scripts/diff_harness\.py|tests/fixtures/schemas/golden/.*|docs/development/VERIFICATION_STRATEGY\.md)$
+        pass_filenames: false
+
+      - id: rust-workspace-check
+        name: Rust workspace skeleton matches TARGET.md and stays acyclic
+        entry: python3 scripts/check_rust_workspace.py check
+        language: system
+        files: ^(rust/crates/.*/Cargo\.toml|docs/architecture/TARGET\.md|scripts/check_rust_workspace\.py)$
         pass_filenames: false
 
       - id: process-check

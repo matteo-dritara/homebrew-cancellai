@@ -7,12 +7,12 @@
   "dependencies": [
     "E01"
   ],
-  "status": "planned",
+  "status": "ready",
   "stories": [
     {
       "id": "E02-S01",
       "title": "Create Rust workspace skeleton",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Create crates for model, safety, inventory, policy, provider API, store, CLI, TUI, and later Guardian.",
       "change_risk": "CR1",
       "dependencies": [

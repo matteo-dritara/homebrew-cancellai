@@ -1,0 +1,15 @@
+[package]
+name = "cancellai-policy"
+description = "Typed policy and deterministic Effective Policy resolver."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+cancellai-model = { path = "../cancellai-model" }
+cancellai-safety = { path = "../cancellai-safety" }

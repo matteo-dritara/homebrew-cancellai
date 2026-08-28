@@ -9,7 +9,8 @@ Epics: **20** | Stories: **90**
 ## Story status
 
 - `done`: 15
-- `planned`: 75
+- `planned`: 74
+- `ready_for_review`: 1
 
 ## Change risk distribution
 
@@ -25,4 +26,4 @@ Epics: **20** | Stories: **90**
 
 ## Awaiting independent review
 
-- none
+- **E02-S01** - Create Rust workspace skeleton (CR1)

@@ -41,5 +41,6 @@ files = [
   "scripts/check_schemas.py",
   "scripts/characterize.py",
   "scripts/diff_harness.py",
+  "scripts/check_rust_workspace.py",
 ]
 strict = true

@@ -119,7 +119,7 @@ python3 -m pip install -r requirements-dev.txt
 python3 -m pytest tests -v
 python3 -m ruff check .
 python3 -m ruff format --check .
-python3 -m mypy cancellai.py scripts/gen_docs.py scripts/project_os.py scripts/check_docs.py scripts/check_workflows.py scripts/check_fixtures.py scripts/check_schemas.py scripts/characterize.py scripts/diff_harness.py
+python3 -m mypy cancellai.py scripts/gen_docs.py scripts/project_os.py scripts/check_docs.py scripts/check_workflows.py scripts/check_fixtures.py scripts/check_schemas.py scripts/characterize.py scripts/diff_harness.py scripts/check_rust_workspace.py
 python3 scripts/gen_docs.py --check
 python3 scripts/project_os.py check
 python3 scripts/check_docs.py check
@@ -128,6 +128,7 @@ python3 scripts/check_fixtures.py check
 python3 scripts/check_schemas.py check
 python3 scripts/characterize.py check
 python3 scripts/diff_harness.py check
+python3 scripts/check_rust_workspace.py check
 python3 scripts/check_process.py check
 python3 scripts/release.py check
 ```
@@ -139,19 +140,32 @@ request.
 
 If a dev tool is unavailable locally, say so in evidence; CI must still run it before merge.
 
-## Future Rust checks
+## Current Rust checks
 
-Once E02 creates the workspace, the required commands are defined in the story/CI and expected to include:
+E02-S01 created the workspace at `rust/` (`docs/architecture/TARGET.md`, ADR-0015). From the
+`rust/` directory:
+
+```sh
+cargo check --workspace --all-targets
+cargo test --workspace
+```
+
+CI (`.github/workflows/rust.yml`) runs `cargo check --workspace --all-targets` on macOS,
+Linux, and Windows, against both MSRV (1.85.0) and current stable (ADR-0015). `fmt`/`clippy`
+enforcement, `cargo-deny`, and a RustSec audit gate land in E02-S02 - once they do, run them
+locally the same way as the Python checks above before every change that touches `rust/`:
 
 ```text
 cargo fmt --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace
 cargo deny check
 cargo audit (or equivalent RustSec gate)
 ```
 
-Do not add a dependency merely to reduce implementation effort. Provider/safety/runtime dependencies require the review appropriate to their risk and supply-chain impact.
+Do not add a dependency merely to reduce implementation effort. Provider/safety/runtime
+dependencies require the review appropriate to their risk and supply-chain impact; any new
+dependency's license must be in the `cargo-deny` allow-list ADR-0015 fixes (MIT, Apache-2.0,
+BSD-2/3-Clause, ISC, Unicode-3.0, Zlib).
 
 ## Generated project docs
 

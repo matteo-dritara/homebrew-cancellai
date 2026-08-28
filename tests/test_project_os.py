@@ -84,26 +84,37 @@ class ProjectOSTests(unittest.TestCase):
         with self.assertRaises(project_os.GovernanceError):
             project_os.validate(bad)
 
+    @staticmethod
+    def _fully_isolated_epics(model: project_os.Model) -> list[dict]:
+        """A deepcopy of the real epics with every status/dependency edge zeroed out.
+
+        The real control plane keeps changing shape as work lands (new epics depending on
+        E01 at the epic level, new stories depending on specific E01 stories, ...). A
+        synthetic scenario that leaves any of that untouched is one topology change away
+        from failing for an unrelated reason - this happened twice already for these two
+        tests. Starting from a fully neutral copy and wiring in only the one edge under
+        test is the version of this fixture that cannot break again the same way.
+        """
+        epics = copy.deepcopy(model.epics)
+        for epic in epics:
+            epic["status"] = "planned"
+            epic["dependencies"] = []
+            for story in epic["stories"]:
+                story["status"] = "planned"
+                story["dependencies"] = []
+        return epics
+
     def test_same_epic_dependency_satisfied_by_ready_for_review(self) -> None:
         # ADR-0014: review is per epic, not story by story. A story chained to a same-epic
         # predecessor must be able to start (and reach ready_for_review itself) once that
         # predecessor is ready_for_review - it does not have to wait for independent "done",
         # since the whole epic is verified and closed together.
         model = project_os.load_model()
-        epics = copy.deepcopy(model.epics)
+        epics = self._fully_isolated_epics(model)
         epic = next(e for e in epics if e["id"] == "E01")
         predecessor = next(s for s in epic["stories"] if s["id"] == "E01-S01")
         dependent = next(s for s in epic["stories"] if s["id"] == "E01-S02")
-        self.assertIn("E01-S01", dependent["dependencies"])
-        # Reset the epic and every other E01 story to "planned" first: E01's real on-disk
-        # progress moves over time (it reaches "done" once its own review closes), and
-        # neither the epic-level "done implies every story is done/cancelled" check nor a
-        # later story that depends on E01-S02 (untouched by this scenario) should be able to
-        # turn this into an accidental test of a *different* check instead.
-        epic["status"] = "planned"
-        for story in epic["stories"]:
-            if story["id"] not in (predecessor["id"], dependent["id"]):
-                story["status"] = "planned"
+        dependent["dependencies"] = [predecessor["id"]]
         predecessor["status"] = "ready_for_review"
         # in_progress (not ready_for_review) so this exercises only the dependency gate,
         # not the separate evidence-packet requirement.
@@ -113,14 +124,11 @@ class ProjectOSTests(unittest.TestCase):
 
     def test_same_epic_dependency_still_blocks_when_predecessor_is_unfinished(self) -> None:
         model = project_os.load_model()
-        epics = copy.deepcopy(model.epics)
+        epics = self._fully_isolated_epics(model)
         epic = next(e for e in epics if e["id"] == "E01")
         predecessor = next(s for s in epic["stories"] if s["id"] == "E01-S01")
         dependent = next(s for s in epic["stories"] if s["id"] == "E01-S02")
-        epic["status"] = "planned"
-        for story in epic["stories"]:
-            if story["id"] not in (predecessor["id"], dependent["id"]):
-                story["status"] = "planned"
+        dependent["dependencies"] = [predecessor["id"]]
         predecessor["status"] = "in_progress"
         dependent["status"] = "in_progress"
         candidate = project_os.Model(model.decisions, model.roadmap, epics)

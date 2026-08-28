@@ -47,6 +47,12 @@ cancellAI combines a local control plane with a constrained mutation kernel. It 
 
 Names may be refined through ADRs, but dependency direction is normative.
 
+E02-S01 created this skeleton at `rust/crates/` (workspace root `rust/Cargo.toml`, not the
+repository root - see [ADR-0015](../adrs/0015-rust-workspace-toolchain-and-repository-layout.md)
+for the toolchain/edition/MSRV/`unsafe`/CI/license decisions that apply to every crate here).
+Every crate below exists today as a documented skeleton with the dependency edges shown;
+none has real domain logic yet.
+
 ```text
 crates/
   cancellai-model/            # pure domain types and invariants

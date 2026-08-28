@@ -35,7 +35,7 @@ Build and prove the provider-neutral Rust engine, formal safety kernel, inventor
 
 **Epics**
 
-- **E02 - Rust Workspace Bootstrap** (`planned`): Establish the target Rust workspace, coding standards, and build factory without changing user-visible behavior.
+- **E02 - Rust Workspace Bootstrap** (`ready`): Establish the target Rust workspace, coding standards, and build factory without changing user-visible behavior.
 - **E03 - Formal Safety Kernel** (`planned`): Implement constitutional safety invariants as a dedicated, testable Rust authority boundary.
 - **E04 - Single-Pass Inventory Engine** (`planned`): Build a fast, evidence-rich inventory that scans once and never equates unknown with safe.
 - **E05 - Provider API and Reference Adapters** (`planned`): Implement capability-based provider integration and achieve Claude/Codex semantic parity.

@@ -1,0 +1,17 @@
+[package]
+name = "cancellai-guardian"
+description = "Later user-service runtime: predictive signals and bounded remediation."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+cancellai-model = { path = "../cancellai-model" }
+cancellai-safety = { path = "../cancellai-safety" }
+cancellai-policy = { path = "../cancellai-policy" }
+cancellai-store = { path = "../cancellai-store" }
