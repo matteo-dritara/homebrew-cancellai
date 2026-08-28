@@ -1,13 +1,65 @@
-# Changelog
+# Release Evidence - v1.1.0
 
-All notable changes to this project are documented in this file.
+## Source
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+- Tag: `v1.1.0`
+- Commit: recorded by the release workflow at the tag
+- Channel: stable
+- Date: 2026-08-28
 
-## [Unreleased]
+## Included work
 
-## [1.1.0] - 2026-08-28
+- Epic: E00 - Trust Floor Remediation
+- Stories: E00-S01, E00-S02, E00-S03, E00-S04, E00-S05, E00-S06, E00-S09, E00-S07, E00-S08
+- CR4 Safety Verdicts: `project/evidence/E00-S01/SAFETY_VERDICT.md`, `project/evidence/E00-S01/SAFETY_VERDICT_OWNER_ACCEPTANCE.md`, `project/evidence/E00-S02/SAFETY_VERDICT.md`, `project/evidence/E00-S02/SAFETY_VERDICT_OWNER_ACCEPTANCE.md`, `project/evidence/E00-S05/SAFETY_VERDICT.md`, `project/evidence/E00-S05/SAFETY_VERDICT_OWNER_ACCEPTANCE.md`, `project/evidence/E00-S09/SAFETY_VERDICT.md`, `project/evidence/E00-S09/SAFETY_VERDICT_OWNER_ACCEPTANCE.md`
+
+## Gates
+
+Re-run at the tag by `.github/workflows/release.yml`; run locally before tagging:
+
+```text
+python3 -m pytest tests -v
+python3 -m ruff check . && python3 -m ruff format --check .
+python3 -m mypy cancellai.py scripts/gen_docs.py scripts/project_os.py \
+  scripts/check_docs.py scripts/check_workflows.py scripts/check_process.py scripts/release.py
+python3 scripts/gen_docs.py --check
+python3 scripts/project_os.py check
+python3 scripts/check_docs.py check
+python3 scripts/check_workflows.py check
+python3 scripts/check_process.py check
+```
+
+- G1 Functional: PASS
+- G2 Safety: PASS
+- G3 Compatibility: PASS
+- G4 Operability: PASS
+
+## Compatibility
+
+- Platforms: macOS. Python 3.10 and 3.14 exercised in CI.
+- Providers/capabilities: Codex CLI and Claude Code, layouts observed at release time.
+  Unclassified entries are reported by `status --coverage` and never cleaned.
+- State/schema migrations: none. The tool keeps no persistent state.
+
+## Supply chain
+
+- Checksums: the Homebrew formula records the SHA-256 of the tag archive, written by `scripts/release.py finalize`.
+- SBOM: not produced at this stage. The shipped tool has no runtime dependencies; development tooling is pinned in `requirements-dev.txt`.
+- Provenance/attestation: deferred to E17.
+- Signature verification: deferred to E17.
+- Release manifest: this file.
+
+## Install smoke tests
+
+- Homebrew: `brew audit --strict` and `brew style` run in CI on every change; `brew install`/`brew test` exercise the tagged archive.
+- direct shell / PowerShell / Linux packages: not applicable at this stage.
+
+## Performance
+
+- Scan benchmarks: none formalised; deferred to E10.
+- Self-budget: recorded scan errors are bounded, and root fingerprinting caps how much of an untrusted directory it will read.
+
+## User-visible changes
 
 ### Security
 
@@ -42,86 +94,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bumped the pinned `pytest` development dependency to 9.0.3, closing a Dependabot advisory about vulnerable tmpdir handling. Development tooling only; the shipped tool has no runtime dependencies.
 - Replaced automatic Dependabot merge behavior with review-gated dependency updates and pinned first-party GitHub Actions to immutable revisions in active workflows.
 
+## Known residual risks
 
-## [1.0.2] - 2026-08-27
+Carried from the epic's closure packet. See `project/evidence/` for the story-level records.
 
-### Fixed
+## Rollback
 
-- `CODEX_PROTECTED_NAMES` now includes `plugins`, matching
-  `CLAUDE_PROTECTED_NAMES`. Found by dogfooding against a real `~/.codex`:
-  `plugins/` holds genuine installed-plugin state (`plugins/cache`,
-  `plugins/.plugin-appserver`), not disposable cache. No code path sweeps
-  it today, so this is a defense-in-depth fix, not a behavior change.
-
-## [1.0.1] - 2026-08-27
-
-### Added
-
-- `AGENTS.md` / `CLAUDE.md`: repo-specific instructions for AI coding agents.
-- `.github/CONTRIBUTING.md`, `.github/SECURITY.md`, `.github/CODE_OF_CONDUCT.md`,
-  issue and pull request templates, and an issue template chooser that
-  disables blank issues.
-- `docs/ARCHITECTURE.md` and `docs/RELEASING.md`.
-- `docs/CLI.md`: a command reference generated directly from the argparse
-  definitions by the new `scripts/gen_docs.py`, checked for drift in CI.
-- `pyproject.toml` dev-tooling config (`ruff`, `mypy` in strict mode) and a
-  matching `.pre-commit-config.yaml`.
-- `.editorconfig` and `.github/dependabot.yml` (GitHub Actions ecosystem).
-- `.github/workflows/dependabot-auto-merge.yml`: auto-merges Dependabot PRs
-  once the required `test`/`lint`/`homebrew` checks pass.
-- CI now also runs `ruff check`, `ruff format --check`, `mypy --strict`, and
-  the docs-drift check, in addition to the existing test suite.
-- Repository hardening: branch protection on `main` (required status
-  checks, no force-push/deletion), squash-only merges, Dependabot
-  vulnerability alerts + security updates + automated fixes, private
-  vulnerability reporting, and repo topics/description for discoverability.
-
-### Changed
-
-- Reorganized repository layout: `test_cancellai.py` moved to
-  `tests/test_cancellai.py`; `CONTRIBUTING.md`, `SECURITY.md`, and
-  `CODE_OF_CONDUCT.md` moved to `.github/` (a location GitHub recognizes
-  natively for these files), decluttering the repo root.
-- Modernized type hints to PEP 604 syntax (`X | None` instead of
-  `Optional[X]`) and moved `Iterator`/`Sequence` imports to
-  `collections.abc`.
-- `active_processes()` now resolves `ps` to an absolute path via
-  `shutil.which` instead of relying on `$PATH` resolution at call time.
-- Replaced an internal `assert` in `delete_codex_via_cli` with an explicit
-  `ValueError` guard (assertions can be optimized away with `python -O`;
-  this is a real invariant, not a debug check).
-- Simplified several `try`/`except ...: pass` blocks to
-  `contextlib.suppress(...)`.
-- `cancellai.py` is now tracked as executable in git (it has a shebang).
-
-### Fixed
-
-- The `tests` CI job never installed `pytest`, so it failed on every run
-  since it was added; every CI job now also invokes tools via
-  `python3 -m <tool>` so the installer and the invocation always share the
-  same interpreter.
-- `.gitignore` now excludes the local `.claude/` session directory so it
-  can never end up tracked by accident.
-
-## [1.0.0] - 2026-08-27
-
-Initial public release.
-
-### Added
-
-- Safe cleanup CLI for old Codex CLI and Claude Code session data:
-  `status` (read-only, default), `clean` (with dry-run, confirmation
-  prompt, age cutoff, and keep-latest safety rail), and `configure` (sets
-  Claude Code's own `cleanupPeriodDays`).
-- Conservative-by-default safety model: protected name lists for
-  auth/config/plugins/skills/memory, symlink-safe deletion, config-root
-  validation, running-process detection, and preference for the official
-  `codex delete --force` backend over raw filesystem deletion.
-- MIT license, README, and a Homebrew formula (`Formula/cancellai.rb`) so
-  the tool installs via `brew tap matteo-dritara/cancellai && brew install
-  cancellai`.
-
-[Unreleased]: https://github.com/matteo-dritara/homebrew-cancellai/compare/v1.0.2...HEAD
-[1.0.2]: https://github.com/matteo-dritara/homebrew-cancellai/compare/v1.0.1...v1.0.2
-[1.0.1]: https://github.com/matteo-dritara/homebrew-cancellai/compare/v1.0.0...v1.0.1
-[1.0.0]: https://github.com/matteo-dritara/homebrew-cancellai/releases/tag/v1.0.0
+Point the Homebrew formula back at the previous tag and its checksum; the tool keeps no
+persistent state, so there is nothing to migrate back. Published tags are immutable history
+and are never deleted.
