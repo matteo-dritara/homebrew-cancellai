@@ -26,9 +26,9 @@ Generated [`../BACKLOG.md`](../BACKLOG.md) renders these contracts for humans.
 | `planned` | contract exists, not scheduled | owner |
 | `ready` | contract is complete and dependencies are done; may be picked up | owner |
 | `in_progress` | an executor is implementing it | executor |
-| `ready_for_review` | implementation, tests and documentation are complete and all gates pass; **the executor has handed it to the independent reviewer** | executor -> reviewer |
-| `verification` | the independent reviewer is actively falsifying it | reviewer |
-| `done` | verified, evidence committed, and for CR4 a Safety Verdict exists | owner |
+| `ready_for_review` | implementation, tests and documentation are complete and all gates pass; the story is waiting for its **epic's** review round | executor |
+| `verification` | the independent reviewer is actively falsifying the epic this story belongs to | reviewer |
+| `done` | verified, evidence committed, and for CR4 a Safety Verdict recording a pass exists | owner |
 
 Side states:
 
@@ -53,6 +53,53 @@ List the queue with:
 ```sh
 python3 scripts/project_os.py review
 ```
+
+## Review is per epic, and bounded to two rounds
+
+An epic is reviewed when **all** of its stories are `ready_for_review`, not story by story.
+The reviewer receives one coherent change with one contract to falsify, rather than a
+fragment whose neighbours are still moving.
+
+**Two rounds, maximum.** ADR-0014 / PD-022:
+
+1. round 1 reviews the completed epic;
+2. the executor repairs what it found;
+3. round 2 reviews the repairs;
+4. the epic closes.
+
+Findings that survive round 2 do **not** trigger a third round. They become new work items
+in the backlog, recorded in the epic's closure packet as accepted residual risk with the
+story id that will carry them. An unbounded loop hides defects behind a status that never
+changes; a bounded one converts them into visible, scheduled work.
+
+`scripts/check_process.py` counts committed verifier review records per epic and fails above
+the ceiling. E00 predates this rule and ran three rounds; it is the reason the rule exists,
+and it is recorded as an explicit exception rather than quietly exempted.
+
+## Closing an epic cuts a release
+
+An epic reaching `done` produces a version tag and everything that follows it. This is not an
+optional follow-up: `scripts/release.py check` fails when a closed epic has no release
+evidence naming it, and that check runs in `pre-commit` and in CI.
+
+```sh
+python3 scripts/release.py prepare --version X.Y.Z --epic EXX
+git commit -am "chore(release): X.Y.Z"
+git tag -a vX.Y.Z -m "cancellAI X.Y.Z" && git push --follow-tags
+python3 scripts/release.py finalize --version X.Y.Z
+```
+
+`prepare` bumps the version in the source and the packaging metadata, cuts the changelog
+section, and writes the release evidence packet from the epic's contract. `finalize` writes
+the archive checksum into the Homebrew formula - a separate command because that checksum
+cannot exist until GitHub has generated the archive from the tag.
+
+`.github/workflows/release.yml` re-runs every gate at the tag and publishes the GitHub
+release from the committed evidence packet. A release verified against whatever `main` looked
+like afterwards is not evidence about the artifact users install.
+
+See [ADR-0014](../adrs/0014-epic-closure-is-a-release-and-review-is-bounded.md) and
+[RELEASING.md](../RELEASING.md).
 
 ## Change Risk Levels
 

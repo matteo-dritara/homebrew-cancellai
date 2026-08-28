@@ -88,7 +88,11 @@ Executor:
 - create evidence summary;
 - set the story to `ready_for_review` and stop there.
 
-`ready_for_review` is the executor's exit state. Never mark your own work `verification` or `done`, and never write your own CR4 Safety Verdict. Claude is the standing executor; Codex performs the independent review. See `docs/development/WORK_ITEM_MODEL.md` for the full lifecycle.
+`ready_for_review` is the executor's exit state. Never mark your own work `verification` or `done`, and never write your own CR4 Safety Verdict. Claude is the standing executor; Codex performs the independent review.
+
+Review runs at **epic** scope, once every story in the epic is `ready_for_review`, and **at most twice per epic**. Findings that survive the second round become new backlog work items, not a third round.
+
+**Closing an epic cuts a release.** `scripts/release.py check` fails when a closed epic has no release evidence, and it runs in `pre-commit` and CI. See `docs/development/WORK_ITEM_MODEL.md` and ADR-0014.
 
 Verifier:
 
@@ -114,6 +118,7 @@ python3 scripts/project_os.py check
 python3 scripts/check_docs.py check
 python3 scripts/check_workflows.py check
 python3 scripts/check_process.py check
+python3 scripts/release.py check
 ```
 
 Or `pre-commit run --all-files`, which runs the same set. Install the hooks once with

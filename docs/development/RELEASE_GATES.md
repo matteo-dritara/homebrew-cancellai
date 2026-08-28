@@ -43,6 +43,19 @@ A release is eligible only when the gates required by its changes are green. The
 | CR3 | required | required | required | required | required | residual-risk summary |
 | CR4 | required | required + adversarial | required | required | required | required |
 
+## Epic closure
+
+Closing an epic is what triggers a release (ADR-0014, PD-021). An epic may close when:
+
+- every story is `done`;
+- CR4 stories carry a Safety Verdict recording `PASS` or `PASS_WITH_RESIDUALS`;
+- at most two independent review rounds were run, and anything surviving round two exists as
+  a new backlog work item rather than as an unresolved finding;
+- the gates required by the highest Change Risk Level in the epic are green.
+
+`scripts/project_os.py` enforces the first two, `scripts/check_process.py` the third, and
+`scripts/release.py check` refuses to let a closed epic sit unreleased.
+
 ## Release evidence packet
 
 A canonical release records:

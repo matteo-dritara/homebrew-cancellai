@@ -42,6 +42,7 @@ python3 scripts/project_os.py check
 python3 scripts/check_docs.py check
 python3 scripts/check_workflows.py check
 python3 scripts/check_process.py check
+python3 scripts/release.py check
 ```
 
 Or, equivalently and in one command:
@@ -66,6 +67,9 @@ Nothing here relies on remembering to do it. Each rule has an owner in code:
 | ADR numbering, status, forward links; decision supersession | `scripts/check_process.py check` |
 | Evidence names a real work item; Safety Verdicts carry their sections | `scripts/check_process.py check` |
 | Conventional Commit messages | `commit-msg` hook, `commit-convention` CI job |
+| Versions agree across source, packaging and formula | `scripts/release.py check` |
+| A closed epic has a release | `scripts/release.py check` |
+| A release is verified at its own tag | `release` workflow |
 | Actions pinned to SHAs with least-privilege tokens | `scripts/check_workflows.py check` |
 
 If you find a rule in prose that no check enforces, that is a defect: either automate it or
