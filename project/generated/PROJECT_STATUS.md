@@ -9,8 +9,8 @@ Epics: **20** | Stories: **90**
 ## Story status
 
 - `done`: 9
-- `planned`: 79
-- `ready_for_review`: 2
+- `planned`: 78
+- `ready_for_review`: 3
 
 ## Change risk distribution
 
@@ -28,3 +28,4 @@ Epics: **20** | Stories: **90**
 
 - **E01-S01** - Freeze domain vocabulary (CR1)
 - **E01-S02** - Build provider layout fixture corpus (CR1)
+- **E01-S03** - Define versioned plan/result JSON contracts (CR2)

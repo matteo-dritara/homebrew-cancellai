@@ -38,6 +38,8 @@ Privacy-safe fixture corpus for every supported provider/version/layout. Each fi
 
 Used for stable machine contracts: inventory/plan/result JSON, explanation traces, CLI/TUI view models. Golden output is appropriate only when semantically reviewed; snapshots are not automatically truth.
 
+Inventory/plan/explanation/result document shapes are specified in [`../architecture/JSON_CONTRACTS.md`](../architecture/JSON_CONTRACTS.md); worked examples live in [`../../tests/fixtures/schemas/golden/`](../../tests/fixtures/schemas/golden/) and are enforced by `scripts/check_schemas.py`.
+
 ### Differential tests
 
 During Python->Rust migration, run both engines on the same normative fixtures and compare normalized semantic output. Known Python defects are explicitly non-normative.

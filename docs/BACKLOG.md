@@ -260,7 +260,7 @@ Turn Python v1 into a behavioral oracle before Rust implementation begins.
 
 ### E01-S03 - Define versioned plan/result JSON contracts
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E01-S01 | **Safety obligations:** SI-013, SI-016
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E01-S01 | **Safety obligations:** SI-013, SI-016
 
 **Outcome.** Specify machine-readable inventory, plan, explanation, and execution result schemas.
 

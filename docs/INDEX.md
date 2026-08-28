@@ -16,6 +16,7 @@ cancellAI treats documentation as part of the executable product system. This pa
 - [architecture/AS_IS.md](architecture/AS_IS.md) - current Python v1 architecture and verified defects.
 - [architecture/TARGET.md](architecture/TARGET.md) - target Rust/control-plane architecture.
 - [architecture/DOMAIN_MODEL.md](architecture/DOMAIN_MODEL.md) - AgentArtifact, evidence, lifecycle, plans, authority.
+- [architecture/JSON_CONTRACTS.md](architecture/JSON_CONTRACTS.md) - versioned inventory/plan/explanation/result document schemas.
 - [architecture/PROVIDER_MODEL.md](architecture/PROVIDER_MODEL.md) - provider capabilities, manifests, adapters, trust.
 - [architecture/PLATFORM_MODEL.md](architecture/PLATFORM_MODEL.md) - macOS/Linux/Windows/WSL safety abstractions.
 - [architecture/PERSISTENCE_MODEL.md](architecture/PERSISTENCE_MODEL.md) - local state, event ledger, analytical memory, quarantine.

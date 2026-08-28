@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "document_type": "inventory",
+  "generated_at": "2026-08-28T09:00:00Z",
+  "generator": { "name": "cancellai-reference", "version": "synthetic" },
+  "inventory_id": "inv-0001",
+  "provider_roots": [
+    {
+      "id": "root-codex-0001",
+      "provider_id": "codex",
+      "origin": "default",
+      "confidence": "default",
+      "mutation_eligible": true
+    }
+  ],
+  "scan_completeness": [
+    { "scope": "codex", "complete": true, "error_count": 0 }
+  ],
+  "artifacts": [
+    {
+      "artifact_id": "artifact-0001",
+      "provider_id": "codex",
+      "artifact_type": "session",
+      "risk_class": "R3_RESUMABLE",
+      "reversibility": "QUARANTINABLE",
+      "knowledge_confidence": "VERIFIED",
+      "activity_state": "STALE",
+      "residency_state": "HOT",
+      "protection_state": "NORMAL",
+      "integrity_state": "HEALTHY",
+      "authority_ceiling": "QUARANTINE",
+      "evidence_ids": ["evidence-0001"]
+    }
+  ]
+}

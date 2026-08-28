@@ -168,7 +168,7 @@ ExecutionPreconditions
 
 ## SealedPlan
 
-A mutating plan is a first-class immutable object. Minimum fields:
+A mutating plan is a first-class immutable object. See [`JSON_CONTRACTS.md`](JSON_CONTRACTS.md) for the versioned, machine-readable serialization of this object and of `Results` below. Minimum fields:
 
 - plan ID/schema version/time;
 - inventory snapshot ID;

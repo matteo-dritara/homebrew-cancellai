@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "document_type": "explanation",
+  "generated_at": "2026-08-28T09:00:00Z",
+  "generator": { "name": "cancellai-reference", "version": "synthetic" },
+  "plan_id": "plan-0001",
+  "explanations": [
+    {
+      "action_id": "action-0002",
+      "steps": [
+        { "factor": "requested", "input": "AUTOPILOT", "resulting_authority": "AUTOPILOT" },
+        { "factor": "global_policy", "input": "AUTOPILOT", "resulting_authority": "AUTOPILOT" },
+        { "factor": "project_retention", "input": "eligible", "resulting_authority": "AUTOPILOT" },
+        { "factor": "artifact_risk_class", "input": "R3_RESUMABLE", "resulting_authority": "QUARANTINE" },
+        { "factor": "artifact_authority_ceiling", "input": "QUARANTINE", "resulting_authority": "QUARANTINE" },
+        { "factor": "provider_capability", "input": "VERIFIED", "resulting_authority": "QUARANTINE" }
+      ],
+      "final_authority": "QUARANTINE"
+    }
+  ]
+}

@@ -54,7 +54,7 @@
     {
       "id": "E01-S03",
       "title": "Define versioned plan/result JSON contracts",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Specify machine-readable inventory, plan, explanation, and execution result schemas.",
       "change_risk": "CR2",
       "dependencies": [

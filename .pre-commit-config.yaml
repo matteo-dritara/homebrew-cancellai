@@ -19,7 +19,7 @@ repos:
     hooks:
       - id: mypy
         args: [--strict]
-        files: ^(cancellai\.py|scripts/(gen_docs|project_os|check_docs|check_workflows|check_process|release|check_fixtures)\.py)$
+        files: ^(cancellai\.py|scripts/(gen_docs|project_os|check_docs|check_workflows|check_process|release|check_fixtures|check_schemas)\.py)$
 
   - repo: local
     hooks:
@@ -56,6 +56,13 @@ repos:
         entry: python3 scripts/check_fixtures.py check
         language: system
         files: ^(tests/fixtures/.*|scripts/check_fixtures\.py)$
+        pass_filenames: false
+
+      - id: schemas-check
+        name: JSON document contracts match their golden documents
+        entry: python3 scripts/check_schemas.py check
+        language: system
+        files: ^(docs/architecture/JSON_CONTRACTS\.md|tests/fixtures/schemas/.*|scripts/check_schemas\.py)$
         pass_filenames: false
 
       - id: process-check

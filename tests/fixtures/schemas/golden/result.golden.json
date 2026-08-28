@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "document_type": "result",
+  "generated_at": "2026-08-28T09:05:00Z",
+  "generator": { "name": "cancellai-reference", "version": "synthetic" },
+  "plan_id": "plan-0001",
+  "action_results": [
+    {
+      "action_id": "action-0001",
+      "status": "succeeded",
+      "reason_code": "OK",
+      "reclaimed_bytes": 0,
+      "post_action_state": "HOT"
+    },
+    {
+      "action_id": "action-0002",
+      "status": "safely_skipped",
+      "reason_code": "STALE_PLAN",
+      "reclaimed_bytes": 0,
+      "post_action_state": "HOT"
+    }
+  ],
+  "summary": {
+    "attempted": 2,
+    "succeeded": 1,
+    "safely_skipped": 1,
+    "failed": 0,
+    "reclaimed_bytes": 0
+  }
+}

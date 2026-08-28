@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "document_type": "plan",
+  "generated_at": "2026-08-28T09:00:00Z",
+  "generator": { "name": "cancellai-reference", "version": "synthetic" },
+  "plan_id": "plan-0001",
+  "inventory_snapshot_id": "inv-0001",
+  "provider_roots": [
+    {
+      "id": "root-codex-0001",
+      "provider_id": "codex",
+      "origin": "default",
+      "confidence": "default",
+      "mutation_eligible": true
+    }
+  ],
+  "actions": [
+    {
+      "action_id": "action-0001",
+      "target_artifact_ids": ["artifact-0001"],
+      "action_class": "OBSERVE",
+      "reason": "session is inside the retention window; reported for visibility only",
+      "authority": "OBSERVE",
+      "reversibility": "REBUILDABLE",
+      "evidence_ids": ["evidence-0001"],
+      "execution_preconditions": []
+    },
+    {
+      "action_id": "action-0002",
+      "target_artifact_ids": ["artifact-0002"],
+      "action_class": "QUARANTINE",
+      "reason": "session is 120 days old, past the 30-day cutoff, and not pinned",
+      "authority": "QUARANTINE",
+      "reversibility": "QUARANTINABLE",
+      "evidence_ids": ["evidence-0002", "evidence-0003"],
+      "execution_preconditions": [
+        { "kind": "root_identity_token", "expected": "root-codex-0001@fingerprint-abc" },
+        { "kind": "process_not_running", "expected": true }
+      ]
+    }
+  ],
+  "notes": [],
+  "safety_invariant_refs": ["SI-013", "SI-016"]
+}
