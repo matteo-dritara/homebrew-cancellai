@@ -281,7 +281,7 @@ Turn Python v1 into a behavioral oracle before Rust implementation begins.
 
 ### E01-S04 - Characterize Python behavior
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E01-S02, E01-S03 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E01-S02, E01-S03 | **Safety obligations:** none
 
 **Outcome.** Record Python outputs for the complete fixture corpus without treating defects as desired behavior.
 

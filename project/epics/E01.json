@@ -80,7 +80,7 @@
     {
       "id": "E01-S04",
       "title": "Characterize Python behavior",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Record Python outputs for the complete fixture corpus without treating defects as desired behavior.",
       "change_risk": "CR2",
       "dependencies": [

@@ -69,6 +69,20 @@ def _claude_session(root: Path, project: str, session_id: str, age_days: float) 
     return _write(path, json.dumps({"type": "user"}) + "\n", age_days)
 
 
+def _claude_session_with_payload(root: Path, project: str, session_id: str, age_days: float) -> tuple[Path, Path]:
+    """A session plus its companion payload directory (named exactly after the session id).
+
+    discover_claude_sessions only recurses into a subdirectory that is a session's own
+    companion payload dir - an unrelated subdirectory is never walked at all. This is the
+    real mechanism a partial-tree fixture must use to produce a genuinely incomplete scan.
+    """
+    session_path = _claude_session(root, project, session_id, age_days)
+    payload_dir = root / "projects" / project / session_id
+    _write(payload_dir / "tool-results" / "large.txt", "synthetic payload", age_days)
+    _age(payload_dir, age_days)
+    return session_path, payload_dir
+
+
 def build_claude_normal_session(root: Path) -> None:
     """A single, well-formed session inside the retention window - nothing eligible."""
     _claude_markers(root)
@@ -142,12 +156,15 @@ def build_codex_protected_state(root: Path) -> None:
 
 
 def build_claude_partial_tree(root: Path) -> None:
-    """One session subtree this build cannot list, alongside two sessions it can.
+    """Two ordinary sessions, plus a third whose companion payload dir cannot be listed.
 
     Locking a *directory* is what actually produces an unreadable scope: lstat on a single
     0o000 file still succeeds (stat needs no read permission on its target), but os.walk
-    cannot list a 0o000 directory's contents. That is the real shape of "we could not look"
-    (Scan/observe) this fixture needs to exercise.
+    cannot list a 0o000 directory's contents. discover_claude_sessions only ever recurses
+    into a subdirectory that is a session's own companion payload dir (root/projects/<p>/<sid>/)
+    - an unrelated subdirectory is never walked at all - so the locked directory must be a
+    real companion, not merely a sibling, to reproduce a genuinely incomplete scan on the
+    path build_plan actually takes.
 
     The caller must restore permissions (chmod 0o755) on every path under `root` before
     removing the tree - chmod(0o000) only denies a non-root reader, matching the existing
@@ -157,9 +174,8 @@ def build_claude_partial_tree(root: Path) -> None:
     project = "synthetic-project-c"
     _claude_session(root, project, "55555555-5555-4555-8555-555555555551", age_days=40)
     _claude_session(root, project, "55555555-5555-4555-8555-555555555552", age_days=40)
-    locked_dir = root / "projects" / project / "locked-subagent"
-    _write(locked_dir / "55555555-5555-4555-8555-555555555553.jsonl", json.dumps({"type": "user"}) + "\n", age_days=40)
-    locked_dir.chmod(0o000)
+    _, locked_payload = _claude_session_with_payload(root, project, "55555555-5555-4555-8555-555555555553", age_days=40)
+    locked_payload.chmod(0o000)
 
 
 def build_codex_symlink_escape(root: Path) -> None:

@@ -39,5 +39,6 @@ files = [
   "scripts/release.py",
   "scripts/check_fixtures.py",
   "scripts/check_schemas.py",
+  "scripts/characterize.py",
 ]
 strict = true

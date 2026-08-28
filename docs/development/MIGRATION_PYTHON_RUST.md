@@ -18,11 +18,17 @@ Exit: owner-visible Safety Verdict for the P0 trust floor.
 
 Implement E01:
 
-- canonical vocabulary;
-- synthetic provider/adversarial fixtures;
-- versioned plan/result contracts;
-- Python characterization;
+- canonical vocabulary ([`DOMAIN_MODEL.md`](../architecture/DOMAIN_MODEL.md));
+- synthetic provider/adversarial fixtures ([`tests/fixtures/`](../../tests/fixtures/));
+- versioned plan/result contracts ([`JSON_CONTRACTS.md`](../architecture/JSON_CONTRACTS.md));
+- Python characterization - `scripts/characterize.py` records what `cancellai.py` actually does on every fixture in the corpus and classifies it `NORMATIVE` / `INTENTIONAL_DIVERGENCE` / `LEGACY_ONLY` / `KNOWN_DEFECT` (see [Python reference contract](VERIFICATION_STRATEGY.md#python-reference-contract)); committed records live under [`tests/fixtures/characterization/`](../../tests/fixtures/characterization/) and `scripts/characterize.py check` proves they are still reproducible on a clean checkout;
 - differential comparison rules.
+
+Only fixtures classified `NORMATIVE` are binding on the Rust candidate at M6. A
+`KNOWN_DEFECT` record exists precisely so that behavior is never copied forward as a
+requirement merely because Python happens to do it; `INTENTIONAL_DIVERGENCE` and
+`LEGACY_ONLY` need their own accepted spec/ADR before Rust may differ or drop the behavior,
+per [Story changes during implementation](WORK_ITEM_MODEL.md#story-changes-during-implementation).
 
 ### M2 - Freeze Python
 

@@ -1,0 +1,59 @@
+{
+  "fixture_id": "claude-symlink-protected-name",
+  "tool": "claude",
+  "classification": "NORMATIVE",
+  "classification_rationale": "A case-variant symlink of a protected name is still recognized as protected (the E00-S01 Unicode/case fix) and excluded from any candidate set.",
+  "days": 30,
+  "keep_latest": 0,
+  "aggressive": true,
+  "plan_summary": {
+    "days": 30,
+    "keep_latest": 0,
+    "estimated_bytes": 0,
+    "actions": 0,
+    "by_tool": {},
+    "by_category": {},
+    "claude_history_lines": 0,
+    "notes": [],
+    "withheld_tools": [],
+    "scan": {
+      "complete": true,
+      "incomplete_scopes": [],
+      "unreadable": []
+    },
+    "roots": {
+      "claude": {
+        "origin": "default",
+        "confidence": "default",
+        "markers": [
+          "keybindings.json",
+          "settings.json"
+        ],
+        "destructive_allowed": true
+      },
+      "codex": {
+        "origin": "default",
+        "confidence": "default",
+        "markers": [],
+        "destructive_allowed": true
+      }
+    }
+  },
+  "coverage": {
+    "protected": {
+      "entries": 2,
+      "bytes": 4,
+      "names": [
+        "keybindings.json",
+        "settings.json"
+      ]
+    },
+    "unknown": {
+      "entries": 1,
+      "bytes": 112,
+      "names": [
+        "Plugins"
+      ]
+    }
+  }
+}

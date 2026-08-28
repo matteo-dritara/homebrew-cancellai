@@ -48,7 +48,7 @@
       "tool": "claude",
       "category": "partial_tree",
       "layout": "default",
-      "description": "One session subtree this build cannot list alongside two sessions it can; the scan must record the scope as incomplete, not as empty."
+      "description": "Two ordinary sessions plus a third whose companion payload directory cannot be listed; the scan must record the scope as incomplete, not as empty."
     },
     {
       "id": "codex-symlink-escape",

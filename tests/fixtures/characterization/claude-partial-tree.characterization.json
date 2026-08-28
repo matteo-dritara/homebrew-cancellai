@@ -1,0 +1,70 @@
+{
+  "fixture_id": "claude-partial-tree",
+  "tool": "claude",
+  "classification": "NORMATIVE",
+  "classification_rationale": "The locked subtree marks the claude scan incomplete and withholds destructive authority for the whole tool (SI-008) - the documented E00-S05 behavior.",
+  "days": 30,
+  "keep_latest": 0,
+  "aggressive": true,
+  "plan_summary": {
+    "days": 30,
+    "keep_latest": 0,
+    "estimated_bytes": 0,
+    "actions": 0,
+    "by_tool": {},
+    "by_category": {},
+    "claude_history_lines": 0,
+    "notes": [
+      "Refusing destructive work on claude: the scan was incomplete, so absence of evidence cannot mean absence of data (2 unreadable path(s), e.g. <PROVIDER_ROOT>/projects/synthetic-project-c/55555555-5555-4555-8555-555555555553: Permission denied; <PROVIDER_ROOT>/projects/synthetic-project-c/55555555-5555-4555-8555-555555555553: Permission denied). Run `status` to see the full list.",
+      "Withheld 3 candidate(s) for: claude."
+    ],
+    "withheld_tools": [
+      "claude"
+    ],
+    "scan": {
+      "complete": false,
+      "incomplete_scopes": [
+        "claude"
+      ],
+      "unreadable": [
+        "<PROVIDER_ROOT>/projects/synthetic-project-c/55555555-5555-4555-8555-555555555553: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-c/55555555-5555-4555-8555-555555555553: Permission denied"
+      ]
+    },
+    "roots": {
+      "claude": {
+        "origin": "default",
+        "confidence": "default",
+        "markers": [
+          "keybindings.json",
+          "projects",
+          "settings.json"
+        ],
+        "destructive_allowed": true
+      },
+      "codex": {
+        "origin": "default",
+        "confidence": "default",
+        "markers": [],
+        "destructive_allowed": true
+      }
+    }
+  },
+  "coverage": {
+    "selective": {
+      "entries": 1,
+      "bytes": 51,
+      "names": [
+        "projects"
+      ]
+    },
+    "protected": {
+      "entries": 2,
+      "bytes": 4,
+      "names": [
+        "keybindings.json",
+        "settings.json"
+      ]
+    }
+  }
+}

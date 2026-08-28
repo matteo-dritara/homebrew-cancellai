@@ -1,0 +1,60 @@
+{
+  "fixture_id": "codex-protected-state",
+  "tool": "codex",
+  "classification": "NORMATIVE",
+  "classification_rationale": "Same barrier, Codex side: every CODEX_PROTECTED_NAMES entry is refused regardless of age.",
+  "days": 30,
+  "keep_latest": 0,
+  "aggressive": true,
+  "plan_summary": {
+    "days": 30,
+    "keep_latest": 0,
+    "estimated_bytes": 0,
+    "actions": 0,
+    "by_tool": {},
+    "by_category": {},
+    "claude_history_lines": 0,
+    "notes": [],
+    "withheld_tools": [],
+    "scan": {
+      "complete": true,
+      "incomplete_scopes": [],
+      "unreadable": []
+    },
+    "roots": {
+      "claude": {
+        "origin": "default",
+        "confidence": "default",
+        "markers": [],
+        "destructive_allowed": true
+      },
+      "codex": {
+        "origin": "default",
+        "confidence": "default",
+        "markers": [
+          "auth.json",
+          "config.toml",
+          "memories",
+          "plugins",
+          "rules",
+          "skills"
+        ],
+        "destructive_allowed": true
+      }
+    }
+  },
+  "coverage": {
+    "protected": {
+      "entries": 6,
+      "bytes": 58,
+      "names": [
+        "auth.json",
+        "config.toml",
+        "memories",
+        "plugins",
+        "rules",
+        "skills"
+      ]
+    }
+  }
+}

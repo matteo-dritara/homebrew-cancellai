@@ -1,0 +1,60 @@
+{
+  "fixture_id": "codex-normal-session",
+  "tool": "codex",
+  "classification": "NORMATIVE",
+  "classification_rationale": "Same, for Codex: nothing inside the retention window is ever eligible.",
+  "days": 30,
+  "keep_latest": 0,
+  "aggressive": true,
+  "plan_summary": {
+    "days": 30,
+    "keep_latest": 0,
+    "estimated_bytes": 0,
+    "actions": 0,
+    "by_tool": {},
+    "by_category": {},
+    "claude_history_lines": 0,
+    "notes": [],
+    "withheld_tools": [],
+    "scan": {
+      "complete": true,
+      "incomplete_scopes": [],
+      "unreadable": []
+    },
+    "roots": {
+      "claude": {
+        "origin": "default",
+        "confidence": "default",
+        "markers": [],
+        "destructive_allowed": true
+      },
+      "codex": {
+        "origin": "default",
+        "confidence": "default",
+        "markers": [
+          "auth.json",
+          "config.toml",
+          "sessions"
+        ],
+        "destructive_allowed": true
+      }
+    }
+  },
+  "coverage": {
+    "selective": {
+      "entries": 1,
+      "bytes": 120,
+      "names": [
+        "sessions"
+      ]
+    },
+    "protected": {
+      "entries": 2,
+      "bytes": 22,
+      "names": [
+        "auth.json",
+        "config.toml"
+      ]
+    }
+  }
+}

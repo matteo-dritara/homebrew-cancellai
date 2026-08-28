@@ -1,0 +1,72 @@
+{
+  "fixture_id": "codex-subagent-tree",
+  "tool": "codex",
+  "classification": "NORMATIVE",
+  "classification_rationale": "The whole tree is selected together via the subagent graph - the documented, tested contract in AS_IS.md's 'Codex subagent graph' section, not incidental behavior.",
+  "days": 30,
+  "keep_latest": 0,
+  "aggressive": true,
+  "plan_summary": {
+    "days": 30,
+    "keep_latest": 0,
+    "estimated_bytes": 428,
+    "actions": 3,
+    "by_tool": {
+      "codex": {
+        "actions": 3,
+        "bytes": 428
+      }
+    },
+    "by_category": {
+      "codex:session": {
+        "actions": 3,
+        "bytes": 428
+      }
+    },
+    "claude_history_lines": 0,
+    "notes": [
+      "Codex filesystem fallback is enabled explicitly. It removes rollout JSONL files directly and may leave stale session metadata in Codex SQLite indexes; prefer the default auto backend on current Codex versions."
+    ],
+    "withheld_tools": [],
+    "scan": {
+      "complete": true,
+      "incomplete_scopes": [],
+      "unreadable": []
+    },
+    "roots": {
+      "claude": {
+        "origin": "default",
+        "confidence": "default",
+        "markers": [],
+        "destructive_allowed": true
+      },
+      "codex": {
+        "origin": "default",
+        "confidence": "default",
+        "markers": [
+          "auth.json",
+          "config.toml",
+          "sessions"
+        ],
+        "destructive_allowed": true
+      }
+    }
+  },
+  "coverage": {
+    "selective": {
+      "entries": 1,
+      "bytes": 428,
+      "names": [
+        "sessions"
+      ]
+    },
+    "protected": {
+      "entries": 2,
+      "bytes": 22,
+      "names": [
+        "auth.json",
+        "config.toml"
+      ]
+    }
+  }
+}

@@ -112,19 +112,38 @@ class FixtureCorpusTests(unittest.TestCase):
         self.assertTrue(link.is_symlink())
         self.assertFalse(cancellai.is_within(link, root))
 
-    def test_partial_tree_fixture_has_exactly_one_unlistable_subtree(self):
+    def test_partial_tree_fixture_has_exactly_one_unlistable_companion_dir(self):
         root = self.build("claude-partial-tree")
         project_dir = root / "projects" / "synthetic-project-c"
         session_files = sorted(project_dir.glob("*.jsonl"))
-        self.assertEqual(2, len(session_files))
-        locked_dir = project_dir / "locked-subagent"
-        self.assertTrue(locked_dir.is_dir())
-        self.locked.append(locked_dir)
+        self.assertEqual(3, len(session_files))
+        locked_payload = project_dir / "55555555-5555-4555-8555-555555555553"
+        self.assertTrue(locked_payload.is_dir())
+        self.locked.append(locked_payload)
 
         scan = cancellai.Scan(scope="test")
         cancellai.directory_size(project_dir, scan)
         self.assertFalse(scan.complete)
-        self.assertTrue(any("locked-subagent" in error for error in scan.errors), scan.errors)
+        self.assertTrue(any("555555555553" in error for error in scan.errors), scan.errors)
+
+    def test_partial_tree_fixture_produces_an_incomplete_scan_on_the_real_discovery_path(self):
+        """Not just a low-level helper: the actual discover_claude_sessions/build_plan path."""
+        root = self.build("claude-partial-tree")
+        locked_payload = root / "projects" / "synthetic-project-c" / "55555555-5555-4555-8555-555555555553"
+        self.locked.append(locked_payload)
+        empty_other = self.base / "unused-home"
+        plan = cancellai.build_plan(
+            days=30,
+            keep_latest=0,
+            tools={"claude"},
+            codex_home=empty_other,
+            claude_home=root,
+            codex_backend="filesystem",
+            aggressive=True,
+            for_mutation=False,
+        )
+        self.assertFalse(plan.scan_complete)
+        self.assertIn("claude", plan.incomplete_scopes)
 
     # --- the checker must actually be able to fail ---------------------------
 

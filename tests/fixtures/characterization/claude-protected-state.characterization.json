@@ -1,0 +1,62 @@
+{
+  "fixture_id": "claude-protected-state",
+  "tool": "claude",
+  "classification": "NORMATIVE",
+  "classification_rationale": "Every CLAUDE_PROTECTED_NAMES entry is refused even at 400 days old under --aggressive - the E00-S01 barrier - and must hold identically in the Rust target.",
+  "days": 30,
+  "keep_latest": 0,
+  "aggressive": true,
+  "plan_summary": {
+    "days": 30,
+    "keep_latest": 0,
+    "estimated_bytes": 0,
+    "actions": 0,
+    "by_tool": {},
+    "by_category": {},
+    "claude_history_lines": 0,
+    "notes": [],
+    "withheld_tools": [],
+    "scan": {
+      "complete": true,
+      "incomplete_scopes": [],
+      "unreadable": []
+    },
+    "roots": {
+      "claude": {
+        "origin": "default",
+        "confidence": "default",
+        "markers": [
+          "agent-memory",
+          "keybindings.json",
+          "plugins",
+          "settings.json"
+        ],
+        "destructive_allowed": true
+      },
+      "codex": {
+        "origin": "default",
+        "confidence": "default",
+        "markers": [],
+        "destructive_allowed": true
+      }
+    }
+  },
+  "coverage": {
+    "protected": {
+      "entries": 10,
+      "bytes": 76,
+      "names": [
+        "agent-memory",
+        "agents",
+        "commands",
+        "keybindings.json",
+        "output-styles",
+        "plugins",
+        "rules",
+        "settings.json",
+        "skills",
+        "workflows"
+      ]
+    }
+  }
+}

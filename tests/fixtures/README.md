@@ -18,6 +18,18 @@ Required categories (each must have at least one fixture): `normal_session`, `su
 
 The content scan in `check_fixtures.py` is a best-effort guard, not a guarantee: it catches the obvious cases (home-directory-shaped paths, emails, common API-key shapes) but is not a substitute for reviewing a diff before it lands.
 
+## Python behavior characterization (E01-S04)
+
+`characterization/<fixture-id>.characterization.json` records what `cancellai.py` actually does on each fixture - the normalized `plan_summary_dict`/`coverage_payload` output, run with the fixture patched in as the *default* provider root (see `scripts/characterize.py` for why: a non-default root is always inspection-only under ADR-0013, which would otherwise mask everything else this corpus exists to show) - plus a reviewed classification: `NORMATIVE`, `INTENTIONAL_DIVERGENCE`, `LEGACY_ONLY`, or `KNOWN_DEFECT` (see [`../../docs/development/VERIFICATION_STRATEGY.md`](../../docs/development/VERIFICATION_STRATEGY.md#python-reference-contract)).
+
+```sh
+python3 scripts/characterize.py check      # verify the committed records still match a fresh run
+python3 scripts/characterize.py generate   # regenerate them after a reviewed, intentional change
+```
+
+Only `NORMATIVE` records bind the Rust candidate at the differential gate (M6 in
+[`../../docs/development/MIGRATION_PYTHON_RUST.md`](../../docs/development/MIGRATION_PYTHON_RUST.md)). A classification is a human judgment recorded in `scripts/characterize.py`'s `CLASSIFICATIONS` table, not something inferred from the output automatically.
+
 ## Contract
 
 Each fixture added by E01 should contain enough declarative metadata to describe:

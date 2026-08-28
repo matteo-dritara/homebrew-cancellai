@@ -1,0 +1,79 @@
+{
+  "fixture_id": "codex-layout-drift",
+  "tool": "codex",
+  "classification": "NORMATIVE",
+  "classification_rationale": "The unrecognized plugin_cache_v2/ entry is reported as coverage state 'unknown' and never appears as a plan action (the E00-S08 coverage vocabulary).",
+  "days": 30,
+  "keep_latest": 0,
+  "aggressive": true,
+  "plan_summary": {
+    "days": 30,
+    "keep_latest": 0,
+    "estimated_bytes": 120,
+    "actions": 1,
+    "by_tool": {
+      "codex": {
+        "actions": 1,
+        "bytes": 120
+      }
+    },
+    "by_category": {
+      "codex:session": {
+        "actions": 1,
+        "bytes": 120
+      }
+    },
+    "claude_history_lines": 0,
+    "notes": [
+      "Codex filesystem fallback is enabled explicitly. It removes rollout JSONL files directly and may leave stale session metadata in Codex SQLite indexes; prefer the default auto backend on current Codex versions."
+    ],
+    "withheld_tools": [],
+    "scan": {
+      "complete": true,
+      "incomplete_scopes": [],
+      "unreadable": []
+    },
+    "roots": {
+      "claude": {
+        "origin": "default",
+        "confidence": "default",
+        "markers": [],
+        "destructive_allowed": true
+      },
+      "codex": {
+        "origin": "default",
+        "confidence": "default",
+        "markers": [
+          "auth.json",
+          "config.toml",
+          "sessions"
+        ],
+        "destructive_allowed": true
+      }
+    }
+  },
+  "coverage": {
+    "selective": {
+      "entries": 1,
+      "bytes": 120,
+      "names": [
+        "sessions"
+      ]
+    },
+    "protected": {
+      "entries": 2,
+      "bytes": 22,
+      "names": [
+        "auth.json",
+        "config.toml"
+      ]
+    },
+    "unknown": {
+      "entries": 1,
+      "bytes": 24,
+      "names": [
+        "plugin_cache_v2"
+      ]
+    }
+  }
+}

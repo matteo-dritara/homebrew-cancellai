@@ -19,7 +19,7 @@ repos:
     hooks:
       - id: mypy
         args: [--strict]
-        files: ^(cancellai\.py|scripts/(gen_docs|project_os|check_docs|check_workflows|check_process|release|check_fixtures|check_schemas)\.py)$
+        files: ^(cancellai\.py|scripts/(gen_docs|project_os|check_docs|check_workflows|check_process|release|check_fixtures|check_schemas|characterize)\.py)$
 
   - repo: local
     hooks:
@@ -63,6 +63,13 @@ repos:
         entry: python3 scripts/check_schemas.py check
         language: system
         files: ^(docs/architecture/JSON_CONTRACTS\.md|tests/fixtures/schemas/.*|scripts/check_schemas\.py)$
+        pass_filenames: false
+
+      - id: characterization-check
+        name: Python reference behavior on the fixture corpus is reproducible and reviewed
+        entry: python3 scripts/characterize.py check
+        language: system
+        files: ^(cancellai\.py|tests/fixtures/(manifest\.json|recipes\.py|characterization/.*)|scripts/(characterize|check_fixtures)\.py)$
         pass_filenames: false
 
       - id: process-check

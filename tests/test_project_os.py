@@ -95,6 +95,12 @@ class ProjectOSTests(unittest.TestCase):
         predecessor = next(s for s in epic["stories"] if s["id"] == "E01-S01")
         dependent = next(s for s in epic["stories"] if s["id"] == "E01-S02")
         self.assertIn("E01-S01", dependent["dependencies"])
+        # Reset every other E01 story to "planned" first: E01's real on-disk progress moves
+        # over time, and a later story that depends on E01-S02 (untouched by this scenario)
+        # must not turn this into an accidental test of *that* dependency edge instead.
+        for story in epic["stories"]:
+            if story["id"] not in (predecessor["id"], dependent["id"]):
+                story["status"] = "planned"
         predecessor["status"] = "ready_for_review"
         # in_progress (not ready_for_review) so this exercises only the dependency gate,
         # not the separate evidence-packet requirement.
@@ -108,6 +114,9 @@ class ProjectOSTests(unittest.TestCase):
         epic = next(e for e in epics if e["id"] == "E01")
         predecessor = next(s for s in epic["stories"] if s["id"] == "E01-S01")
         dependent = next(s for s in epic["stories"] if s["id"] == "E01-S02")
+        for story in epic["stories"]:
+            if story["id"] not in (predecessor["id"], dependent["id"]):
+                story["status"] = "planned"
         predecessor["status"] = "in_progress"
         dependent["status"] = "in_progress"
         candidate = project_os.Model(model.decisions, model.roadmap, epics)
