@@ -33,6 +33,33 @@ A release is eligible only when the gates required by its changes are green. The
 - documentation and troubleshooting paths exist;
 - observability/audit evidence is sufficient for failures.
 
+### Performance budget baseline (`cancellai-inventory`, E04-S04)
+
+`rust/crates/cancellai-inventory/tests/performance_micro.rs` is a CI-friendly regression
+ceiling (a few thousand synthetic files, runs on every `cargo test`) that catches a gross
+traversal regression without being a tight SLA. The heavy 10k/100k(/1M-on-demand)-entry
+benchmarks live in `tests/performance_scheduled.rs`, `#[ignore]`d out of the default test run
+and executed weekly (plus on-demand) by `.github/workflows/rust-benchmark.yml`, which uploads
+a machine-readable JSON trend artifact (`CANCELLAI_BENCH_OUTPUT`) - the "benchmark summary"
+release-evidence item below, once a release references it. Latency/throughput thresholds are
+recorded in that file's `THRESHOLDS` table, generously bounded (regression detection, not a
+tight SLA) given shared-runner variance.
+
+Only latency and throughput are actually measured today. Peak memory, CPU, and cancellAI's
+own runtime self-footprint are recorded here as forward-looking budgets, not yet measured:
+- **Peak memory**: target is O(one `FileFacts` per observed path) for a single scope scan - no
+  profiling/memory-accounting dependency exists in this workspace yet to verify this
+  automatically (AGENTS.md: do not add a dependency merely to reduce implementation effort).
+- **CPU**: target is single-threaded, I/O-bound traversal dominated by syscall latency, not
+  CPU-bound work - no concurrency exists yet to budget separately.
+- **Self-footprint**: cancellAI's own on-disk/runtime footprint budget (C-11) is a Guardian
+  (long-running service) concern; Guardian does not exist yet (a later epic), so there is
+  nothing running continuously to measure this against today.
+
+Closing these three gaps is scope for the epic/story that first has something able to
+produce the measurement (a profiling dependency review, or the Guardian runtime), not
+fabricated here.
+
 ## Gate matrix by Change Risk
 
 | Risk | G1 | G2 | G3 | G4 | Independent verifier | Owner Safety Verdict |

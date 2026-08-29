@@ -18,7 +18,10 @@
 //! adds a fourth, [`PathResolver`], the "path canonicalization/normalization" capability
 //! `docs/architecture/PLATFORM_MODEL.md` lists separately from filesystem identity. E03-S05
 //! adds a fifth, `mutation::MutationExecutor` - the only seam in this crate whose real
-//! implementation changes the filesystem (SI-019).
+//! implementation changes the filesystem (SI-019). E04-S01 adds a sixth,
+//! [`AllocationObserver`], PLATFORM_MODEL.md's "logical and allocated-size observation" -
+//! kept distinct from `FsObserver`'s logical `len` so a sparse/compressed/cloned file's
+//! reclaim estimate is never silently assumed equal to its logical size.
 //!
 //! `mutation::SystemMutationExecutor` (the concrete, real-syscall implementation) is
 //! deliberately *not* re-exported at this crate's root the way every other capability's
@@ -33,6 +36,7 @@
 //! that check, not a substitute for it - Rust visibility cannot express "public to exactly
 //! one sibling crate," so the check is the real boundary.
 
+pub mod allocation;
 pub mod clock;
 pub mod fs_observer;
 pub mod identity;
@@ -40,6 +44,10 @@ pub mod mutation;
 pub mod path_resolver;
 pub mod snapshot;
 
+pub use allocation::{
+    AllocationObservation, AllocationObserver, SyntheticAllocationObserver,
+    SystemAllocationObserver,
+};
 pub use clock::{Clock, FrozenClock, SystemClock, Timestamp};
 pub use fs_observer::{FsMetadata, FsObserver, Observation, SyntheticFsObserver, SystemFsObserver};
 pub use identity::{

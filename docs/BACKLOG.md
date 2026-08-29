@@ -531,13 +531,13 @@ Implement constitutional safety invariants as a dedicated, testable Rust authori
 
 ## E04 - Single-Pass Inventory Engine
 
-**Phase:** `P1` | **Status:** `planned` | **Epic dependencies:** E03
+**Phase:** `P1` | **Status:** `in_progress` | **Epic dependencies:** E03
 
 Build a fast, evidence-rich inventory that scans once and never equates unknown with safe.
 
 ### E04-S01 - FileFacts inventory model
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E03-S01 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E03-S01 | **Safety obligations:** none
 
 **Outcome.** Collect logical size, allocated/physical estimate, timestamps, type, identity, boundary, provider/category hints, and scan confidence.
 
@@ -556,7 +556,7 @@ Build a fast, evidence-rich inventory that scans once and never equates unknown 
 
 ### E04-S02 - One traversal per scope
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E04-S01 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E04-S01 | **Safety obligations:** none
 
 **Outcome.** Replace repeated recursive size walks with a reusable inventory pass.
 
@@ -575,7 +575,7 @@ Build a fast, evidence-rich inventory that scans once and never equates unknown 
 
 ### E04-S03 - Incomplete inventory propagation
 
-**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E04-S01 | **Safety obligations:** SI-008, SI-009
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E04-S01 | **Safety obligations:** SI-008, SI-009
 
 **Outcome.** Propagate permission, disappearance, I/O, and unsupported filesystem states into completeness metadata.
 
@@ -594,7 +594,7 @@ Build a fast, evidence-rich inventory that scans once and never equates unknown 
 
 ### E04-S04 - Performance budget baseline
 
-**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E04-S02 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E04-S02 | **Safety obligations:** none
 
 **Outcome.** Establish scan latency, memory, CPU, and cancellAI self-footprint budgets on representative datasets.
 

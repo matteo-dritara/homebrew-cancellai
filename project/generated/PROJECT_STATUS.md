@@ -9,7 +9,8 @@ Epics: **20** | Stories: **90**
 ## Story status
 
 - `done`: 24
-- `planned`: 66
+- `planned`: 62
+- `ready_for_review`: 4
 
 ## Change risk distribution
 
@@ -25,4 +26,7 @@ Epics: **20** | Stories: **90**
 
 ## Awaiting independent review
 
-- none
+- **E04-S01** - FileFacts inventory model (CR2)
+- **E04-S02** - One traversal per scope (CR2)
+- **E04-S03** - Incomplete inventory propagation (CR3)
+- **E04-S04** - Performance budget baseline (CR1)

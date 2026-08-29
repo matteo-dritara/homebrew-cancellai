@@ -31,6 +31,53 @@ Capabilities[]
 
 Provider adapters map raw observations into this model; they do not redefine safety semantics.
 
+### FileFacts: the OBSERVE-stage evidence `AgentArtifact` is built from
+
+E04-S01 implements the `LogicalSize`/`AllocatedSize?`/"Observed timestamps"/`ArtifactType`/
+`IdentityToken` slice of `AgentArtifact` as `FileFacts` at
+`rust/crates/cancellai-inventory/src/file_facts.rs` - deliberately *not* the full
+`AgentArtifact` itself. `FileFacts` carries only what a filesystem observation can establish
+on its own; `RiskClass`, `Reversibility`, `KnowledgeConfidence`, the lifecycle axes, and
+`AuthorityCeiling` are classification decisions that require provider/policy knowledge no
+story before E05/E06 has, and `FileFacts` never invents one. `observe_file_facts` composes
+three independent `cancellai-platform` seams - `FsObserver` (logical size, kind, modified
+time), `IdentityObserver` (identity token, SI-013/SI-017), and the new `AllocationObserver`
+(E04-S01, allocated/physical size) - and every metric a seam cannot report is an explicit
+`SizeMetric::Unsupported`/`IdentityObservation::Unsupported` value, never a fabricated zero
+or a silent copy of a different metric (SI-008, SI-009, SI-010). A path's `ScopeBoundary`
+(within its traversal scope, crosses a filesystem/volume boundary, or unknown) and a
+per-fact `FactConfidence` (complete or partial, with named reasons) round out the record; the
+outer `FactObservation` enum mirrors `Observation`/`IdentityObservation`'s absent-vs-unreadable
+split so a missing path and an unreadable one are never conflated here either.
+
+`provider_hint`/`category_hint` are present on `FileFacts` but always `None` - they exist so
+the struct's shape does not need to change once a provider-adapter epic (E05) or a
+classification stage populates them, not because this story infers either now
+(AGENTS.md: "Do not silently create product scope in code").
+
+### One traversal per scope, and scan completeness
+
+E04-S02 (`rust/crates/cancellai-inventory/src/scan.rs`) replaces the pattern
+[`AS_IS.md`](AS_IS.md) documents for the Python reference - status, planning, and
+top-consumers each re-walking the same directory tree - with a single recursive walk,
+`scan_scope`, that produces one `InventorySnapshot`; `status_summary`, `top_consumers`, and
+`planning_candidates` are pure reads over that same snapshot, proven by traversal counters
+(`directories_visited`, `paths_observed`) that a test asserts are unchanged after calling all
+three. Traversal never follows a symlink and never descends across a device/filesystem
+boundary a directory's identity reveals (SI-018) - a boundary-crossing directory is still
+recorded as a fact, just not read into.
+
+E04-S03 (`rust/crates/cancellai-inventory/src/completeness.rs`) classifies every scope
+`Complete`, `Partial`, or `Unknown` from that same snapshot - the scope root itself being
+unobservable is `Unknown`; a readable root with some unreadable/permission-denied/vanished
+descendant, or a descendant whose identity/allocation could not be established, is `Partial`
+with every reason named (SI-010: scan errors are visible, never summarized away). The one
+public way to hand a caller planning-facing candidates, `planning_view`, returns a
+`PlanningView` bundling `candidates` and `completeness` in the same struct with no
+bare-candidates accessor - the type shape itself is what keeps planning from silently
+erasing completeness information, the same pattern `cancellai-safety::SealedPlan` uses for
+its own invariants.
+
 ## ProviderRoot
 
 `ProviderRoot` is the fingerprinted, confidence-scored capability a provider adapter observes or mutates under. It is a claim about a filesystem/vendor location, not proof of identity, and it is distinct from the `Effective Authority` it can help grant.

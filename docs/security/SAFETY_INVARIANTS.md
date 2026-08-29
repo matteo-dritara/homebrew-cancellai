@@ -55,6 +55,17 @@ Implemented for the artifact-integrity axis at `rust/crates/cancellai-safety/src
 (E03-S04): `lifecycle_authority` collapses to `Recommend` (non-destructive) whenever
 `IntegrityState` is `Partial`, `Corrupted`, or `Unknown`, independent of every other input.
 
+E04-S03 (`rust/crates/cancellai-inventory/src/completeness.rs`) implements the inventory-scope
+half of this invariant: `derive_completeness` classifies a scope `Partial` whenever any
+directory-listing failure or per-file degraded observation exists beneath an otherwise
+readable root, and `planning_view` is the *only* way to obtain planning-facing candidates -
+it always returns them bundled with that `ScopeCompleteness` in one `PlanningView` struct,
+so a caller cannot reach candidates without also seeing whether they were produced under a
+`Partial` scope. Wiring `ScopeCompleteness::Partial`/`Unknown` into `KnowledgeConfidence` so
+`authority.rs`'s existing `IntegrityState`-based collapse actually fires for these scopes is
+E05/E06 scope (no classification stage exists yet to make that connection) - see this
+story's evidence packet for the residual.
+
 ### SI-009 Unknown scan state is non-destructive
 
 Missing evidence is not interpreted as absence of active/protected data.
@@ -62,6 +73,13 @@ Missing evidence is not interpreted as absence of active/protected data.
 Implemented at `rust/crates/cancellai-safety/src/authority.rs` (E03-S04): `lifecycle_authority`
 also collapses to `Recommend` for `ActivityState::Unknown` and `IntegrityState::Unknown`
 specifically - an unknown fact is never read as "safe to act on."
+
+E04-S03 implements the inventory-scope evidence this depends on: `derive_completeness`
+returns `ScopeCompleteness::Unknown` when a scope's own root could not be observed at all
+(absent or unreadable) - the strongest form of missing evidence this model expresses,
+reserved specifically for "we know essentially nothing about this scope" rather than
+conflated with the more common `Partial` case (a readable root with some unreadable
+descendant).
 
 ### SI-010 Scan errors are visible
 

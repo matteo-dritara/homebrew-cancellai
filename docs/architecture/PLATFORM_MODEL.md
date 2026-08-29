@@ -51,6 +51,20 @@ truthfulness). A follow-up story implements and verifies real Windows identity o
 exercised on Windows CI; until then, no artifact whose identity depends on Windows-native
 evidence can receive destructive authority through this seam.
 
+## Allocated-size observation
+
+Logical size and allocated/physical size are different facts: a sparse file, a
+copy-on-write clone, or a compressed filesystem can report a logical length far larger or
+smaller than the disk blocks it actually occupies. E04-S01 implements this as its own seam,
+`AllocationObserver`, at `rust/crates/cancellai-platform/src/allocation.rs` - mirroring
+`FsObserver`/`IdentityObserver`'s `Absent`/`Unreadable`/`Unsupported` split rather than
+folding an allocated-size field into `FsObserver` itself, so a platform/filesystem that
+cannot report it distinctly is a typed fact, never a silent copy of the logical size or a
+fabricated zero. `SystemAllocationObserver` uses Unix `st_blocks * 512` (the same
+POSIX-standard convention `du` relies on); it reports `Unsupported` on non-Unix targets today,
+the same fail-closed posture `IdentityObserver` uses for Windows identity until a verified
+implementation exists.
+
 ## Boundary rules
 
 - Never mutate the provider root itself.

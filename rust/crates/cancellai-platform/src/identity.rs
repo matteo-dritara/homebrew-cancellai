@@ -59,6 +59,26 @@ pub enum IdentityToken {
     },
 }
 
+impl IdentityToken {
+    /// The coarse filesystem-object shape this token describes. A plain accessor rather than
+    /// requiring every caller to match on the (currently single) variant directly, so a
+    /// future non-Unix variant is a one-place change instead of every call site.
+    pub fn kind(&self) -> FileKind {
+        match self {
+            IdentityToken::Unix { kind, .. } => *kind,
+        }
+    }
+
+    /// The filesystem/volume this token's object lives on (E04-S01, SI-018 boundary checks).
+    /// Unix-only today, matching this enum's only variant; a future Windows variant adds its
+    /// own volume identity rather than reusing this accessor's meaning.
+    pub fn device(&self) -> u64 {
+        match self {
+            IdentityToken::Unix { device, .. } => *device,
+        }
+    }
+}
+
 /// What identity observation for one path can tell us. Mirrors
 /// [`crate::fs_observer::Observation`]'s absent-vs-unreadable split (SI-008/SI-009/SI-010) and
 /// adds [`Unsupported`](IdentityObservation::Unsupported): a platform/filesystem that cannot

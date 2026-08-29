@@ -1,0 +1,44 @@
+name: rust-benchmark
+
+# E04-S04: the heavy 10k/100k(/1M-on-demand)-entry cancellai-inventory benchmarks
+# (rust/crates/cancellai-inventory/tests/performance_scheduled.rs) are `#[ignore]`d out of
+# the normal `cargo test` run (.github/workflows/rust.yml) so every PR stays fast. This
+# workflow runs them on a schedule instead, and uploads the machine-readable trend artifact
+# docs/development/RELEASE_GATES.md's "benchmark summary" release-evidence item references.
+
+on:
+  schedule:
+    # Weekly, not per-PR - a benchmark regression from one commit is still visible within a
+    # week, and a shared CI runner should not absorb this cost on every push.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      sizes:
+        description: "Comma-separated dataset sizes to benchmark"
+        required: false
+        default: "10000,100000"
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          toolchain: stable
+      - name: Run cancellai-inventory heavy benchmarks
+        working-directory: rust
+        env:
+          CANCELLAI_BENCH_SIZES: ${{ github.event.inputs.sizes || '10000,100000' }}
+          CANCELLAI_BENCH_OUTPUT: ${{ github.workspace }}/rust-inventory-bench.json
+        run: cargo test --release -p cancellai-inventory --test performance_scheduled -- --ignored --nocapture
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: rust-inventory-bench-trend
+          path: rust-inventory-bench.json
+          retention-days: 90

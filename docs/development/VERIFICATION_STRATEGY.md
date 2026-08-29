@@ -103,6 +103,14 @@ Particularly valuable for path normalization, policy parsing/resolution, manifes
 
 Fast regression checks in ordinary CI; larger synthetic scans scheduled/benchmark jobs. Measure traversal count, latency, peak memory, CPU, and cancellAI state growth.
 
+E04-S04 implements the split this section describes for `cancellai-inventory`:
+`tests/performance_micro.rs` (ordinary CI, a few thousand synthetic files) and
+`tests/performance_scheduled.rs` (`#[ignore]`d, 10k/100k/1M-entry datasets, run by
+`.github/workflows/rust-benchmark.yml` on a schedule and via `workflow_dispatch`). See
+[`RELEASE_GATES.md`](RELEASE_GATES.md#performance-budget-baseline-cancellai-inventory-e04-s04)
+for which of traversal-count/latency/memory/CPU/self-footprint are actually measured today
+versus recorded as forward-looking budgets.
+
 ### Installer/release tests
 
 Fresh-machine/container/VM smoke tests for each tier-1 artifact/package channel where feasible, plus provenance/SBOM verification.

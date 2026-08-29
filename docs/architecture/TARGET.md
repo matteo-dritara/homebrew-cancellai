@@ -110,6 +110,15 @@ no-new-dependency implementation cannot fully close) not perfectly eliminating, 
 between revalidation and the OS call itself. Directories and symlinks are refused rather than
 deleted without that confirmation.
 
+E04-S01/E04-S02/E04-S03 implement `cancellai-inventory`'s share of the OBSERVE stage below:
+`FileFacts`/`observe_file_facts` (per-path evidence composed from three `cancellai-platform`
+seams), `scan_scope` (one recursive walk per scope, never re-walked by its report views), and
+`derive_completeness`/`planning_view` (scope-level `Complete`/`Partial`/`Unknown`
+classification that a planning-facing view cannot be handed without). See
+[`DOMAIN_MODEL.md`](DOMAIN_MODEL.md#filefacts-the-observe-stage-evidence-agentartifact-is-built-from)
+for the full account; this crate still has no `AgentArtifact`/classification logic of its
+own - that is CLASSIFY-stage scope (E05/E06), not this epic's.
+
 ## Core loop
 
 The engine behaves as an evidence-driven reconciliation loop:
