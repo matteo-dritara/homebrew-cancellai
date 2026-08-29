@@ -7,7 +7,7 @@
   "dependencies": [
     "E03"
   ],
-  "status": "in_progress",
+  "status": "done",
   "stories": [
     {
       "id": "E04-S01",
@@ -54,7 +54,7 @@
     {
       "id": "E04-S03",
       "title": "Incomplete inventory propagation",
-      "status": "in_progress",
+      "status": "done",
       "outcome": "Propagate permission, disappearance, I/O, and unsupported filesystem states into completeness metadata.",
       "change_risk": "CR3",
       "dependencies": [

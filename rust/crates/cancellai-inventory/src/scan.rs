@@ -9,6 +9,16 @@
 //! recorded as a fact (with [`crate::file_facts::ScopeBoundary::CrossesBoundary`]) but its
 //! own children are not visited. This is a read-only inventory pass, not a mutation - it
 //! never calls anything in `cancellai-safety`/`cancellai-platform::mutation`.
+//!
+//! E04 round-1 verifier review found two defects here, both repaired in the same change:
+//! `walk_directory` silently dropped a `read_dir`-listed entry's `Absent`/`Unreadable`
+//! observation instead of recording it (a child that a permission change or a
+//! listing-to-observe race made unreadable simply vanished from the snapshot, so
+//! `derive_completeness` saw no evidence anything was missing and reported `Complete`) - now
+//! preserved as a [`FactError`] (SI-008/SI-009/SI-010). And `planning_candidates` was `pub`,
+//! reachable by any external caller without the `ScopeCompleteness` `planning_view` bundles
+//! it with - now `pub(crate)`, with a `compile_fail` doctest on [`InventorySnapshot`] as the
+//! regression proving it no longer compiles from outside this crate.
 
 use std::path::{Path, PathBuf};
 
@@ -39,8 +49,49 @@ pub enum DirectoryErrorKind {
     Other,
 }
 
+/// A `read_dir`-listed entry whose own observation was not `Present` - the entry existed
+/// long enough for its parent directory listing to see it, but observing it directly
+/// produced `Absent` (a listing-to-observe race) or `Unreadable` (a permission/I/O failure
+/// specific to that entry). Preserved as named incomplete-scan evidence (SI-008/SI-009/
+/// SI-010) rather than silently dropped - dropping it was E04 round-1 verifier review's
+/// finding against this file's first version.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FactError {
+    pub path: PathBuf,
+    pub kind: FactErrorKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FactErrorKind {
+    /// `read_dir` listed this entry, but it was `Absent` by the time this scan observed it.
+    Disappeared,
+    Unreadable {
+        reason: String,
+    },
+}
+
 /// The result of walking one scope exactly once. Every view method below reads only these
 /// fields - none re-touches the filesystem.
+///
+/// `planning_candidates` is deliberately `pub(crate)`: the only public route to
+/// planning-facing data is [`crate::completeness::planning_view`], which always bundles
+/// candidates together with the [`crate::completeness::ScopeCompleteness`] they were
+/// produced under, in one struct with no bare-candidates constructor. This doctest is the
+/// regression proving that route cannot be bypassed - a downstream crate cannot reach
+/// `planning_candidates` at all, so it cannot omit completeness by construction:
+///
+/// ```compile_fail
+/// # use std::path::Path;
+/// # use cancellai_inventory::scan_scope;
+/// # use cancellai_platform::{SystemAllocationObserver, SystemFsObserver, SystemIdentityObserver};
+/// let snapshot = scan_scope(
+///     Path::new("."),
+///     &SystemFsObserver,
+///     &SystemIdentityObserver,
+///     &SystemAllocationObserver,
+/// );
+/// let _ = snapshot.planning_candidates(); // pub(crate): not visible outside this crate
+/// ```
 #[derive(Debug, Clone)]
 pub struct InventorySnapshot {
     pub scope_root: PathBuf,
@@ -51,6 +102,8 @@ pub struct InventorySnapshot {
     pub root_fact: FactObservation,
     pub facts: Vec<FileFacts>,
     pub directory_errors: Vec<DirectoryError>,
+    /// `read_dir`-listed entries whose own observation was not `Present` (see [`FactError`]).
+    pub fact_errors: Vec<FactError>,
     pub directories_visited: usize,
     pub paths_observed: usize,
 }
@@ -100,11 +153,12 @@ impl InventorySnapshot {
     /// A placeholder planning-input view: every observed fact, alongside nothing more. This
     /// is *not* a real planning engine (that requires policy/classification, E05/E06); it
     /// exists only to prove a third named caller (AC1's "status/planning/top-consumers")
-    /// reuses this same snapshot rather than re-scanning. `crate::completeness` (E04-S03)
-    /// wraps this in a view that also carries scope completeness, which is the form a real
-    /// planning caller must use - this bare accessor is intentionally not the public
-    /// planning entry point once that exists.
-    pub fn planning_candidates(&self) -> Vec<&FileFacts> {
+    /// reuses this same snapshot rather than re-scanning. `pub(crate)` on purpose (E04 round-1
+    /// repair) - `crate::completeness::planning_view` is the only public way to obtain
+    /// planning-facing candidates, and it always bundles scope completeness alongside them;
+    /// see this struct's own doc comment for the `compile_fail` regression proving this
+    /// accessor is unreachable from outside the crate.
+    pub(crate) fn planning_candidates(&self) -> Vec<&FileFacts> {
         self.facts.iter().collect()
     }
 }
@@ -141,6 +195,7 @@ pub fn scan_scope(
         root_fact,
         facts: Vec::new(),
         directory_errors: Vec::new(),
+        fact_errors: Vec::new(),
         directories_visited: 0,
         paths_observed: 0,
     };
@@ -203,17 +258,37 @@ fn walk_directory(
         snapshot.paths_observed += 1;
 
         let observation = observe_file_facts(&child_path, fs, identity, allocation, scope_device);
-        let (kind, boundary, identity_observation) = match &observation {
-            FactObservation::Present(facts) => (
-                Some(facts.kind),
-                Some(facts.boundary.clone()),
-                Some(facts.identity.clone()),
-            ),
-            _ => (None, None, None),
+        let (kind, boundary, identity_observation) = match observation {
+            FactObservation::Present(facts) => {
+                let result = (
+                    Some(facts.kind),
+                    Some(facts.boundary.clone()),
+                    Some(facts.identity.clone()),
+                );
+                snapshot.facts.push(facts);
+                result
+            }
+            FactObservation::Absent => {
+                // `read_dir` listed this entry, but it was gone by the time this scan
+                // observed it directly - a listing-to-observe race, not a permission
+                // problem. Recorded, not silently dropped (SI-008/SI-009/SI-010): E04
+                // round-1 verifier review found this branch previously discarded the
+                // observation entirely, letting `derive_completeness` see no evidence
+                // anything was missing.
+                snapshot.fact_errors.push(FactError {
+                    path: child_path.clone(),
+                    kind: FactErrorKind::Disappeared,
+                });
+                (None, None, None)
+            }
+            FactObservation::Unreadable { reason } => {
+                snapshot.fact_errors.push(FactError {
+                    path: child_path.clone(),
+                    kind: FactErrorKind::Unreadable { reason },
+                });
+                (None, None, None)
+            }
         };
-        if let FactObservation::Present(facts) = observation {
-            snapshot.facts.push(facts);
-        }
 
         let is_directory = kind == Some(cancellai_platform::FileKind::Directory);
         let crosses_boundary = matches!(
@@ -250,7 +325,9 @@ fn classify_io_error(e: &std::io::Error) -> DirectoryErrorKind {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cancellai_platform::{SystemAllocationObserver, SystemFsObserver, SystemIdentityObserver};
+    use cancellai_platform::{
+        Observation, SystemAllocationObserver, SystemFsObserver, SystemIdentityObserver,
+    };
 
     struct TempTree(PathBuf);
 
@@ -442,6 +519,136 @@ mod tests {
                 .facts
                 .iter()
                 .any(|f| f.path == tree.path("locked/secret.txt"))
+        );
+    }
+
+    #[test]
+    fn an_unreadable_listed_child_is_preserved_as_a_fact_error_not_dropped() {
+        // E04 round-1 verifier repair: a child that `read_dir` lists but that a per-entry
+        // observation reports `Unreadable` for (a permission change specific to that one
+        // entry, or a race this test injects directly since it is impractical to force
+        // reliably against a real filesystem) must not silently vanish from the snapshot.
+        use crate::test_doubles::OverrideFsObserver;
+
+        let tree = TempTree::new("unreadable-child");
+        std::fs::write(tree.path("child.txt"), b"data").unwrap();
+
+        let real_fs = SystemFsObserver;
+        let mut fs = OverrideFsObserver::new(&real_fs);
+        fs.set(
+            tree.path("child.txt"),
+            Observation::Unreadable {
+                reason: "injected: permission denied".into(),
+            },
+        );
+
+        let snapshot = scan_scope(
+            &tree.0,
+            &fs,
+            &SystemIdentityObserver,
+            &SystemAllocationObserver,
+        );
+
+        assert!(
+            !snapshot
+                .facts
+                .iter()
+                .any(|f| f.path == tree.path("child.txt"))
+        );
+        assert!(
+            snapshot.fact_errors.iter().any(|e| e.path == tree.path("child.txt")
+                && matches!(&e.kind, FactErrorKind::Unreadable { reason } if reason.contains("injected"))),
+            "expected an Unreadable fact_error for child.txt, got {:?}",
+            snapshot.fact_errors
+        );
+    }
+
+    #[test]
+    fn a_child_that_disappears_between_listing_and_observation_is_preserved_as_a_fact_error() {
+        use crate::test_doubles::OverrideFsObserver;
+
+        let tree = TempTree::new("disappearing-child");
+        std::fs::write(tree.path("child.txt"), b"data").unwrap();
+
+        let real_fs = SystemFsObserver;
+        let mut fs = OverrideFsObserver::new(&real_fs);
+        // The file is still really there; the observer is told to report it Absent, standing
+        // in for a listing-to-observe race a real filesystem cannot be forced into reliably.
+        fs.set(tree.path("child.txt"), Observation::Absent);
+
+        let snapshot = scan_scope(
+            &tree.0,
+            &fs,
+            &SystemIdentityObserver,
+            &SystemAllocationObserver,
+        );
+
+        assert!(
+            !snapshot
+                .facts
+                .iter()
+                .any(|f| f.path == tree.path("child.txt"))
+        );
+        assert!(
+            snapshot
+                .fact_errors
+                .iter()
+                .any(|e| e.path == tree.path("child.txt") && e.kind == FactErrorKind::Disappeared),
+            "expected a Disappeared fact_error for child.txt, got {:?}",
+            snapshot.fact_errors
+        );
+    }
+
+    #[test]
+    fn a_directory_with_unconfirmed_identity_is_recorded_but_not_descended_into() {
+        // Closes E04-S02's own round-1 residual: the no-descend-on-unconfirmed-identity guard
+        // in `walk_directory` (SI-017) had no dedicated behavioral test, only source
+        // inspection. `Unreadable` (as opposed to `Unsupported`, already covered by the
+        // cross-device test's sibling assertions) stands in for a permission/I/O failure
+        // specific to observing this one directory's identity.
+        use crate::test_doubles::OverrideIdentityObserver;
+
+        let tree = TempTree::new("unconfirmed-identity");
+        std::fs::create_dir_all(tree.path("weird/inside")).unwrap();
+        std::fs::write(tree.path("weird/inside/f.txt"), b"data").unwrap();
+
+        let real_identity = SystemIdentityObserver;
+        let mut identity = OverrideIdentityObserver::new(&real_identity);
+        identity.set(
+            tree.path("weird"),
+            IdentityObservation::Unreadable {
+                reason: "injected: identity observation failed".into(),
+            },
+        );
+
+        let snapshot = scan_scope(
+            &tree.0,
+            &SystemFsObserver,
+            &identity,
+            &SystemAllocationObserver,
+        );
+
+        // Only the scope root was read_dir'd; "weird"'s own fact is recorded, but its
+        // unconfirmed identity refused a descend, so "weird/inside" was never observed.
+        assert_eq!(snapshot.directories_visited, 1);
+        assert!(
+            !snapshot
+                .facts
+                .iter()
+                .any(|f| f.path == tree.path("weird/inside"))
+        );
+        let weird_fact = snapshot
+            .facts
+            .iter()
+            .find(|f| f.path == tree.path("weird"))
+            .expect("weird directory fact recorded");
+        assert!(
+            matches!(
+                weird_fact.confidence,
+                crate::file_facts::FactConfidence::Partial { .. }
+            ),
+            "an unconfirmed identity must degrade confidence, got {:?}",
+            weird_fact.confidence
         );
     }
 

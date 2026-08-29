@@ -77,18 +77,23 @@ plus 2 golden tests, all green on first run.
 
 ## Residual risks
 
-- The "descend refused on unconfirmed identity" guard (SI-017 applied to traversal) is
-  exercised only structurally today, not by a test that specifically drives a child
-  directory to `Unreadable`/`Unsupported` identity and asserts no descent - the
-  boundary-crossing and permission-denied tests exercise adjacent but not identical paths
-  through the same guard. A follow-up test closing this specific gap is straightforward but
-  not added in this change to keep the diff focused; flagged for the epic's verifier review.
+- ~~The "descend refused on unconfirmed identity" guard...~~ **Closed** in the E04-S03
+  round-1 repair: `scan::tests::a_directory_with_unconfirmed_identity_is_recorded_but_not_descended_into`
+  (added alongside that repair, since it shares `walk_directory`'s guard logic with the
+  round-1 finding) now behaviorally drives a child directory to injected `Unreadable`
+  identity via `test_doubles::OverrideIdentityObserver` and asserts no descent. See
+  `project/evidence/E04-S03/EVIDENCE.md` for the repair record.
 - `walk_directory` is plain (non-tail) recursion, one stack frame per directory depth - a
   pathologically deep synthetic tree (tens of thousands of nested directories) could
   exhaust the stack before hitting any of this story's own dataset-size budgets. Real
   provider layouts are not that deep; not treated as a blocking defect, but recorded here
-  rather than silently assumed away.
+  rather than silently assumed away. Not addressed by the E04-S03 repair (out of that
+  round's scope).
 
 ## Verifier verdict
 
-PENDING - epic E04 review runs once every story in E04 is `ready_for_review` (at most twice per epic, per ADR-0014).
+Round 1: `PASS_WITH_RESIDUALS` (`project/evidence/E04-VERIFIER-REVIEW.md`). The one
+behavioral-test residual named there is closed above; the recursion-depth residual remains
+open and unrelated to that finding. Per explicit owner instruction, closed to `done` without
+a formal round-2 review (see `project/evidence/E04-S03/EVIDENCE.md`'s "Verifier verdict" for
+the full rationale, which applies epic-wide).

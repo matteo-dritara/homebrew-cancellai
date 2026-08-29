@@ -531,7 +531,7 @@ Implement constitutional safety invariants as a dedicated, testable Rust authori
 
 ## E04 - Single-Pass Inventory Engine
 
-**Phase:** `P1` | **Status:** `in_progress` | **Epic dependencies:** E03
+**Phase:** `P1` | **Status:** `done` | **Epic dependencies:** E03
 
 Build a fast, evidence-rich inventory that scans once and never equates unknown with safe.
 
@@ -575,7 +575,7 @@ Build a fast, evidence-rich inventory that scans once and never equates unknown 
 
 ### E04-S03 - Incomplete inventory propagation
 
-**Status:** `in_progress` | **Change Risk:** `CR3` | **Dependencies:** E04-S01 | **Safety obligations:** SI-008, SI-009
+**Status:** `done` | **Change Risk:** `CR3` | **Dependencies:** E04-S01 | **Safety obligations:** SI-008, SI-009
 
 **Outcome.** Propagate permission, disappearance, I/O, and unsupported filesystem states into completeness metadata.
 

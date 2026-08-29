@@ -19,6 +19,8 @@
 pub mod completeness;
 pub mod file_facts;
 pub mod scan;
+#[cfg(test)]
+mod test_doubles;
 
 pub use completeness::{
     CompletenessReason, PlanningView, ScopeCompleteness, derive_completeness, planning_view,
@@ -26,6 +28,9 @@ pub use completeness::{
 pub use file_facts::{
     FactConfidence, FactObservation, FileFacts, ScopeBoundary, SizeMetric, observe_file_facts,
 };
-pub use scan::{DirectoryError, DirectoryErrorKind, InventorySnapshot, StatusSummary, scan_scope};
+pub use scan::{
+    DirectoryError, DirectoryErrorKind, FactError, FactErrorKind, InventorySnapshot, StatusSummary,
+    scan_scope,
+};
 
 use cancellai_model as _;

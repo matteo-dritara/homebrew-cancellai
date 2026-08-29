@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use cancellai_platform::IdentityObservation;
 
 use crate::file_facts::{FactConfidence, FactObservation, FileFacts};
-use crate::scan::{DirectoryErrorKind, InventorySnapshot};
+use crate::scan::{DirectoryErrorKind, FactErrorKind, InventorySnapshot};
 
 /// Why a scope's completeness is less than `Complete`. Every reason names a path and a
 /// concrete cause - SI-010 requires scan errors to be visible, never summarized into an
@@ -72,10 +72,14 @@ impl ScopeCompleteness {
 }
 
 /// Derives a scope's completeness from everything an [`InventorySnapshot`] already recorded:
-/// the root fact, every directory-listing error, and every per-file degraded confidence.
-/// Nothing here re-touches the filesystem - this is a pure rollup, matching E04-S02's "one
-/// traversal per scope."
+/// the root fact (including a *present-but-degraded* root, E04 round-1 repair - see below),
+/// every directory-listing error, every `read_dir`-listed-but-unobservable entry
+/// ([`crate::scan::FactError`], also an E04 round-1 repair), and every per-file degraded
+/// confidence. Nothing here re-touches the filesystem - this is a pure rollup, matching
+/// E04-S02's "one traversal per scope."
 pub fn derive_completeness(snapshot: &InventorySnapshot) -> ScopeCompleteness {
+    let mut reasons = Vec::new();
+
     match &snapshot.root_fact {
         FactObservation::Absent => {
             return ScopeCompleteness::Unknown {
@@ -93,10 +97,13 @@ pub fn derive_completeness(snapshot: &InventorySnapshot) -> ScopeCompleteness {
                 }],
             };
         }
-        FactObservation::Present(_) => {}
+        // The root itself was observed, but E04 round-1 verifier review found this branch
+        // previously ignored whether that observation was itself degraded (e.g. the root's
+        // own identity/allocation unsupported or unreadable) - an otherwise-empty scope with
+        // a partial root fact reported `Complete`. The root's own reasons are folded into the
+        // same rollup as every descendant's below, not treated as a separate case.
+        FactObservation::Present(root_facts) => reasons.extend(fact_reasons(root_facts)),
     }
-
-    let mut reasons = Vec::new();
 
     for error in &snapshot.directory_errors {
         reasons.push(match error.kind {
@@ -109,6 +116,21 @@ pub fn derive_completeness(snapshot: &InventorySnapshot) -> ScopeCompleteness {
             DirectoryErrorKind::Other => CompletenessReason::Io {
                 path: error.path.clone(),
                 message: error.message.clone(),
+            },
+        });
+    }
+
+    // E04 round-1 repair: a `read_dir`-listed entry whose own observation was `Absent`/
+    // `Unreadable` used to be dropped entirely by `scan.rs`, so this rollup never saw it.
+    // `FactError` now preserves it explicitly.
+    for error in &snapshot.fact_errors {
+        reasons.push(match &error.kind {
+            FactErrorKind::Disappeared => CompletenessReason::Disappeared {
+                path: error.path.clone(),
+            },
+            FactErrorKind::Unreadable { reason } => CompletenessReason::Io {
+                path: error.path.clone(),
+                message: reason.clone(),
             },
         });
     }
@@ -353,6 +375,7 @@ mod tests {
                 other => panic!("expected Present, got {other:?}"),
             }],
             directory_errors: Vec::new(),
+            fact_errors: Vec::new(),
             directories_visited: 1,
             paths_observed: 1,
         };
@@ -453,6 +476,7 @@ mod tests {
             }),
             facts: Vec::new(),
             directory_errors: vec![disappeared_error, permission_error],
+            fact_errors: Vec::new(),
             directories_visited: 1,
             paths_observed: 0,
         };
@@ -468,5 +492,149 @@ mod tests {
             }
             other => panic!("expected Partial, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn ac1_an_unreadable_listed_child_makes_the_scope_partial_not_complete() {
+        // E04 round-1 verifier repair: reproduces the exact reported bypass - a child listed
+        // by `read_dir` but reported `Unreadable` by direct observation used to vanish from
+        // the snapshot entirely, so this scope was wrongly reported `Complete`.
+        use crate::test_doubles::OverrideFsObserver;
+        use cancellai_platform::Observation;
+
+        let tree = TempTree::new("unreadable-child-completeness");
+        std::fs::write(tree.path("child.txt"), b"data").unwrap();
+
+        let real_fs = SystemFsObserver;
+        let mut fs = OverrideFsObserver::new(&real_fs);
+        fs.set(
+            tree.path("child.txt"),
+            Observation::Unreadable {
+                reason: "injected: permission denied".into(),
+            },
+        );
+
+        let snapshot = scan_scope(
+            &tree.0,
+            &fs,
+            &SystemIdentityObserver,
+            &SystemAllocationObserver,
+        );
+
+        match derive_completeness(&snapshot) {
+            ScopeCompleteness::Partial { reasons } => {
+                assert!(
+                    reasons.iter().any(|r| matches!(
+                        r,
+                        CompletenessReason::Io { path, .. } if *path == tree.path("child.txt")
+                    )),
+                    "expected an Io reason for the unreadable child, got {reasons:?}"
+                );
+            }
+            other => panic!("an unreadable listed child must never report Complete, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ac1_a_child_that_disappears_between_listing_and_observation_makes_the_scope_partial() {
+        use crate::test_doubles::OverrideFsObserver;
+        use cancellai_platform::Observation;
+
+        let tree = TempTree::new("disappeared-child-completeness");
+        std::fs::write(tree.path("child.txt"), b"data").unwrap();
+
+        let real_fs = SystemFsObserver;
+        let mut fs = OverrideFsObserver::new(&real_fs);
+        fs.set(tree.path("child.txt"), Observation::Absent);
+
+        let snapshot = scan_scope(
+            &tree.0,
+            &fs,
+            &SystemIdentityObserver,
+            &SystemAllocationObserver,
+        );
+
+        match derive_completeness(&snapshot) {
+            ScopeCompleteness::Partial { reasons } => {
+                assert!(reasons.iter().any(|r| matches!(
+                    r,
+                    CompletenessReason::Disappeared { path } if *path == tree.path("child.txt")
+                )));
+            }
+            other => panic!("a disappeared listed child must never report Complete, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ac1_a_degraded_empty_root_is_partial_not_complete() {
+        // E04 round-1 verifier repair: `derive_completeness` previously only inspected
+        // `snapshot.facts` (descendants), never the root fact's own confidence - an
+        // otherwise-empty scope whose root identity could not be established reported
+        // `Complete` (there was nothing in `facts` to contribute a reason).
+        use crate::test_doubles::OverrideIdentityObserver;
+        use cancellai_platform::IdentityObservation;
+
+        let tree = TempTree::new("degraded-empty-root");
+
+        let real_identity = SystemIdentityObserver;
+        let mut identity = OverrideIdentityObserver::new(&real_identity);
+        identity.set(
+            &tree.0,
+            IdentityObservation::Unsupported {
+                reason: "injected: no verified identity for this root".into(),
+            },
+        );
+
+        let snapshot = scan_scope(
+            &tree.0,
+            &SystemFsObserver,
+            &identity,
+            &SystemAllocationObserver,
+        );
+
+        assert!(
+            snapshot.facts.is_empty(),
+            "this fixture is deliberately an empty scope"
+        );
+        match derive_completeness(&snapshot) {
+            ScopeCompleteness::Partial { reasons } => {
+                assert!(reasons.iter().any(|r| matches!(
+                    r,
+                    CompletenessReason::UnsupportedFilesystemFeature { path, feature, .. }
+                        if *path == tree.0 && feature == "identity"
+                )));
+            }
+            other => panic!("a degraded empty root must never report Complete, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ac2_planning_view_of_a_degraded_scope_never_hides_completeness_behind_empty_candidates() {
+        // The strongest form of AC2: even when `candidates` is empty (nothing to plan over),
+        // `completeness` must still surface the degradation - an empty `Vec` must never be
+        // mistaken for "nothing was wrong."
+        use crate::test_doubles::OverrideIdentityObserver;
+        use cancellai_platform::IdentityObservation;
+
+        let tree = TempTree::new("degraded-empty-root-planning");
+        let real_identity = SystemIdentityObserver;
+        let mut identity = OverrideIdentityObserver::new(&real_identity);
+        identity.set(
+            &tree.0,
+            IdentityObservation::Unsupported {
+                reason: "injected: no verified identity for this root".into(),
+            },
+        );
+
+        let snapshot = scan_scope(
+            &tree.0,
+            &SystemFsObserver,
+            &identity,
+            &SystemAllocationObserver,
+        );
+        let view = planning_view(&snapshot);
+
+        assert!(view.candidates.is_empty());
+        assert!(!view.completeness.is_complete());
     }
 }

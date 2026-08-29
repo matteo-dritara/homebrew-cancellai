@@ -9,7 +9,7 @@ mod perf_support;
 
 use std::time::Instant;
 
-use cancellai_inventory::scan_scope;
+use cancellai_inventory::{planning_view, scan_scope};
 use cancellai_platform::{SystemAllocationObserver, SystemFsObserver, SystemIdentityObserver};
 
 /// A generous ceiling for 2,000 tiny synthetic files on local disk. This is meant to catch a
@@ -48,11 +48,13 @@ fn scan_scope_completes_within_budget_for_a_small_dataset() {
 
     // The three named views (status/top-consumers/planning, E04-S02's AC) must not re-walk
     // the filesystem even at this dataset size - proven by the traversal counters being
-    // unchanged after calling all three.
+    // unchanged after calling all three. Planning goes through `planning_view` - the only
+    // public route to planning-facing candidates (E04-S03 round-1 repair;
+    // `InventorySnapshot::planning_candidates` is `pub(crate)` and unreachable here).
     let before = (snapshot.directories_visited, snapshot.paths_observed);
     let _ = snapshot.status_summary();
     let _ = snapshot.top_consumers(10);
-    let _ = snapshot.planning_candidates();
+    let _ = planning_view(&snapshot);
     assert_eq!(
         before,
         (snapshot.directories_visited, snapshot.paths_observed)

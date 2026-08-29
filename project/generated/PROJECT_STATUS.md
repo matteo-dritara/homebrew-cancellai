@@ -8,8 +8,7 @@ Epics: **20** | Stories: **90**
 
 ## Story status
 
-- `done`: 27
-- `in_progress`: 1
+- `done`: 28
 - `planned`: 62
 
 ## Change risk distribution
