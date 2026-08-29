@@ -19,7 +19,7 @@ repos:
     hooks:
       - id: mypy
         args: [--strict]
-        files: ^(cancellai\.py|scripts/(gen_docs|project_os|check_docs|check_workflows|check_process|release|check_fixtures|check_schemas|characterize|diff_harness|check_rust_workspace)\.py)$
+        files: ^(cancellai\.py|scripts/(gen_docs|project_os|check_docs|check_workflows|check_process|release|check_fixtures|check_schemas|characterize|diff_harness|check_rust_workspace|check_mutation_boundary)\.py)$
 
   - repo: local
     hooks:
@@ -84,6 +84,13 @@ repos:
         entry: python3 scripts/check_rust_workspace.py check
         language: system
         files: ^(rust/crates/.*/Cargo\.toml|docs/architecture/TARGET\.md|scripts/check_rust_workspace\.py)$
+        pass_filenames: false
+
+      - id: mutation-boundary-check
+        name: only the safety executor's platform seam deletes anything (SI-019)
+        entry: python3 scripts/check_mutation_boundary.py check
+        language: system
+        files: ^(rust/crates/.*/src/.*\.rs|scripts/check_mutation_boundary\.py)$
         pass_filenames: false
 
       - id: process-check

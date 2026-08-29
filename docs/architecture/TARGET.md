@@ -76,6 +76,24 @@ Forbidden dependency direction:
 - UI crates may not access raw provider roots for mutation;
 - network/knowledge code may not receive direct mutation authority.
 
+`cancellai-safety` may depend on `cancellai-platform` (not just `cancellai-model`) - domain
+and policy code consuming an OS capability's *result* is not the same as bypassing the safety
+executor (`docs/architecture/PLATFORM_MODEL.md`); `scripts/check_rust_workspace.py`'s
+isolation check reflects this per-crate, not a blanket "model/safety depend on nothing but
+each other" (E03-S02).
+
+E03-S05 implements "provider adapters may not bypass the safety executor" for filesystem
+deletion specifically, and statically: `rust/crates/cancellai-platform/src/mutation.rs` is
+the *only* production source file in the workspace allowed to call
+`std::fs::remove_file`/`remove_dir`/`remove_dir_all` directly (SI-019) -
+`scripts/check_mutation_boundary.py` enforces this by scanning every other crate's
+production source for those calls and fails if it finds one. `rust/crates/cancellai-safety/src/mutation_executor.rs`'s
+`execute`/`execute_all` are the one production call path from a `SealedPlan` (E03-S02) to
+that capability: revalidate identity immediately before mutation (SI-013, `cancellai-safety`'s
+own `revalidate`), then delegate to `MutationExecutor`. `execute_all` aggregates a batch via
+`Vec::map`/`collect`, which cannot silently drop or short-circuit past a result the way a
+hand-written loop with an early return could (SI-020's per-action explicitness).
+
 ## Core loop
 
 The engine behaves as an evidence-driven reconciliation loop:

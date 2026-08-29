@@ -9,8 +9,8 @@ Epics: **20** | Stories: **90**
 ## Story status
 
 - `done`: 19
-- `planned`: 67
-- `ready_for_review`: 4
+- `planned`: 66
+- `ready_for_review`: 5
 
 ## Change risk distribution
 
@@ -30,3 +30,4 @@ Epics: **20** | Stories: **90**
 - **E03-S02** - Sealed cleanup plan (CR4)
 - **E03-S03** - Root and boundary capabilities (CR4)
 - **E03-S04** - Action authority lattice (CR4)
+- **E03-S05** - Mutation executor isolation (CR4)

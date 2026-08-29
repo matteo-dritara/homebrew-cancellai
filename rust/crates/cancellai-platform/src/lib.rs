@@ -16,11 +16,16 @@
 //! E03-S01 adds a third seam, [`IdentityObserver`], binding a plan to the object actually
 //! observed (device/inode on Unix) rather than to a path alone (SI-013, SI-017). E03-S03
 //! adds a fourth, [`PathResolver`], the "path canonicalization/normalization" capability
-//! `docs/architecture/PLATFORM_MODEL.md` lists separately from filesystem identity.
+//! `docs/architecture/PLATFORM_MODEL.md` lists separately from filesystem identity. E03-S05
+//! adds a fifth, [`MutationExecutor`] - the only seam in this crate whose real
+//! implementation changes the filesystem (SI-019); `scripts/check_mutation_boundary.py`
+//! statically enforces that `mutation.rs` is the one production source file in the whole
+//! workspace allowed to call a filesystem removal primitive directly.
 
 pub mod clock;
 pub mod fs_observer;
 pub mod identity;
+pub mod mutation;
 pub mod path_resolver;
 pub mod snapshot;
 
@@ -29,6 +34,10 @@ pub use fs_observer::{FsMetadata, FsObserver, Observation, SyntheticFsObserver, 
 pub use identity::{
     FileKind, IdentityObservation, IdentityObserver, IdentityToken, SyntheticIdentityObserver,
     SystemIdentityObserver,
+};
+pub use mutation::{
+    MutationError, MutationExecutor, MutationOperation, SyntheticMutationExecutor,
+    SystemMutationExecutor,
 };
 pub use path_resolver::{PathResolver, SyntheticPathResolver, SystemPathResolver};
 pub use snapshot::{Snapshot, build_snapshot};

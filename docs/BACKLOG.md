@@ -511,7 +511,7 @@ Implement constitutional safety invariants as a dedicated, testable Rust authori
 
 ### E03-S05 - Mutation executor isolation
 
-**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E03-S02, E03-S03, E03-S04 | **Safety obligations:** SI-019, SI-020
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E03-S02, E03-S03, E03-S04 | **Safety obligations:** SI-019, SI-020
 
 **Outcome.** Make the safety executor the sole code path for filesystem mutation.
 

@@ -115,7 +115,7 @@
     {
       "id": "E03-S05",
       "title": "Mutation executor isolation",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Make the safety executor the sole code path for filesystem mutation.",
       "change_risk": "CR4",
       "dependencies": [
