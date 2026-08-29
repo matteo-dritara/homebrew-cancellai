@@ -12,11 +12,19 @@
 //! deterministic/synthetic test double. Neither abstraction hides the OS semantics that
 //! matter for safety: `FsObserver` keeps `docs/architecture/AS_IS.md`'s absent-vs-unreadable
 //! distinction (SI-008/SI-009/SI-010) as a typed contract, not an implementation convention.
+//!
+//! E03-S01 adds a third seam, [`IdentityObserver`], binding a plan to the object actually
+//! observed (device/inode on Unix) rather than to a path alone (SI-013, SI-017).
 
 pub mod clock;
 pub mod fs_observer;
+pub mod identity;
 pub mod snapshot;
 
 pub use clock::{Clock, FrozenClock, SystemClock, Timestamp};
 pub use fs_observer::{FsMetadata, FsObserver, Observation, SyntheticFsObserver, SystemFsObserver};
+pub use identity::{
+    FileKind, IdentityObservation, IdentityObserver, IdentityToken, SyntheticIdentityObserver,
+    SystemIdentityObserver,
+};
 pub use snapshot::{Snapshot, build_snapshot};

@@ -78,7 +78,7 @@ impl FsObserver for SystemFsObserver {
 /// an unknown fact, not a credible 1970 timestamp a retention/planning caller could mistake
 /// for genuinely old data - so the caller reports `Observation::Unreadable`, the same typed
 /// unknown already used for permission/I/O failures, instead of losing the distinction.
-fn modification_timestamp(
+pub(crate) fn modification_timestamp(
     modified: std::io::Result<std::time::SystemTime>,
 ) -> Result<Timestamp, String> {
     let modified = modified.map_err(|e| format!("modification time unavailable: {e}"))?;

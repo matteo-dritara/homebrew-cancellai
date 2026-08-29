@@ -7,12 +7,12 @@
   "dependencies": [
     "E02"
   ],
-  "status": "planned",
+  "status": "in_progress",
   "stories": [
     {
       "id": "E03-S01",
       "title": "Artifact identity tokens",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Define cross-platform identity preconditions using device/inode on Unix and volume/file identity plus reparse metadata on Windows.",
       "change_risk": "CR4",
       "dependencies": [

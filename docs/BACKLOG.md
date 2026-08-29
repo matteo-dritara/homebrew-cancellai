@@ -425,13 +425,13 @@ Establish the target Rust workspace, coding standards, and build factory without
 
 ## E03 - Formal Safety Kernel
 
-**Phase:** `P1` | **Status:** `planned` | **Epic dependencies:** E02
+**Phase:** `P1` | **Status:** `in_progress` | **Epic dependencies:** E02
 
 Implement constitutional safety invariants as a dedicated, testable Rust authority boundary.
 
 ### E03-S01 - Artifact identity tokens
 
-**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E02-S04 | **Safety obligations:** SI-013, SI-017
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E02-S04 | **Safety obligations:** SI-013, SI-017
 
 **Outcome.** Define cross-platform identity preconditions using device/inode on Unix and volume/file identity plus reparse metadata on Windows.
 
