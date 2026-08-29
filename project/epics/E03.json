@@ -12,7 +12,7 @@
     {
       "id": "E03-S01",
       "title": "Artifact identity tokens",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Define cross-platform identity preconditions using device/inode on Unix and volume/file identity plus reparse metadata on Windows.",
       "change_risk": "CR4",
       "dependencies": [
@@ -36,7 +36,7 @@
     {
       "id": "E03-S02",
       "title": "Sealed cleanup plan",
-      "status": "ready_for_review",
+      "status": "in_progress",
       "outcome": "Make every mutating plan immutable, identity-bound, capability-bound, and policy-explained.",
       "change_risk": "CR4",
       "dependencies": [
@@ -61,7 +61,7 @@
     {
       "id": "E03-S03",
       "title": "Root and boundary capabilities",
-      "status": "ready_for_review",
+      "status": "in_progress",
       "outcome": "Represent approved roots and filesystem boundaries as explicit capabilities rather than raw paths.",
       "change_risk": "CR4",
       "dependencies": [
@@ -87,7 +87,7 @@
     {
       "id": "E03-S04",
       "title": "Action authority lattice",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Implement action classes and Effective Authority as a monotonic minimum over all governing constraints.",
       "change_risk": "CR4",
       "dependencies": [
@@ -115,7 +115,7 @@
     {
       "id": "E03-S05",
       "title": "Mutation executor isolation",
-      "status": "ready_for_review",
+      "status": "blocked",
       "outcome": "Make the safety executor the sole code path for filesystem mutation.",
       "change_risk": "CR4",
       "dependencies": [

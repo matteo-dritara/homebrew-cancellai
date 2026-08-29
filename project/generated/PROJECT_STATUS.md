@@ -8,9 +8,10 @@ Epics: **20** | Stories: **90**
 
 ## Story status
 
-- `done`: 19
+- `blocked`: 1
+- `done`: 21
+- `in_progress`: 2
 - `planned`: 66
-- `ready_for_review`: 5
 
 ## Change risk distribution
 
@@ -26,8 +27,4 @@ Epics: **20** | Stories: **90**
 
 ## Awaiting independent review
 
-- **E03-S01** - Artifact identity tokens (CR4)
-- **E03-S02** - Sealed cleanup plan (CR4)
-- **E03-S03** - Root and boundary capabilities (CR4)
-- **E03-S04** - Action authority lattice (CR4)
-- **E03-S05** - Mutation executor isolation (CR4)
+- none

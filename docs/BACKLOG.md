@@ -431,7 +431,7 @@ Implement constitutional safety invariants as a dedicated, testable Rust authori
 
 ### E03-S01 - Artifact identity tokens
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E02-S04 | **Safety obligations:** SI-013, SI-017
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** E02-S04 | **Safety obligations:** SI-013, SI-017
 
 **Outcome.** Define cross-platform identity preconditions using device/inode on Unix and volume/file identity plus reparse metadata on Windows.
 
@@ -450,7 +450,7 @@ Implement constitutional safety invariants as a dedicated, testable Rust authori
 
 ### E03-S02 - Sealed cleanup plan
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E03-S01 | **Safety obligations:** SI-013, SI-016
+**Status:** `in_progress` | **Change Risk:** `CR4` | **Dependencies:** E03-S01 | **Safety obligations:** SI-013, SI-016
 
 **Outcome.** Make every mutating plan immutable, identity-bound, capability-bound, and policy-explained.
 
@@ -470,7 +470,7 @@ Implement constitutional safety invariants as a dedicated, testable Rust authori
 
 ### E03-S03 - Root and boundary capabilities
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E03-S01 | **Safety obligations:** SI-002, SI-003, SI-018
+**Status:** `in_progress` | **Change Risk:** `CR4` | **Dependencies:** E03-S01 | **Safety obligations:** SI-002, SI-003, SI-018
 
 **Outcome.** Represent approved roots and filesystem boundaries as explicit capabilities rather than raw paths.
 
@@ -490,7 +490,7 @@ Implement constitutional safety invariants as a dedicated, testable Rust authori
 
 ### E03-S04 - Action authority lattice
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E02-S03 | **Safety obligations:** SI-001, SI-007, SI-008, SI-009
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** E02-S03 | **Safety obligations:** SI-001, SI-007, SI-008, SI-009
 
 **Outcome.** Implement action classes and Effective Authority as a monotonic minimum over all governing constraints.
 
@@ -511,7 +511,7 @@ Implement constitutional safety invariants as a dedicated, testable Rust authori
 
 ### E03-S05 - Mutation executor isolation
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E03-S02, E03-S03, E03-S04 | **Safety obligations:** SI-019, SI-020
+**Status:** `blocked` | **Change Risk:** `CR4` | **Dependencies:** E03-S02, E03-S03, E03-S04 | **Safety obligations:** SI-019, SI-020
 
 **Outcome.** Make the safety executor the sole code path for filesystem mutation.
 
