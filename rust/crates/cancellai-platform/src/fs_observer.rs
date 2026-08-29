@@ -52,23 +52,42 @@ pub struct SystemFsObserver;
 impl FsObserver for SystemFsObserver {
     fn observe(&self, path: &Path) -> Observation {
         match std::fs::symlink_metadata(path) {
-            Ok(meta) => Observation::Metadata(FsMetadata {
-                is_dir: meta.is_dir(),
-                is_symlink: meta.file_type().is_symlink(),
-                len: meta.len(),
-                modified: meta
-                    .modified()
-                    .ok()
-                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                    .map(|d| Timestamp(d.as_secs()))
-                    .unwrap_or(Timestamp::EPOCH),
-            }),
+            Ok(meta) => match modification_timestamp(meta.modified()) {
+                Ok(modified) => Observation::Metadata(FsMetadata {
+                    is_dir: meta.is_dir(),
+                    is_symlink: meta.file_type().is_symlink(),
+                    len: meta.len(),
+                    modified,
+                }),
+                Err(reason) => Observation::Unreadable { reason },
+            },
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Observation::Absent,
             Err(e) => Observation::Unreadable {
                 reason: e.to_string(),
             },
         }
     }
+}
+
+/// Turns the platform's raw modification-time result into a representable [`Timestamp`], or
+/// a reason it cannot be one. Two distinct failure modes exist and neither may be papered
+/// over by substituting `Timestamp::EPOCH` (E02 verifier review round 1, E02-S04): a
+/// platform/filesystem that cannot report `mtime` at all (`meta.modified()` erroring), and a
+/// modification time that predates the Unix epoch and so has no representation in this
+/// codebase's `Timestamp(u64 seconds-since-epoch)` (`duration_since` erroring). Either one is
+/// an unknown fact, not a credible 1970 timestamp a retention/planning caller could mistake
+/// for genuinely old data - so the caller reports `Observation::Unreadable`, the same typed
+/// unknown already used for permission/I/O failures, instead of losing the distinction.
+fn modification_timestamp(
+    modified: std::io::Result<std::time::SystemTime>,
+) -> Result<Timestamp, String> {
+    let modified = modified.map_err(|e| format!("modification time unavailable: {e}"))?;
+    let since_epoch = modified
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| {
+            format!("modification time predates the Unix epoch and is not representable: {e}")
+        })?;
+    Ok(Timestamp(since_epoch.as_secs()))
 }
 
 /// Test-only seam: synthesize facts for specific paths without touching the real
@@ -101,6 +120,34 @@ impl FsObserver for SyntheticFsObserver {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn modification_timestamp_reports_unavailable_mtime_as_unreadable_not_epoch() {
+        let unsupported =
+            std::io::Error::new(std::io::ErrorKind::Unsupported, "mtime not supported");
+        let err = modification_timestamp(Err(unsupported))
+            .expect_err("unavailable mtime must not be EPOCH");
+        assert!(
+            err.contains("modification time unavailable"),
+            "reason was: {err}"
+        );
+    }
+
+    #[test]
+    fn modification_timestamp_reports_pre_epoch_time_as_unreadable_not_epoch() {
+        let pre_epoch = std::time::SystemTime::UNIX_EPOCH
+            .checked_sub(std::time::Duration::from_secs(1))
+            .expect("platform SystemTime supports pre-epoch values");
+        let err = modification_timestamp(Ok(pre_epoch))
+            .expect_err("pre-epoch mtime must not collapse to EPOCH");
+        assert!(err.contains("predates the Unix epoch"), "reason was: {err}");
+    }
+
+    #[test]
+    fn modification_timestamp_converts_a_representable_time() {
+        let modified = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000);
+        assert_eq!(modification_timestamp(Ok(modified)), Ok(Timestamp(1_000)));
+    }
 
     #[test]
     fn synthetic_observer_reports_absent_for_unset_paths() {

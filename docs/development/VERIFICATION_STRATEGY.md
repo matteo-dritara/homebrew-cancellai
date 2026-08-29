@@ -43,7 +43,12 @@ above without weakening what a filesystem integration test can observe:
   `docs/architecture/AS_IS.md`'s `Scan`/`observe()` established for the Python reference
   (SI-008, SI-009, SI-010) as a typed contract (`Observation::Absent` vs
   `Observation::Unreadable`), not an implementation convention that a future call site could
-  quietly collapse;
+  quietly collapse; this extends to a single fact within otherwise-readable metadata - if
+  `SystemFsObserver` cannot obtain or represent a modification time (the platform can't
+  report `mtime`, or the value predates the Unix epoch and overflows `Timestamp`'s
+  seconds-since-epoch encoding), it reports `Observation::Unreadable` rather than
+  substituting `Timestamp::EPOCH`, so a genuinely unknown fact can never read as a credible
+  1970 timestamp to a retention/planning caller (E02 verifier review round 1, E02-S04);
 - a **determinism test** (`rust/crates/cancellai-platform/tests/determinism.rs`) proves two
   independent runs against the same frozen clock reading and synthetic filesystem facts
   produce byte-identical serialized output - and that changing either input changes the

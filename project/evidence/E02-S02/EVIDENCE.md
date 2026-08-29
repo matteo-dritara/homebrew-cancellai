@@ -2,13 +2,41 @@
 
 - Commit/PR: pending (this work item)
 - Executor: Claude
-- Independent verifier: Codex (pending, epic-scoped review of E02)
+- Independent verifier: Codex (round 1: FAIL, `project/evidence/E02-VERIFIER-REVIEW.md`)
 - Change Risk: CR1
-- Spec version/commit: `rust/deny.toml`, `.github/workflows/rust.yml` (`quality` job) as added in this change
+- Spec version/commit: `rust/deny.toml`, `.github/workflows/rust.yml` (`quality` job), `scripts/check_workflows.py` as amended in this change
 
 ## Outcome
 
-PASS
+PASS (after round 1 repair)
+
+## Round 1 repair - Docker cargo-deny action on unsupported runners
+
+Codex's independent review (round 1, `project/evidence/E02-VERIFIER-REVIEW.md`) found: the
+`quality` job scheduled `macos-latest`/`ubuntu-latest`/`windows-latest`, then ran
+`EmbarkStudios/cargo-deny-action`, whose pinned `action.yml` declares `runs.using: docker`;
+GitHub only executes Docker container actions on Linux runners, so the macOS/Windows legs
+would fail before `cargo deny` ever ran - contradicting the all-platform quality gate ADR-0015
+and this story require.
+
+Repair:
+
+- `.github/workflows/rust.yml`'s `quality` job now installs `cargo-deny` with
+  `cargo install cargo-deny@0.20.2 --locked` (pinned to the same version verified locally,
+  matching `crates.io`'s current `max_stable_version`) and runs `cargo deny check` as a plain
+  `working-directory: rust` step - `cargo install` is a first-party, non-container mechanism
+  identical across macOS, Linux, and Windows runners, so no platform loses the gate.
+- `scripts/check_workflows.py` gained `docker_only_action_errors()` (called from
+  `validate_workflows()`), a regression guard maintaining a repository-owned
+  `DOCKER_ONLY_ACTIONS` list; a workflow that schedules a listed action into a job whose `os`
+  matrix includes `macos-*`/`windows-*` now fails `python3 scripts/check_workflows.py check`
+  before it ever reaches CI. Verified the check actually catches the original defect: replayed
+  the original `EmbarkStudios/cargo-deny-action` step against the `[macos-latest,
+  ubuntu-latest, windows-latest]` matrix through `docker_only_action_errors()` directly
+  (not just the finished file) and confirmed it reports the violation; the current
+  `rust.yml` (without that action) passes.
+
+## Acceptance Criteria Evidence
 
 ## Acceptance Criteria Evidence
 
@@ -45,11 +73,14 @@ cargo deny check
 All passed: 179 Python tests, 22 subtests, all governance checks; Rust `fmt`/`clippy -D
 warnings`/`check`/`test`/`cargo deny check` all clean (`advisories ok, bans ok, licenses ok,
 sources ok`, with expected `license-not-encountered` notes since no real dependency exists
-yet to match most allow-listed licenses). `cargo-deny` (0.20.2) was installed via `brew
-install cargo-deny` for this local verification; CI installs it via the
-`EmbarkStudios/cargo-deny-action` step added to `.github/workflows/rust.yml`. This satisfies
-the story's own verification contract ("Quality workflow fails on injected lint and denied
-dependency fixtures") - proven directly above per-AC, not merely asserted.
+yet to match most allow-listed licenses). This satisfies the story's own verification
+contract ("Quality workflow fails on injected lint and denied dependency fixtures") - proven
+directly above per-AC, not merely asserted.
+
+Round 1 repair re-verification: `cargo-deny` (0.20.2) installed locally via `cargo install
+cargo-deny@0.20.2 --locked` (the same command `.github/workflows/rust.yml` now runs), then
+`cargo deny check` from `rust/` - clean. `python3 scripts/check_workflows.py check` passes
+with the new `docker_only_action_errors()` guard active.
 
 ## Compatibility
 
@@ -86,4 +117,11 @@ dependency fixtures") - proven directly above per-AC, not merely asserted.
 
 ## Verifier verdict
 
-PENDING - epic E02 review runs once every story in E02 is `ready_for_review` (at most twice per epic, per ADR-0014).
+Round 1 (Codex, independent): FAIL - see "Round 1 repair" above and
+`project/evidence/E02-VERIFIER-REVIEW.md`.
+
+Round 2: not run. Per explicit owner direction, the round 1 finding above was repaired and
+the story moved directly to `done` without a second independent verification pass (CR1, no
+safety obligations; ADR-0014 permits up to two review rounds but does not mandate a second
+one be spent here). This is a self-attested repair, not an independently re-verified one -
+recorded here rather than silently presented as re-verified.

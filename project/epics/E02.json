@@ -7,7 +7,7 @@
   "dependencies": [
     "E01"
   ],
-  "status": "in_progress",
+  "status": "done",
   "stories": [
     {
       "id": "E02-S01",
@@ -34,7 +34,7 @@
     {
       "id": "E02-S02",
       "title": "Establish Rust quality baseline",
-      "status": "in_progress",
+      "status": "done",
       "outcome": "Adopt fmt, clippy, tests, cargo-deny, RustSec audit, MSRV policy, and dependency rules.",
       "change_risk": "CR1",
       "dependencies": [
@@ -79,7 +79,7 @@
     {
       "id": "E02-S04",
       "title": "Introduce deterministic clock and filesystem seams",
-      "status": "in_progress",
+      "status": "done",
       "outcome": "Make time and filesystem observation injectable for tests without abstracting away security-critical OS semantics.",
       "change_risk": "CR2",
       "dependencies": [

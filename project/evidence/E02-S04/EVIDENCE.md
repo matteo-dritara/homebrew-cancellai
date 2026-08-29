@@ -2,20 +2,48 @@
 
 - Commit/PR: pending (this work item)
 - Executor: Claude
-- Independent verifier: Codex (pending, epic-scoped review of E02)
+- Independent verifier: Codex (round 1: FAIL, `project/evidence/E02-VERIFIER-REVIEW.md`)
 - Change Risk: CR2
-- Spec version/commit: `rust/crates/cancellai-platform/src/{clock,fs_observer,snapshot}.rs` as added in this change
+- Spec version/commit: `rust/crates/cancellai-platform/src/{clock,fs_observer,snapshot}.rs` as added/repaired in this change
 
 ## Outcome
 
-PASS
+PASS (after round 1 repair)
+
+## Round 1 repair - unrepresentable modification time silently became a valid epoch timestamp
+
+Codex's independent review (round 1, `project/evidence/E02-VERIFIER-REVIEW.md`) found:
+`SystemFsObserver::observe` treated `meta.modified().ok()` and
+`.duration_since(UNIX_EPOCH).ok()` as fully fallible-but-ignorable, `unwrap_or`-ing to
+`Timestamp::EPOCH` on any failure. A filesystem/platform that cannot report `mtime`, or a
+modification time that predates the Unix epoch (unrepresentable in `Timestamp`'s
+seconds-since-epoch encoding), was therefore reported as ordinary metadata carrying a 1970
+timestamp - an unknown fact read as a credible, extremely-old one, violating AC2 (the seam
+must not abstract away security-critical OS semantics) and SI-008/SI-009/SI-010.
+
+Repair (`rust/crates/cancellai-platform/src/fs_observer.rs`):
+
+- extracted `modification_timestamp(modified: io::Result<SystemTime>) -> Result<Timestamp,
+  String>`, taking exactly `meta.modified()`'s own return type so it is directly injectable
+  in tests without needing to construct a real `std::fs::Metadata` (which has no public
+  constructor);
+- `SystemFsObserver::observe` now reports `Observation::Unreadable { reason }` - the same
+  typed-unknown variant already used for permission/I/O failures - for either failure mode,
+  instead of substituting `Timestamp::EPOCH`;
+- three new unit tests inject both failure modes directly (an `ErrorKind::Unsupported`
+  `io::Error` standing in for a platform that cannot report `mtime`, and a `SystemTime` one
+  second before `UNIX_EPOCH` for the unrepresentable-pre-epoch case) and confirm both produce
+  `Unreadable` with a distinguishing reason string, plus one test confirming a normal,
+  representable time still converts correctly.
+- `docs/development/VERIFICATION_STRATEGY.md` extended to state this behavior explicitly (see
+  "Documentation updated" below).
 
 ## Acceptance Criteria Evidence
 
 | AC | Evidence | Result |
 | --- | --- | --- |
 | AC1 - Tests can freeze time and synthesize filesystem facts | `FrozenClock` (`clock.rs`) implements `Clock` with a fixed `Timestamp`. `SyntheticFsObserver` (`fs_observer.rs`) implements `FsObserver` and lets a test `set()` an exact `Observation` (`Metadata`/`Absent`/`Unreadable`) per path; any unset path observes as `Absent`. `tests/determinism.rs` uses both together to build a `Snapshot` from fully synthetic inputs. | PASS |
-| AC2 - Production paths still use explicit OS-backed implementations | `SystemClock` reads `SystemTime::now()` directly; `SystemFsObserver` calls `std::fs::symlink_metadata` (never following the final symlink, matching the Python reference's `lstat`-based `observe()`). Neither is hidden behind the trait - both are named, public, real implementations a production call site constructs explicitly, not a default a test double could be silently substituted for. `system_clock_reads_a_plausible_recent_timestamp` and `system_observer_distinguishes_absent_from_a_real_file` exercise them against real OS state (a real temp file, actually created and removed), not just against the trait signature. | PASS |
+| AC2 - Production paths still use explicit OS-backed implementations | `SystemClock` reads `SystemTime::now()` directly; `SystemFsObserver` calls `std::fs::symlink_metadata` (never following the final symlink, matching the Python reference's `lstat`-based `observe()`), and now reports `Observation::Unreadable` rather than a fabricated timestamp when the platform's own `mtime` fact cannot be obtained or represented (round 1 repair, above) - preserving rather than abstracting away that OS-level unknown. Neither implementation is hidden behind the trait - both are named, public, real implementations a production call site constructs explicitly, not a default a test double could be silently substituted for. `system_clock_reads_a_plausible_recent_timestamp` and `system_observer_distinguishes_absent_from_a_real_file` exercise them against real OS state (a real temp file, actually created and removed), not just against the trait signature. | PASS |
 
 ## Safety Evidence
 
@@ -41,7 +69,14 @@ cargo deny check
 All passed: 179 Python tests, 22 subtests, all governance checks; Rust `fmt`/`clippy -D
 warnings`/`check`/`cargo deny check` clean. `cargo test --workspace` includes 9 new
 `cancellai-platform` tests (5 unit across `clock.rs`/`fs_observer.rs`, 4 integration in
-`tests/determinism.rs`), all passing. `tests/determinism.rs` is the "determinism test repeats
+`tests/determinism.rs`), all passing.
+
+Round 1 repair re-verification: `cargo test -p cancellai-platform` now runs 8 unit tests (the
+original 5 plus the 3 `modification_timestamp` cases above) and the 4 `determinism.rs`
+integration tests - all passing (`cargo test -p cancellai-platform` output: `8 passed; 0
+failed` unit, `4 passed; 0 failed` integration). `cargo clippy --workspace --all-targets
+--all-features -- -D warnings`, `cargo fmt --check`, and `cargo deny check` re-run clean
+against the repaired file. `tests/determinism.rs` is the "determinism test repeats
 plan generation byte-for-byte" the story's verification contract names -
 `two_independent_runs_with_the_same_frozen_inputs_are_byte_identical` builds a `Snapshot`
 twice from the same frozen clock and synthetic facts and asserts the pretty-printed JSON is
@@ -95,4 +130,11 @@ committing; `cargo test -p cancellai-platform --test determinism` passes again a
 
 ## Verifier verdict
 
-PENDING - epic E02 review runs once every story in E02 is `ready_for_review` (at most twice per epic, per ADR-0014).
+Round 1 (Codex, independent): FAIL - see "Round 1 repair" above and
+`project/evidence/E02-VERIFIER-REVIEW.md`.
+
+Round 2: not run. Per explicit owner direction, the round 1 finding above was repaired and
+the story moved directly to `done` without a second independent verification pass. This
+story carries no `safety_obligations` and is CR2, not CR4, so no independent Safety Verdict
+is required to close it. This is a self-attested repair, not an independently re-verified
+one - recorded here rather than silently presented as re-verified.

@@ -339,7 +339,7 @@ Turn Python v1 into a behavioral oracle before Rust implementation begins.
 
 ## E02 - Rust Workspace Bootstrap
 
-**Phase:** `P1` | **Status:** `in_progress` | **Epic dependencies:** E01
+**Phase:** `P1` | **Status:** `done` | **Epic dependencies:** E01
 
 Establish the target Rust workspace, coding standards, and build factory without changing user-visible behavior.
 
@@ -365,7 +365,7 @@ Establish the target Rust workspace, coding standards, and build factory without
 
 ### E02-S02 - Establish Rust quality baseline
 
-**Status:** `in_progress` | **Change Risk:** `CR1` | **Dependencies:** E02-S01 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** E02-S01 | **Safety obligations:** none
 
 **Outcome.** Adopt fmt, clippy, tests, cargo-deny, RustSec audit, MSRV policy, and dependency rules.
 
@@ -406,7 +406,7 @@ Establish the target Rust workspace, coding standards, and build factory without
 
 ### E02-S04 - Introduce deterministic clock and filesystem seams
 
-**Status:** `in_progress` | **Change Risk:** `CR2` | **Dependencies:** E02-S01 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E02-S01 | **Safety obligations:** none
 
 **Outcome.** Make time and filesystem observation injectable for tests without abstracting away security-critical OS semantics.
 
