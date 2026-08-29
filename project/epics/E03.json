@@ -61,7 +61,7 @@
     {
       "id": "E03-S03",
       "title": "Root and boundary capabilities",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Represent approved roots and filesystem boundaries as explicit capabilities rather than raw paths.",
       "change_risk": "CR4",
       "dependencies": [

@@ -58,6 +58,26 @@ evidence can receive destructive authority through this seam.
 - Crossing a filesystem/volume boundary is explicit and normally prohibited for recursive mutation/quarantine unless a dedicated operation has verified semantics.
 - Symlinks/reparse links are treated as link objects unless a specific read-only traversal capability says otherwise; mutation never follows an untrusted link target.
 
+E03-S03 implements all four as one typed capability at
+`rust/crates/cancellai-safety/src/root_capability.rs`: `ApprovedRoot::establish` binds a root
+to the object identity observed for it (SI-002; fails closed if that identity is `Absent`/
+`Unreadable`/`Unsupported`), and `ApprovedRoot::bind` is the *only* way to obtain a
+`BoundedPath` under it - there is no other public constructor, so a future mutation API typed
+to take `BoundedPath` instead of `&Path`/`PathBuf` cannot accept an unconstrained raw path.
+`bind` resolves the candidate through the new `PathResolver` capability
+(`docs/architecture/PLATFORM_MODEL.md`'s own "path canonicalization/normalization", split out
+as its own seam alongside `IdentityObserver`) - resolving symlinks, so a candidate that
+already escapes the root through a symlink component is rejected at bind time, not silently
+followed - then refuses a candidate equal to the root itself, a candidate outside the root's
+canonical prefix, and a candidate whose observed device differs from the root's (the explicit
+Unix mount-boundary check, SI-018). Real Windows volume/reparse boundary semantics inherit
+E03-S01's `Unsupported` posture: since `IdentityObserver` reports `Unsupported` off-Unix
+today, `bind`/`establish` refuse there too, rather than guessing a boundary they cannot
+verify - "explicit per platform" resolving today to an explicit refusal on non-Unix targets,
+not silent success. A later symlink/mount swap *after* a successful `bind` is SI-013's job
+(E03-S02's `revalidate`, wired in immediately before mutation by E03-S05), not this
+capability's.
+
 ## Quarantine
 
 Quarantine prefers metadata-preserving atomic/same-volume moves. Cross-volume copy+delete is a materially different action with more disk-pressure and failure risk and requires separate capability/policy.

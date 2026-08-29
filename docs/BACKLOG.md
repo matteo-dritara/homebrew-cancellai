@@ -470,7 +470,7 @@ Implement constitutional safety invariants as a dedicated, testable Rust authori
 
 ### E03-S03 - Root and boundary capabilities
 
-**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E03-S01 | **Safety obligations:** SI-002, SI-003, SI-018
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E03-S01 | **Safety obligations:** SI-002, SI-003, SI-018
 
 **Outcome.** Represent approved roots and filesystem boundaries as explicit capabilities rather than raw paths.
 

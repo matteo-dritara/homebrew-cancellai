@@ -14,11 +14,14 @@
 //! distinction (SI-008/SI-009/SI-010) as a typed contract, not an implementation convention.
 //!
 //! E03-S01 adds a third seam, [`IdentityObserver`], binding a plan to the object actually
-//! observed (device/inode on Unix) rather than to a path alone (SI-013, SI-017).
+//! observed (device/inode on Unix) rather than to a path alone (SI-013, SI-017). E03-S03
+//! adds a fourth, [`PathResolver`], the "path canonicalization/normalization" capability
+//! `docs/architecture/PLATFORM_MODEL.md` lists separately from filesystem identity.
 
 pub mod clock;
 pub mod fs_observer;
 pub mod identity;
+pub mod path_resolver;
 pub mod snapshot;
 
 pub use clock::{Clock, FrozenClock, SystemClock, Timestamp};
@@ -27,4 +30,5 @@ pub use identity::{
     FileKind, IdentityObservation, IdentityObserver, IdentityToken, SyntheticIdentityObserver,
     SystemIdentityObserver,
 };
+pub use path_resolver::{PathResolver, SyntheticPathResolver, SystemPathResolver};
 pub use snapshot::{Snapshot, build_snapshot};
