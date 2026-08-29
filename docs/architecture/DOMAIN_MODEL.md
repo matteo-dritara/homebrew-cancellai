@@ -184,6 +184,17 @@ A mutating plan is a first-class immutable object. See [`JSON_CONTRACTS.md`](JSO
 
 Immediately before mutation the executor re-observes all safety-critical preconditions. Any relevant drift makes the action `STALE_PLAN` and non-destructive.
 
+E03-S02 implements the identity-bound core of this at `rust/crates/cancellai-safety/src/sealed_plan.rs`:
+`SealedPlan` (root fingerprint, artifact identity, action class, authority, reversibility) is
+immutable by API shape (private fields, no mutating methods), and `revalidate` is the
+fail-closed `STALE_PLAN` check - it exhaustively matches every `IdentityObservation` from
+`cancellai-platform` (E03-S01) and returns `Proceed` only for an exact identity match; every
+other case, including a filesystem/platform that cannot re-establish identity at all, is
+`StalePlan`. The full field list above (inventory snapshot ID, a batch of `Action`s, evidence
+references, knowledge-bundle version references) is not yet populated - those belong to
+subsystems that do not exist yet (E04 inventory engine, provider knowledge) and are deferred
+to the stories that build them, not stubbed out here.
+
 ## Results
 
 Mutation results are per action and aggregate without hiding partial outcomes:

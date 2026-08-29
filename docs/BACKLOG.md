@@ -450,7 +450,7 @@ Implement constitutional safety invariants as a dedicated, testable Rust authori
 
 ### E03-S02 - Sealed cleanup plan
 
-**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E03-S01 | **Safety obligations:** SI-013, SI-016
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E03-S01 | **Safety obligations:** SI-013, SI-016
 
 **Outcome.** Make every mutating plan immutable, identity-bound, capability-bound, and policy-explained.
 

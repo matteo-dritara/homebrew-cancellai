@@ -36,7 +36,7 @@
     {
       "id": "E03-S02",
       "title": "Sealed cleanup plan",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Make every mutating plan immutable, identity-bound, capability-bound, and policy-explained.",
       "change_risk": "CR4",
       "dependencies": [

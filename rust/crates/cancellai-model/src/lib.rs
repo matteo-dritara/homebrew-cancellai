@@ -5,9 +5,15 @@
 //! depend on a provider adapter, UI, or store crate. It is the bottom of the dependency
 //! graph other than the standard library.
 //!
-//! `AgentArtifact`/`ProviderRoot`/`SealedPlan`/`Results` etc. are not defined yet (E02-S01
-//! skeleton); `diagnostic` (E02-S03) is the first real domain type in this crate.
+//! `AgentArtifact`/`SealedPlan`/`Results` etc. are not defined yet (E02-S01 skeleton);
+//! `diagnostic` (E02-S03) is the first real domain type in this crate, and `vocabulary`
+//! (E03-S02) is the second - `SealedPlan` itself lives in `cancellai-safety`, which depends
+//! on this crate for the vocabulary it records.
 
 pub mod diagnostic;
+pub mod vocabulary;
 
 pub use diagnostic::{Diagnostic, ErrorCategory};
+pub use vocabulary::{
+    ActionClass, AuthorityLevel, KnowledgeConfidence, Reversibility, RootFingerprint,
+};

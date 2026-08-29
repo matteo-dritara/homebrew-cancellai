@@ -39,7 +39,18 @@ DEPENDENCY_NAME_RE = re.compile(r"^(cancellai-[a-z0-9-]+)\s*=", re.MULTILINE)
 # purely from the Cargo.toml dependency graph; the others (provider adapters may not bypass
 # the safety executor, UI may not access raw provider roots, network/knowledge may not
 # mutate) describe runtime behavior no crate has yet and cannot be checked statically here.
-ISOLATED_CRATES = {"cancellai-model", "cancellai-safety"}
+#
+# The two isolated crates are not equally isolated. `cancellai-model` is documented (its own
+# `lib.rs`) as "the bottom of the dependency graph other than the standard library" - it may
+# depend on no other `cancellai-*` crate at all. `cancellai-safety` sits one layer up: per
+# `docs/architecture/PLATFORM_MODEL.md` ("Domain and policy code consume capability results,
+# not OS-specific syscalls"), it is expected to consume `cancellai-platform`'s OS-backed
+# capabilities (e.g. `IdentityObserver` for SI-013 revalidation, E03-S02) - that is not the
+# same thing as depending on a provider adapter or UI/store crate, which remains forbidden.
+ALLOWED_INTERNAL_DEPENDENCIES: dict[str, set[str]] = {
+    "cancellai-model": set(),
+    "cancellai-safety": {"cancellai-model", "cancellai-platform"},
+}
 
 
 class RustWorkspaceError(RuntimeError):
@@ -143,12 +154,13 @@ def validate() -> list[str]:
     if cycle:
         errors.append(f"dependency cycle: {' -> '.join(cycle)}")
 
-    for isolated in sorted(ISOLATED_CRATES & set(graph)):
-        forbidden = {dep for dep in graph[isolated] if dep not in ISOLATED_CRATES}
+    for isolated in sorted(ALLOWED_INTERNAL_DEPENDENCIES.keys() & set(graph)):
+        allowed = ALLOWED_INTERNAL_DEPENDENCIES[isolated]
+        forbidden = {dep for dep in graph[isolated] if dep not in allowed}
         if forbidden:
             errors.append(
-                f"{isolated}: forbidden dependency on {sorted(forbidden)} - model/safety may not "
-                "depend on provider/UI/store crates (docs/architecture/TARGET.md)"
+                f"{isolated}: forbidden dependency on {sorted(forbidden)} - only {sorted(allowed) or 'no cancellai-* crate'} "
+                "is allowed here (docs/architecture/TARGET.md, docs/architecture/PLATFORM_MODEL.md)"
             )
 
     return errors

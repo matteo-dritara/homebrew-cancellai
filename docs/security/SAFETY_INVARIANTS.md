@@ -58,6 +58,9 @@ Between identical observations/policy inputs, dry-run does not use weaker select
 
 A path alone is insufficient. Safety-critical object/root identity and relevant preconditions are re-observed at execution. Identity drift produces `STALE_PLAN`/block.
 
+Implemented for artifact identity at `rust/crates/cancellai-safety/src/sealed_plan.rs::revalidate`
+(E03-S02), consuming `cancellai-platform`'s `IdentityObserver` (E03-S01).
+
 ### SI-014 Safety-blocked/partial is not success
 
 Automation receives a distinct non-zero or structured status when requested mutation was materially blocked/skipped for safety or incomplete execution.
@@ -69,6 +72,12 @@ When cancellAI rewrites a metadata file it uses streaming/temp-file/fsync/atomic
 ### SI-016 Mutations require a sealed plan
 
 Every mutation is derived from an immutable plan carrying artifact/root identity, policy explanation, authority, action class, reversibility, provider capability, and execution preconditions.
+
+`SealedPlan` (`rust/crates/cancellai-safety/src/sealed_plan.rs`, E03-S02) implements
+immutability by API shape: private fields, one constructor, no mutating methods. It does not
+yet carry policy explanation or provider capability (E03-S02's scope is the identity/action/
+authority/reversibility core; those two arrive with the policy and provider stories that
+produce them).
 
 ### SI-017 Platform-native identity semantics
 

@@ -9,8 +9,8 @@ Epics: **20** | Stories: **90**
 ## Story status
 
 - `done`: 19
-- `planned`: 70
-- `ready_for_review`: 1
+- `planned`: 69
+- `ready_for_review`: 2
 
 ## Change risk distribution
 
@@ -27,3 +27,4 @@ Epics: **20** | Stories: **90**
 ## Awaiting independent review
 
 - **E03-S01** - Artifact identity tokens (CR4)
+- **E03-S02** - Sealed cleanup plan (CR4)

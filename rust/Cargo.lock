@@ -89,6 +89,8 @@ name = "cancellai-safety"
 version = "0.1.0"
 dependencies = [
  "cancellai-model",
+ "cancellai-platform",
+ "serde",
 ]
 
 [[package]]
