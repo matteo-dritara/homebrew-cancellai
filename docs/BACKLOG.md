@@ -490,7 +490,7 @@ Implement constitutional safety invariants as a dedicated, testable Rust authori
 
 ### E03-S04 - Action authority lattice
 
-**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E02-S03 | **Safety obligations:** SI-001, SI-007, SI-008, SI-009
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E02-S03 | **Safety obligations:** SI-001, SI-007, SI-008, SI-009
 
 **Outcome.** Implement action classes and Effective Authority as a monotonic minimum over all governing constraints.
 

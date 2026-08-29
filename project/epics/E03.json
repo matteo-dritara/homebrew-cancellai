@@ -87,7 +87,7 @@
     {
       "id": "E03-S04",
       "title": "Action authority lattice",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Implement action classes and Effective Authority as a monotonic minimum over all governing constraints.",
       "change_risk": "CR4",
       "dependencies": [

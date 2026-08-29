@@ -149,6 +149,20 @@ Authority levels:
 
 The ordering is capability ordering, not risk score. An `AUTOPILOT` user preference cannot elevate an artifact whose ceiling is `QUARANTINE`.
 
+E03-S04 implements the formula above as a generic monotonic minimum at
+`rust/crates/cancellai-safety/src/authority.rs`: `compute_effective_authority` takes any
+number of named `AuthorityConstraint`s and returns the minimum plus a deterministic
+explanation trace naming which constraint(s) actually bound the result (never hiding a tie).
+`effective_authority` wires up the constraints buildable today - `UserAuthority`,
+`ArtifactAuthorityCeiling` (supplied by the caller; deriving one from `RiskClass` is a
+classification decision this story does not invent), `ConfidenceAuthority` (from
+`KnowledgeConfidence`), `LifecycleAuthority` (from `ActivityState`/`ProtectionState`/
+`IntegrityState`), and an explicit `ConstitutionalSafetyFloor` restating SI-001. `Reversibility`
+authority, `ProviderCapabilityAuthority`, `ProviderTrustAuthority`, and
+`ReleaseChannelAuthority` are not wired in yet - no provider adapter or release-channel
+subsystem exists to supply them - and adding them later is a matter of supplying more named
+constraints to the same generic function, not a redesign.
+
 ## Action
 
 `Action` is one candidate unit of work inside a `SealedPlan`: an observation, quarantine, archive, or delete operation targeting a single `AgentArtifact` (or a bounded artifact group, such as a Codex subagent tree). An `Action` is inert data until its parent plan is approved, and its preconditions are revalidated immediately before execution.

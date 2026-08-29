@@ -57,6 +57,41 @@ pub enum KnowledgeConfidence {
     LowUnknown,
 }
 
+/// Whether an artifact is currently in use (`docs/architecture/DOMAIN_MODEL.md` "Lifecycle
+/// axes" / Activity). Independent of `ProtectionState`/`IntegrityState` - an artifact can be
+/// `Orphaned` and still `Pinned` (protected from cleanup despite orphan status), per
+/// DOMAIN_MODEL.md's own worked example.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ActivityState {
+    Active,
+    Idle,
+    Stale,
+    Orphaned,
+    Unknown,
+}
+
+/// Whether an artifact is shielded from cleanup regardless of other classification
+/// (`docs/architecture/DOMAIN_MODEL.md` "Lifecycle axes" / Protection).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProtectionState {
+    Normal,
+    Pinned,
+    Protected,
+}
+
+/// How intact the evidence for an artifact is (`docs/architecture/DOMAIN_MODEL.md`
+/// "Lifecycle axes" / Integrity).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IntegrityState {
+    Healthy,
+    Partial,
+    Corrupted,
+    Unknown,
+}
+
 /// A minimal stand-in for `docs/architecture/DOMAIN_MODEL.md`'s full `ProviderRoot`
 /// (`RootId`, `ProviderId`, `Origin`, `FingerprintEvidence[]`, `KnowledgeConfidence`,
 /// `MutationEligible`, `CapabilitySnapshot`). Real provider-root fingerprinting is a provider

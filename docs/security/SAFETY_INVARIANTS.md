@@ -8,6 +8,12 @@ These invariants are constitutional runtime properties. They have stable IDs so 
 
 Artifacts classified `PROTECTED`, `UNKNOWN`, or with insufficient safety confidence cannot receive destructive authority. User policy cannot override this floor.
 
+Implemented at `rust/crates/cancellai-safety/src/authority.rs` (E03-S04):
+`effective_authority` is a monotonic minimum over named constraints, one of which -
+`constitutional_safety_floor` - restates this rule directly (`PROTECTED` protection or
+`LowUnknown` confidence caps at `Recommend`, non-destructive) as an always-present input no
+other constraint can raise past, regardless of user-requested authority.
+
 ### SI-002 Provider root must be positively bounded
 
 Every mutation occurs under a validated provider root capability. Catastrophically broad, ambiguous, or low-confidence custom roots are non-destructive.
@@ -32,13 +38,30 @@ Known protected provider state is checked both before planning and at execution.
 
 Destructive commands require explicit destructive intent. Parser ambiguity, missing subcommands, invalid policy, or incompatible flags never imply mutation.
 
+Structurally supported (not fully closed) by `rust/crates/cancellai-safety/src/authority.rs`
+(E03-S04): `user_authority` is one of several independent minimum constraints in
+`effective_authority`, so even a CLI layer that mistakenly resolved ambiguity to a high
+requested authority could not by itself grant destructive authority - the artifact-ceiling,
+confidence, lifecycle, and constitutional-floor constraints still apply independently. Full
+closure of this invariant is the CLI layer's own job (a future story, E06 Rust CLI Parity and
+Cutover): refusing to resolve genuinely ambiguous input to *any* non-`Observe` `user_requested`
+value in the first place.
+
 ### SI-008 Partial scan is non-destructive
 
 A `PARTIAL` inventory scope cannot produce irreversible actions for artifacts whose safety depends on the missing information.
 
+Implemented for the artifact-integrity axis at `rust/crates/cancellai-safety/src/authority.rs`
+(E03-S04): `lifecycle_authority` collapses to `Recommend` (non-destructive) whenever
+`IntegrityState` is `Partial`, `Corrupted`, or `Unknown`, independent of every other input.
+
 ### SI-009 Unknown scan state is non-destructive
 
 Missing evidence is not interpreted as absence of active/protected data.
+
+Implemented at `rust/crates/cancellai-safety/src/authority.rs` (E03-S04): `lifecycle_authority`
+also collapses to `Recommend` for `ActivityState::Unknown` and `IntegrityState::Unknown`
+specifically - an unknown fact is never read as "safe to act on."
 
 ### SI-010 Scan errors are visible
 
