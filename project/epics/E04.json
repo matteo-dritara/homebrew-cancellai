@@ -12,7 +12,7 @@
     {
       "id": "E04-S01",
       "title": "FileFacts inventory model",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Collect logical size, allocated/physical estimate, timestamps, type, identity, boundary, provider/category hints, and scan confidence.",
       "change_risk": "CR2",
       "dependencies": [
@@ -33,7 +33,7 @@
     {
       "id": "E04-S02",
       "title": "One traversal per scope",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Replace repeated recursive size walks with a reusable inventory pass.",
       "change_risk": "CR2",
       "dependencies": [
@@ -54,7 +54,7 @@
     {
       "id": "E04-S03",
       "title": "Incomplete inventory propagation",
-      "status": "ready_for_review",
+      "status": "in_progress",
       "outcome": "Propagate permission, disappearance, I/O, and unsupported filesystem states into completeness metadata.",
       "change_risk": "CR3",
       "dependencies": [
@@ -78,7 +78,7 @@
     {
       "id": "E04-S04",
       "title": "Performance budget baseline",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Establish scan latency, memory, CPU, and cancellAI self-footprint budgets on representative datasets.",
       "change_risk": "CR1",
       "dependencies": [
