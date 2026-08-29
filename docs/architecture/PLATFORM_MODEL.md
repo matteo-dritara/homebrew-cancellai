@@ -78,6 +78,18 @@ not silent success. A later symlink/mount swap *after* a successful `bind` is SI
 (E03-S02's `revalidate`, wired in immediately before mutation by E03-S05), not this
 capability's.
 
+E03 verifier review round 1 found `BoundedPath` alone did not fully close AC1 ("no mutation
+API accepts an unconstrained raw path"): `cancellai-platform`'s real mutation capability
+(`SystemMutationExecutor`) was itself `pub` and re-exported at that crate's root, so any crate
+could import and call it directly against a raw path, bypassing `ApprovedRoot`/`BoundedPath`
+entirely regardless of how carefully typed the "legitimate" path was. Repaired at E03-S05:
+`SystemMutationExecutor` is no longer re-exported from `cancellai_platform`'s crate root, and
+`scripts/check_mutation_boundary.py` statically verifies that only `cancellai-platform`'s
+`mutation.rs` and `cancellai-safety`'s `mutation_executor.rs` reference it (or call
+`.mutate(`) at all - Rust cannot express "public to exactly one sibling crate," so this
+governance check, not type-level visibility alone, is what actually keeps the capability
+reachable only through the safety kernel.
+
 ## Quarantine
 
 Quarantine prefers metadata-preserving atomic/same-volume moves. Cross-volume copy+delete is a materially different action with more disk-pressure and failure risk and requires separate capability/policy.

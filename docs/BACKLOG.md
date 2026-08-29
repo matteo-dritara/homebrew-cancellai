@@ -425,7 +425,7 @@ Establish the target Rust workspace, coding standards, and build factory without
 
 ## E03 - Formal Safety Kernel
 
-**Phase:** `P1` | **Status:** `in_progress` | **Epic dependencies:** E02
+**Phase:** `P1` | **Status:** `done` | **Epic dependencies:** E02
 
 Implement constitutional safety invariants as a dedicated, testable Rust authority boundary.
 
@@ -450,7 +450,7 @@ Implement constitutional safety invariants as a dedicated, testable Rust authori
 
 ### E03-S02 - Sealed cleanup plan
 
-**Status:** `in_progress` | **Change Risk:** `CR4` | **Dependencies:** E03-S01 | **Safety obligations:** SI-013, SI-016
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** E03-S01 | **Safety obligations:** SI-013, SI-016
 
 **Outcome.** Make every mutating plan immutable, identity-bound, capability-bound, and policy-explained.
 
@@ -470,7 +470,7 @@ Implement constitutional safety invariants as a dedicated, testable Rust authori
 
 ### E03-S03 - Root and boundary capabilities
 
-**Status:** `in_progress` | **Change Risk:** `CR4` | **Dependencies:** E03-S01 | **Safety obligations:** SI-002, SI-003, SI-018
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** E03-S01 | **Safety obligations:** SI-002, SI-003, SI-018
 
 **Outcome.** Represent approved roots and filesystem boundaries as explicit capabilities rather than raw paths.
 
@@ -511,7 +511,7 @@ Implement constitutional safety invariants as a dedicated, testable Rust authori
 
 ### E03-S05 - Mutation executor isolation
 
-**Status:** `blocked` | **Change Risk:** `CR4` | **Dependencies:** E03-S02, E03-S03, E03-S04 | **Safety obligations:** SI-019, SI-020
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** E03-S02, E03-S03, E03-S04 | **Safety obligations:** SI-019, SI-020
 
 **Outcome.** Make the safety executor the sole code path for filesystem mutation.
 

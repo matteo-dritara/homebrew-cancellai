@@ -2,13 +2,49 @@
 
 - Commit/PR: pending (this work item)
 - Executor: Claude
-- Independent verifier: Codex (pending, epic-scoped review of E03)
+- Independent verifier: Codex (round 1: FAIL, `project/evidence/E03-VERIFIER-REVIEW.md`)
 - Change Risk: CR4
-- Spec version/commit: `rust/crates/cancellai-safety/src/root_capability.rs`, `rust/crates/cancellai-platform/src/path_resolver.rs` as added in this change
+- Spec version/commit: `rust/crates/cancellai-safety/src/root_capability.rs`, `rust/crates/cancellai-platform/src/path_resolver.rs`, `rust/crates/cancellai-platform/src/mutation.rs`, `rust/crates/cancellai-platform/src/lib.rs` as added/repaired in this change; `scripts/check_mutation_boundary.py` extended
 
 ## Outcome
 
-PASS
+PASS (after round 1 repair)
+
+## Round 1 repair - the raw mutation capability bypassed `BoundedPath` entirely
+
+Codex's independent review (round 1, `project/evidence/E03-VERIFIER-REVIEW.md`) found:
+`BoundedPath` correctly gates the *typed* API this story built, but `cancellai-platform`'s
+real mutation capability (`SystemMutationExecutor`, added the same epic by E03-S05) was `pub`
+and re-exported at that crate's root - a consumer crate could import it directly and call
+`.mutate(&raw_path, ...)` with no `ApprovedRoot`, no `BoundedPath`, no plan at all.
+Reproduction: an external-crate probe imported `SystemMutationExecutor`/`MutationExecutor`,
+created a temporary file, and deleted it directly - the typed boundary this story built was
+never consulted.
+
+Repair (recorded in full in E03-S05's own evidence, since the fix lives in that story's
+files; summarized here because it directly closes this story's AC1/AC2/SI-002/SI-003/SI-018
+violation):
+
+- `cancellai_platform`'s crate root no longer re-exports `SystemMutationExecutor` (or the
+  other `mutation` module items) - reachable only via the full `cancellai_platform::mutation::`
+  path now, not the crate-root convenience re-export every other capability gets.
+- `scripts/check_mutation_boundary.py` was extended beyond its original "no raw
+  `std::fs::remove_file`" check to also forbid referencing `SystemMutationExecutor` or calling
+  `.mutate(` anywhere outside `cancellai-platform/src/mutation.rs` and
+  `cancellai-safety/src/mutation_executor.rs`. Verified this actually catches Codex's exact
+  reproduction: temporarily injected an import-and-call of `SystemMutationExecutor`/`.mutate(`
+  into `cancellai-cli/src/main.rs`, confirmed the check reports both violations by file/line,
+  then restored the original file (`git status` confirmed no residual change).
+- Rust has no language-level way to express "public to exactly one sibling crate" (the
+  fundamental reason this bypass was possible despite `BoundedPath`'s own typed guarantee
+  being sound) - this governance check, not type visibility alone, is what actually keeps the
+  real capability reachable only through the code that checks root/authority/reversibility/
+  identity first. This is documented explicitly in `cancellai-platform/src/lib.rs`'s own doc
+  comment now, not left implicit.
+
+This closes the E03-S03 AC1 ("no mutation API accepts an unconstrained raw path") and AC2
+("cross-root and root-self deletion are impossible through typed APIs") violations - `bind`
+itself was never the problem; the gap was that a caller could skip it entirely.
 
 ## A new capability seam this story needed: `PathResolver`
 
@@ -100,8 +136,8 @@ of mistake), not left for CI to discover first.
 ## Documentation updated
 
 - `docs/architecture/PLATFORM_MODEL.md` - "Boundary rules" section now states the Rust
-  implementation, the `PathResolver` seam, and the non-Unix refusal posture (the story's
-  declared documentation impact).
+  implementation, the `PathResolver` seam, the non-Unix refusal posture, and (round 1 repair)
+  the raw-capability-bypass fix (the story's declared documentation impact).
 
 ## Residual risks
 
@@ -129,4 +165,10 @@ of mistake), not left for CI to discover first.
 
 ## Verifier verdict
 
-PENDING - epic E03 review runs once every story in E03 is `ready_for_review` (at most twice per epic, per ADR-0014).
+Round 1 (Codex, independent): FAIL - see "Round 1 repair" above and
+`project/evidence/E03-VERIFIER-REVIEW.md`.
+
+Round 2: not run. Per explicit owner direction, the round 1 finding above was repaired and
+the story moved directly to `done` without a second independent verification pass. This is a
+self-attested repair, not an independently re-verified one - recorded here rather than
+silently presented as re-verified.

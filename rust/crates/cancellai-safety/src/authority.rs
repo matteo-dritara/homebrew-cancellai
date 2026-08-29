@@ -30,7 +30,8 @@
 //! nine-argument function.
 
 use cancellai_model::{
-    ActivityState, AuthorityLevel, IntegrityState, KnowledgeConfidence, ProtectionState,
+    ActionClass, ActivityState, AuthorityLevel, IntegrityState, KnowledgeConfidence,
+    ProtectionState, Reversibility,
 };
 
 /// One named input to an Effective Authority computation.
@@ -167,6 +168,34 @@ pub fn effective_authority(inputs: AuthorityInputs) -> EffectiveAuthority {
         },
     ];
     compute_effective_authority(&constraints)
+}
+
+/// The minimum [`AuthorityLevel`] required to perform an [`ActionClass`] at all (SI-020:
+/// irreversible actions are stronger-gated). E03 verifier review round 1 found `execute`
+/// (E03-S05) performed `Delete` regardless of the plan's recorded authority, including at
+/// `AuthorityLevel::Observe` - this is the executor-side check that closes that gap.
+/// `Delete` sits above `Quarantine` deliberately: an action this codebase cannot undo
+/// requires more than the authority that merely reversible action requires.
+pub fn minimum_authority_for(action_class: ActionClass) -> AuthorityLevel {
+    match action_class {
+        ActionClass::Observe => AuthorityLevel::Observe,
+        ActionClass::Quarantine | ActionClass::Archive => AuthorityLevel::Quarantine,
+        ActionClass::Delete => AuthorityLevel::Govern,
+    }
+}
+
+/// Whether a plan's recorded [`Reversibility`] is internally consistent with its
+/// [`ActionClass`] (SI-020: irreversible actions cannot be disguised as cleanup metadata).
+/// E03 verifier review round 1 found a plan claiming `Reversibility::Quarantinable` while
+/// carrying `ActionClass::Delete` was executed as a real, irreversible deletion anyway - the
+/// recorded reversibility was never checked against what the action actually does.
+pub fn reversibility_allowed(action_class: ActionClass, reversibility: Reversibility) -> bool {
+    match action_class {
+        ActionClass::Observe => true,
+        ActionClass::Quarantine => reversibility == Reversibility::Quarantinable,
+        ActionClass::Archive => reversibility == Reversibility::Archivable,
+        ActionClass::Delete => reversibility == Reversibility::Irreversible,
+    }
 }
 
 #[cfg(test)]
@@ -345,5 +374,78 @@ mod tests {
             compute_effective_authority(&[]).level,
             AuthorityLevel::Observe
         );
+    }
+
+    #[test]
+    fn delete_requires_more_authority_than_quarantine() {
+        // SI-020: irreversible actions are stronger-gated than merely reversible ones.
+        assert!(
+            minimum_authority_for(ActionClass::Delete)
+                > minimum_authority_for(ActionClass::Quarantine)
+        );
+    }
+
+    #[test]
+    fn e03_verifier_round1_observe_authority_cannot_satisfy_delete() {
+        // The exact counterexample the round-1 review used: AuthorityLevel::Observe with
+        // ActionClass::Delete must never meet the required minimum.
+        assert!(AuthorityLevel::Observe < minimum_authority_for(ActionClass::Delete));
+    }
+
+    #[test]
+    fn reversibility_allowed_rejects_delete_claimed_as_quarantinable() {
+        // The exact counterexample the round-1 review used.
+        assert!(!reversibility_allowed(
+            ActionClass::Delete,
+            Reversibility::Quarantinable
+        ));
+    }
+
+    #[test]
+    fn reversibility_allowed_accepts_the_matching_pair_for_each_mutating_class() {
+        assert!(reversibility_allowed(
+            ActionClass::Delete,
+            Reversibility::Irreversible
+        ));
+        assert!(reversibility_allowed(
+            ActionClass::Quarantine,
+            Reversibility::Quarantinable
+        ));
+        assert!(reversibility_allowed(
+            ActionClass::Archive,
+            Reversibility::Archivable
+        ));
+    }
+
+    #[test]
+    fn reversibility_allowed_rejects_every_mismatched_pair() {
+        let classes = [
+            ActionClass::Quarantine,
+            ActionClass::Archive,
+            ActionClass::Delete,
+        ];
+        let reversibilities = [
+            Reversibility::Rebuildable,
+            Reversibility::Quarantinable,
+            Reversibility::Archivable,
+            Reversibility::VendorConditional,
+            Reversibility::Irreversible,
+            Reversibility::Unknown,
+        ];
+        for &class in &classes {
+            for &reversibility in &reversibilities {
+                let expected_match = match class {
+                    ActionClass::Quarantine => reversibility == Reversibility::Quarantinable,
+                    ActionClass::Archive => reversibility == Reversibility::Archivable,
+                    ActionClass::Delete => reversibility == Reversibility::Irreversible,
+                    ActionClass::Observe => true,
+                };
+                assert_eq!(
+                    reversibility_allowed(class, reversibility),
+                    expected_match,
+                    "class={class:?} reversibility={reversibility:?}"
+                );
+            }
+        }
     }
 }

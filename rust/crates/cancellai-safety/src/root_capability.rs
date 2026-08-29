@@ -127,6 +127,7 @@ impl ApprovedRoot {
                 Ok(BoundedPath {
                     path: canonical,
                     identity,
+                    root_identity: self.identity.clone(),
                 })
             }
             IdentityObservation::Absent => Err(BoundaryError::CandidateAbsent),
@@ -143,10 +144,18 @@ impl ApprovedRoot {
 /// A path verified to lie inside an [`ApprovedRoot`], distinct from the root itself, and on
 /// the same filesystem/volume as the root. The only public constructor is
 /// [`ApprovedRoot::bind`].
+///
+/// Carries the *root's* identity at bind time (`root_identity`), not only the target's own
+/// (`identity`) - E03 verifier review round 1 found nothing connected a `SealedPlan`'s
+/// recorded root to the target it actually executed against, so a plan sealed for one root
+/// could execute against a target bound under a completely different one.
+/// `SealedPlan::seal`/`mutation_executor::execute` (E03-S02/E03-S05) compare this field
+/// against the plan's own recorded root identity before ever considering a mutation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BoundedPath {
     path: PathBuf,
     identity: IdentityToken,
+    root_identity: IdentityToken,
 }
 
 impl BoundedPath {
@@ -156,6 +165,12 @@ impl BoundedPath {
 
     pub fn identity(&self) -> &IdentityToken {
         &self.identity
+    }
+
+    /// The identity of the [`ApprovedRoot`] this path was bound under (not the target's own
+    /// identity - see the struct docs).
+    pub fn root_identity(&self) -> &IdentityToken {
+        &self.root_identity
     }
 }
 

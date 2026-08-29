@@ -19,19 +19,39 @@
 //! `artifact_identity` doubles as this plan's one implemented execution precondition (the AC
 //! and SI-013 both single out identity specifically); other precondition kinds (activity
 //! state, provider capability) are future stories' concern once those facts exist to check.
+//!
+//! `root_identity` (E03 verifier review round 1 repair): a `SealedPlan` now records the
+//! *root's* identity, not only the target's - `mutation_executor::execute` (E03-S05) compares
+//! it against the [`crate::BoundedPath`] actually passed at execution time, closing a gap
+//! where a plan sealed against one root's fingerprint could execute against a target bound
+//! under a completely different root (the two were never previously connected by anything
+//! but caller-trusted, unverified strings).
 
 use cancellai_model::{ActionClass, AuthorityLevel, Reversibility, RootFingerprint};
 use cancellai_platform::{IdentityObservation, IdentityToken};
 
+use crate::root_capability::{ApprovedRoot, BoundedPath};
+
 /// An immutable, sealed mutating plan for exactly one target artifact.
 ///
-/// Immutability is enforced by API shape, not by a runtime check: fields are private, the
-/// only constructor is [`SealedPlan::new`], and every accessor is `&self` - there is no
-/// method here that could mutate a `SealedPlan` once built (SI-016). A caller that wants a
-/// "different" plan builds a new one; it cannot edit this one in place.
+/// Immutability is enforced by API shape, not by a runtime check: fields are private and
+/// every accessor is `&self` - there is no method here that could mutate a `SealedPlan` once
+/// built (SI-016). A caller that wants a "different" plan builds a new one; it cannot edit
+/// this one in place.
+///
+/// [`SealedPlan::seal`] is the only *public* constructor: it derives `root_identity` and
+/// `artifact_identity` directly from a real [`ApprovedRoot`]/[`BoundedPath`] pair rather than
+/// accepting bare, caller-suppliable `IdentityToken` values a caller could fabricate
+/// disconnected from any real boundary check (E03 verifier review round 1: a `SealedPlan`
+/// built from loose values, never actually bound to a checked root/target pair, executed
+/// successfully against a target from a different root). The lower-level field constructor
+/// remains available *within this crate only* (`pub(crate)`) for tests that need to exercise
+/// [`revalidate`]'s pure identity-matching logic without the overhead of a real filesystem
+/// root/bind round trip - it is not part of this crate's public API.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct SealedPlan {
     root: RootFingerprint,
+    root_identity: IdentityToken,
     artifact_identity: IdentityToken,
     action_class: ActionClass,
     authority: AuthorityLevel,
@@ -39,8 +59,9 @@ pub struct SealedPlan {
 }
 
 impl SealedPlan {
-    pub fn new(
+    pub(crate) fn new(
         root: RootFingerprint,
+        root_identity: IdentityToken,
         artifact_identity: IdentityToken,
         action_class: ActionClass,
         authority: AuthorityLevel,
@@ -48,6 +69,7 @@ impl SealedPlan {
     ) -> Self {
         Self {
             root,
+            root_identity,
             artifact_identity,
             action_class,
             authority,
@@ -55,8 +77,37 @@ impl SealedPlan {
         }
     }
 
+    /// Seal a plan for `target`, bound under `root` (E03-S03's capabilities - not raw
+    /// paths). `root_identity`/`artifact_identity` are read from `root`/`target` themselves,
+    /// never accepted as independent caller-supplied values.
+    pub fn seal(
+        root: &ApprovedRoot,
+        root_fingerprint: RootFingerprint,
+        target: &BoundedPath,
+        action_class: ActionClass,
+        authority: AuthorityLevel,
+        reversibility: Reversibility,
+    ) -> Self {
+        Self::new(
+            root_fingerprint,
+            root.identity().clone(),
+            target.identity().clone(),
+            action_class,
+            authority,
+            reversibility,
+        )
+    }
+
     pub fn root(&self) -> &RootFingerprint {
         &self.root
+    }
+
+    /// The identity of the root this plan was sealed against - compared against a
+    /// [`BoundedPath`]'s own [`BoundedPath::root_identity`] at execution time, not merely at
+    /// sealing time (a caller could otherwise pass a *different* `BoundedPath` to `execute`
+    /// than the one used to seal the plan).
+    pub fn root_identity(&self) -> &IdentityToken {
+        &self.root_identity
     }
 
     /// The identity this plan was sealed against - also this plan's execution precondition
@@ -150,9 +201,19 @@ mod tests {
         }
     }
 
+    fn root_token() -> IdentityToken {
+        IdentityToken::Unix {
+            device: 1,
+            inode: 0,
+            kind: FileKind::Directory,
+            modified: FrozenClock::at(1_000).now(),
+        }
+    }
+
     fn plan_with(identity: IdentityToken) -> SealedPlan {
         SealedPlan::new(
             fingerprint(),
+            root_token(),
             identity,
             ActionClass::Delete,
             AuthorityLevel::Govern,
@@ -236,9 +297,42 @@ mod tests {
     fn sealed_plan_exposes_every_field_the_acceptance_criteria_names() {
         let plan = plan_with(token(1));
         assert_eq!(plan.root(), &fingerprint());
+        assert_eq!(plan.root_identity(), &root_token());
         assert_eq!(plan.artifact_identity(), &token(1));
         assert_eq!(plan.action_class(), ActionClass::Delete);
         assert_eq!(plan.authority(), AuthorityLevel::Govern);
         assert_eq!(plan.reversibility(), Reversibility::Irreversible);
+    }
+
+    #[test]
+    fn seal_derives_root_and_artifact_identity_from_real_capabilities() {
+        // E03 verifier review round 1: `seal` must read root_identity/artifact_identity
+        // from a real ApprovedRoot/BoundedPath pair, not accept them as bare caller values.
+        let dir = std::env::temp_dir().join(format!(
+            "cancellai-sealed-plan-seal-test-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let file = dir.join("target.txt");
+        std::fs::write(&file, b"hello").expect("create file");
+
+        let resolver = cancellai_platform::SystemPathResolver;
+        let observer = cancellai_platform::SystemIdentityObserver;
+        let root = ApprovedRoot::establish(&dir, &resolver, &observer).expect("establish root");
+        let target = root.bind(&file, &resolver, &observer).expect("bind target");
+
+        let plan = SealedPlan::seal(
+            &root,
+            fingerprint(),
+            &target,
+            ActionClass::Delete,
+            AuthorityLevel::Govern,
+            Reversibility::Irreversible,
+        );
+
+        assert_eq!(plan.root_identity(), root.identity());
+        assert_eq!(plan.artifact_identity(), target.identity());
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

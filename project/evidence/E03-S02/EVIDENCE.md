@@ -2,13 +2,49 @@
 
 - Commit/PR: pending (this work item)
 - Executor: Claude
-- Independent verifier: Codex (pending, epic-scoped review of E03)
+- Independent verifier: Codex (round 1: FAIL, `project/evidence/E03-VERIFIER-REVIEW.md`)
 - Change Risk: CR4
-- Spec version/commit: `rust/crates/cancellai-safety/src/sealed_plan.rs`, `rust/crates/cancellai-model/src/vocabulary.rs` as added in this change; `scripts/check_rust_workspace.py` amended
+- Spec version/commit: `rust/crates/cancellai-safety/src/sealed_plan.rs`, `rust/crates/cancellai-safety/src/root_capability.rs`, `rust/crates/cancellai-model/src/vocabulary.rs` as added/repaired in this change; `scripts/check_rust_workspace.py` amended
 
 ## Outcome
 
-PASS
+PASS (after round 1 repair)
+
+## Round 1 repair - a plan sealed for one root executed against a target from a different root
+
+Codex's independent review (round 1, `project/evidence/E03-VERIFIER-REVIEW.md`) found:
+`SealedPlan` recorded a `RootFingerprint` (a caller-supplied, free-text struct) and an
+`artifact_identity` with no structural connection to each other or to whatever `BoundedPath`
+was actually passed to `execute`. Reproduction: bind a target under root B, construct a
+`SealedPlan` naming root A's fingerprint and that target's identity, call `execute` with a
+matching identity observer - it returned `Succeeded`, since nothing ever compared "which root
+did this plan claim" against "which root was this target actually bound under."
+
+Repair:
+
+- `BoundedPath` (`root_capability.rs`) gained a `root_identity: IdentityToken` field,
+  populated by `ApprovedRoot::bind` from the *root's own* observed identity - not the
+  target's - so every bound path now carries proof of which root produced it.
+- `SealedPlan` gained the matching `root_identity: IdentityToken` field. Its field-taking
+  constructor (`new`) was narrowed from `pub` to `pub(crate)` - no longer part of this crate's
+  public API - and the only *public* constructor is now `SealedPlan::seal(root: &ApprovedRoot,
+  root_fingerprint: RootFingerprint, target: &BoundedPath, action_class, authority,
+  reversibility)`, which derives `root_identity`/`artifact_identity` directly from `root`/
+  `target` themselves. A caller can no longer fabricate a plan claiming an identity
+  disconnected from any real `ApprovedRoot`/`BoundedPath`.
+- `mutation_executor::execute` (E03-S05) now refuses (`SafelyBlocked`) unless
+  `plan.root_identity() == target.root_identity()` - checked against whichever `BoundedPath`
+  is *actually passed to `execute`*, not merely whatever was used when the plan was sealed,
+  since nothing stops a caller from calling `execute` with a different target than the one
+  used at seal time. This is the check that actually closes Codex's reproduction: verified by
+  `mutation_executor::tests::e03_verifier_round1_plan_for_one_root_cannot_execute_against_a_different_root`,
+  which reproduces the exact scenario (two real `ApprovedRoot`s, a plan claiming root A, a
+  target bound under root B) and asserts `SafelyBlocked`.
+
+This closes the E03-S02 AC1/SI-013/SI-016 violation Codex identified. See E03-S05's evidence
+for the two further defects Codex found in `execute` itself (authority/reversibility never
+checked; the revalidate-then-delete race), which are separate from this root-binding gap and
+repaired independently.
 
 ## A governance prerequisite this story needed: `cancellai-safety` may consume `cancellai-platform`
 
@@ -103,10 +139,11 @@ platform-specific bugs.
 
 ## Documentation updated
 
-- `docs/architecture/DOMAIN_MODEL.md` - "SealedPlan" section states the Rust implementation
-  and its deliberate scope boundary (the story's declared documentation impact).
+- `docs/architecture/DOMAIN_MODEL.md` - "SealedPlan" section states the Rust implementation,
+  its deliberate scope boundary, and (round 1 repair) the `seal`/root-binding fix (the
+  story's declared documentation impact).
 - `docs/security/SAFETY_INVARIANTS.md` - SI-013 and SI-016 each gained an implementation
-  pointer (the story's other declared documentation impact).
+  pointer, updated for the round 1 repair (the story's other declared documentation impact).
 
 ## Residual risks
 
@@ -138,4 +175,13 @@ platform-specific bugs.
 
 ## Verifier verdict
 
-PENDING - epic E03 review runs once every story in E03 is `ready_for_review` (at most twice per epic, per ADR-0014).
+Round 1 (Codex, independent): FAIL - see "Round 1 repair" above and
+`project/evidence/E03-VERIFIER-REVIEW.md`.
+
+Round 2: not run. Per explicit owner direction, the round 1 finding above was repaired and
+the story moved directly to `done` without a second independent verification pass. This is a
+self-attested repair, not an independently re-verified one - recorded here rather than
+silently presented as re-verified. `project/evidence/E03-S01/SAFETY_VERDICT.md` and
+`project/evidence/E03-S04/SAFETY_VERDICT.md` (Codex's own, from round 1) remain the
+independently-produced CR4 Safety Verdicts on record for this epic; no new one was produced
+for E03-S02/E03-S03/E03-S05 by this repair.

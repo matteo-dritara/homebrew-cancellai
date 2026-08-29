@@ -9,11 +9,41 @@
 //! one place that call is allowed to exist (SI-019: "all filesystem/vendor mutations route
 //! through the safety executor"). `cancellai-safety`'s orchestration (`mutation_executor.rs`)
 //! is the *only* production caller of this trait, and only after SI-002/SI-003/SI-013 have
-//! already been checked - this seam itself performs no safety check of its own, exactly like
-//! `FsObserver`/`IdentityObserver` perform no safety check of their own; it is a raw OS
-//! capability, not the safety boundary itself.
+//! already been checked - this seam itself performs no safety-policy check of its own
+//! (authority/reversibility gating is `cancellai-safety`'s job), but it does prove, as far as
+//! a safe-Rust, dependency-free implementation can, that what it deletes is what the caller
+//! told it to expect.
+//!
+//! E03 verifier review round 1 found the original `mutate(target, operation)` signature
+//! (no expected identity) let a path-based revalidate-then-delete race succeed silently: an
+//! `IdentityObserver` that reports a matching identity and then, as a side effect, swaps the
+//! object before the actual `remove_file` call, caused the *replacement* to be deleted while
+//! `execute` reported `Succeeded`. `mutate` now takes `expected: &IdentityToken`, and
+//! [`SystemMutationExecutor`]'s file-deletion path performs three checks around one held
+//! file descriptor: (1) open the target once and confirm the descriptor's own device/inode
+//! match `expected`; (2) immediately before the actual unlink, a second, independent, fresh
+//! path lookup (not through the descriptor) re-confirms the path still resolves to that same
+//! identity - this is the check that actually stops a same-named replacement from being
+//! deleted, since a bare *after-the-fact* link-count check alone cannot distinguish "my own
+//! unlink zeroed the original" from "a concurrent unlink already zeroed the original before I
+//! touched a different object at this path," and both would otherwise look identical; (3)
+//! after the unlink, re-stat the *same, already-open* descriptor as final corroboration that
+//! its link count dropped to zero. This narrows, but does not perfectly close, the race:
+//! step (2) and the unlink itself are still two separate syscalls with a small gap between
+//! them, and true prevention (not merely detection) needs an OS-specific handle-relative
+//! unlink (`openat`/`unlinkat` with `O_NOFOLLOW`, e.g. via a reviewed `rustix`/`nix`
+//! dependency, or `unsafe` libc calls) that this workspace does not have (`unsafe_code` is
+//! forbidden by default, ADR-0015, and no such dependency has been reviewed/added). Where
+//! that guarantee
+//! cannot be established this way, `mutate` reports `Err` rather than a possibly-false
+//! `Ok(())` - "refuse where the guarantee cannot be established," not guess. Consequently
+//! only `FileKind::File` deletion is confirmed this way; `cancellai-safety::mutation_executor`
+//! only ever requests it for that kind (directories/symlinks are refused before reaching this
+//! seam at all - see that module's own docs).
 
 use std::path::Path;
+
+use crate::identity::IdentityToken;
 
 /// One class of real mutation this seam can perform.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,22 +51,35 @@ pub enum MutationOperation<'a> {
     /// Move to a quarantine location on the same filesystem (reversible). Not yet driven by
     /// any production caller - `SealedPlan` (E03-S02) does not carry a quarantine
     /// destination yet (E03-S05's own residual risk); the operation exists so this seam's
-    /// contract does not have to grow again the day that field lands.
+    /// contract does not have to grow again the day that field lands. Not identity-confirmed
+    /// the way `DeleteFile` is (see module docs) - a future story implementing it for real
+    /// should extend the confirmation technique to it too, not merely rename blindly.
     Quarantine { to: &'a Path },
-    /// Permanently remove a file.
+    /// Permanently remove a regular file. The only operation this seam confirms by
+    /// open-file-descriptor identity (see module docs); the only one
+    /// `cancellai-safety::mutation_executor` currently requests.
     DeleteFile,
-    /// Permanently remove a directory tree.
+    /// Permanently remove a directory tree. Not identity-confirmed the way `DeleteFile` is -
+    /// no production caller currently requests this either (see module docs).
     DeleteDirectoryTree,
 }
 
-/// Why a real mutation attempt failed. Always the underlying OS error text - this seam does
-/// not interpret or classify failures, only reports what the OS said.
+/// Why a real mutation attempt failed. Always the underlying OS error text, or this seam's
+/// own identity-confirmation failure text - this seam does not otherwise interpret or
+/// classify failures.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MutationError(pub String);
 
-/// A sink for real filesystem mutation.
+/// A sink for real filesystem mutation. `expected` is the identity the caller already
+/// confirmed via `IdentityObserver` immediately before calling this (see module docs for how
+/// [`SystemMutationExecutor`] uses it).
 pub trait MutationExecutor: Send + Sync {
-    fn mutate(&self, target: &Path, operation: MutationOperation<'_>) -> Result<(), MutationError>;
+    fn mutate(
+        &self,
+        target: &Path,
+        expected: &IdentityToken,
+        operation: MutationOperation<'_>,
+    ) -> Result<(), MutationError>;
 }
 
 /// The real, OS-backed executor. The only place in this crate - and, per
@@ -46,14 +89,106 @@ pub trait MutationExecutor: Send + Sync {
 pub struct SystemMutationExecutor;
 
 impl MutationExecutor for SystemMutationExecutor {
-    fn mutate(&self, target: &Path, operation: MutationOperation<'_>) -> Result<(), MutationError> {
-        let result = match operation {
-            MutationOperation::Quarantine { to } => std::fs::rename(target, to),
-            MutationOperation::DeleteFile => std::fs::remove_file(target),
-            MutationOperation::DeleteDirectoryTree => std::fs::remove_dir_all(target),
-        };
-        result.map_err(|e| MutationError(e.to_string()))
+    fn mutate(
+        &self,
+        target: &Path,
+        expected: &IdentityToken,
+        operation: MutationOperation<'_>,
+    ) -> Result<(), MutationError> {
+        match operation {
+            MutationOperation::Quarantine { to } => {
+                std::fs::rename(target, to).map_err(|e| MutationError(e.to_string()))
+            }
+            MutationOperation::DeleteFile => confirmed_delete_file(target, expected),
+            MutationOperation::DeleteDirectoryTree => {
+                std::fs::remove_dir_all(target).map_err(|e| MutationError(e.to_string()))
+            }
+        }
     }
+}
+
+#[cfg(unix)]
+fn confirmed_delete_file(target: &Path, expected: &IdentityToken) -> Result<(), MutationError> {
+    confirmed_delete_file_inner(target, expected, || {})
+}
+
+/// The real logic, parameterized by a hook that runs between the open-time identity
+/// confirmation and the actual `remove_file` call. In production this hook is a no-op
+/// (`confirmed_delete_file` above); tests use it to deterministically reproduce the exact
+/// race the round-1 review found - swapping the target *after* it has been confirmed open
+/// but *before* it is unlinked - without needing real thread-timing luck.
+#[cfg(unix)]
+fn confirmed_delete_file_inner(
+    target: &Path,
+    expected: &IdentityToken,
+    between_open_and_unlink: impl FnOnce(),
+) -> Result<(), MutationError> {
+    use std::os::unix::fs::MetadataExt;
+
+    let IdentityToken::Unix {
+        device: expected_device,
+        inode: expected_inode,
+        ..
+    } = expected;
+
+    let file = std::fs::File::open(target)
+        .map_err(|e| MutationError(format!("could not open target for confirmed deletion: {e}")))?;
+    let before = file
+        .metadata()
+        .map_err(|e| MutationError(format!("could not stat open target before deletion: {e}")))?;
+    if before.dev() != *expected_device || before.ino() != *expected_inode {
+        return Err(MutationError(
+            "target identity changed between revalidation and deletion (open-time check)"
+                .to_string(),
+        ));
+    }
+
+    between_open_and_unlink();
+
+    // A second, independent, fresh path lookup (not through the held fd) immediately before
+    // the actual unlink - this is what actually catches a swap that happened after the
+    // open-time check above (as in `between_open_and_unlink`): a bare nlink check *after*
+    // `remove_file` cannot distinguish "my own unlink zeroed the original's link count" from
+    // "a concurrent unlink of the original already zeroed it before I ever touched the
+    // (different) object now sitting at this path" - both produce the same post-hoc nlink
+    // reading. Refusing here, *before* calling `remove_file` at all, is what keeps a
+    // same-named replacement from being deleted as collateral damage.
+    let just_before = std::fs::symlink_metadata(target).map_err(|e| {
+        MutationError(format!(
+            "could not re-stat target immediately before deletion: {e}"
+        ))
+    })?;
+    if just_before.dev() != *expected_device || just_before.ino() != *expected_inode {
+        return Err(MutationError(
+            "target identity changed immediately before deletion (path re-check failed); refusing to delete a different object".to_string(),
+        ));
+    }
+
+    std::fs::remove_file(target).map_err(|e| MutationError(format!("delete failed: {e}")))?;
+
+    // Final corroboration via the fd opened at the very start: an open fd stays valid after
+    // its directory entry is unlinked (Unix semantics), so if `remove_file` above really
+    // unlinked the object this fd holds, that object's link count is now 0. This narrows,
+    // but - being itself a check *after* the mutation - cannot on its own fully close, the
+    // remaining gap between the immediately-preceding re-check and the unlink syscall.
+    let after = file
+        .metadata()
+        .map_err(|e| MutationError(format!("could not stat held handle after deletion: {e}")))?;
+    if after.nlink() != 0 {
+        return Err(MutationError(
+            "deletion removed a different filesystem object than the one confirmed open \
+             (post-deletion link-count check failed); the intended target may still exist"
+                .to_string(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn confirmed_delete_file(_target: &Path, _expected: &IdentityToken) -> Result<(), MutationError> {
+    Err(MutationError(
+        "confirmed file deletion is not implemented on this platform".to_string(),
+    ))
 }
 
 /// Test-only seam: synthesize a mutation outcome for a specific path without touching the
@@ -85,6 +220,7 @@ impl MutationExecutor for SyntheticMutationExecutor {
     fn mutate(
         &self,
         target: &Path,
+        _expected: &IdentityToken,
         _operation: MutationOperation<'_>,
     ) -> Result<(), MutationError> {
         self.outcomes.get(target).cloned().unwrap_or(Ok(()))
@@ -95,39 +231,148 @@ impl MutationExecutor for SyntheticMutationExecutor {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
+    struct TempDir(std::path::PathBuf);
+
+    #[cfg(unix)]
+    impl TempDir {
+        fn new(label: &str) -> Self {
+            static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let unique = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let dir = std::env::temp_dir().join(format!(
+                "cancellai-mutation-test-{label}-{}-{unique}",
+                std::process::id()
+            ));
+            std::fs::create_dir_all(&dir).expect("create temp dir");
+            Self(dir)
+        }
+
+        fn path(&self, name: &str) -> std::path::PathBuf {
+            self.0.join(name)
+        }
+    }
+
+    #[cfg(unix)]
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.0).ok();
+        }
+    }
+
+    #[cfg(unix)]
+    fn identity_of(path: &Path) -> IdentityToken {
+        use std::os::unix::fs::MetadataExt;
+        let meta = std::fs::symlink_metadata(path).expect("stat path for test identity");
+        IdentityToken::Unix {
+            device: meta.dev(),
+            inode: meta.ino(),
+            kind: crate::identity::FileKind::File,
+            modified: crate::clock::Timestamp(0),
+        }
+    }
+
+    #[cfg(unix)]
     #[test]
-    fn system_executor_deletes_a_real_file() {
-        let dir =
-            std::env::temp_dir().join(format!("cancellai-mutation-test-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("create temp dir");
-        let file = dir.join("target.txt");
+    fn system_executor_deletes_a_real_file_confirmed_by_identity() {
+        let dir = TempDir::new("delete-confirmed");
+        let file = dir.path("target.txt");
         std::fs::write(&file, b"hello").expect("create file");
+        let expected = identity_of(&file);
 
         let executor = SystemMutationExecutor;
         executor
-            .mutate(&file, MutationOperation::DeleteFile)
+            .mutate(&file, &expected, MutationOperation::DeleteFile)
             .expect("delete should succeed");
         assert!(!file.exists());
-
-        std::fs::remove_dir_all(&dir).ok();
     }
 
+    #[cfg(unix)]
     #[test]
     fn system_executor_reports_the_os_error_for_a_missing_target() {
-        let missing = std::env::temp_dir().join("cancellai-mutation-test-missing-target");
+        let dir = TempDir::new("missing-target");
+        let missing = dir.path("does-not-exist");
+        // Any well-formed expected token: open() fails before it would ever be consulted.
+        let expected = IdentityToken::Unix {
+            device: 0,
+            inode: 0,
+            kind: crate::identity::FileKind::File,
+            modified: crate::clock::Timestamp(0),
+        };
         let executor = SystemMutationExecutor;
         let err = executor
-            .mutate(&missing, MutationOperation::DeleteFile)
+            .mutate(&missing, &expected, MutationOperation::DeleteFile)
             .expect_err("deleting a missing file must fail, not silently succeed");
         assert!(!err.0.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn confirmed_delete_rejects_a_target_already_swapped_before_open() {
+        let dir = TempDir::new("swapped-before-open");
+        let file = dir.path("target.txt");
+        std::fs::write(&file, b"original").expect("create original");
+        let expected = identity_of(&file); // captured identity of the ORIGINAL
+
+        // Swap before any deletion attempt: replace the original with a different file at
+        // the same path (same as an attacker winning the race entirely before this call).
+        std::fs::remove_file(&file).expect("remove original");
+        std::fs::write(&file, b"replacement").expect("create replacement");
+
+        let executor = SystemMutationExecutor;
+        let err = executor
+            .mutate(&file, &expected, MutationOperation::DeleteFile)
+            .expect_err("a target swapped before open must be rejected, not deleted");
+        assert!(err.0.contains("open-time check"), "reason was: {}", err.0);
+        assert!(
+            file.exists(),
+            "the replacement must survive - it was never the intended target"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn confirmed_delete_detects_a_target_swapped_between_open_and_unlink() {
+        // The exact race E03 verifier review round 1 exploited: the target is confirmed
+        // open and matching, then swapped - simulating an observer whose "still matches"
+        // answer stops being true at the worst possible moment, which no amount of
+        // "revalidate right before mutating" alone can defeat (only proof of what was
+        // actually deleted can).
+        let dir = TempDir::new("swapped-mid-flight");
+        let file = dir.path("target.txt");
+        std::fs::write(&file, b"original").expect("create original");
+        let expected = identity_of(&file);
+
+        let result = confirmed_delete_file_inner(&file, &expected, || {
+            std::fs::remove_file(&file).expect("simulate concurrent removal of the original");
+            std::fs::write(&file, b"replacement").expect("simulate concurrent replacement");
+        });
+
+        assert!(
+            result.is_err(),
+            "a mid-flight swap must never be reported as a successful, correct deletion"
+        );
+        assert!(
+            file.exists(),
+            "the replacement must survive - only the confirmed original may ever be deleted"
+        );
+        std::fs::read_to_string(&file)
+            .map(|contents| assert_eq!(contents, "replacement"))
+            .expect("replacement content must be intact");
     }
 
     #[test]
     fn synthetic_executor_succeeds_by_default_for_unconfigured_paths() {
         let executor = SyntheticMutationExecutor::new();
+        let expected = IdentityToken::Unix {
+            device: 0,
+            inode: 0,
+            kind: crate::identity::FileKind::File,
+            modified: crate::clock::Timestamp(0),
+        };
         assert_eq!(
             executor.mutate(
                 Path::new("/never/configured"),
+                &expected,
                 MutationOperation::DeleteFile
             ),
             Ok(())
@@ -141,9 +386,16 @@ mod tests {
             "/synthetic/disk-full",
             Err(MutationError("No space left on device".into())),
         );
+        let expected = IdentityToken::Unix {
+            device: 0,
+            inode: 0,
+            kind: crate::identity::FileKind::File,
+            modified: crate::clock::Timestamp(0),
+        };
         assert_eq!(
             executor.mutate(
                 Path::new("/synthetic/disk-full"),
+                &expected,
                 MutationOperation::DeleteFile
             ),
             Err(MutationError("No space left on device".into()))
@@ -151,6 +403,7 @@ mod tests {
         assert_eq!(
             executor.mutate(
                 Path::new("/synthetic/unrelated"),
+                &expected,
                 MutationOperation::DeleteFile
             ),
             Ok(())

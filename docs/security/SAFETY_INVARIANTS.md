@@ -82,7 +82,14 @@ Between identical observations/policy inputs, dry-run does not use weaker select
 A path alone is insufficient. Safety-critical object/root identity and relevant preconditions are re-observed at execution. Identity drift produces `STALE_PLAN`/block.
 
 Implemented for artifact identity at `rust/crates/cancellai-safety/src/sealed_plan.rs::revalidate`
-(E03-S02), consuming `cancellai-platform`'s `IdentityObserver` (E03-S01).
+(E03-S02), consuming `cancellai-platform`'s `IdentityObserver` (E03-S01). Also implemented for
+root identity: `mutation_executor::execute` (E03-S05) refuses unless `plan.root_identity()`
+matches the actual target's bound root at execution time (E03 verifier review round 1 - see
+SI-016 below). `cancellai-platform::mutation::MutationExecutor::mutate` (repaired in the same
+round) additionally re-confirms a plain file's identity via an open file descriptor
+immediately around the unlink syscall itself, narrowing (though, without an OS-specific
+handle-relative unlink this workspace does not have, not perfectly closing) the residual
+revalidate-then-delete race.
 
 ### SI-014 Safety-blocked/partial is not success
 
@@ -97,10 +104,15 @@ When cancellAI rewrites a metadata file it uses streaming/temp-file/fsync/atomic
 Every mutation is derived from an immutable plan carrying artifact/root identity, policy explanation, authority, action class, reversibility, provider capability, and execution preconditions.
 
 `SealedPlan` (`rust/crates/cancellai-safety/src/sealed_plan.rs`, E03-S02) implements
-immutability by API shape: private fields, one constructor, no mutating methods. It does not
-yet carry policy explanation or provider capability (E03-S02's scope is the identity/action/
-authority/reversibility core; those two arrive with the policy and provider stories that
-produce them).
+immutability by API shape: private fields, no mutating methods, and (E03 verifier review
+round 1 repair) exactly one *public* constructor, `SealedPlan::seal`, which derives
+`root_identity`/`artifact_identity` from a real `ApprovedRoot`/`BoundedPath` pair rather than
+accepting independent caller-supplied values a plan could be sealed against a root/target
+pair that were never actually bound together. It does not yet carry policy explanation or
+provider capability (E03-S02's scope is the identity/action/authority/reversibility core;
+those two arrive with the policy and provider stories that produce them) - this is a
+deliberate, documented scope boundary, not a silent omission (see `sealed_plan.rs`'s own
+module doc comment and `docs/architecture/DOMAIN_MODEL.md`'s "SealedPlan" section).
 
 ### SI-017 Platform-native identity semantics
 
@@ -116,9 +128,26 @@ Recursive mutation and quarantine do not silently cross mounts, volumes, junctio
 
 All filesystem/vendor mutations route through the safety executor. CR4 changes to this boundary require independent verification and owner-visible Safety Verdict.
 
+Implemented at `rust/crates/cancellai-safety/src/mutation_executor.rs::execute` (E03-S05),
+the sole production caller of `cancellai-platform::mutation::MutationExecutor`.
+`scripts/check_mutation_boundary.py` statically enforces that the raw OS primitive and the
+capability wrapping it are referenced only from those two files - E03 verifier review round 1
+found the capability itself was `pub`, re-exported at `cancellai_platform`'s crate root, and
+directly callable (with an unconstrained raw path) by any crate that imported it; repaired by
+removing the re-export and extending the static check (`docs/architecture/TARGET.md`,
+`docs/architecture/PLATFORM_MODEL.md`).
+
 ### SI-020 Irreversible actions are explicit and stronger-gated
 
 Purge/permanent vendor delete is represented separately from reversible/conditionally reversible actions and cannot be disguised as cleanup metadata.
+
+`mutation_executor::execute` (E03-S05) enforces this directly: `authority.rs`'s
+`minimum_authority_for(ActionClass::Delete)` requires `AuthorityLevel::Govern` (strictly above
+`Quarantine`'s requirement), and `reversibility_allowed` refuses a `Delete` action class
+unless the plan's own recorded `Reversibility` is `Irreversible` - a plan claiming
+`Reversibility::Quarantinable` while carrying `ActionClass::Delete` is refused outright, not
+executed as a disguised irreversible deletion (E03 verifier review round 1 found `execute`
+originally checked neither authority nor reversibility at all).
 
 ## Provider and knowledge trust
 

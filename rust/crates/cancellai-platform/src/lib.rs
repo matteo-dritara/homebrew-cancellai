@@ -17,10 +17,21 @@
 //! observed (device/inode on Unix) rather than to a path alone (SI-013, SI-017). E03-S03
 //! adds a fourth, [`PathResolver`], the "path canonicalization/normalization" capability
 //! `docs/architecture/PLATFORM_MODEL.md` lists separately from filesystem identity. E03-S05
-//! adds a fifth, [`MutationExecutor`] - the only seam in this crate whose real
-//! implementation changes the filesystem (SI-019); `scripts/check_mutation_boundary.py`
-//! statically enforces that `mutation.rs` is the one production source file in the whole
-//! workspace allowed to call a filesystem removal primitive directly.
+//! adds a fifth, `mutation::MutationExecutor` - the only seam in this crate whose real
+//! implementation changes the filesystem (SI-019).
+//!
+//! `mutation::SystemMutationExecutor` (the concrete, real-syscall implementation) is
+//! deliberately *not* re-exported at this crate's root the way every other capability's
+//! `System*` implementation is - reach it via the full `cancellai_platform::mutation::`
+//! path. This is not itself the enforcement: `scripts/check_mutation_boundary.py`
+//! statically verifies that only `mutation.rs` calls a filesystem removal primitive
+//! directly, and that only it and `cancellai-safety`'s `mutation_executor.rs` reference
+//! `SystemMutationExecutor`/`.mutate(` at all (E03 verifier review round 1 found the
+//! previous crate-root re-export made the raw capability trivially importable, and thus
+//! callable, from any crate that bypassed the safety kernel's root/authority/identity
+//! checks entirely). Withholding the convenience re-export is defense in depth on top of
+//! that check, not a substitute for it - Rust visibility cannot express "public to exactly
+//! one sibling crate," so the check is the real boundary.
 
 pub mod clock;
 pub mod fs_observer;
@@ -34,10 +45,6 @@ pub use fs_observer::{FsMetadata, FsObserver, Observation, SyntheticFsObserver, 
 pub use identity::{
     FileKind, IdentityObservation, IdentityObserver, IdentityToken, SyntheticIdentityObserver,
     SystemIdentityObserver,
-};
-pub use mutation::{
-    MutationError, MutationExecutor, MutationOperation, SyntheticMutationExecutor,
-    SystemMutationExecutor,
 };
 pub use path_resolver::{PathResolver, SyntheticPathResolver, SystemPathResolver};
 pub use snapshot::{Snapshot, build_snapshot};

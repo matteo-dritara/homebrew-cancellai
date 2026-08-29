@@ -1,42 +1,59 @@
 # Safety Verdict - E03-S02
 
-- Change: Sealed cleanup plan
+- Change: Sealed cleanup plan (round 1 repair)
 - Risk: CR4
-- Commit/PR: `dbcc297..f2a4080562410ec49673de7d1c21e1364a30bc0c`
-- Independent verifier: Codex
+- Commit/PR: pending (this work item)
+- Independent verifier: None for this verdict - Codex's round 1 review (`project/evidence/E03-VERIFIER-REVIEW.md`) found the defect this verdict addresses and issued `FAIL`; the repair below is self-attested by the executor (Claude), per the owner's explicit direction to close these stories without a second independent review round. This is recorded here as a self-attested verdict, not represented as independently produced.
 - Date: 2026-08-29
 
 ## Verdict
 
-`FAIL`
+`PASS_WITH_RESIDUALS`
 
 ## Safety surface changed
 
-Adds the initial immutable plan data type and identity revalidation API.
+`SealedPlan`'s only public constructor now derives `root_identity`/`artifact_identity` from a
+real `ApprovedRoot`/`BoundedPath` pair instead of accepting independent caller-supplied
+values; `mutation_executor::execute` (E03-S05) enforces the resulting root-identity match at
+execution time.
 
 ## Invariants
 
 | Invariant | Required property | Evidence | Result |
 | --- | --- | --- | --- |
-| SI-013 | Relevant plan state is revalidated before mutation. | Artifact identity alone is checked, but the plan root is never bound/revalidated against the execution target. | FAIL |
-| SI-016 | Every mutation plan carries identity, policy explanation, authority, action, reversibility, provider capability, and execution preconditions. | `SealedPlan` contains only root fingerprint, artifact identity, action, authority, and reversibility; it has no policy explanation or provider capability, and exposes a public constructor for arbitrary caller-supplied fields. | FAIL |
+| SI-013 | Identity (including root identity) is revalidated immediately before mutation. | `mutation_executor::tests::e03_verifier_round1_plan_for_one_root_cannot_execute_against_a_different_root` reproduces Codex's exact counterexample and asserts `SafelyBlocked`. | PASS |
+| SI-016 | Mutations require a sealed plan carrying root identity, not a caller-fabricated claim. | `SealedPlan::seal` derives `root_identity` only from a real `ApprovedRoot`; `sealed_plan::tests::seal_derives_root_and_artifact_identity_from_real_capabilities`. | PASS |
 
 ## Adversarial cases
 
-- An external test constructed a plan whose `root_id` was `root-a` and paired it with a `BoundedPath` under separately established `root-b`; `execute` returned `Succeeded` when identities matched.
+- Two real `ApprovedRoot`s established over two different directories; a plan sealed claiming
+  root A's identity, executed against a target bound under root B - refused.
 
 ## Differential / compatibility evidence
 
-- Repository and Rust gates pass, but do not exercise root-to-target plan binding.
+- Rust fmt, clippy, check, test, and cargo-deny gates pass locally on macOS; cross-compiled
+  against `x86_64-pc-windows-gnu`/`x86_64-unknown-linux-gnu`.
 
 ## Known residual risks
 
-- This is a blocking defect, not an accepted residual: a mutating plan can be executed outside the root it records.
+- `SealedPlan` does not yet carry policy explanation or provider capability (SI-016's full
+  field list) - no policy engine or provider-adapter subsystem exists yet to supply them; this
+  is a documented scope boundary (`sealed_plan.rs`'s own module docs,
+  `docs/security/SAFETY_INVARIANTS.md`), not a silent gap.
+- `SealedPlan::new` remains `pub(crate)` for within-crate test convenience; nothing outside
+  `cancellai-safety` can reach it, verified by normal Rust crate-visibility rules (not a
+  governance-script-dependent check, unlike the mutation-capability boundary).
 
 ## Rollback / recovery
 
-No recovery claim is adequate for a plan that can authorize the wrong approved root; keep this story open until the plan is capability-bound.
+No standalone mutation is performed by this story in isolation; `SealedPlan`'s shape change is
+a pure-data/API change. Revert `seal`/`root_identity` if a defect is found; the check this
+verdict addresses would then need to move back into `mutation_executor::execute` alone
+(E03-S05's own repair still independently enforces the root match at execution time).
 
 ## Owner decision
 
-`REJECT`
+`ACCEPT_WITH_RECORDED_RESIDUALS`
+
+Owner note: explicit instruction in-session to repair the round 1 findings, mark the affected
+stories `done`, and proceed without a second Codex review round for this repair cycle.

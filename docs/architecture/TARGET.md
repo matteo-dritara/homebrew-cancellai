@@ -89,10 +89,26 @@ the *only* production source file in the workspace allowed to call
 `scripts/check_mutation_boundary.py` enforces this by scanning every other crate's
 production source for those calls and fails if it finds one. `rust/crates/cancellai-safety/src/mutation_executor.rs`'s
 `execute`/`execute_all` are the one production call path from a `SealedPlan` (E03-S02) to
-that capability: revalidate identity immediately before mutation (SI-013, `cancellai-safety`'s
-own `revalidate`), then delegate to `MutationExecutor`. `execute_all` aggregates a batch via
-`Vec::map`/`collect`, which cannot silently drop or short-circuit past a result the way a
-hand-written loop with an early return could (SI-020's per-action explicitness).
+that capability: verify the plan's root matches the target's bound root, verify authority/
+reversibility actually permit the action class, revalidate identity immediately before
+mutation (SI-013, `cancellai-safety`'s own `revalidate`), then delegate to `MutationExecutor`.
+`execute_all` aggregates a batch via `Vec::map`/`collect`, which cannot silently drop or
+short-circuit past a result the way a hand-written loop with an early return could (SI-020's
+per-action explicitness).
+
+E03 verifier review round 1 found the raw `MutationExecutor` capability itself (not merely
+the bare `std::fs::remove_file` primitive) was reachable from any crate - `pub`, re-exported
+at `cancellai_platform`'s crate root, directly callable with an unconstrained raw path,
+bypassing every check the paragraph above describes. `scripts/check_mutation_boundary.py` was
+extended to also forbid referencing `SystemMutationExecutor` or calling `.mutate(` anywhere
+outside `mutation.rs` and `mutation_executor.rs`, and `cancellai_platform`'s crate root no
+longer re-exports `SystemMutationExecutor` at all. `MutationExecutor::mutate` itself was also
+strengthened (repaired in the same round): it now takes the plan's expected `IdentityToken`
+and, for a plain file, confirms it via an open file descriptor both immediately before and
+immediately after the actual unlink syscall - narrowing, though (a safe-Rust, no-`unsafe`,
+no-new-dependency implementation cannot fully close) not perfectly eliminating, the race
+between revalidation and the OS call itself. Directories and symlinks are refused rather than
+deleted without that confirmation.
 
 ## Core loop
 

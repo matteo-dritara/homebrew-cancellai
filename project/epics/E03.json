@@ -7,7 +7,7 @@
   "dependencies": [
     "E02"
   ],
-  "status": "in_progress",
+  "status": "done",
   "stories": [
     {
       "id": "E03-S01",
@@ -36,7 +36,7 @@
     {
       "id": "E03-S02",
       "title": "Sealed cleanup plan",
-      "status": "in_progress",
+      "status": "done",
       "outcome": "Make every mutating plan immutable, identity-bound, capability-bound, and policy-explained.",
       "change_risk": "CR4",
       "dependencies": [
@@ -61,7 +61,7 @@
     {
       "id": "E03-S03",
       "title": "Root and boundary capabilities",
-      "status": "in_progress",
+      "status": "done",
       "outcome": "Represent approved roots and filesystem boundaries as explicit capabilities rather than raw paths.",
       "change_risk": "CR4",
       "dependencies": [
@@ -115,7 +115,7 @@
     {
       "id": "E03-S05",
       "title": "Mutation executor isolation",
-      "status": "blocked",
+      "status": "done",
       "outcome": "Make the safety executor the sole code path for filesystem mutation.",
       "change_risk": "CR4",
       "dependencies": [

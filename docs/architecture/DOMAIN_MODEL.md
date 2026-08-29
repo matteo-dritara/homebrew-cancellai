@@ -199,15 +199,25 @@ A mutating plan is a first-class immutable object. See [`JSON_CONTRACTS.md`](JSO
 Immediately before mutation the executor re-observes all safety-critical preconditions. Any relevant drift makes the action `STALE_PLAN` and non-destructive.
 
 E03-S02 implements the identity-bound core of this at `rust/crates/cancellai-safety/src/sealed_plan.rs`:
-`SealedPlan` (root fingerprint, artifact identity, action class, authority, reversibility) is
-immutable by API shape (private fields, no mutating methods), and `revalidate` is the
-fail-closed `STALE_PLAN` check - it exhaustively matches every `IdentityObservation` from
-`cancellai-platform` (E03-S01) and returns `Proceed` only for an exact identity match; every
-other case, including a filesystem/platform that cannot re-establish identity at all, is
-`StalePlan`. The full field list above (inventory snapshot ID, a batch of `Action`s, evidence
-references, knowledge-bundle version references) is not yet populated - those belong to
-subsystems that do not exist yet (E04 inventory engine, provider knowledge) and are deferred
-to the stories that build them, not stubbed out here.
+`SealedPlan` (root fingerprint, root identity, artifact identity, action class, authority,
+reversibility) is immutable by API shape (private fields, no mutating methods), and
+`revalidate` is the fail-closed `STALE_PLAN` check - it exhaustively matches every
+`IdentityObservation` from `cancellai-platform` (E03-S01) and returns `Proceed` only for an
+exact identity match; every other case, including a filesystem/platform that cannot
+re-establish identity at all, is `StalePlan`. The full field list above (inventory snapshot
+ID, a batch of `Action`s, evidence references, knowledge-bundle version references) is not
+yet populated - those belong to subsystems that do not exist yet (E04 inventory engine,
+provider knowledge) and are deferred to the stories that build them, not stubbed out here.
+
+E03 verifier review round 1 found the first version of `SealedPlan` recorded a root
+fingerprint and an artifact identity with no structural connection to each other or to the
+target actually executed against - a plan sealed with root A's fingerprint executed
+successfully against a target bound under root B. `SealedPlan::seal` is now the only public
+constructor: it takes a real `ApprovedRoot`/`BoundedPath` pair (E03-S03) and derives
+`root_identity`/`artifact_identity` directly from them, never from independent caller-
+supplied values; `mutation_executor::execute` (E03-S05) compares `plan.root_identity()`
+against `target.root_identity()` for whatever target is actually passed to it at execution
+time - not merely whatever was used at sealing time - closing the gap for good.
 
 ## Results
 
