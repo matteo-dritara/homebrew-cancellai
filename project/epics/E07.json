@@ -98,6 +98,56 @@
         "README.md",
         "docs/PLATFORMS.md"
       ]
+    },
+    {
+      "id": "E07-S05",
+      "title": "Linux TOCTOU identity/mutation test reliability",
+      "status": "planned",
+      "outcome": "Determine why cancellai-platform's identity::tests::toctou_file_deleted_and_recreated_with_identical_content_still_changes_identity and mutation::tests::confirmed_delete_rejects_a_target_already_swapped_before_open fail intermittently on Linux CI (ubuntu-latest, observed across multiple runs on 2026-08-31) while never observed failing on macOS, and close whichever of a test-fixture gap or a real IdentityToken weakness it turns out to be.",
+      "change_risk": "CR3",
+      "dependencies": [
+        "E03-S01"
+      ],
+      "acceptance_criteria": [
+        "Root cause is determined and documented: either the test fixture's delete-and-recreate timing does not reliably force a genuinely different identity under Linux's inode-reuse/mtime-resolution characteristics (a fixture gap), or IdentityToken::Unix's device+inode+kind+modified tuple can under real conditions fail to distinguish two different filesystem objects (a real SI-013/SI-017 gap).",
+        "If a fixture gap: the fixture is corrected to reliably force a distinguishable identity (e.g. content/size difference) without weakening what the test verifies. If a real gap: IdentityToken/revalidate gains whatever disambiguator closes it (e.g. a higher-resolution timestamp source or an additional generation/creation-time field), with a regression test that fails without the fix.",
+        "Both named tests pass with no observed flakiness across at least 20 consecutive ubuntu-latest CI runs after the fix."
+      ],
+      "safety_obligations": [
+        "SI-013",
+        "SI-017"
+      ],
+      "verification": [
+        "Repeated ubuntu-latest CI runs (or a local repeated-run harness) with no flake; a targeted stress reproduction forcing rapid delete+recreate cycles."
+      ],
+      "documentation_impact": [
+        "docs/security/SAFETY_INVARIANTS.md"
+      ]
+    },
+    {
+      "id": "E07-S06",
+      "title": "Windows inventory scan traversal test reliability",
+      "status": "planned",
+      "outcome": "Determine why cancellai-inventory's completeness::tests::ac1_a_fully_readable_tree_is_complete and scan::tests::ac1_one_traversal_visits_every_directory_exactly_once fail on Windows CI (observed 2026-08-31, the first time the Windows quality job in rust.yml ever actually reached these tests - an unrelated pre-existing clippy::large_enum_variant failure had aborted that job before test execution since at least 2026-08-29), and bring cancellai-inventory to genuine, verified Windows parity or document the gap explicitly.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E04-S02",
+        "E04-S03"
+      ],
+      "acceptance_criteria": [
+        "Root cause identified: a path-separator, symlink/junction-detection, or traversal-count assumption in scan_scope/derive_completeness that does not hold on Windows.",
+        "scan_scope/derive_completeness produce the same documented Complete/Partial/Unknown classification and traversal counters (directories_visited, paths_observed) on Windows as on macOS/Linux for the same fixture tree, or the platform difference is explicitly documented in PLATFORM_MODEL.md as a known, accepted Windows limitation rather than silently left failing."
+      ],
+      "safety_obligations": [
+        "SI-008",
+        "SI-009"
+      ],
+      "verification": [
+        "quality (windows-latest) in rust.yml green across repeated runs."
+      ],
+      "documentation_impact": [
+        "docs/architecture/PLATFORM_MODEL.md"
+      ]
     }
   ]
 }
