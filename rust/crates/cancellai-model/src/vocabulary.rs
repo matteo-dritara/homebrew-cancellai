@@ -92,6 +92,38 @@ pub enum IntegrityState {
     Unknown,
 }
 
+/// How disposable an artifact is (`docs/architecture/DOMAIN_MODEL.md` "Risk classes").
+/// Declaration order is deliberately the documented disposability progression (`R0_DISPOSABLE`
+/// least sensitive .. `R5_PROTECTED` most), matching `AuthorityLevel`/`ProviderTrust`'s own
+/// "declaration order is the meaning" convention. DOMAIN_MODEL.md is explicit that "Risk class
+/// is not itself permission" - nothing here grants authority on its own; a caller still maps a
+/// `RiskClass` to an `AuthorityLevel` ceiling as its own named policy decision (E06,
+/// `docs/adrs/0016-rust-artifact-risk-classification.md`), the same way `effective_authority`
+/// already treats `artifact_ceiling` as caller-supplied rather than inventing the mapping here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RiskClass {
+    R0Disposable,
+    R1Rebuildable,
+    R2Recoverable,
+    R3Resumable,
+    R4Sensitive,
+    R5Protected,
+}
+
+/// Where an artifact currently sits in cancellAI's own handling lifecycle
+/// (`docs/architecture/DOMAIN_MODEL.md` "Lifecycle axes" / Residency). Independent of the
+/// other lifecycle axes, same as `ActivityState`/`ProtectionState`/`IntegrityState`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResidencyState {
+    Hot,
+    Cold,
+    Archived,
+    Quarantined,
+    Purged,
+}
+
 /// A minimal stand-in for `docs/architecture/DOMAIN_MODEL.md`'s full `ProviderRoot`
 /// (`RootId`, `ProviderId`, `Origin`, `FingerprintEvidence[]`, `KnowledgeConfidence`,
 /// `MutationEligible`, `CapabilitySnapshot`). Real provider-root fingerprinting is a provider
@@ -128,6 +160,15 @@ pub enum ProviderTrust {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn risk_class_ordering_matches_the_documented_disposability_progression() {
+        assert!(RiskClass::R0Disposable < RiskClass::R1Rebuildable);
+        assert!(RiskClass::R1Rebuildable < RiskClass::R2Recoverable);
+        assert!(RiskClass::R2Recoverable < RiskClass::R3Resumable);
+        assert!(RiskClass::R3Resumable < RiskClass::R4Sensitive);
+        assert!(RiskClass::R4Sensitive < RiskClass::R5Protected);
+    }
 
     #[test]
     fn provider_trust_ordering_matches_the_documented_maximum_authority_progression() {

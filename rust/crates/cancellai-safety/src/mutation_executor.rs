@@ -167,6 +167,26 @@ pub fn execute_all(
         .collect()
 }
 
+/// Executes `plan` against `target` using the real, OS-backed
+/// [`cancellai_platform::SystemIdentityObserver`]/[`cancellai_platform::mutation::
+/// SystemMutationExecutor`] - the one place outside this file allowed to reach a
+/// mutation-capable executor at all, per `scripts/check_mutation_boundary.py` (SI-019).
+/// `cancellai-cli` (E06-S01) is this function's reason for existing: a production caller that
+/// needs `clean` to perform a real deletion cannot itself name `SystemMutationExecutor` (the
+/// boundary check forbids referencing it - or calling `.mutate(` at all - from any file but
+/// this one and `cancellai-platform/src/mutation.rs`), so it calls this wrapper instead of
+/// [`execute`] directly. Test code continues to use [`execute`]/[`execute_all`] with
+/// [`cancellai_platform::mutation::SyntheticMutationExecutor`], never this function - a real
+/// filesystem mutation in a unit test would defeat the point of the synthetic seam.
+pub fn execute_with_system_capabilities(plan: &SealedPlan, target: &BoundedPath) -> ActionResult {
+    execute(
+        plan,
+        target,
+        &cancellai_platform::SystemIdentityObserver,
+        &cancellai_platform::mutation::SystemMutationExecutor,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

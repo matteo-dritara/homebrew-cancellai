@@ -723,7 +723,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S01 - Rust CLI contract parity
 
-**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E05-S03, E05-S04 | **Safety obligations:** SI-007
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E05-S03, E05-S04 | **Safety obligations:** SI-007
 
 **Outcome.** Implement status/inspect/plan/clean/configure equivalents against the new engine without TUI concerns.
 

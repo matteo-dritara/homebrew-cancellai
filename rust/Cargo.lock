@@ -15,6 +15,7 @@ dependencies = [
  "cancellai-provider-codex",
  "cancellai-safety",
  "cancellai-store",
+ "serde",
  "serde_json",
 ]
 
@@ -60,7 +61,12 @@ name = "cancellai-policy"
 version = "0.1.0"
 dependencies = [
  "cancellai-model",
+ "cancellai-platform",
+ "cancellai-provider-api",
+ "cancellai-provider-claude",
+ "cancellai-provider-codex",
  "cancellai-safety",
+ "serde_json",
 ]
 
 [[package]]

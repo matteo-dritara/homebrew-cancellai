@@ -43,6 +43,7 @@ cancellAI treats documentation as part of the executable product system. This pa
 - [development/REPOSITORY_GOVERNANCE.md](development/REPOSITORY_GOVERNANCE.md) - GitHub rulesets, Actions permissions, tag/release controls, and settings drift policy.
 - [RELEASING.md](RELEASING.md) - the release runbook and versioning scheme.
 - [CLI.md](CLI.md) - generated command reference for the current Python CLI.
+- [CLI_RUST.md](CLI_RUST.md) - hand-maintained command reference for the target-engine Rust CLI (beta, E06).
 
 ## Evidence, research, and decisions
 

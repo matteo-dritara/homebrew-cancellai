@@ -12,7 +12,7 @@
     {
       "id": "E06-S01",
       "title": "Rust CLI contract parity",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Implement status/inspect/plan/clean/configure equivalents against the new engine without TUI concerns.",
       "change_risk": "CR3",
       "dependencies": [

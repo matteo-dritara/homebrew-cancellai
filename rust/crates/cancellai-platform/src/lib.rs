@@ -21,7 +21,11 @@
 //! implementation changes the filesystem (SI-019). E04-S01 adds a sixth,
 //! [`AllocationObserver`], PLATFORM_MODEL.md's "logical and allocated-size observation" -
 //! kept distinct from `FsObserver`'s logical `len` so a sparse/compressed/cloned file's
-//! reclaim estimate is never silently assumed equal to its logical size.
+//! reclaim estimate is never silently assumed equal to its logical size. E06-S01 adds a
+//! seventh, [`ProcessObserver`] (ported from `cancellai.py`'s `active_processes`): whether a
+//! provider process might currently be writing to a session `clean` is about to delete -
+//! never itself the sole safety control, but a fact `cancellai-policy`'s `ActivityState`
+//! classification cannot honestly skip.
 //!
 //! `mutation::SystemMutationExecutor` (the concrete, real-syscall implementation) is
 //! deliberately *not* re-exported at this crate's root the way every other capability's
@@ -42,6 +46,7 @@ pub mod fs_observer;
 pub mod identity;
 pub mod mutation;
 pub mod path_resolver;
+pub mod process;
 pub mod snapshot;
 
 pub use allocation::{
@@ -55,4 +60,7 @@ pub use identity::{
     SystemIdentityObserver,
 };
 pub use path_resolver::{PathResolver, SyntheticPathResolver, SystemPathResolver};
+pub use process::{
+    ProcessObservation, ProcessObserver, SyntheticProcessObserver, SystemProcessObserver,
+};
 pub use snapshot::{Snapshot, build_snapshot};

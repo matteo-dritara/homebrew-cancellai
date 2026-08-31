@@ -1,0 +1,194 @@
+# Evidence Packet - E06-S01
+
+- Commit/PR: pending (this work item)
+- Executor: Claude
+- Independent verifier: Codex (pending, epic-scoped review of E06)
+- Change Risk: CR3
+- Spec version/commit: `rust/crates/cancellai-cli/*` (new command surface),
+  `rust/crates/cancellai-policy/*` (new - was an empty skeleton), `rust/crates/cancellai-model/
+  src/{agent_artifact,action,evidence}.rs` and `vocabulary.rs` additions (`RiskClass`,
+  `ResidencyState`, `AgentArtifact`, `Action`), `rust/crates/cancellai-platform/src/process.rs`
+  (new `ProcessObserver` seam), `rust/crates/cancellai-safety/src/mutation_executor.rs`
+  (`execute_with_system_capabilities` addition), `docs/adrs/0016-...md` (new),
+  `docs/CLI_RUST.md` (new) as added in this change
+
+## Outcome
+
+PASS
+
+## Scope
+
+Implements the first real `cancellai-cli` command surface (`status`/`inspect`/`plan`/`clean`/
+`configure`/`version`) against the Rust engine, per the story's outcome. The generated brief
+undersells this story's real size: none of the glue between "provider adapters discover
+sessions" (E05) and "the safety kernel can execute a sealed plan" (E03) existed yet -
+`AgentArtifact`/`RiskClass`/`Action` were not defined as Rust types, `cancellai-policy` was an
+empty skeleton, and no code anywhere connected `cancellai-inventory`/the provider adapters to
+`cancellai-safety`. `docs/architecture/DOMAIN_MODEL.md`'s own `AgentArtifact` section and
+`cancellai-safety::authority`'s module docs both say explicitly that this classification
+("deriving a ceiling from `RiskClass` is a classification decision this story does not invent")
+was left for whichever story first has the provider/policy knowledge to make it - E06-S01 is
+that story, not scope creep beyond it (`docs/development/WORK_ITEM_MODEL.md` "Story changes
+during implementation": the AC was not wrong, the implementation was simply missing, and the
+architecture was already specified).
+
+Three additions to already-`done` epics were required and are disclosed here rather than
+silently expanded elsewhere:
+
+1. **`cancellai-platform::process`** (`ProcessObserver`/`SystemProcessObserver`/
+   `SyntheticProcessObserver`) - ported from `cancellai.py`'s `active_processes`. Without it,
+   `clean` would have had to either skip the "is a provider process currently writing this
+   artifact" check entirely (a real safety regression versus the Python reference) or fake
+   `ActivityState::Idle`/`Stale` from mtime alone, which cannot rule out an actively-appending
+   process. Read-only OS capability, same seam pattern as `Clock`/`FsObserver`.
+2. **`cancellai-safety::execute_with_system_capabilities`** - a thin, boundary-compliant
+   production entry point. `scripts/check_mutation_boundary.py` (SI-019) statically forbids any
+   file but `cancellai-platform/src/mutation.rs` and `cancellai-safety/src/mutation_executor.rs`
+   from referencing `SystemMutationExecutor` or calling `.mutate(` at all - `cancellai-cli`
+   could not construct one itself and stay compliant. This wrapper hardwires the real
+   `SystemIdentityObserver`/`SystemMutationExecutor` inside the one file already allowed to
+   reference them; it adds no new authority path (still calls the existing, unchanged
+   `execute`).
+3. **`RiskClass`/`ResidencyState`/`AgentArtifact`/`Action`/`Evidence` types in
+   `cancellai-model`** - the domain types DOMAIN_MODEL.md already specifies but no story had
+   built yet.
+
+**Deliberately not ported** (disclosed, not silent): `--aggressive` (legacy/cache category
+widening - `cancellai-policy::retention`'s own module doc names this explicitly; omitting a
+*widening* flag is fail-closed, never a superset of what Python would delete), `status
+--paths/--coverage/--top`, `clean --keep-claude-history`/`--verbose`. `docs/CLI_RUST.md`
+tracks this list so it is not lost.
+
+## Key design decision: `clean` deletes, it does not quarantine
+
+`cancellai-safety::mutation_executor::execute` implements exactly one destructive operation
+today (`ActionClass::Delete` on a plain file); `Quarantine` has no OS-primitive wiring and no
+destination field on `SealedPlan` yet. Given that constraint, capping ordinary sessions'
+`authority_ceiling` at `AuthorityLevel::Quarantine` (the "safer-looking" choice) would make
+`clean` permanently unable to do anything at all, since `effective_authority`'s monotonic
+minimum can never then reach `Govern` (`minimum_authority_for(Delete)`). This is recorded as
+[ADR-0016](../../../docs/adrs/0016-rust-artifact-risk-classification.md), including why C-04
+("quarantine before purge") does not mandate `Quarantine` here (quarantine is not *technically
+available* in this build) and what changes once a future story adds it.
+
+## Acceptance Criteria Evidence
+
+| AC | Evidence | Result |
+| --- | --- | --- |
+| AC1 - Read-only default is explicit and no flag implies clean | `main.rs::split_command`: no subcommand, or a leading flag with no subcommand, always resolves to `status` - never `clean`. `status`/`inspect`/`plan` never call `cancellai_safety::execute_with_system_capabilities` at all (only `cmd_clean`'s own function does, and only after `--dry-run` is false and confirmation/`--yes` is affirmative). Test: `cli_behavior.rs::no_arguments_defaults_to_read_only_status_and_never_mutates`, `::plan_is_read_only_and_produces_a_schema_conformant_document`, `::clean_dry_run_never_deletes_anything`, `::clean_without_confirmation_or_dry_run_declines_and_deletes_nothing`. | PASS |
+| AC2 - JSON schemas match versioned contract | `documents.rs` builds the common envelope (`schema_version`, `document_type`, `generated_at`, `generator`) plus inventory/plan/result document shapes exactly as `docs/architecture/JSON_CONTRACTS.md` specifies, reusing `cancellai_model::{AgentArtifact, Action}`'s own `Serialize` impls for the safety-critical per-record envelopes. Test: `cli_behavior.rs::plan_is_read_only_and_produces_a_schema_conformant_document`, `::clean_yes_deletes_a_stale_unprotected_session_and_reports_it_in_the_result_document` assert `document_type`/`schema_version`/summary fields directly against a real running binary's output. Manually verified against the exact shape of `tests/fixtures/schemas/golden/{inventory,plan}.golden.json` (field names/nesting match; `scripts/check_schemas.py check` still passes unchanged since those golden files were not modified). | PASS |
+| AC3 - Exit codes match the documented taxonomy | `cancellai_model::ErrorCategory::exit_code()` (already built at E02-S03) is the single source of truth every command path returns through: 2 for invalid/ambiguous input (`invalid_input`), 4 for incomplete-scan/safety-block, 3 for a real mutation failure, 1 for a declined confirmation, 0 for success. Test: `cli_behavior.rs::an_unrecognized_flag_is_refused_with_exit_code_2_and_never_partially_runs`, `::clean_json_without_yes_or_dry_run_is_refused_before_touching_anything` (both assert exit 2), `::clean_without_confirmation_or_dry_run_declines_and_deletes_nothing` (asserts exit 1). | PASS |
+
+## Safety Evidence
+
+| Invariant | Counterexample tested | Evidence | Result |
+| --- | --- | --- | --- |
+| SI-007 (ambiguous CLI never escalates) | Unrecognized flag; `clean --json` with neither `--yes` nor `--dry-run` (an automation caller that did not state destructive intent explicitly) | `cli_behavior.rs::an_unrecognized_flag_is_refused_with_exit_code_2_and_never_partially_runs`, `::clean_json_without_yes_or_dry_run_is_refused_before_touching_anything` - both refuse (exit 2) before touching the filesystem, file still exists afterward | PASS |
+| SI-008/SI-009 (incomplete scan/missing evidence never authorizes) | Claude's `projects/` present but structurally unavailable (symlink) is reported `scan_complete=false` and surfaces `IncompleteInventory` (exit 4) from `status`/`inspect`/`plan`, not silently treated as "no sessions." Session mtime unreadable -> `IntegrityState::Unknown` -> `lifecycle_ceiling` collapses to `Recommend` (< `Govern`) | `cancellai-policy::retention::tests` (`a_missing_provider_root_is_a_known_empty_scan_not_a_withheld_one` distinguishes "not installed" from "structurally broken"); `resolve_claude`'s `SessionDiscoveryScope::Unavailable` branch | PASS |
+| A live provider process must block deletion (mirrors Python's `active_processes`/`--allow-running`, not a numbered SI but directly required for `clean` to be honest about SI-008/SI-009's spirit) | A `SyntheticProcessObserver` reporting `claude` running, and separately an *incomplete* process probe (probe itself failed) | `retention::tests::a_running_provider_process_blocks_every_action_for_that_tool_even_when_stale`, `::an_incomplete_process_probe_fails_closed_exactly_like_a_running_process` - both produce `Observe`-only actions, never `Delete` | PASS |
+| Protected-name barrier (SI-006) | A path the provider reports `ProtectionOutcome::Protected` for, even though it is stale and unpinned | `retention::tests::a_protected_name_is_never_a_deletion_candidate_even_if_stale_and_unpinned` - `authority_ceiling` stays `Observe`, action is `Observe` | PASS |
+| `keep_latest` protects regardless of protected-name/process state (per-tool, per-session/tree) | Two sessions, one more recently modified than the other, `keep_latest=1` | `retention::tests::keep_latest_protects_the_most_recently_modified_sessions_from_deletion` (Claude), `::codex_keep_latest_protects_a_whole_subagent_tree_even_when_the_root_looks_old` (Codex subagent tree - a recent child protects an old-looking root, matching `cancellai.py::choose_codex_old_sessions`) | PASS |
+| SI-019/SI-020 (single mutation boundary, irreversible actions stronger-gated) | `clean --yes` end-to-end through `execute_with_system_capabilities` -> `cancellai_safety::execute` (unchanged) -> real `SystemMutationExecutor` | `cli_behavior.rs::clean_yes_deletes_a_stale_unprotected_session_and_reports_it_in_the_result_document` (asserts both files are actually gone from disk afterward); `scripts/check_mutation_boundary.py check` still passes (only `mutation.rs`/`mutation_executor.rs` reference the capability) | PASS |
+| SI-021/SI-022 (trust cannot self-assign) | `cancellai-policy::trust::builtin_provider_trust` goes through the real `TrustedTier::promote` gate (not a bare `ProviderTrust::BuiltinVerified` construction, which the type system does not even allow outside `cancellai-safety`) | `trust::tests::builtin_provider_trust_reaches_the_top_tier`; `cargo check` itself proves no bypass compiles (the gate is a private-field type, not a runtime check) | PASS |
+
+## Verification Commands
+
+```text
+# Rust workspace (from rust/)
+cargo fmt --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo check --workspace --all-targets
+cargo test --workspace
+cargo deny check
+
+# Python governance (repository-wide)
+python3 scripts/check_docs.py check
+python3 scripts/check_mutation_boundary.py check
+python3 scripts/project_os.py check
+```
+
+All green. `cargo test --workspace` includes 3 new unit tests (`cancellai-cli::timestamp`), 10
+new integration tests (`cancellai-cli/tests/cli_behavior.rs`, spawning the real built binary
+against isolated synthetic `$HOME`/`CLAUDE_CONFIG_DIR`/`CODEX_HOME` directories - never the real
+user's provider state, per AGENTS.md), 9 new tests in `cancellai-model` (up from the prior 4:
+`RiskClass` ordering, `AgentArtifact`/`Action`/`Evidence` serialization), 8 new tests in
+`cancellai-policy` (all of it new), 3 new tests in `cancellai-platform::process`. No existing
+test in any of the 5 pre-existing epics' crates was modified; all continue passing unchanged.
+
+**Manual verification beyond the automated suite** (not committed as tests, recorded here per
+the evidence hierarchy's "manual claim" tier): ran the built binary directly against a synthetic
+`$HOME` for every command (`status`, `plan --json`, `clean --dry-run`, `clean --yes --json`,
+`configure --claude-retention`, `version`, several invalid-input cases) and inspected output by
+hand before writing the equivalent automated test - this is how the "a running `claude` process
+on the development machine correctly blocks deletion" behavior was discovered to be *correct*
+or first appeared to be a bug (real `ps` on the development machine reports actual `claude`/
+`codex`-named processes - i.e. this very agent session and an unrelated running Codex instance
+- which is exactly the fail-closed behavior SI-008/SI-009's spirit requires, not a defect).
+
+## Compatibility
+
+- `SystemProcessObserver` shells to `ps -axo pid=,comm=` (Unix). On a platform where `ps`/
+  `/bin/ps` do not exist (Windows), `Command::spawn` fails and the observer reports
+  `complete: false` - fails closed to "treat every named process as possibly running," not a
+  crash or a false negative. No explicit `#[cfg(windows)]` branch was needed for this to be
+  honest; it falls out of the existing error handling. Real Windows process enumeration remains
+  future work (E07, matching `SystemIdentityObserver`'s own documented gap).
+- `mutation_executor::execute` (unchanged) only performs `Delete` for `FileKind::File` -
+  directories (e.g. a Claude session's companion payload directory) are never deletion targets
+  in this build; `cancellai-policy::retention` only ever proposes `Delete` for the session
+  `.jsonl` file itself, consistent with what the executor can actually confirm-and-delete
+  safely. A companion directory left behind after its `.jsonl` sibling is deleted is a disclosed
+  gap versus `cancellai.py` (which deletes the whole tree), not silently claimed as covered.
+- `tests/fixtures/schemas/golden/*.json` were not modified; `scripts/check_schemas.py check`
+  passes unchanged.
+
+## Performance / operability
+
+- Every integration test uses isolated temp directories with at most a handful of synthetic
+  files; `cargo test --workspace` (whole repository) completes in a few seconds.
+- `SystemProcessObserver` bounds its `ps` call to 5 seconds (matching `cancellai.py`'s own
+  `subprocess.run(..., timeout=5)`), hand-rolled via `Child::try_wait`/`kill` polling since no
+  process-timeout dependency exists in this workspace (AGENTS.md: no dependency merely to
+  reduce implementation effort).
+
+## Documentation updated
+
+- `docs/CLI_RUST.md` (new) - the Rust CLI's own command/flag/exit-code reference. `docs/CLI.md`
+  (the story's literally declared documentation impact) was deliberately **not** touched:
+  AGENTS.md states it "remains generated from the current Python CLI until the Rust CLI
+  generator replaces it through an explicit story/ADR," and no such story/ADR exists. Creating a
+  separate, clearly-scoped document satisfies the underlying need (a CLI reference for what this
+  story built) without violating that carve-out.
+- `docs/INDEX.md` - links the new `CLI_RUST.md`.
+- `docs/adrs/0016-rust-artifact-risk-classification.md` (new) - the `RiskClass`/authority
+  ceiling mapping decision.
+- Module-level doc comments throughout the new/changed source files explain the rationale
+  inline (matching this codebase's established convention), most notably
+  `cancellai-policy::retention`'s module doc and `cancellai-safety::mutation_executor`'s
+  `execute_with_system_capabilities` doc.
+
+## Residual risks
+
+- **No quarantine/undo** for anything `clean` deletes - permanent, matching `cancellai.py`
+  today, disclosed in ADR-0016 and `docs/CLI_RUST.md`. A future story adding real quarantine
+  support to `cancellai-safety` should revisit ADR-0016's mapping.
+- **`--aggressive` and several minor Python CLI flags are not ported** (see Scope) - a tracked
+  parity gap, not attempted to be silently covered.
+- **Companion payload directories are never deleted** by `clean` (only the session `.jsonl`
+  file itself) - `mutation_executor` has no directory-tree deletion path yet; disclosed above.
+- **No golden CLI snapshot was run on Windows/Linux CI as part of this evidence** - the
+  integration tests are OS-agnostic (temp dirs, no hardcoded paths, `HOME`/`CLAUDE_CONFIG_DIR`/
+  `CODEX_HOME` env overrides) and will run automatically once CI's existing three-OS matrix
+  (`rust.yml`, ADR-0015) picks up this commit; this evidence packet was produced on macOS only,
+  matching the development machine.
+- **`SystemProcessObserver`'s exact-name matching has real false-negative potential** (a
+  differently-named binary, a containerized `ps` that cannot see the host's `claude`/`codex`
+  process) - explicitly documented in that module's own docs as "never the sole safety
+  control," the same caveat `cancellai.py`'s own `active_processes` carries.
+- **E06-S01's own review has not happened yet** - per `AGENT_PROTOCOL.md`, epic-scoped review
+  begins once every story in E06 is `ready_for_review`; this is the first of four.
+
+## Verifier verdict
+
+PENDING - epic E06 review runs once every story in E06 is `ready_for_review` (at most twice per
+epic, per ADR-0014).

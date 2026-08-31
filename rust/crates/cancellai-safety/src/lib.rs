@@ -33,7 +33,7 @@ pub use authority::{
     AuthorityConstraint, AuthorityInputs, EffectiveAuthority, compute_effective_authority,
     effective_authority,
 };
-pub use mutation_executor::{ActionResult, execute, execute_all};
+pub use mutation_executor::{ActionResult, execute, execute_all, execute_with_system_capabilities};
 pub use root_capability::{ApprovedRoot, BoundaryError, BoundedPath};
 pub use sealed_plan::{RevalidationOutcome, SealedPlan, revalidate};
 pub use trust_promotion::{TrustPromotionError, TrustPromotionEvidence, TrustedTier};

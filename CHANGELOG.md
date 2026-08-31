@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- E06-S01: `cancellai-cli` gains its first real command surface -
+  `status`/`inspect`/`plan`/`clean`/`configure`/`version` against the Rust engine
+  (`docs/CLI_RUST.md`). `status` is the read-only default (no subcommand or flag ever implies
+  `clean`); `clean` is the only mutating command, gated by `--dry-run`/`--yes`/interactive
+  confirmation and routed exclusively through `cancellai-safety`'s single mutation boundary.
+  This is a beta command surface, not yet the canonical engine (`docs/development/
+  MIGRATION_PYTHON_RUST.md`) - `cancellai.py` remains the shipping reference until E06 closes.
+
 ### Fixed
 
 - `directory_size`/`safe_lstat_size` no longer count a symlink's own `lstat().st_size` toward
