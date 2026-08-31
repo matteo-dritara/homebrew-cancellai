@@ -9,8 +9,8 @@ Epics: **20** | Stories: **92**
 ## Story status
 
 - `done`: 33
-- `planned`: 58
-- `ready_for_review`: 1
+- `planned`: 57
+- `ready_for_review`: 2
 
 ## Change risk distribution
 
@@ -27,3 +27,4 @@ Epics: **20** | Stories: **92**
 ## Awaiting independent review
 
 - **E06-S01** - Rust CLI contract parity (CR3)
+- **E06-S02** - Differential parity gate (CR2)

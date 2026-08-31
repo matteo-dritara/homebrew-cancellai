@@ -164,14 +164,15 @@ pub fn resolve_claude(
 
     let discovered = discover_claude_sessions(root);
     if discovered.scope == SessionDiscoveryScope::Unavailable {
-        return ProviderResolution {
-            provider_id: "claude-code",
-            artifacts: Vec::new(),
-            scan_complete: false,
-            scan_incomplete_reason: Some(
-                "projects/ is missing or is a symlink; no sessions could be enumerated".to_string(),
-            ),
-        };
+        // A `claude_home` that exists but has no `projects/` (or a symlinked one) is a
+        // structurally empty install, not a failed observation - `cancellai.py`'s own
+        // `build_plan` does not withhold the tool in this case either (E06-S02 differential
+        // gate finding: an earlier version of this function treated `Unavailable` the same as
+        // a mid-scan companion-listing failure, which withheld the whole tool for a fixture
+        // Python reports zero-candidates-but-not-withheld for). `discover_claude_sessions`
+        // already refuses to follow a symlinked `projects/` (SI-003), so there is no
+        // discoverable evidence being silently dropped here - only "nothing to report."
+        return empty();
     }
 
     let liveness = process.observe(&["claude"]);
@@ -237,6 +238,33 @@ pub fn resolve_claude(
             )
         })
         .collect();
+
+    // SI-008/SI-009: a companion payload directory that could not be fully listed makes the
+    // *whole tool's* scan partial, not merely that one session's evidence - `cancellai.py`'s
+    // own `build_plan` withholds every candidate for a tool the instant any of its scan scopes
+    // is incomplete (`Plan.withheld`), never just the specific artifact whose evidence was
+    // degraded. Without this, two other, perfectly ordinary sessions in the same fixture would
+    // still be proposed for deletion even though this run could not prove the tool's directory
+    // tree was fully observed - exactly the "absence of evidence read as absence of active/
+    // protected data" mistake SI-009 exists to prevent. Found via the E06-S02 differential
+    // parity gate diverging from the committed `claude-partial-tree` characterization.
+    if !discovered.degraded_companions.is_empty() {
+        return ProviderResolution {
+            provider_id: "claude-code",
+            artifacts,
+            scan_complete: false,
+            scan_incomplete_reason: Some(format!(
+                "{} companion payload director{} could not be fully listed; every action for \
+                 this tool is withheld until the scan can be re-observed complete",
+                discovered.degraded_companions.len(),
+                if discovered.degraded_companions.len() == 1 {
+                    "y"
+                } else {
+                    "ies"
+                }
+            )),
+        };
+    }
 
     ProviderResolution {
         provider_id: "claude-code",
@@ -510,9 +538,24 @@ pub fn build_actions(resolutions: &[ProviderResolution]) -> Vec<Action> {
     let delete_minimum = minimum_authority_for(ActionClass::Delete);
     resolutions
         .iter()
-        .flat_map(|resolution| resolution.artifacts.iter())
-        .map(|classified| {
+        .flat_map(|resolution| {
+            resolution
+                .artifacts
+                .iter()
+                .map(move |classified| (resolution, classified))
+        })
+        .map(|(resolution, classified)| {
             let target = classified.artifact.artifact_id.clone();
+            // SI-008/SI-009: an incomplete scan withholds every action for the whole tool, not
+            // only the specific artifact whose own evidence was degraded - see
+            // `resolve_claude`'s own module-doc note on why (E06-S02 differential gate finding).
+            if !resolution.scan_complete {
+                let reason = resolution
+                    .scan_incomplete_reason
+                    .clone()
+                    .unwrap_or_else(|| "provider scan was incomplete".to_string());
+                return observe_action(target, &classified.artifact.evidence_ids, &reason);
+            }
             if classified.artifact.activity_state != ActivityState::Stale {
                 return observe_action(
                     target,
@@ -840,6 +883,65 @@ mod tests {
                 .iter()
                 .all(|a| a.action_class == ActionClass::Observe),
             "a recently-touched child must protect its whole tree from deletion: {actions:?}"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_degraded_companion_withholds_every_action_for_the_whole_tool_not_only_its_own_session() {
+        use std::os::unix::fs::PermissionsExt;
+
+        // Mirrors `tests/fixtures/recipes.py::build_claude_partial_tree`: two ordinary, fully
+        // readable sessions plus a third whose companion payload directory cannot be listed.
+        // E06-S02's differential parity gate found this scenario diverging from
+        // `claude-partial-tree`'s committed characterization (Python withholds the whole tool;
+        // an earlier version of this function only downgraded the one degraded session).
+        let dir = tree(Path::new(""), "degraded-companion");
+        let project = dir.join("projects/proj-c");
+        std::fs::create_dir_all(&project).unwrap();
+        let ok_a = project.join("11111111-1111-4111-8111-111111111111.jsonl");
+        let ok_b = project.join("22222222-2222-4222-8222-222222222222.jsonl");
+        std::fs::write(&ok_a, "{}").unwrap();
+        std::fs::write(&ok_b, "{}").unwrap();
+        filetime_set(&ok_a, 0);
+        filetime_set(&ok_b, 0);
+
+        let degraded_id = "33333333-3333-4333-8333-333333333333";
+        let degraded_session = project.join(format!("{degraded_id}.jsonl"));
+        std::fs::write(&degraded_session, "{}").unwrap();
+        filetime_set(&degraded_session, 0);
+        let companion = project.join(degraded_id);
+        std::fs::create_dir_all(companion.join("tool-results")).unwrap();
+        std::fs::write(companion.join("tool-results/large.txt"), "x").unwrap();
+        std::fs::set_permissions(&companion, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+        let policy = RetentionPolicy {
+            days: 7,
+            keep_latest: 0,
+            tool: ToolScope::Claude,
+            allow_running: false,
+        };
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
+        let clock = frozen_now();
+        let trust = crate::trust::builtin_provider_trust();
+
+        let resolution = resolve_claude(&dir, clear, &policy, &process, &clock, trust);
+
+        std::fs::set_permissions(&companion, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        assert!(
+            !resolution.scan_complete,
+            "a companion directory that could not be listed must mark the whole scan incomplete"
+        );
+        let actions = build_actions(std::slice::from_ref(&resolution));
+        assert!(
+            actions
+                .iter()
+                .all(|a| a.action_class == ActionClass::Observe),
+            "every action for the tool must be withheld, including the two ordinary sessions \
+             whose own evidence was perfectly readable: {actions:?}"
         );
 
         std::fs::remove_dir_all(&dir).ok();

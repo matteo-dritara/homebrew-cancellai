@@ -37,7 +37,7 @@
     {
       "id": "E06-S02",
       "title": "Differential parity gate",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Run Python and Rust over the full normative fixture corpus in CI.",
       "change_risk": "CR2",
       "dependencies": [

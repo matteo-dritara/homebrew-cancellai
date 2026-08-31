@@ -743,7 +743,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S02 - Differential parity gate
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E06-S01, E01-S05 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E06-S01, E01-S05 | **Safety obligations:** none
 
 **Outcome.** Run Python and Rust over the full normative fixture corpus in CI.
 

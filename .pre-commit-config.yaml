@@ -19,7 +19,7 @@ repos:
     hooks:
       - id: mypy
         args: [--strict]
-        files: ^(cancellai\.py|scripts/(gen_docs|project_os|check_docs|check_workflows|check_process|release|check_fixtures|check_schemas|characterize|diff_harness|check_rust_workspace|check_mutation_boundary|check_provider_compatibility)\.py)$
+        files: ^(cancellai\.py|scripts/(gen_docs|project_os|check_docs|check_workflows|check_process|release|check_fixtures|check_schemas|characterize|diff_harness|check_rust_workspace|check_mutation_boundary|check_provider_compatibility|rust_python_parity)\.py)$
 
   - repo: local
     hooks:
@@ -98,6 +98,13 @@ repos:
         entry: python3 scripts/check_provider_compatibility.py check
         language: system
         files: ^(rust/crates/cancellai-(provider-(api|claude|codex)|cli)/(src|examples)/.*\.rs|docs/PROVIDERS\.md|scripts/check_provider_compatibility\.py)$
+        pass_filenames: false
+
+      - id: rust-python-parity-gate
+        name: Rust CLI and Python reference agree on the NORMATIVE fixture corpus
+        entry: python3 scripts/rust_python_parity.py check
+        language: system
+        files: ^(cancellai\.py|rust/crates/(cancellai-policy|cancellai-cli|cancellai-model|cancellai-platform|cancellai-provider-(claude|codex))/src/.*\.rs|tests/fixtures/(manifest\.json|recipes\.py|characterization/.*)|scripts/(rust_python_parity|characterize|check_fixtures)\.py)$
         pass_filenames: false
 
       - id: process-check

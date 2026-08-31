@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   confirmation and routed exclusively through `cancellai-safety`'s single mutation boundary.
   This is a beta command surface, not yet the canonical engine (`docs/development/
   MIGRATION_PYTHON_RUST.md`) - `cancellai.py` remains the shipping reference until E06 closes.
+- E06-S02: a differential parity gate (`scripts/rust_python_parity.py`) runs the Python
+  reference and the Rust CLI over the full `NORMATIVE` fixture corpus, comparing which
+  sessions each engine would delete. Wired into pre-commit/CI. Building it surfaced and fixed
+  two real E06-S01 defects: an incomplete companion-payload scan only withheld the one
+  affected session instead of the whole tool (SI-008/SI-009), and a Claude home with no
+  `projects/` directory was misreported as an incomplete scan instead of legitimately empty.
 
 ### Fixed
 

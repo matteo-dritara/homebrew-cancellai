@@ -50,6 +50,32 @@ Rust status/inspect/plan/clean semantics meet versioned CLI/JSON contracts. No T
 
 Every normative fixture runs Python and Rust. An unexplained semantic divergence blocks cutover. Intentional differences require accepted architecture/spec documentation.
 
+**E06-S02 implements the gate itself**: `scripts/rust_python_parity.py check` materializes
+every `NORMATIVE`-classified fixture (`scripts/characterize.py`'s `CLASSIFICATIONS`) once and
+runs `cancellai.py`'s `build_plan` and the built `cancellai-cli`'s `plan`/`inspect --json`
+against the same synthetic tree, then compares the set of session UUIDs each engine would
+delete plus whether the tool's scan was withheld. This compares at the semantic level both
+engines can actually express - `docs/architecture/JSON_CONTRACTS.md` documents are a
+target-engine-only contract `cancellai.py` was never changed to emit (see that document's own
+"Compatibility policy"), so `scripts/diff_harness.py`'s JSON_CONTRACTS-vs-JSON_CONTRACTS
+comparator is not the mechanism here; `rust_python_parity.py`'s own module doc explains why in
+full, including the one-day timing margin it applies to avoid a whole-second-vs-float
+timestamp-precision flake at an exact cutoff boundary (`cancellai-platform::Timestamp`'s
+documented whole-second granularity versus `cancellai.py`'s float `time.time()`). Wired into
+`.pre-commit-config.yaml` (`rust-python-parity-gate`) and `AGENTS.md`'s "Current Python checks"
+list, run via the `governance.yml` `pre-commit` CI job. `rust_python_parity.py self-test`
+proves the comparator itself can fail (an injected divergence in each of: extra candidate,
+missing candidate, withheld-flag mismatch) before trusting it to pass. An
+`INTENTIONAL_DIVERGENCES` allow-list exists in the script for a future accepted, cited
+divergence; it is empty today - all ten current `NORMATIVE` fixtures match exactly.
+
+Finding this gate immediately useful: running it against the just-implemented E06-S01 CLI
+surfaced two real defects before any review round, both fixed in the same change - an
+incomplete companion-payload scan only downgraded the one degraded session instead of
+withholding the whole tool (SI-008/SI-009), and a `claude_home` with no `projects/` directory
+was incorrectly treated as an incomplete scan rather than a legitimately empty one. Exactly the
+kind of cross-engine divergence this gate exists to catch before cutover, not after.
+
 ### M7 - Beta side-by-side
 
 Release candidate identifies engine/version clearly and preserves rollback. Local state migrations are reversible/rebuildable.
