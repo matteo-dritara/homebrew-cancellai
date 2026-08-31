@@ -73,6 +73,17 @@ Fingerprint evidence may include:
 
 A low-confidence custom root is inspection-only.
 
+E05-S03 implements this root-fingerprinting posture for Claude Code at
+`rust/crates/cancellai-provider-claude/src/fingerprint.rs`: `fingerprint_claude_root` ports
+`cancellai.py`'s `ROOT_MARKERS["claude"]`/`fingerprint_root` marker table and
+default/high/low/unknown confidence derivation. Unlike the Python reference, it takes
+"is this the default root" as an explicit caller-supplied argument rather than reading
+`CLAUDE_CONFIG_DIR`/`HOME` itself, keeping the fingerprinting function pure and
+synthetic-filesystem-testable - a documented, narrow improvement in shape, not a behavioral
+divergence. `RootConfidence::Unknown` maps to `SupportState::Unsupported` with an
+`AuthorityLevel::Observe` ceiling in `ClaudeProvider::capability` - AC3's "unknown layouts
+downgrade to inspection-only" (SI-004).
+
 ## Three integration levels
 
 ### Manifest-only
@@ -82,6 +93,23 @@ Declarative root/pattern/category knowledge. Appropriate for discovery/inventory
 ### Native adapter
 
 Code for session graphs, activity, project attribution, structured metadata, and richer compatibility checks.
+
+E05-S03 implements the Claude Code native adapter's discovery/classification/session-graph
+slice: `cancellai-provider-api::protection` (`canonical_name`/`protected_component`, shared
+across adapters) ports `cancellai.py`'s Unicode-canonical-caseless protected-name barrier -
+`rust/crates/cancellai-provider-claude/src/protected_names.rs` supplies Claude's own
+`CLAUDE_PROTECTED_NAMES` list (settings/keybindings/memory/skills/agents/commands/rules/
+workflows/output-styles/plugins), satisfying "memory/settings/plugin protected classes are
+explicit artifacts... with evidence" (this story's AC2). `session.rs` ports
+`discover_claude_sessions`: Claude's session relationships are a flat project → session
+grouping (no subagent tree, unlike Codex's rollout graph, E05-S04's own concern) - a session
+whose companion payload directory cannot be fully listed is still reported, marked in
+`degraded_companions` rather than silently dropped (SI-008/SI-009's "partial observation is
+never treated as absence", applied at this adapter's own layer since `cancellai-inventory`'s
+`ScopeCompleteness` is not yet wired to provider-adapter discovery - a documented residual).
+`rust/crates/cancellai-provider-claude/tests/claude_fixture_parity.rs` reproduces five of this
+corpus's `claude-*` fixtures by hand and asserts the adapter's output against the exact values
+the committed Python characterization records for each (AC1).
 
 ### Vendor-native integration
 

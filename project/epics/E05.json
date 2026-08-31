@@ -59,7 +59,7 @@
     {
       "id": "E05-S03",
       "title": "Claude reference adapter",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Port Claude discovery/classification/session relationships to Rust with version/layout fingerprinting.",
       "change_risk": "CR3",
       "dependencies": [

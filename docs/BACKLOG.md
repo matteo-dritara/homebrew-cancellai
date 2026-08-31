@@ -658,7 +658,7 @@ Implement capability-based provider integration and achieve Claude/Codex semanti
 
 ### E05-S03 - Claude reference adapter
 
-**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E05-S01 | **Safety obligations:** SI-001, SI-004
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E05-S01 | **Safety obligations:** SI-001, SI-004
 
 **Outcome.** Port Claude discovery/classification/session relationships to Rust with version/layout fingerprinting.
 

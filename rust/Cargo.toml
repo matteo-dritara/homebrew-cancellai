@@ -15,6 +15,10 @@ publish = false
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Provider-adapter protected-name comparison (cancellai-provider-api::protection, E05-S03)
+# needs real NFD decomposition to match cancellai.py's canonical_name - MIT OR Apache-2.0, on
+# the ADR-0015 license allow-list.
+unicode-normalization = "0.1"
 
 # ADR-0015: unsafe is forbidden workspace-wide by default. A future crate that genuinely
 # needs it (e.g. OS-specific identity/reparse-point handling in cancellai-platform, E07)
