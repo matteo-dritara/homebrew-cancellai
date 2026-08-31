@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-08-31
+
+### Changed
+
+- Epic E05 implemented the Provider API and Reference Adapters: a nine-capability
+  `ProviderCapabilities` contract (`cancellai-provider-api`) where capability absence is
+  explicit and never inferred from provider identity, and every response carries evidence and
+  confidence by construction; Built-in Verified/Community Verified/Local Custom/Untrusted
+  provider trust wired into the Effective Authority lattice as its own constraint, gated by
+  `TrustedTier`, an opaque type whose only public constructors are the safe `Untrusted` default
+  and a checked, evidence-requiring promotion - closing the `ProviderTrustAuthority` gap
+  `docs/architecture/DOMAIN_MODEL.md` had called out since E03-S04; Claude Code and Codex CLI
+  reference adapters porting `cancellai.py`'s discovery/classification/session-relationship
+  logic to Rust (root fingerprinting, the Unicode-canonical-caseless protected-name barrier,
+  session/subagent-graph discovery, native-delete capability detection), each checked against
+  the committed Python characterization corpus by reproducing its fixtures directly; and a
+  generated, per-capability reference-provider compatibility matrix in `docs/PROVIDERS.md`. An
+  independent review round found and this epic's own repair cycle closed a CR4 defect before
+  close: the first version of provider trust typed its authority-lattice input as a bare,
+  publicly-constructible enum, so an external caller could self-assign the highest trust tier
+  with no promotion evidence at all - the exact self-assignment SI-021 prohibits. `cancellai.py`'s
+  own runtime behavior is unchanged; nothing in this epic is wired into a shipping CLI surface
+  yet.
+
 ## [1.5.0] - 2026-08-29
 
 ### Changed

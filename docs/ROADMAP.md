@@ -38,7 +38,7 @@ Build and prove the provider-neutral Rust engine, formal safety kernel, inventor
 - **E02 - Rust Workspace Bootstrap** (`done`): Establish the target Rust workspace, coding standards, and build factory without changing user-visible behavior.
 - **E03 - Formal Safety Kernel** (`done`): Implement constitutional safety invariants as a dedicated, testable Rust authority boundary.
 - **E04 - Single-Pass Inventory Engine** (`done`): Build a fast, evidence-rich inventory that scans once and never equates unknown with safe.
-- **E05 - Provider API and Reference Adapters** (`in_progress`): Implement capability-based provider integration and achieve Claude/Codex semantic parity.
+- **E05 - Provider API and Reference Adapters** (`done`): Implement capability-based provider integration and achieve Claude/Codex semantic parity.
 - **E06 - Rust CLI Parity and Cutover** (`planned`): Make Rust the canonical engine only after observable parity, migration, and rollback evidence.
 
 ## P2 - Atlas

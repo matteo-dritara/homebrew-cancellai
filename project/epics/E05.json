@@ -7,7 +7,7 @@
   "dependencies": [
     "E04"
   ],
-  "status": "in_progress",
+  "status": "done",
   "stories": [
     {
       "id": "E05-S01",
@@ -33,7 +33,7 @@
     {
       "id": "E05-S02",
       "title": "Provider trust enforcement",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Implement Built-in Verified, Community Verified, Local Custom, and Untrusted trust levels as authority inputs.",
       "change_risk": "CR4",
       "dependencies": [

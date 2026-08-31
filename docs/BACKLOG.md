@@ -613,7 +613,7 @@ Build a fast, evidence-rich inventory that scans once and never equates unknown 
 
 ## E05 - Provider API and Reference Adapters
 
-**Phase:** `P1` | **Status:** `in_progress` | **Epic dependencies:** E04
+**Phase:** `P1` | **Status:** `done` | **Epic dependencies:** E04
 
 Implement capability-based provider integration and achieve Claude/Codex semantic parity.
 
@@ -638,7 +638,7 @@ Implement capability-based provider integration and achieve Claude/Codex semanti
 
 ### E05-S02 - Provider trust enforcement
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E05-S01, E03-S04 | **Safety obligations:** SI-021, SI-022
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** E05-S01, E03-S04 | **Safety obligations:** SI-021, SI-022
 
 **Outcome.** Implement Built-in Verified, Community Verified, Local Custom, and Untrusted trust levels as authority inputs.
 

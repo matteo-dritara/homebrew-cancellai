@@ -8,9 +8,8 @@ Epics: **20** | Stories: **90**
 
 ## Story status
 
-- `done`: 32
+- `done`: 33
 - `planned`: 57
-- `ready_for_review`: 1
 
 ## Change risk distribution
 
@@ -26,4 +25,4 @@ Epics: **20** | Stories: **90**
 
 ## Awaiting independent review
 
-- **E05-S02** - Provider trust enforcement (CR4)
+- none
