@@ -782,7 +782,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S04 - Canonical engine switch
 
-**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E06-S03 | **Safety obligations:** SI-019
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E06-S03 | **Safety obligations:** SI-019
 
 **Outcome.** Promote Rust to stable only after functional, safety, compatibility, and operability gates pass.
 

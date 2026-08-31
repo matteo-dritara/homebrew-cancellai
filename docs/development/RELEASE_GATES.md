@@ -70,6 +70,51 @@ fabricated here.
 | CR3 | required | required | required | required | required | residual-risk summary |
 | CR4 | required | required + adversarial | required | required | required | required |
 
+## Rust cutover gate status (E06-S04)
+
+E06-S04's own outcome is "promote Rust to stable only after functional, safety, compatibility,
+and operability gates pass" - a gate, not a feature to implement. This section is the living
+checklist that gate is evaluated against; it is updated as later work closes a gap, not
+rewritten from scratch each time. As of E06-S03 (E06-S01/S02/S03 committed, `ready_for_review`,
+not yet independently verified):
+
+**G1 Functional - not ready.** Core `status`/`inspect`/`plan`/`clean`/`configure`/`version`
+surface exists with matching JSON schemas and exit-code taxonomy (E06-S01), and a differential
+gate confirms parity with the Python reference on the full `NORMATIVE` fixture corpus
+(E06-S02). Disclosed gaps, tracked in `docs/CLI_RUST.md`'s "Known gaps" section: no
+`--aggressive` (legacy/cache category widening), no `status --paths/--coverage/--top`, no
+`clean --keep-claude-history`/`--verbose`, no deletion of a session's companion payload
+directory (only the session file itself - `mutation_executor` has no directory-tree deletion
+path yet), no Codex-side incomplete-scan detection (a directory-read failure during rollout
+discovery is silently skipped rather than surfaced, unlike the Claude-side fix E06-S02 made -
+`cancellai-provider-codex`, E05-S04, pre-existing gap outside E06's own crates).
+
+**G2 Safety - not ready.** SI-007/SI-008/SI-009/SI-019/SI-020/SI-021/SI-022 are exercised by
+targeted unit/integration tests (E06-S01/S02 evidence packets). Missing for CR4: the
+independent verifier's own adversarial pass (this section, and every claim in it, is executor
+self-assessment - `AGENT_PROTOCOL.md` is explicit that a verifier does not treat executor
+tests as proof), and the owner-visible Safety Verdict itself, which this document cannot
+substitute for.
+
+**G3 Compatibility - not ready.** The new code has run `cargo test --workspace` locally
+(macOS) and is structured to be OS-agnostic (temp directories, no hardcoded paths), but has not
+yet been confirmed green on the full tier-1 CI matrix (`rust.yml`: macOS/Linux/Windows) as an
+actual CI run - only asserted to be compatible with it. `docs/PROVIDERS.md`'s generated
+compatibility matrix covers the provider adapters' own capabilities, not the CLI command
+surface E06-S01-S03 added.
+
+**G4 Operability - not ready.** No packaged installer exists (Epic E17 scope, `docs/RELEASING.md`
+"Target Rust release factory"); no performance/self-budget measurement exists for the CLI's
+own command paths (only `cancellai-inventory`'s scan performance is benchmarked,
+`RELEASE_GATES.md`'s own "Performance budget baseline" section above); no crash/recovery
+testing beyond what unit tests exercise.
+
+**Conclusion**: cutover is not recommended at this time. Closing E06-S04 (and E06 as a whole)
+requires this checklist to read "ready" against real evidence, an independent CR4 verifier
+pass, and the owner's own Safety Verdict acceptance - none of which the executor grants itself
+(`AGENT_PROTOCOL.md`: "an executor's work is finished at `ready_for_review`... it does not
+write its own Safety Verdict").
+
 ## Epic closure
 
 Closing an epic is what triggers a release (ADR-0014, PD-021). An epic may close when:

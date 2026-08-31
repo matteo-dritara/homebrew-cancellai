@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`rust/crates/cancellai-cli/tests/install_rollback.rs`): every read-only command, and even a
   real `clean`, touches nothing under `$HOME` outside the provider artifacts explicitly
   targeted.
+- E06-S04: records the Rust cutover gate checklist (`docs/development/RELEASE_GATES.md` "Rust
+  cutover gate status") and its current verdict - **not ready**; `cancellai.py` remains the
+  sole canonical, shipping engine. No user-visible behavior changed in this entry; it exists so
+  this file does not read, by omission, as though cutover had happened.
 
 ### Fixed
 

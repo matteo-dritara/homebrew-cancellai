@@ -81,7 +81,7 @@
     {
       "id": "E06-S04",
       "title": "Canonical engine switch",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Promote Rust to stable only after functional, safety, compatibility, and operability gates pass.",
       "change_risk": "CR4",
       "dependencies": [
