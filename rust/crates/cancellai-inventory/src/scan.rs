@@ -265,7 +265,7 @@ fn walk_directory(
                     Some(facts.boundary.clone()),
                     Some(facts.identity.clone()),
                 );
-                snapshot.facts.push(facts);
+                snapshot.facts.push(*facts);
                 result
             }
             FactObservation::Absent => {

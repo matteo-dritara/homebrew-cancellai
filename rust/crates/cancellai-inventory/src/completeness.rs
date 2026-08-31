@@ -371,7 +371,7 @@ mod tests {
             root_device: Some(1),
             root_fact,
             facts: vec![match child_fact {
-                FactObservation::Present(f) => f,
+                FactObservation::Present(f) => *f,
                 other => panic!("expected Present, got {other:?}"),
             }],
             directory_errors: Vec::new(),
@@ -457,7 +457,7 @@ mod tests {
         let snapshot = InventorySnapshot {
             scope_root: PathBuf::from("/scope"),
             root_device: Some(1),
-            root_fact: FactObservation::Present(FileFacts {
+            root_fact: FactObservation::Present(Box::new(FileFacts {
                 path: PathBuf::from("/scope"),
                 kind: cancellai_platform::FileKind::Directory,
                 identity: IdentityObservation::Identity(cancellai_platform::IdentityToken::Unix {
@@ -473,7 +473,7 @@ mod tests {
                 provider_hint: None,
                 category_hint: None,
                 confidence: FactConfidence::Complete,
-            }),
+            })),
             facts: Vec::new(),
             directory_errors: vec![disappeared_error, permission_error],
             fact_errors: Vec::new(),

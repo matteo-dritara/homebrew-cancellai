@@ -95,7 +95,13 @@ pub struct FileFacts {
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum FactObservation {
     Absent,
-    Present(FileFacts),
+    // Boxed: `FileFacts` is far larger than this enum's other variants (clippy
+    // large_enum_variant - caught on Windows CI, where the size difference crosses its
+    // threshold; see the platform note this fix's commit records). Boxing keeps every
+    // `FactObservation` the size of the largest *reasonable* variant instead of the size of
+    // the full observed-facts payload, with no change to how callers pattern-match or
+    // serialize it (`Box<FileFacts>` derefs and serializes exactly like `FileFacts`).
+    Present(Box<FileFacts>),
     Unreadable { reason: String },
 }
 
@@ -204,7 +210,7 @@ pub fn observe_file_facts(
         FactConfidence::Partial { reasons }
     };
 
-    FactObservation::Present(FileFacts {
+    FactObservation::Present(Box::new(FileFacts {
         path: path.to_path_buf(),
         kind,
         identity: identity_observation,
@@ -217,7 +223,7 @@ pub fn observe_file_facts(
         provider_hint: None,
         category_hint: None,
         confidence,
-    })
+    }))
 }
 
 #[cfg(test)]
@@ -256,7 +262,7 @@ mod tests {
 
     fn present(observation: FactObservation) -> FileFacts {
         match observation {
-            FactObservation::Present(facts) => facts,
+            FactObservation::Present(facts) => *facts,
             other => panic!("expected Present, got {other:?}"),
         }
     }
