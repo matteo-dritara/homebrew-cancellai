@@ -9,8 +9,8 @@ Epics: **20** | Stories: **90**
 ## Story status
 
 - `done`: 28
-- `planned`: 61
-- `ready_for_review`: 1
+- `planned`: 60
+- `ready_for_review`: 2
 
 ## Change risk distribution
 
@@ -27,3 +27,4 @@ Epics: **20** | Stories: **90**
 ## Awaiting independent review
 
 - **E05-S01** - Provider capability contract (CR2)
+- **E05-S02** - Provider trust enforcement (CR4)

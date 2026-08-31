@@ -638,7 +638,7 @@ Implement capability-based provider integration and achieve Claude/Codex semanti
 
 ### E05-S02 - Provider trust enforcement
 
-**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E05-S01, E03-S04 | **Safety obligations:** SI-021, SI-022
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E05-S01, E03-S04 | **Safety obligations:** SI-021, SI-022
 
 **Outcome.** Implement Built-in Verified, Community Verified, Local Custom, and Untrusted trust levels as authority inputs.
 

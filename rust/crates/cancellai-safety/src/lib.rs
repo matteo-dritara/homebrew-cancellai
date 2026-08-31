@@ -12,8 +12,11 @@
 //! [`effective_authority`]/[`compute_effective_authority`], the SI-001/SI-007/SI-008/SI-009
 //! monotonic-minimum Effective Authority lattice. E03-S05 adds
 //! [`mutation_executor::execute`]/[`mutation_executor::execute_all`], composing all three
-//! into the one path from a `SealedPlan` to a real mutation (SI-019, SI-020, C-07). This
-//! crate performs no OS calls of its own; every OS-facing operation goes through a
+//! into the one path from a `SealedPlan` to a real mutation (SI-019, SI-020, C-07). E05-S02
+//! adds [`trust_promotion::promote`], the sole gate through which a
+//! [`cancellai_model::ProviderTrust`] tier may be raised (SI-021, SI-022), and wires the
+//! resulting tier into [`effective_authority`] as its own named constraint. This crate
+//! performs no OS calls of its own; every OS-facing operation goes through a
 //! `cancellai-platform` capability (`IdentityObserver`, `PathResolver`, `MutationExecutor`)
 //! consumed as plain data (`docs/architecture/PLATFORM_MODEL.md`: "domain and policy code
 //! consume capability results, not OS-specific syscalls").
@@ -22,6 +25,7 @@ pub mod authority;
 pub mod mutation_executor;
 pub mod root_capability;
 pub mod sealed_plan;
+pub mod trust_promotion;
 
 pub use authority::{
     AuthorityConstraint, AuthorityInputs, EffectiveAuthority, compute_effective_authority,
@@ -30,3 +34,4 @@ pub use authority::{
 pub use mutation_executor::{ActionResult, execute, execute_all};
 pub use root_capability::{ApprovedRoot, BoundaryError, BoundedPath};
 pub use sealed_plan::{RevalidationOutcome, SealedPlan, revalidate};
+pub use trust_promotion::{TrustPromotionError, TrustPromotionEvidence, promote};

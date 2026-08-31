@@ -19,19 +19,19 @@
 //! [`effective_authority`] wires this up for the constraints this story can build for real
 //! today: `UserAuthority`, `ArtifactAuthorityCeiling` (supplied by the caller - deriving a
 //! ceiling from `RiskClass` is a classification decision this story does not invent),
-//! `ConfidenceAuthority` (from `KnowledgeConfidence`), and `LifecycleAuthority` (from
-//! `ActivityState`/`ProtectionState`/`IntegrityState`) plus an explicit
-//! `ConstitutionalSafetyFloor` restating SI-001's own rule as its own always-present
-//! constraint (SI-006: known protection is checked in more than one place, on purpose).
-//! `ProviderCapabilityAuthority`, `ProviderTrustAuthority`, and `ReleaseChannelAuthority` are
-//! not wired in - no provider-adapter or release-channel subsystem exists yet to supply them
-//! (E05, a later release story) - `compute_effective_authority` needing no redesign to add
-//! them is exactly the point of keeping it generic over named constraints rather than a fixed
-//! nine-argument function.
+//! `ConfidenceAuthority` (from `KnowledgeConfidence`), `LifecycleAuthority` (from
+//! `ActivityState`/`ProtectionState`/`IntegrityState`), and (E05-S02)
+//! `ProviderTrustAuthority` (from `ProviderTrust`, `docs/PROVIDERS.md` "Trust levels",
+//! SI-021) plus an explicit `ConstitutionalSafetyFloor` restating SI-001's own rule as its own
+//! always-present constraint (SI-006: known protection is checked in more than one place, on
+//! purpose). `ProviderCapabilityAuthority` and `ReleaseChannelAuthority` are not wired in - no
+//! capability-classification or release-channel subsystem exists yet to supply them -
+//! `compute_effective_authority` needing no redesign to add them is exactly the point of
+//! keeping it generic over named constraints rather than a fixed nine-argument function.
 
 use cancellai_model::{
     ActionClass, ActivityState, AuthorityLevel, IntegrityState, KnowledgeConfidence,
-    ProtectionState, Reversibility,
+    ProtectionState, ProviderTrust, Reversibility,
 };
 
 /// One named input to an Effective Authority computation.
@@ -113,6 +113,23 @@ fn lifecycle_ceiling(
     }
 }
 
+/// E05-S02, SI-021 ("Provider manifest trust bounds authority"): the maximum default
+/// authority a provider's trust tier alone permits, matching `docs/PROVIDERS.md`'s "Trust
+/// levels" table exactly - `Untrusted` caps at `Observe` (so an untrusted manifest cannot
+/// even reach `Quarantine`, `minimum_authority_for`'s floor for any mutating action class, let
+/// alone `Delete`'s `Govern`), `LocalCustom` at `Quarantine`, `CommunityVerified` at `Govern`
+/// (irreversible authority stays opt-in/evidence-gated beyond this default), and
+/// `BuiltinVerified` at `Autopilot` (no additional cap from trust alone; other constraints
+/// still apply independently).
+fn provider_trust_ceiling(trust: ProviderTrust) -> AuthorityLevel {
+    match trust {
+        ProviderTrust::Untrusted => AuthorityLevel::Observe,
+        ProviderTrust::LocalCustom => AuthorityLevel::Quarantine,
+        ProviderTrust::CommunityVerified => AuthorityLevel::Govern,
+        ProviderTrust::BuiltinVerified => AuthorityLevel::Autopilot,
+    }
+}
+
 /// SI-001's own rule, restated as its own always-present constraint rather than folded only
 /// into `lifecycle_ceiling`/`confidence_ceiling` (SI-006: defense in depth - a future change
 /// to either of those must not silently remove this floor along with it).
@@ -140,6 +157,7 @@ pub struct AuthorityInputs {
     pub activity: ActivityState,
     pub protection: ProtectionState,
     pub integrity: IntegrityState,
+    pub provider_trust: ProviderTrust,
 }
 
 /// Compute Effective Authority from the constraints this story wires up for real (module
@@ -161,6 +179,10 @@ pub fn effective_authority(inputs: AuthorityInputs) -> EffectiveAuthority {
         AuthorityConstraint {
             name: "lifecycle_authority",
             ceiling: lifecycle_ceiling(inputs.activity, inputs.protection, inputs.integrity),
+        },
+        AuthorityConstraint {
+            name: "provider_trust_authority",
+            ceiling: provider_trust_ceiling(inputs.provider_trust),
         },
         AuthorityConstraint {
             name: "constitutional_safety_floor",
@@ -221,6 +243,7 @@ mod tests {
             activity: ActivityState::Idle,
             protection: ProtectionState::Normal,
             integrity: IntegrityState::Healthy,
+            provider_trust: ProviderTrust::BuiltinVerified,
         }
     }
 
@@ -366,6 +389,65 @@ mod tests {
             result.binding_constraints,
             vec!["lifecycle_authority", "constitutional_safety_floor"]
         );
+    }
+
+    #[test]
+    fn e05s02_ac1_untrusted_provider_trust_collapses_to_observe_even_at_maximum_everything_else() {
+        // SI-021: an untrusted provider must not be able to produce even a reversible
+        // mutating action, let alone an irreversible one - Observe is strictly below
+        // `minimum_authority_for(ActionClass::Quarantine)`.
+        let inputs = AuthorityInputs {
+            provider_trust: ProviderTrust::Untrusted,
+            ..permissive_inputs(AuthorityLevel::Autopilot, AuthorityLevel::Autopilot)
+        };
+        let result = effective_authority(inputs);
+        assert_eq!(result.level, AuthorityLevel::Observe);
+        assert!(result.level < minimum_authority_for(ActionClass::Quarantine));
+        assert!(result.level < minimum_authority_for(ActionClass::Delete));
+    }
+
+    #[test]
+    fn e05s02_ac1_local_custom_trust_can_quarantine_but_not_delete() {
+        let inputs = AuthorityInputs {
+            provider_trust: ProviderTrust::LocalCustom,
+            ..permissive_inputs(AuthorityLevel::Autopilot, AuthorityLevel::Autopilot)
+        };
+        let result = effective_authority(inputs);
+        assert_eq!(result.level, AuthorityLevel::Quarantine);
+        assert!(result.level >= minimum_authority_for(ActionClass::Quarantine));
+        assert!(result.level < minimum_authority_for(ActionClass::Delete));
+    }
+
+    #[test]
+    fn e05s02_ac1_community_verified_trust_can_delete_but_is_not_unbounded() {
+        // PROVIDERS.md: Community Verified defaults to Govern; Autopilot stays out of reach
+        // from trust alone even when every other input is maximally permissive.
+        let inputs = AuthorityInputs {
+            provider_trust: ProviderTrust::CommunityVerified,
+            ..permissive_inputs(AuthorityLevel::Autopilot, AuthorityLevel::Autopilot)
+        };
+        let result = effective_authority(inputs);
+        assert_eq!(result.level, AuthorityLevel::Govern);
+        assert!(result.level >= minimum_authority_for(ActionClass::Delete));
+        assert!(result.level < AuthorityLevel::Autopilot);
+    }
+
+    #[test]
+    fn e05s02_builtin_verified_trust_does_not_cap_below_a_fully_permissive_result() {
+        // Not vacuously true: proves BuiltinVerified's ceiling is actually Autopilot, not a
+        // bug that happens to also produce Observe/Quarantine/Govern here.
+        let inputs = permissive_inputs(AuthorityLevel::Autopilot, AuthorityLevel::Autopilot);
+        assert_eq!(effective_authority(inputs).level, AuthorityLevel::Autopilot);
+    }
+
+    #[test]
+    fn e05s02_ac3_provider_trust_authority_is_named_when_it_is_the_unique_bottleneck() {
+        let inputs = AuthorityInputs {
+            provider_trust: ProviderTrust::LocalCustom,
+            ..permissive_inputs(AuthorityLevel::Autopilot, AuthorityLevel::Autopilot)
+        };
+        let result = effective_authority(inputs);
+        assert_eq!(result.binding_constraints, vec!["provider_trust_authority"]);
     }
 
     #[test]

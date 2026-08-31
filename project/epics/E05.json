@@ -33,7 +33,7 @@
     {
       "id": "E05-S02",
       "title": "Provider trust enforcement",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Implement Built-in Verified, Community Verified, Local Custom, and Untrusted trust levels as authority inputs.",
       "change_risk": "CR4",
       "dependencies": [

@@ -173,9 +173,26 @@ originally checked neither authority nor reversibility at all).
 
 Manifest-only/untrusted/community knowledge cannot self-assign a trust level or destructive capability above locally verified policy.
 
+Implemented at `rust/crates/cancellai-safety/src/authority.rs` and
+`rust/crates/cancellai-safety/src/trust_promotion.rs` (E05-S02): `effective_authority`'s
+`provider_trust_authority` constraint caps the monotonic-minimum result by
+`cancellai_model::ProviderTrust` tier (`Untrusted` at `Observe`, `LocalCustom` at
+`Quarantine`, `CommunityVerified` at `Govern`, `BuiltinVerified` at `Autopilot`,
+`docs/PROVIDERS.md` "Trust levels"), and `trust_promotion::promote` is the sole function that
+can raise a tier - it requires a non-empty named verifier and at least one fixture reference
+and refuses anything that is not a strict upgrade, fail-closed. No other code path in the
+workspace reads a trust claim out of a manifest and treats it as authoritative.
+
 ### SI-022 Knowledge is data, not executable authority
 
 Remote/local knowledge bundles cannot inject arbitrary commands/code or raise local destructive authority. Invalid signatures/provenance are rejected.
+
+Partially implemented at `rust/crates/cancellai-safety/src/trust_promotion.rs` (E05-S02):
+`TrustPromotionEvidence` carries only inert strings (a verifier name, fixture reference
+identifiers) with no command/code field for anything to execute, and raising authority through
+it requires passing through `promote`'s fail-closed checks. Signature/provenance verification
+for a distributed knowledge bundle is a later story (E16 Provider Ecosystem and Federated
+Knowledge) - nothing that verifies a bundle's signature exists yet.
 
 ### SI-023 Attribution uncertainty cannot become cleanup confidence
 

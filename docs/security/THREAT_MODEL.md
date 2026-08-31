@@ -124,6 +124,12 @@ A community manifest points a cache pattern at broad paths or embeds a command.
 
 Control: manifests are declarative data, root-scoped, trust-bounded, non-executable; untrusted manifests Observe Only. See SI-021, SI-022.
 
+E05-S02 implements "untrusted manifests Observe Only" directly: `cancellai_safety::authority::effective_authority`'s
+`provider_trust_authority` constraint caps `ProviderTrust::Untrusted` at `AuthorityLevel::Observe`, and
+`cancellai_safety::trust_promotion::promote` is the only function that can move a manifest off that
+tier, requiring a named verifier and fixture evidence - a manifest cannot embed a higher trust claim
+about itself and have it accepted (`docs/architecture/PROVIDER_MODEL.md` "Trust chain").
+
 ### TM-11 Compromised knowledge bundle
 
 An attacker serves altered compatibility rules intended to label data disposable.

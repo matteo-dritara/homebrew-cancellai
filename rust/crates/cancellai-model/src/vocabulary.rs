@@ -108,9 +108,33 @@ pub struct RootFingerprint {
     pub confidence: KnowledgeConfidence,
 }
 
+/// Provider/manifest trust tier (`docs/PROVIDERS.md` "Trust levels", SI-021, SI-022).
+/// Declaration order is deliberately the documented maximum-default-authority progression
+/// (`Untrusted < LocalCustom < CommunityVerified < BuiltinVerified`), matching
+/// `AuthorityLevel`'s own "declaration order is the meaning" convention so `derive(Ord)`
+/// needs no hand-written comparison to get this right. This type carries only the tier
+/// itself - E05-S02 (`cancellai-safety::trust_promotion`) is the only place a tier is ever
+/// raised, and that gate lives in `cancellai-safety` (not here) because it needs
+/// `cancellai-model` to stay free of any policy/decision logic, pure vocabulary only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderTrust {
+    Untrusted,
+    LocalCustom,
+    CommunityVerified,
+    BuiltinVerified,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn provider_trust_ordering_matches_the_documented_maximum_authority_progression() {
+        assert!(ProviderTrust::Untrusted < ProviderTrust::LocalCustom);
+        assert!(ProviderTrust::LocalCustom < ProviderTrust::CommunityVerified);
+        assert!(ProviderTrust::CommunityVerified < ProviderTrust::BuiltinVerified);
+    }
 
     #[test]
     fn authority_level_ordering_matches_the_documented_capability_ordering() {

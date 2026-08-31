@@ -95,6 +95,21 @@ See [`../PROVIDERS.md`](../PROVIDERS.md). Trust is an authority input, not a pop
 
 A community manifest cannot declare itself Built-in Verified. Promotion requires maintainer-owned fixtures, compatibility evidence, threat review, and code ownership approval.
 
+E05-S02 implements the trust tiers themselves and their authority enforcement:
+`cancellai_model::ProviderTrust` (`rust/crates/cancellai-model/src/vocabulary.rs`) is the pure
+four-tier vocabulary (`Untrusted < LocalCustom < CommunityVerified < BuiltinVerified`), and
+`cancellai_safety::authority::effective_authority` (`rust/crates/cancellai-safety/src/authority.rs`)
+wires it in as its own named constraint, `provider_trust_authority`, matching this document's
+"Trust levels" table exactly: `Untrusted` caps the monotonic-minimum result at `Observe` (so
+an untrusted manifest cannot reach even `Quarantine`, let alone an irreversible action -
+SI-021), `LocalCustom` at `Quarantine`, `CommunityVerified` at `Govern`, and `BuiltinVerified`
+at `Autopilot` (no additional cap from trust alone). `cancellai_safety::trust_promotion::promote`
+is the *only* function in the workspace that can raise a `ProviderTrust` tier - it requires a
+non-empty named verifier and at least one fixture reference, and refuses any request that is
+not a strict upgrade, fail-closed (SI-021, SI-022). Nothing reads a trust tier out of a
+manifest's own self-description and treats it as authoritative; the conservative default for
+anything not promoted through that gate is `ProviderTrust::Untrusted`.
+
 ## Knowledge bundles
 
 Federated knowledge bundles may update:

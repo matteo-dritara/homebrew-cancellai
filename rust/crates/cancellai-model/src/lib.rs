@@ -16,5 +16,5 @@ pub mod vocabulary;
 pub use diagnostic::{Diagnostic, ErrorCategory};
 pub use vocabulary::{
     ActionClass, ActivityState, AuthorityLevel, IntegrityState, KnowledgeConfidence,
-    ProtectionState, Reversibility, RootFingerprint,
+    ProtectionState, ProviderTrust, Reversibility, RootFingerprint,
 };
