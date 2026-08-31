@@ -59,7 +59,7 @@
     {
       "id": "E06-S03",
       "title": "Migration and rollback packaging",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Define side-by-side invocation, data compatibility, and rollback from Rust candidate to Python reference during beta.",
       "change_risk": "CR2",
       "dependencies": [

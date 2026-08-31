@@ -54,6 +54,18 @@ close a CR4 story without one that records a pass.
 Do not add future product features to Python merely because the Python release path is
 simpler.
 
+## Beta side-by-side (E06)
+
+Between E06-S01 (first real Rust CLI command surface) and E06-S04 (canonical engine switch),
+`cancellai-cli` is a beta artifact built from source, not a packaged release - it ships through
+none of the mechanisms above. It is safe to build and run alongside the installed Python
+`cancellai` command because the two share no install path and no local state
+(`docs/development/MIGRATION_PYTHON_RUST.md`'s M7 section, E06-S03): different binary names
+(`cancellai` vs `cancellai-cli`), and no cancellAI-owned local state file exists in either
+engine to migrate or corrupt. `cancellai-cli version` identifies the engine/version a beta user
+is running; "rolling back" is simply not invoking `cancellai-cli` again, never an uninstall or
+data-migration step.
+
 ## Target Rust release factory
 
 Epic E17 replaces the manual build/package steps with canonical cross-platform release automation. The target release includes:

@@ -762,7 +762,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S03 - Migration and rollback packaging
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E06-S02 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E06-S02 | **Safety obligations:** none
 
 **Outcome.** Define side-by-side invocation, data compatibility, and rollback from Rust candidate to Python reference during beta.
 

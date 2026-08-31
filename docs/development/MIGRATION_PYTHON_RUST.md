@@ -80,6 +80,32 @@ kind of cross-engine divergence this gate exists to catch before cutover, not af
 
 Release candidate identifies engine/version clearly and preserves rollback. Local state migrations are reversible/rebuildable.
 
+**E06-S03 implements this milestone's contract** for the current beta period - before Epic
+E17's canonical cross-platform release factory exists (`docs/RELEASING.md` "Target Rust
+release factory" remains E17 scope; this story does not build packaging/installers):
+
+- **Engine/version identification**: `cancellai-cli version` prints the engine name and a
+  concrete version (`rust/crates/cancellai-cli/tests/install_rollback.rs::
+  version_output_identifies_this_as_the_rust_engine_with_a_concrete_version`).
+- **No irreversible local state migration**: there is no cancellAI-owned local state to
+  migrate in either engine today - `cancellai-store` remains an empty skeleton (C-10's
+  "disposable and rebuildable" is trivially true of nothing), and `cancellai.py` itself is a
+  stateless scan-on-demand script. Proven, not merely asserted: every read-only Rust command
+  (including `clean --dry-run`) leaves the entire `$HOME` tree byte-for-byte unchanged, and a
+  real `clean` touches exactly the one artifact it deletes and nothing else anywhere
+  (`install_rollback.rs::every_read_only_command_leaves_no_trace_anywhere_under_home`,
+  `::a_real_clean_touches_only_the_provider_artifact_it_deletes_nothing_else_anywhere`).
+- **Rollback mechanism**: `cancellai` (Python, the installed Homebrew command,
+  `pyproject.toml`) and `cancellai-cli` (Rust, this crate's package name) are different binary
+  names that share no install path and no state file
+  (`install_rollback.rs::the_rust_and_python_commands_never_collide_on_path`) - during beta,
+  "rollback" is simply not invoking `cancellai-cli`, never a migration to undo.
+- **Install smoke test**: the built binary behaves correctly regardless of its invocation
+  working directory (`install_rollback.rs::
+  the_built_binary_runs_correctly_regardless_of_its_invocation_directory`) - the property a
+  real installed binary needs; full packaged-install verification (checksums, SBOM, signed
+  provenance, `dist`/cargo-dist) remains E17.
+
 ### M8 - Canonical switch
 
 Rust becomes stable only after G1 Functional, G2 Safety, G3 Compatibility, and G4 Operability gates are green and owner accepts the migration Safety Verdict.

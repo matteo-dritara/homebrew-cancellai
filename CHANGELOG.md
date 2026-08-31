@@ -22,6 +22,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   two real E06-S01 defects: an incomplete companion-payload scan only withheld the one
   affected session instead of the whole tool (SI-008/SI-009), and a Claude home with no
   `projects/` directory was misreported as an incomplete scan instead of legitimately empty.
+- E06-S03: documents and proves the beta side-by-side model for `cancellai-cli` -
+  `version` identifies the engine, and `cancellai`/`cancellai-cli` share no install path or
+  local state (`docs/RELEASING.md`, `docs/development/MIGRATION_PYTHON_RUST.md`), so rollback
+  during beta is simply not invoking the Rust binary. Proven with new smoke tests
+  (`rust/crates/cancellai-cli/tests/install_rollback.rs`): every read-only command, and even a
+  real `clean`, touches nothing under `$HOME` outside the provider artifacts explicitly
+  targeted.
 
 ### Fixed
 
