@@ -13,13 +13,15 @@
 //! monotonic-minimum Effective Authority lattice. E03-S05 adds
 //! [`mutation_executor::execute`]/[`mutation_executor::execute_all`], composing all three
 //! into the one path from a `SealedPlan` to a real mutation (SI-019, SI-020, C-07). E05-S02
-//! adds [`trust_promotion::promote`], the sole gate through which a
-//! [`cancellai_model::ProviderTrust`] tier may be raised (SI-021, SI-022), and wires the
-//! resulting tier into [`effective_authority`] as its own named constraint. This crate
-//! performs no OS calls of its own; every OS-facing operation goes through a
-//! `cancellai-platform` capability (`IdentityObserver`, `PathResolver`, `MutationExecutor`)
-//! consumed as plain data (`docs/architecture/PLATFORM_MODEL.md`: "domain and policy code
-//! consume capability results, not OS-specific syscalls").
+//! adds [`TrustedTier`], an opaque wrapper around [`cancellai_model::ProviderTrust`] whose only
+//! public constructors are [`TrustedTier::untrusted`] and a checked [`TrustedTier::promote`]
+//! (SI-021, SI-022) - [`AuthorityInputs::provider_trust`] accepts only this type, not a bare
+//! `ProviderTrust`, specifically so no external caller can supply an unpromoted trust tier
+//! directly (E05 verifier review round 1 found and this repair closed exactly that gap; see
+//! `trust_promotion.rs`'s module doc). This crate performs no OS calls of its own; every
+//! OS-facing operation goes through a `cancellai-platform` capability (`IdentityObserver`,
+//! `PathResolver`, `MutationExecutor`) consumed as plain data (`docs/architecture/PLATFORM_MODEL.md`:
+//! "domain and policy code consume capability results, not OS-specific syscalls").
 
 pub mod authority;
 pub mod mutation_executor;
@@ -34,4 +36,4 @@ pub use authority::{
 pub use mutation_executor::{ActionResult, execute, execute_all};
 pub use root_capability::{ApprovedRoot, BoundaryError, BoundedPath};
 pub use sealed_plan::{RevalidationOutcome, SealedPlan, revalidate};
-pub use trust_promotion::{TrustPromotionError, TrustPromotionEvidence, promote};
+pub use trust_promotion::{TrustPromotionError, TrustPromotionEvidence, TrustedTier};

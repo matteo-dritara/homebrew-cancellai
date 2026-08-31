@@ -154,18 +154,32 @@ A community manifest cannot declare itself Built-in Verified. Promotion requires
 
 E05-S02 implements the trust tiers themselves and their authority enforcement:
 `cancellai_model::ProviderTrust` (`rust/crates/cancellai-model/src/vocabulary.rs`) is the pure
-four-tier vocabulary (`Untrusted < LocalCustom < CommunityVerified < BuiltinVerified`), and
+four-tier vocabulary (`Untrusted < LocalCustom < CommunityVerified < BuiltinVerified`) - a
+public, freely-constructible enum, since it is only vocabulary, not itself an authority grant.
 `cancellai_safety::authority::effective_authority` (`rust/crates/cancellai-safety/src/authority.rs`)
-wires it in as its own named constraint, `provider_trust_authority`, matching this document's
-"Trust levels" table exactly: `Untrusted` caps the monotonic-minimum result at `Observe` (so
-an untrusted manifest cannot reach even `Quarantine`, let alone an irreversible action -
-SI-021), `LocalCustom` at `Quarantine`, `CommunityVerified` at `Govern`, and `BuiltinVerified`
-at `Autopilot` (no additional cap from trust alone). `cancellai_safety::trust_promotion::promote`
-is the *only* function in the workspace that can raise a `ProviderTrust` tier - it requires a
-non-empty named verifier and at least one fixture reference, and refuses any request that is
-not a strict upgrade, fail-closed (SI-021, SI-022). Nothing reads a trust tier out of a
-manifest's own self-description and treats it as authoritative; the conservative default for
-anything not promoted through that gate is `ProviderTrust::Untrusted`.
+wires the tier in as its own named constraint, `provider_trust_authority`, matching this
+document's "Trust levels" table exactly: `Untrusted` caps the monotonic-minimum result at
+`Observe` (so an untrusted manifest cannot reach even `Quarantine`, let alone an irreversible
+action - SI-021), `LocalCustom` at `Quarantine`, `CommunityVerified` at `Govern`, and
+`BuiltinVerified` at `Autopilot` (no additional cap from trust alone).
+
+**What actually enforces this is `TrustedTier`, not `ProviderTrust`.**
+`AuthorityInputs::provider_trust` (`authority.rs`) is typed as
+`cancellai_safety::TrustedTier` (`trust_promotion.rs`), an opaque wrapper with a private field
+and no `From<ProviderTrust>` conversion - its only public constructors are
+`TrustedTier::untrusted()` (the safe, evidence-free default) and a checked
+`TrustedTier::promote()`, which requires a non-empty named verifier and at least one fixture
+reference and refuses any request that is not a strict upgrade, fail-closed (SI-021, SI-022).
+E05 verifier review round 1 (FAIL) found the first version of this story typed
+`AuthorityInputs::provider_trust` as the bare `ProviderTrust` enum instead: any external caller
+could construct `ProviderTrust::BuiltinVerified` directly and reach `AuthorityLevel::Autopilot`
+through `effective_authority` with zero promotion evidence - `promote` existed and worked
+correctly in isolation, but nothing forced a caller through it. `TrustedTier` closes that gap
+structurally (proven by a `compile_fail` doctest on `TrustedTier` reproducing the exact round-1
+exploit), matching how `cancellai-safety::SealedPlan` closed an analogous "existing code path
+nobody was required to use" gap in E03 round 1. Nothing reads a trust tier out of a manifest's
+own self-description and treats it as authoritative; the conservative default for anything not
+promoted through the gate is `TrustedTier::untrusted()`.
 
 ## Knowledge bundles
 

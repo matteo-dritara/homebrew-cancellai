@@ -174,14 +174,24 @@ originally checked neither authority nor reversibility at all).
 Manifest-only/untrusted/community knowledge cannot self-assign a trust level or destructive capability above locally verified policy.
 
 Implemented at `rust/crates/cancellai-safety/src/authority.rs` and
-`rust/crates/cancellai-safety/src/trust_promotion.rs` (E05-S02): `effective_authority`'s
-`provider_trust_authority` constraint caps the monotonic-minimum result by
-`cancellai_model::ProviderTrust` tier (`Untrusted` at `Observe`, `LocalCustom` at
-`Quarantine`, `CommunityVerified` at `Govern`, `BuiltinVerified` at `Autopilot`,
-`docs/PROVIDERS.md` "Trust levels"), and `trust_promotion::promote` is the sole function that
-can raise a tier - it requires a non-empty named verifier and at least one fixture reference
-and refuses anything that is not a strict upgrade, fail-closed. No other code path in the
-workspace reads a trust claim out of a manifest and treats it as authoritative.
+`rust/crates/cancellai-safety/src/trust_promotion.rs` (E05-S02, repaired after E05 verifier
+review round 1): `effective_authority`'s `provider_trust_authority` constraint caps the
+monotonic-minimum result by tier (`Untrusted` at `Observe`, `LocalCustom` at `Quarantine`,
+`CommunityVerified` at `Govern`, `BuiltinVerified` at `Autopilot`, `docs/PROVIDERS.md` "Trust
+levels"). `AuthorityInputs::provider_trust` accepts only `TrustedTier` - an opaque wrapper
+around `cancellai_model::ProviderTrust` with a private field and no `From<ProviderTrust>` - not
+the bare, freely-constructible `ProviderTrust` enum itself; `TrustedTier`'s only public
+constructors are `untrusted()` (the safe, evidence-free default) and a checked `promote()`
+requiring a non-empty named verifier and at least one fixture reference, refusing anything that
+is not a strict upgrade, fail-closed. Round 1 found the first version of this invariant's
+implementation typed `AuthorityInputs::provider_trust` as bare `ProviderTrust`, so an external
+caller could construct `ProviderTrust::BuiltinVerified` directly and reach `Autopilot` with no
+promotion evidence at all - `promote` existed and worked correctly in isolation, but nothing
+forced a caller through it. `TrustedTier` closes that gap by making the type itself
+unconstructible outside the gate, proven by a `compile_fail` doctest on `TrustedTier` (the
+exact round-1 reproduction, restated) and enforced by `cargo test` for every `pub` surface in
+`cancellai-safety`. No other code path in the workspace reads a trust claim out of a manifest
+and treats it as authoritative.
 
 ### SI-022 Knowledge is data, not executable authority
 
@@ -190,7 +200,9 @@ Remote/local knowledge bundles cannot inject arbitrary commands/code or raise lo
 Partially implemented at `rust/crates/cancellai-safety/src/trust_promotion.rs` (E05-S02):
 `TrustPromotionEvidence` carries only inert strings (a verifier name, fixture reference
 identifiers) with no command/code field for anything to execute, and raising authority through
-it requires passing through `promote`'s fail-closed checks. Signature/provenance verification
+it requires passing through `TrustedTier::promote`'s fail-closed checks - the only public path
+from which a `TrustedTier` above `Untrusted` can be obtained (see SI-021 above for the round-1
+repair that made this actually true, not merely intended). Signature/provenance verification
 for a distributed knowledge bundle is a later story (E16 Provider Ecosystem and Federated
 Knowledge) - nothing that verifies a bundle's signature exists yet.
 

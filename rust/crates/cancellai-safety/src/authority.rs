@@ -21,10 +21,14 @@
 //! ceiling from `RiskClass` is a classification decision this story does not invent),
 //! `ConfidenceAuthority` (from `KnowledgeConfidence`), `LifecycleAuthority` (from
 //! `ActivityState`/`ProtectionState`/`IntegrityState`), and (E05-S02)
-//! `ProviderTrustAuthority` (from `ProviderTrust`, `docs/PROVIDERS.md` "Trust levels",
-//! SI-021) plus an explicit `ConstitutionalSafetyFloor` restating SI-001's own rule as its own
-//! always-present constraint (SI-006: known protection is checked in more than one place, on
-//! purpose). `ProviderCapabilityAuthority` and `ReleaseChannelAuthority` are not wired in - no
+//! `ProviderTrustAuthority` (from [`crate::TrustedTier`], `docs/PROVIDERS.md` "Trust levels",
+//! SI-021 - `AuthorityInputs::provider_trust` deliberately takes the opaque `TrustedTier`, not
+//! a bare `cancellai_model::ProviderTrust`, so this constraint cannot be supplied by an
+//! external caller constructing an arbitrary trust value directly; see `trust_promotion.rs`'s
+//! module doc for the E05 verifier round 1 defect this closes) plus an explicit
+//! `ConstitutionalSafetyFloor` restating SI-001's own rule as its own always-present constraint
+//! (SI-006: known protection is checked in more than one place, on purpose).
+//! `ProviderCapabilityAuthority` and `ReleaseChannelAuthority` are not wired in - no
 //! capability-classification or release-channel subsystem exists yet to supply them -
 //! `compute_effective_authority` needing no redesign to add them is exactly the point of
 //! keeping it generic over named constraints rather than a fixed nine-argument function.
@@ -33,6 +37,8 @@ use cancellai_model::{
     ActionClass, ActivityState, AuthorityLevel, IntegrityState, KnowledgeConfidence,
     ProtectionState, ProviderTrust, Reversibility,
 };
+
+use crate::trust_promotion::TrustedTier;
 
 /// One named input to an Effective Authority computation.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -157,7 +163,7 @@ pub struct AuthorityInputs {
     pub activity: ActivityState,
     pub protection: ProtectionState,
     pub integrity: IntegrityState,
-    pub provider_trust: ProviderTrust,
+    pub provider_trust: TrustedTier,
 }
 
 /// Compute Effective Authority from the constraints this story wires up for real (module
@@ -182,7 +188,7 @@ pub fn effective_authority(inputs: AuthorityInputs) -> EffectiveAuthority {
         },
         AuthorityConstraint {
             name: "provider_trust_authority",
-            ceiling: provider_trust_ceiling(inputs.provider_trust),
+            ceiling: provider_trust_ceiling(inputs.provider_trust.level()),
         },
         AuthorityConstraint {
             name: "constitutional_safety_floor",
@@ -243,7 +249,7 @@ mod tests {
             activity: ActivityState::Idle,
             protection: ProtectionState::Normal,
             integrity: IntegrityState::Healthy,
-            provider_trust: ProviderTrust::BuiltinVerified,
+            provider_trust: TrustedTier::for_tests(ProviderTrust::BuiltinVerified),
         }
     }
 
@@ -397,7 +403,7 @@ mod tests {
         // mutating action, let alone an irreversible one - Observe is strictly below
         // `minimum_authority_for(ActionClass::Quarantine)`.
         let inputs = AuthorityInputs {
-            provider_trust: ProviderTrust::Untrusted,
+            provider_trust: TrustedTier::for_tests(ProviderTrust::Untrusted),
             ..permissive_inputs(AuthorityLevel::Autopilot, AuthorityLevel::Autopilot)
         };
         let result = effective_authority(inputs);
@@ -409,7 +415,7 @@ mod tests {
     #[test]
     fn e05s02_ac1_local_custom_trust_can_quarantine_but_not_delete() {
         let inputs = AuthorityInputs {
-            provider_trust: ProviderTrust::LocalCustom,
+            provider_trust: TrustedTier::for_tests(ProviderTrust::LocalCustom),
             ..permissive_inputs(AuthorityLevel::Autopilot, AuthorityLevel::Autopilot)
         };
         let result = effective_authority(inputs);
@@ -423,7 +429,7 @@ mod tests {
         // PROVIDERS.md: Community Verified defaults to Govern; Autopilot stays out of reach
         // from trust alone even when every other input is maximally permissive.
         let inputs = AuthorityInputs {
-            provider_trust: ProviderTrust::CommunityVerified,
+            provider_trust: TrustedTier::for_tests(ProviderTrust::CommunityVerified),
             ..permissive_inputs(AuthorityLevel::Autopilot, AuthorityLevel::Autopilot)
         };
         let result = effective_authority(inputs);
@@ -443,7 +449,7 @@ mod tests {
     #[test]
     fn e05s02_ac3_provider_trust_authority_is_named_when_it_is_the_unique_bottleneck() {
         let inputs = AuthorityInputs {
-            provider_trust: ProviderTrust::LocalCustom,
+            provider_trust: TrustedTier::for_tests(ProviderTrust::LocalCustom),
             ..permissive_inputs(AuthorityLevel::Autopilot, AuthorityLevel::Autopilot)
         };
         let result = effective_authority(inputs);

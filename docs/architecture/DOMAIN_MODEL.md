@@ -205,10 +205,13 @@ explanation trace naming which constraint(s) actually bound the result (never hi
 classification decision this story does not invent), `ConfidenceAuthority` (from
 `KnowledgeConfidence`), `LifecycleAuthority` (from `ActivityState`/`ProtectionState`/
 `IntegrityState`), and an explicit `ConstitutionalSafetyFloor` restating SI-001.
-`ProviderTrustAuthority` joins these in E05-S02, from `cancellai_model::ProviderTrust`
-(`docs/PROVIDERS.md` "Trust levels", SI-021) - see [`PROVIDER_MODEL.md`](PROVIDER_MODEL.md)
-"Trust chain" for the full account, including `trust_promotion::promote`, the sole gate that
-can raise a trust tier. `Reversibility` authority, `ProviderCapabilityAuthority`, and
+`ProviderTrustAuthority` joins these in E05-S02, from `cancellai_safety::TrustedTier` (an
+opaque wrapper around `cancellai_model::ProviderTrust`, `docs/PROVIDERS.md` "Trust levels",
+SI-021) - see [`PROVIDER_MODEL.md`](PROVIDER_MODEL.md) "Trust chain" for the full account,
+including `TrustedTier::promote`, the sole gate that can raise a trust tier, and the E05
+verifier round 1 repair that made `AuthorityInputs::provider_trust` require this opaque type
+rather than accepting a bare, externally-constructible `ProviderTrust` directly. `Reversibility`
+authority, `ProviderCapabilityAuthority`, and
 `ReleaseChannelAuthority` are not wired in yet - no capability-classification or
 release-channel subsystem exists to supply them - and adding them later is a matter of
 supplying more named constraints to the same generic function, not a redesign.

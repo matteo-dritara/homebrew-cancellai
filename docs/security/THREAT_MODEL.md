@@ -125,10 +125,16 @@ A community manifest points a cache pattern at broad paths or embeds a command.
 Control: manifests are declarative data, root-scoped, trust-bounded, non-executable; untrusted manifests Observe Only. See SI-021, SI-022.
 
 E05-S02 implements "untrusted manifests Observe Only" directly: `cancellai_safety::authority::effective_authority`'s
-`provider_trust_authority` constraint caps `ProviderTrust::Untrusted` at `AuthorityLevel::Observe`, and
-`cancellai_safety::trust_promotion::promote` is the only function that can move a manifest off that
-tier, requiring a named verifier and fixture evidence - a manifest cannot embed a higher trust claim
-about itself and have it accepted (`docs/architecture/PROVIDER_MODEL.md` "Trust chain").
+`provider_trust_authority` constraint caps a `TrustedTier` still at its `untrusted()` default at
+`AuthorityLevel::Observe`, and `TrustedTier::promote` is the only way to move off that tier,
+requiring a named verifier and fixture evidence - a manifest cannot embed a higher trust claim
+about itself and have it accepted (`docs/architecture/PROVIDER_MODEL.md` "Trust chain"). E05
+verifier review round 1 found the first version of this control incomplete:
+`AuthorityInputs::provider_trust` accepted a bare, publicly-constructible `ProviderTrust` value,
+so a caller (including code standing in for a malicious manifest loader) could pass
+`ProviderTrust::BuiltinVerified` straight through with no promotion at all - `promote` was a
+real gate nothing was required to walk through. `TrustedTier` (opaque, no `From<ProviderTrust>`)
+closes that specific bypass.
 
 ### TM-11 Compromised knowledge bundle
 
