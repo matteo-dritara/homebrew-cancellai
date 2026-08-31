@@ -257,6 +257,16 @@ def check() -> list[str]:
                 "Python's behavior on this fixture changed, or the file is stale. Review and, if the new "
                 "behavior is correct, run 'python3 scripts/characterize.py generate'."
             )
+            import difflib
+
+            diff = difflib.unified_diff(
+                json.dumps(committed, indent=2, sort_keys=True).splitlines(),
+                json.dumps(record, indent=2, sort_keys=True).splitlines(),
+                fromfile="committed",
+                tofile="fresh",
+                lineterm="",
+            )
+            print(f"DEBUG DIFF for {fixture_id}:\n" + "\n".join(diff), file=sys.stderr)
 
     return errors
 
