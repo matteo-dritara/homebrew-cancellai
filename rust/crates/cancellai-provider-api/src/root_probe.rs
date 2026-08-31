@@ -96,10 +96,16 @@ pub fn is_dir(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// Extracts the first `8-4-4-4-12` hyphenated hex-digit run found anywhere in `text` (a
-/// filename-shaped UUID probe, not a validating UUID parser - it accepts any hex digits in
-/// those positions, exactly like `cancellai.py`'s `UUID_RE.search`, which does not check
-/// version/variant bits either).
+/// Extracts the *last* `8-4-4-4-12` hyphenated hex-digit run found anywhere in `text`,
+/// lowercased - a filename-shaped UUID probe, not a validating UUID parser (it accepts any hex
+/// digits in those positions, exactly like `cancellai.py`'s own `extract_uuid`, which does not
+/// check version/variant bits either). Matching the *last* run (not the first) and lowercasing
+/// the result both matter for real inputs this crate parses, not just fixture inputs: a Codex
+/// rollout filename embeds a timestamp *before* its session id
+/// (`rollout-2026-08-20T09-00-00-<uuid>.jsonl`), so scanning for the first hex-hyphen run
+/// found is the wrong end of the string to prefer if a future layout ever grows an earlier
+/// UUID-shaped run (a defensive-but-faithful port, not merely one that happens to pass today's
+/// fixtures).
 pub fn extract_uuid(text: &str) -> Option<String> {
     const GROUPS: [usize; 5] = [8, 4, 4, 4, 12];
     let bytes = text.as_bytes();
@@ -107,16 +113,19 @@ pub fn extract_uuid(text: &str) -> Option<String> {
     if bytes.len() < total_len {
         return None;
     }
+    let mut last_match: Option<(usize, usize)> = None;
     for start in 0..=(bytes.len() - total_len) {
         if let Some(end) = try_match_uuid(bytes, start, &GROUPS) {
-            // GROUPS/hyphens are ASCII-only by construction, so this slice is always valid
-            // UTF-8 even if `text` as a whole is not ASCII elsewhere.
-            return std::str::from_utf8(&bytes[start..end])
-                .ok()
-                .map(str::to_string);
+            last_match = Some((start, end));
         }
     }
-    None
+    last_match.and_then(|(start, end)| {
+        // GROUPS/hyphens are ASCII-only by construction, so this slice is always valid UTF-8
+        // even if `text` as a whole is not ASCII elsewhere.
+        std::str::from_utf8(&bytes[start..end])
+            .ok()
+            .map(str::to_lowercase)
+    })
 }
 
 fn try_match_uuid(bytes: &[u8], start: usize, groups: &[usize; 5]) -> Option<usize> {
@@ -223,6 +232,23 @@ mod tests {
         assert_eq!(
             extract_uuid(name).as_deref(),
             Some("22222222-2222-4222-8222-222222222222")
+        );
+    }
+
+    #[test]
+    fn extract_uuid_prefers_the_last_match_over_the_first() {
+        let text = "11111111-1111-4111-8111-111111111111-then-22222222-2222-4222-8222-222222222222";
+        assert_eq!(
+            extract_uuid(text).as_deref(),
+            Some("22222222-2222-4222-8222-222222222222")
+        );
+    }
+
+    #[test]
+    fn extract_uuid_lowercases_the_result() {
+        assert_eq!(
+            extract_uuid("AAAAAAAA-BBBB-4BBB-8BBB-BBBBBBBBBBBB").as_deref(),
+            Some("aaaaaaaa-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
         );
     }
 
