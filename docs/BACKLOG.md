@@ -619,7 +619,7 @@ Implement capability-based provider integration and achieve Claude/Codex semanti
 
 ### E05-S01 - Provider capability contract
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E04-S01 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E04-S01 | **Safety obligations:** none
 
 **Outcome.** Define detect, fingerprint, inventory mapping, session graph, project attribution, activity, native mutation, explain, and compatibility capabilities.
 
@@ -638,7 +638,7 @@ Implement capability-based provider integration and achieve Claude/Codex semanti
 
 ### E05-S02 - Provider trust enforcement
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E05-S01, E03-S04 | **Safety obligations:** SI-021, SI-022
+**Status:** `in_progress` | **Change Risk:** `CR4` | **Dependencies:** E05-S01, E03-S04 | **Safety obligations:** SI-021, SI-022
 
 **Outcome.** Implement Built-in Verified, Community Verified, Local Custom, and Untrusted trust levels as authority inputs.
 
@@ -658,7 +658,7 @@ Implement capability-based provider integration and achieve Claude/Codex semanti
 
 ### E05-S03 - Claude reference adapter
 
-**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E05-S01 | **Safety obligations:** SI-001, SI-004
+**Status:** `done` | **Change Risk:** `CR3` | **Dependencies:** E05-S01 | **Safety obligations:** SI-001, SI-004
 
 **Outcome.** Port Claude discovery/classification/session relationships to Rust with version/layout fingerprinting.
 
@@ -678,7 +678,7 @@ Implement capability-based provider integration and achieve Claude/Codex semanti
 
 ### E05-S04 - Codex reference adapter
 
-**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E05-S01 | **Safety obligations:** SI-001, SI-004
+**Status:** `done` | **Change Risk:** `CR3` | **Dependencies:** E05-S01 | **Safety obligations:** SI-001, SI-004
 
 **Outcome.** Port Codex rollout/subagent/native-delete knowledge to Rust with version/layout fingerprinting.
 
@@ -698,7 +698,7 @@ Implement capability-based provider integration and achieve Claude/Codex semanti
 
 ### E05-S05 - Reference-provider compatibility matrix
 
-**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E05-S03, E05-S04 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** E05-S03, E05-S04 | **Safety obligations:** none
 
 **Outcome.** Publish tested provider versions/layout signatures and supported capability states.
 
