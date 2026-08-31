@@ -698,7 +698,7 @@ Implement capability-based provider integration and achieve Claude/Codex semanti
 
 ### E05-S05 - Reference-provider compatibility matrix
 
-**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E05-S03, E05-S04 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E05-S03, E05-S04 | **Safety obligations:** none
 
 **Outcome.** Publish tested provider versions/layout signatures and supported capability states.
 

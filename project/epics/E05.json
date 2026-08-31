@@ -109,7 +109,7 @@
     {
       "id": "E05-S05",
       "title": "Reference-provider compatibility matrix",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Publish tested provider versions/layout signatures and supported capability states.",
       "change_risk": "CR1",
       "dependencies": [

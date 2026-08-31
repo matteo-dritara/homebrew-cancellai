@@ -19,7 +19,7 @@ repos:
     hooks:
       - id: mypy
         args: [--strict]
-        files: ^(cancellai\.py|scripts/(gen_docs|project_os|check_docs|check_workflows|check_process|release|check_fixtures|check_schemas|characterize|diff_harness|check_rust_workspace|check_mutation_boundary)\.py)$
+        files: ^(cancellai\.py|scripts/(gen_docs|project_os|check_docs|check_workflows|check_process|release|check_fixtures|check_schemas|characterize|diff_harness|check_rust_workspace|check_mutation_boundary|check_provider_compatibility)\.py)$
 
   - repo: local
     hooks:
@@ -91,6 +91,13 @@ repos:
         entry: python3 scripts/check_mutation_boundary.py check
         language: system
         files: ^(rust/crates/.*/src/.*\.rs|scripts/check_mutation_boundary\.py)$
+        pass_filenames: false
+
+      - id: provider-compatibility-check
+        name: reference-provider compatibility matrix matches adapter output
+        entry: python3 scripts/check_provider_compatibility.py check
+        language: system
+        files: ^(rust/crates/cancellai-(provider-(api|claude|codex)|cli)/(src|examples)/.*\.rs|docs/PROVIDERS\.md|scripts/check_provider_compatibility\.py)$
         pass_filenames: false
 
       - id: process-check
