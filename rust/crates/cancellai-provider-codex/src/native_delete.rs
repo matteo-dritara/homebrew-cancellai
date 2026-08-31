@@ -151,14 +151,21 @@ mod tests {
     use super::*;
     use std::fs;
 
+    // The struct, its constructor, and its Drop impl are all Unix-only: every test that
+    // constructs a FakeCli is itself #[cfg(unix)] (the scripts it writes are shell scripts).
+    // Gating only `new` left the bare struct/Drop impl compiling-but-unconstructible on
+    // Windows, which clippy's dead_code lint (correctly) flags - found via Windows CI, once
+    // an unrelated pre-existing clippy failure elsewhere in the workspace stopped masking
+    // this crate from ever actually being clippy-checked there.
+    #[cfg(unix)]
     struct FakeCli(PathBuf);
 
+    #[cfg(unix)]
     impl FakeCli {
         /// Writes a fake `codex` CLI: a shell script whose `delete --help` response and exit
         /// code the test controls - this is the "native-delete fake CLI integration test" this
         /// story's verification plan names, matching `cancellai.py`'s own approach of probing
         /// a real (test-controlled) subprocess rather than mocking `subprocess.run` away.
-        #[cfg(unix)]
         fn new(label: &str, script: &str) -> Self {
             let path = std::env::temp_dir().join(format!(
                 "cancellai-codex-fake-cli-{label}-{}",
@@ -171,6 +178,7 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     impl Drop for FakeCli {
         fn drop(&mut self) {
             fs::remove_file(&self.0).ok();

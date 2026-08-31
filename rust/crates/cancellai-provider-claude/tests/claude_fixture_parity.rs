@@ -89,7 +89,12 @@ fn write_claude_session(root: &Path, project: &str, session_id: &str) -> PathBuf
     path
 }
 
-/// Mirrors `recipes.py::_claude_session_with_payload`.
+/// Mirrors `recipes.py::_claude_session_with_payload`. Only used by the `#[cfg(unix)]`
+/// partial-tree test below (which locks a directory via Unix permission bits) - gated the
+/// same way so it is not flagged dead code on non-Unix targets (found via Windows CI, once
+/// an unrelated pre-existing clippy failure elsewhere in the workspace stopped masking this
+/// crate from ever actually being clippy-checked there).
+#[cfg(unix)]
 fn write_claude_session_with_payload(
     root: &Path,
     project: &str,
