@@ -111,6 +111,35 @@ never treated as absence", applied at this adapter's own layer since `cancellai-
 corpus's `claude-*` fixtures by hand and asserts the adapter's output against the exact values
 the committed Python characterization records for each (AC1).
 
+E05-S04 implements the Codex CLI native adapter's own slice, including its subagent/rollout
+graph: `rust/crates/cancellai-provider-codex/src/session.rs` ports `discover_codex_sessions`/
+`read_codex_parent_session_id` (a bounded, first-10-lines/512KiB probe for a rollout's
+`parent_thread_id`), and `graph.rs` ports the graph-*building* half of
+`choose_codex_old_sessions` - `root_id_for`/grouping - as `group_into_subagent_trees`: every
+discovered rollout resolves to a root-rooted `SubagentTree` by walking its `parent_thread_id`
+chain, with a session whose parent was never itself discovered treated as its own root (an
+independent safety unit, not assumed part of a tree it cannot verify) and a cyclic/malformed
+chain isolating the original session rather than over-grouping it (this story's AC1: "Root/
+subagent trees are preserved as graph relationships"). `choose_codex_old_sessions`'s own
+age/keep-latest *selection* is deliberately not ported - that is PLAN-stage scope. Codex's
+`CODEX_PROTECTED_NAMES` (`protected_names.rs`) is a verbatim port covering auth/config/skills/
+rules/memories/plugins state (this story's AC3: "SQLite/config/auth/plugin state stays
+protected" - `sqlite/` itself is a root-fingerprint marker, not a protected-name entry, in
+both the Python reference and this port). `native_delete.rs` ports `codex_delete_supported` as
+a four-outcome `NativeDeleteSupport` (`Supported`/`Unsupported`/`BinaryNotFound`/
+`ProbeFailed`, never a bare boolean) so that "no binary" and "a binary that declined
+`--force`" and "the probe itself failed" remain distinct evidentiary claims (this story's AC2:
+"Native delete capability is detected without assuming filesystem fallback equivalence") -
+implemented with a background-thread-read/poll-with-deadline probe rather than the missing
+`std::process` timeout, specifically to avoid a pipe deadlock when the probed binary writes
+more output than fits an OS pipe buffer before exiting.
+`rust/crates/cancellai-provider-codex/tests/codex_fixture_parity.rs` reproduces five
+`codex-*` fixtures by hand (including `codex-subagent-tree`, proving the three rollouts group
+into one tree) against the committed Python characterization, and
+`native_delete.rs`'s own tests drive `codex_delete_supported` against a small fake `codex` CLI
+script this story writes and controls - the "native-delete fake CLI integration tests" this
+story's verification plan names.
+
 ### Vendor-native integration
 
 Explicit vendor command/API for operations such as delete/retention/restore when semantics are tested.

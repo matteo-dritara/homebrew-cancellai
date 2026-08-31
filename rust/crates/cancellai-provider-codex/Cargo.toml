@@ -14,3 +14,4 @@ workspace = true
 cancellai-model = { path = "../cancellai-model", version = "0.1.0" }
 cancellai-provider-api = { path = "../cancellai-provider-api", version = "0.1.0" }
 cancellai-inventory = { path = "../cancellai-inventory", version = "0.1.0" }
+serde_json = { workspace = true }

@@ -18,10 +18,12 @@ use std::path::{Path, PathBuf};
 
 use cancellai_model::{AuthorityLevel, KnowledgeConfidence};
 use cancellai_provider_api::{
-    CapabilityKind, CapabilityOutcome, ProtectionOutcome, ProviderCapabilities, SupportState,
+    CapabilityKind, CapabilityOutcome, ProtectionOutcome, ProviderCapabilities, RootFingerprint,
+    SupportState,
 };
 
-pub use fingerprint::{ClaudeRootFingerprint, RootConfidence, RootOrigin, fingerprint_claude_root};
+pub use cancellai_provider_api::{RootConfidence, RootOrigin};
+pub use fingerprint::fingerprint_claude_root;
 pub use protected_names::{CLAUDE_PROTECTED_NAMES, claude_protected_component};
 pub use session::{
     ClaudeSession, SessionDiscoveryResult, SessionDiscoveryScope, discover_claude_sessions,
@@ -45,7 +47,7 @@ impl ClaudeProvider {
         &self.root
     }
 
-    pub fn fingerprint(&self) -> ClaudeRootFingerprint {
+    pub fn fingerprint(&self) -> RootFingerprint {
         fingerprint_claude_root(&self.root, self.is_default_root)
     }
 

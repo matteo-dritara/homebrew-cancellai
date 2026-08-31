@@ -84,7 +84,7 @@
     {
       "id": "E05-S04",
       "title": "Codex reference adapter",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Port Codex rollout/subagent/native-delete knowledge to Rust with version/layout fingerprinting.",
       "change_risk": "CR3",
       "dependencies": [

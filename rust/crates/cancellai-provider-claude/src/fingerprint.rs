@@ -9,11 +9,17 @@
 //! function. This is a deliberate, narrow improvement on the Python reference's shape, not a
 //! behavioral divergence: given the same `is_default_root` answer, the confidence/marker
 //! computation below matches `fingerprint_root` exactly.
+//!
+//! `RootOrigin`/`RootConfidence`/`RootFingerprint`/`derive_root_confidence` live in
+//! `cancellai-provider-api::root_fingerprint` (E05-S04) - `cancellai.py`'s own `RootAuthority`
+//! is one dataclass shared across both tools, not duplicated per tool, and this crate matches
+//! that shape once a second adapter needed the identical vocabulary.
 
 use std::path::Path;
 
 use cancellai_provider_api::{
-    contains_uuid_named_jsonl, is_dir, is_json_object, is_jsonl_of_objects,
+    RootFingerprint, RootOrigin, contains_uuid_named_jsonl, derive_root_confidence, is_dir,
+    is_json_object, is_jsonl_of_objects,
 };
 
 struct Marker {
@@ -91,43 +97,10 @@ const CLAUDE_ROOT_MARKERS: &[Marker] = &[
     },
 ];
 
-/// Mirrors `cancellai.py`'s `RootAuthority.origin`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RootOrigin {
-    Default,
-    Custom,
-}
-
-/// Mirrors `cancellai.py`'s `RootAuthority.confidence` four-value vocabulary exactly - this
-/// is the source vocabulary [`crate::ClaudeProvider::capability`] maps onto
-/// `cancellai_provider_api::SupportState`/`cancellai_model::KnowledgeConfidence`, not a
-/// replacement for either.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RootConfidence {
-    /// The provider's own default directory - authoritative by definition, including when
-    /// empty or absent on a fresh machine (`cancellai.py`'s own comment on this case).
-    Default,
-    /// A custom root with at least one identifying marker and at least two markers overall.
-    High,
-    /// A custom root with some marker evidence, but not enough to be `High`.
-    Low,
-    /// A custom root with no recognized marker at all.
-    Unknown,
-}
-
-/// A Claude Code root's fingerprint: which markers were found (sorted, matching
-/// `cancellai.py`'s `tuple(sorted(found))`) and the confidence/origin derived from them.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ClaudeRootFingerprint {
-    pub origin: RootOrigin,
-    pub confidence: RootConfidence,
-    pub markers: Vec<&'static str>,
-}
-
 /// Fingerprints `path` as a candidate Claude Code root. `is_default_root` is the caller's
 /// answer to "is this the OS-default Claude home" (see the module doc for why that
 /// determination is not made here).
-pub fn fingerprint_claude_root(path: &Path, is_default_root: bool) -> ClaudeRootFingerprint {
+pub fn fingerprint_claude_root(path: &Path, is_default_root: bool) -> RootFingerprint {
     let mut found = Vec::new();
     let mut identifying = 0usize;
     for marker in CLAUDE_ROOT_MARKERS {
@@ -140,23 +113,13 @@ pub fn fingerprint_claude_root(path: &Path, is_default_root: bool) -> ClaudeRoot
     }
     found.sort_unstable();
 
-    let confidence = if is_default_root {
-        RootConfidence::Default
-    } else if identifying >= 1 && found.len() >= 2 {
-        RootConfidence::High
-    } else if !found.is_empty() {
-        RootConfidence::Low
-    } else {
-        RootConfidence::Unknown
-    };
-
-    ClaudeRootFingerprint {
+    RootFingerprint {
         origin: if is_default_root {
             RootOrigin::Default
         } else {
             RootOrigin::Custom
         },
-        confidence,
+        confidence: derive_root_confidence(is_default_root, identifying, found.len()),
         markers: found,
     }
 }
@@ -164,6 +127,7 @@ pub fn fingerprint_claude_root(path: &Path, is_default_root: bool) -> ClaudeRoot
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cancellai_provider_api::RootConfidence;
     use std::fs;
     use std::path::PathBuf;
 

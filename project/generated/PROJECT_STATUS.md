@@ -9,8 +9,8 @@ Epics: **20** | Stories: **90**
 ## Story status
 
 - `done`: 28
-- `planned`: 59
-- `ready_for_review`: 3
+- `planned`: 58
+- `ready_for_review`: 4
 
 ## Change risk distribution
 
@@ -29,3 +29,4 @@ Epics: **20** | Stories: **90**
 - **E05-S01** - Provider capability contract (CR2)
 - **E05-S02** - Provider trust enforcement (CR4)
 - **E05-S03** - Claude reference adapter (CR3)
+- **E05-S04** - Codex reference adapter (CR3)
