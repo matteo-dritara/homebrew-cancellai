@@ -149,6 +149,7 @@ fn is_executable(_path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use std::fs;
 
     // The struct, its constructor, and its Drop impl are all Unix-only: every test that
