@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `directory_size`/`safe_lstat_size` no longer count a symlink's own `lstat().st_size` toward
+  a reported byte total. For a symlink that value is the byte length of the stored target path
+  string, not real disk footprint - reporting it as "size" made coverage/size output for any
+  entry containing a symlink depend on the absolute path length of wherever the symlink
+  happened to live, silently differing by machine and even by which temp-directory prefix a
+  test run used. Found via the `codex-symlink-escape`/`claude-symlink-protected-name`
+  characterization fixtures diverging between macOS and Linux CI; a symlink already contributes
+  nothing to deletion or discovery accounting elsewhere (E00-S02 / ADR-0013) and now
+  consistently contributes nothing to size accounting either.
+
 ## [1.6.0] - 2026-08-31
 
 ### Changed

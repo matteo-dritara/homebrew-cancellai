@@ -562,7 +562,15 @@ def safe_lstat_size(path: Path, scan: Scan | None = None) -> int:
             scan.record(path, exc)
         return 0
     if stat.S_ISLNK(st.st_mode):
-        return st.st_size
+        # A symlink is never followed for size accounting (E00-S02 / ADR-0013): its own
+        # lstat().st_size is not disk footprint, it is the byte length of the stored target
+        # path string, which is platform- and location-dependent (an identical fixture reports
+        # a different "size" depending on the absolute length of wherever it happens to sit -
+        # this is exactly how the characterization corpus caught it: the same symlink fixture
+        # produced a different committed-vs-fresh byte count on Linux CI than on macOS, because
+        # the temp-directory prefix length differs). Reporting it as size would be reporting a
+        # path length as if it were storage, so it contributes nothing here.
+        return 0
     if stat.S_ISREG(st.st_mode):
         return st.st_size
     if stat.S_ISDIR(st.st_mode):
@@ -575,7 +583,9 @@ def directory_size(root: Path, scan: Scan | None = None) -> int:
     if st is None:
         return 0
     if stat.S_ISLNK(st.st_mode):
-        return st.st_size
+        # See safe_lstat_size: a symlink's own lstat().st_size is a target-path length, not
+        # disk footprint, and must never be accounted as size.
+        return 0
     if stat.S_ISREG(st.st_mode):
         return st.st_size
     total = 0
@@ -587,15 +597,15 @@ def directory_size(root: Path, scan: Scan | None = None) -> int:
     try:
         for base, dirs, files in os.walk(root, followlinks=False, onerror=on_walk_error):
             base_p = Path(base)
-            # Do not follow directory symlinks. os.walk places them in dirs.
+            # Do not follow directory symlinks. os.walk places them in dirs. A symlink here
+            # contributes no bytes (see safe_lstat_size) - only its non-symlink siblings are
+            # kept for further descent.
             keep_dirs: list[str] = []
             for name in dirs:
                 p = base_p / name
                 try:
                     lst = p.lstat()
-                    if stat.S_ISLNK(lst.st_mode):
-                        total += lst.st_size
-                    else:
+                    if not stat.S_ISLNK(lst.st_mode):
                         keep_dirs.append(name)
                 except OSError as exc:
                     if scan is not None:
@@ -605,7 +615,12 @@ def directory_size(root: Path, scan: Scan | None = None) -> int:
             for name in files:
                 p = base_p / name
                 try:
-                    total += p.lstat().st_size
+                    lst = p.lstat()
+                    # A symlink can appear in `files` too (os.walk classifies by the *target's*
+                    # type, and a symlink to a regular file is not a directory) - it must not
+                    # contribute its target-path-length "size" either.
+                    if not stat.S_ISLNK(lst.st_mode):
+                        total += lst.st_size
                 except OSError as exc:
                     if scan is not None:
                         scan.record(p, exc)
