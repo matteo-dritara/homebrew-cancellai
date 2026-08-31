@@ -613,13 +613,13 @@ Build a fast, evidence-rich inventory that scans once and never equates unknown 
 
 ## E05 - Provider API and Reference Adapters
 
-**Phase:** `P1` | **Status:** `planned` | **Epic dependencies:** E04
+**Phase:** `P1` | **Status:** `in_progress` | **Epic dependencies:** E04
 
 Implement capability-based provider integration and achieve Claude/Codex semantic parity.
 
 ### E05-S01 - Provider capability contract
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E04-S01 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E04-S01 | **Safety obligations:** none
 
 **Outcome.** Define detect, fingerprint, inventory mapping, session graph, project attribution, activity, native mutation, explain, and compatibility capabilities.
 

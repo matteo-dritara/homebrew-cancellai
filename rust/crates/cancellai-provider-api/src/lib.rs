@@ -5,6 +5,14 @@
 //! Provider adapters (`cancellai-provider-claude`, `cancellai-provider-codex`) implement
 //! this contract; this crate defines it and must not depend on a specific adapter.
 //!
-//! Skeleton crate (E02-S01) - no types defined yet.
+//! `capability` (E05-S01) is the first real contract in this crate - the nine-capability
+//! [`ProviderCapabilities`] trait and its evidence/confidence-bearing
+//! [`CapabilityOutcome`]. The manifest model (declarative root/pattern/category knowledge,
+//! PROVIDER_MODEL.md "Manifest-only" integration level) does not exist yet and is deferred to
+//! a later E05 story.
 
-use cancellai_model as _;
+pub mod capability;
+
+pub use capability::{
+    CapabilityKind, CapabilityOutcome, ProviderCapabilities, SupportState, capability_report,
+};

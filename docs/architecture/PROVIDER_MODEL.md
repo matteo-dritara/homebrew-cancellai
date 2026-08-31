@@ -40,6 +40,25 @@ Recommended vocabulary:
 
 A provider can therefore be verified for inventory but unsupported for native delete.
 
+E05-S01 implements this contract at `rust/crates/cancellai-provider-api/src/capability.rs`:
+`CapabilityKind` enumerates the nine capabilities above by name (`ALL`, mirroring
+`cancellai-model::ErrorCategory::ALL`); `ProviderCapabilities` is the trait every adapter
+implements, with a single required method (`capability(kind) -> CapabilityOutcome`) that
+takes no provider-identity input beyond `&self` - there is no identity-keyed lookup table
+anywhere in the crate that could infer a capability's support from a provider id string, which
+is what makes capability absence first-class rather than inferred (this story's AC1).
+`CapabilityOutcome` bundles support state, `KnowledgeConfidence`, an authority ceiling, and at
+least one evidence note - its only public constructor requires a first evidence string, so
+there is no way to construct a response that omits evidence (AC2), the same "invariant
+enforced by API shape" pattern `cancellai-safety::SealedPlan` uses. The per-capability result
+*payload* (a session graph's actual shape, a project attribution's actual fields) is
+deliberately not defined yet - it belongs to the adapter stories that produce real data
+(E05-S03 Claude, E05-S04 Codex) and to the inventory/session-graph epics beyond E05, not to
+this contract-definition story. `capability_report` runs every `CapabilityKind` against a
+provider in a fixed order; it is the reusable half of this story's "mock provider contract
+conformance suite" verification, meant to be driven against real adapters once they exist
+rather than re-derived per adapter.
+
 ## Root fingerprinting
 
 Destructive operation on a [`ProviderRoot`](DOMAIN_MODEL.md#providerroot) requires a credible root fingerprint. A path is not accepted merely because the environment variable names it.

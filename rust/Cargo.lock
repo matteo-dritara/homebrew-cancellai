@@ -67,6 +67,8 @@ name = "cancellai-provider-api"
 version = "0.1.0"
 dependencies = [
  "cancellai-model",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

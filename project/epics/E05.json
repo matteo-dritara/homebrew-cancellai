@@ -7,12 +7,12 @@
   "dependencies": [
     "E04"
   ],
-  "status": "planned",
+  "status": "in_progress",
   "stories": [
     {
       "id": "E05-S01",
       "title": "Provider capability contract",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Define detect, fingerprint, inventory mapping, session graph, project attribution, activity, native mutation, explain, and compatibility capabilities.",
       "change_risk": "CR2",
       "dependencies": [
