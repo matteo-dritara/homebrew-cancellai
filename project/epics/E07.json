@@ -152,7 +152,7 @@
     {
       "id": "E07-S07",
       "title": "Provider-root link authority boundary",
-      "status": "ready_for_review",
+      "status": "in_progress",
       "outcome": "Reject provider roots whose root object or path resolution crosses a symbolic-link, junction, or reparse boundary before any Rust CLI mutation or provider configuration write.",
       "change_risk": "CR4",
       "dependencies": [

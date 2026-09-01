@@ -10,8 +10,8 @@ Epics: **20** | Stories: **94**
 
 - `blocked`: 1
 - `done`: 37
+- `in_progress`: 1
 - `planned`: 55
-- `ready_for_review`: 1
 
 ## Change risk distribution
 
@@ -27,4 +27,4 @@ Epics: **20** | Stories: **94**
 
 ## Awaiting independent review
 
-- **E07-S07** - Provider-root link authority boundary (CR4)
+- none
