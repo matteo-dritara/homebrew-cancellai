@@ -52,7 +52,13 @@ quarantine/undo yet).
 
 `--claude-retention DAYS` sets Claude Code's own `cleanupPeriodDays` setting (a vendor
 configuration value, not a cancellAI-tracked artifact - this does not go through the mutation
-boundary, matching `cancellai.py`'s own `configure_claude_retention`).
+boundary, matching `cancellai.py`'s own `configure_claude_retention`). Every read/write is
+issued through `cancellai-sealedfs::SealedRoot` (ADR-0017, E07-S07 round-1 repair): the root is
+opened exactly once with `O_NOFOLLOW` and retained, so a symlink-swap of the root's path after
+that point cannot redirect the write - a re-check of the path alone, which is what this command
+did before, cannot make that same guarantee. On a platform with no verified reparse-safe
+handle-relative implementation (every non-Unix platform today), `configure` refuses outright
+rather than falling back to an unprotected path-based write - see "Known gaps" below.
 
 ### `version`
 
@@ -106,3 +112,10 @@ one-for-one:
   `FileType::is_symlink()` reports `true` for that reparse tag too (it is the same check this
   gate calls), so the same refusal is expected to apply, but this is a disclosed residual, not
   an empirically closed case.
+- `configure`'s underlying write capability (`cancellai-sealedfs::SealedRoot`, ADR-0017) has no
+  verified no-follow/handle-relative implementation on non-Unix platforms yet - `configure`
+  refuses outright there (`SealError::Unsupported`), not only when the root happens to be a
+  link, until a future story (the natural home is E07-S02, "Windows native backend") implements
+  a genuine reparse-safe handle. This is a real, disclosed capability reduction versus the
+  previous behavior of attempting the (unprotected) raw path write whenever `$HOME` happened to
+  resolve on such a platform, not an oversight.

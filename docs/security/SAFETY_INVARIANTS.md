@@ -18,9 +18,20 @@ other constraint can raise past, regardless of user-requested authority.
 
 Every mutation occurs under a validated provider root capability. Catastrophically broad, ambiguous, or low-confidence custom roots are non-destructive.
 
+For `cancellai-cli`'s `configure` command specifically - a vendor settings-file write that
+deliberately does not go through `ApprovedRoot` (see SI-019 below) -
+`cancellai-sealedfs::SealedRoot::establish` (E07-S07 round-1 repair, ADR-0017) is the positively
+bounding capability: it opens the root once with `O_NOFOLLOW` and retains that descriptor for
+every subsequent operation, rather than re-checking and re-resolving the path each time.
+
 ### SI-003 Mutation cannot escape or delete the approved root
 
 No filesystem mutation may target outside its approved root or the root object itself, including via path normalization tricks or link indirection.
+
+`cancellai-sealedfs::SealedRoot`'s child operations are issued via `openat`/`renameat` against
+the retained root descriptor, using a validated bare-filename child name (no `/`, `.`/`..`) -
+they cannot resolve outside the bound directory regardless of what its original path resolves
+to by the time the operation runs.
 
 ### SI-004 Unknown provider layout/version reduces capability
 
@@ -108,6 +119,17 @@ round) additionally re-confirms a plain file's identity via an open file descrip
 immediately around the unlink syscall itself, narrowing (though, without an OS-specific
 handle-relative unlink this workspace does not have, not perfectly closing) the residual
 revalidate-then-delete race.
+
+E07-S07 round-1 independent verifier review found the identical *shape* of race, but fully
+closable this time, one layer up: `cancellai-cli::configure` re-checked `roots::is_symlink`
+immediately before its own writes, and that re-check was still a separate syscall from the
+path-based reads/writes that followed it, leaving a real window for a root-directory symlink
+swap. Unlike the `MutationExecutor` file-unlink case above, `cancellai-sealedfs::SealedRoot`
+(ADR-0017) closes this one completely rather than narrowing it: it retains an
+`O_NOFOLLOW`-opened directory descriptor across every operation and issues them via
+`openat`/`renameat` against that descriptor, so identity is not merely revalidated immediately
+before mutation but bound for the mutation's entire duration - no path re-resolution ever
+happens again after `establish` returns.
 
 ### SI-014 Safety-blocked/partial is not success
 

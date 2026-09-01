@@ -64,6 +64,7 @@ crates/
   cancellai-policy/           # typed policy and deterministic resolver
   cancellai-store/            # SQLite current state, ledger, analytical rollups
   cancellai-platform/         # OS capability interfaces and implementations
+  cancellai-sealedfs/         # unsafe-isolated no-follow/handle-relative root capability
   cancellai-cli/              # headless/scriptable client
   cancellai-tui/              # terminal experience
   cancellai-guardian/         # later user-service runtime
@@ -109,6 +110,27 @@ immediately after the actual unlink syscall - narrowing, though (a safe-Rust, no
 no-new-dependency implementation cannot fully close) not perfectly eliminating, the race
 between revalidation and the OS call itself. Directories and symlinks are refused rather than
 deleted without that confirmation.
+
+E07-S07's round-1 independent verifier review found the identical *shape* of race one layer
+up, in `cancellai-cli`'s `configure` command (which does not go through `ApprovedRoot`/
+`MutationExecutor` at all - see `docs/architecture/PLATFORM_MODEL.md`'s "Default-root
+authority never rests on a lexical name alone" for why): a root confirmed not to be a symlink,
+then read/written/renamed by raw path, could be atomically replaced with a symlink in the gap
+between that check and the first path-based operation, redirecting every following read/write
+outside the approved root. Unlike the `MutationExecutor` case above, this one *is* fully
+closed, not merely narrowed: `cancellai-sealedfs` (ADR-0017) opens the root exactly once with
+`O_NOFOLLOW` and performs every subsequent child operation via `openat`/`renameat` against that
+one retained descriptor, which the kernel resolves independently of whatever the original path
+now names - a rename/symlink-swap of the root's own path after that point cannot redirect
+anything. This needed the `unsafe` FFI `MutationExecutor`'s own docs describe wanting and
+explicitly did not have; ADR-0015 anticipated exactly this ("a future crate ... isolated in a
+small, dedicated crate whose only job is that unsafe boundary") without naming it in advance -
+`cancellai-sealedfs` is that crate, the only one in the workspace not carrying
+`unsafe_code = "forbid"`, and does not participate in the `cancellai-safety`/`cancellai-
+platform` mutation boundary above (`configure` is a vendor-settings write, not a
+cancellAI-tracked artifact deletion, per SI-019's own scope). `MutationExecutor`'s own
+narrower, unlink-specific race remains open and is unrelated to this fix (a different
+operation, a different crate) - see that module's docs for its own residual.
 
 E04-S01/E04-S02/E04-S03 implement `cancellai-inventory`'s share of the OBSERVE stage below:
 `FileFacts`/`observe_file_facts` (per-path evidence composed from three `cancellai-platform`

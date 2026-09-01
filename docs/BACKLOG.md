@@ -925,7 +925,7 @@ Make macOS, Linux, Windows native, and WSL2 first-class platform targets.
 
 ### E07-S07 - Provider-root link authority boundary
 
-**Status:** `in_progress` | **Change Risk:** `CR4` | **Dependencies:** E03-S03, E03-S05, E06-S01 | **Safety obligations:** SI-002, SI-003, SI-013, SI-019
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E03-S03, E03-S05, E06-S01 | **Safety obligations:** SI-002, SI-003, SI-013, SI-019
 
 **Outcome.** Reject provider roots whose root object or path resolution crosses a symbolic-link, junction, or reparse boundary before any Rust CLI mutation or provider configuration write.
 

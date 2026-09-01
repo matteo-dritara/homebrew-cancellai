@@ -20,7 +20,7 @@ mod roots;
 mod timestamp;
 
 use std::collections::{BTreeSet, HashMap};
-use std::io::Write;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
 use cancellai_model::{
@@ -856,6 +856,11 @@ fn cmd_configure(args: &[String]) -> i32 {
     }
     // Fresh, execution-time re-check (E06 verifier review round 2), independent of
     // `claude_resolved.is_default` above - see `establish_verified_root`'s identical rationale.
+    // This is a fast, legible diagnostic only: it does not by itself close the TOCTOU between
+    // this check and the write below (E07-S07 round-1 verifier rejection found exactly that
+    // gap - a root swapped to a symlink *after* this check and before the raw path-based write
+    // operations that used to follow it). `configure_claude_retention`'s `SealedRoot` is the
+    // capability that actually closes it, unconditionally, regardless of what this check saw.
     if roots::is_symlink(&claude_resolved.path) {
         return safety_block(&format!(
             "refusing to configure {}: it is a symlink, not a real directory - a default-named \
@@ -871,6 +876,10 @@ fn cmd_configure(args: &[String]) -> i32 {
         Err(ConfigureError::MalformedSettings(msg)) => {
             safety_block(&format!("refusing to modify invalid settings.json: {msg}"))
         }
+        Err(ConfigureError::Sealed(e)) => safety_block(&format!(
+            "refusing to configure {}: {e} (SI-002/SI-003/SI-013)",
+            claude_resolved.path.display(),
+        )),
         Err(ConfigureError::Io(e)) => {
             eprintln!("[{}] {e}", ErrorCategory::InternalFault.code());
             ErrorCategory::InternalFault.exit_code()
@@ -889,12 +898,26 @@ enum ConfigureError {
     /// earlier version treated a parse failure exactly like a missing file, silently overwriting
     /// whatever the operator had there with a fresh `{}`).
     MalformedSettings(String),
+    /// A `cancellai_sealedfs::SealError` other than a bare I/O failure - the root turned out to
+    /// be a link/reparse point, not a directory, or carried an invalid child name. Kept
+    /// separate from `Io` so the caller reports it as a safety block (SI-002/SI-003/SI-013),
+    /// not `InternalFault`.
+    Sealed(cancellai_sealedfs::SealError),
     Io(std::io::Error),
 }
 
 impl From<std::io::Error> for ConfigureError {
     fn from(e: std::io::Error) -> Self {
         ConfigureError::Io(e)
+    }
+}
+
+impl From<cancellai_sealedfs::SealError> for ConfigureError {
+    fn from(e: cancellai_sealedfs::SealError) -> Self {
+        match e {
+            cancellai_sealedfs::SealError::Io(io_err) => ConfigureError::Io(io_err),
+            other => ConfigureError::Sealed(other),
+        }
     }
 }
 
@@ -905,21 +928,23 @@ impl From<std::io::Error> for ConfigureError {
 /// `configure_claude_retention` already performs outside its own deletion path). Root-origin
 /// gating happens in the caller (`cmd_configure`), before this is ever reached.
 ///
-/// The temporary-file write is opened with `create_new` (`O_CREAT | O_EXCL`) at a
-/// process-id-and-nanosecond-unique path, never a predictable fixed name - `std::fs::write`'s
-/// normal open-and-truncate would follow a pre-existing symlink at that path (E06 verifier
-/// review round 1: a pre-created `settings.json.cancellai-tmp` symlink to an outside file made
-/// the previous version write through it and then install the symlink itself as
-/// `settings.json`). `create_new` refuses to open anything - regular file or symlink - that
-/// already exists at the chosen path, closing that race by construction; the final
-/// `std::fs::rename` then atomically replaces whatever sits at `settings_path` itself (POSIX
-/// `rename()` never follows a symlink destination), matching `cancellai.py::atomic_write_json`'s
-/// own `tempfile.mkstemp` + `os.replace` shape.
+/// Every read/write below is issued through `cancellai_sealedfs::SealedRoot`, not a raw path -
+/// E07-S07 round-1 independent verifier review found that the previous path-based version (a
+/// `create_dir_all`/`read_to_string`/`OpenOptions`/`rename` sequence against
+/// `claude_home.join(...)`) let a root swapped to a symlink *after* the caller's own
+/// `is_symlink` check and *before* these operations redirect every one of them outside the
+/// approved root (SI-002/SI-003/SI-013). `SealedRoot::establish` opens the root exactly once
+/// with `O_NOFOLLOW` and retains that descriptor; every operation below is relative to it, so a
+/// later rename/symlink-swap of `claude_home` itself cannot redirect any of them - see
+/// `cancellai-sealedfs`'s own module docs for the full mechanism and rationale. The temp-name +
+/// atomic-rename shape, and the `O_CREAT | O_EXCL` refusal of anything already present at the
+/// temp name, match `cancellai.py::atomic_write_json`'s `tempfile.mkstemp` + `os.replace` shape,
+/// as the pre-existing path-based version already did.
 fn configure_claude_retention(claude_home: &Path, days: u32) -> Result<(), ConfigureError> {
-    std::fs::create_dir_all(claude_home)?;
-    let settings_path = claude_home.join("settings.json");
-    let value: serde_json::Value = match std::fs::read_to_string(&settings_path) {
-        Ok(text) => {
+    let root = cancellai_sealedfs::SealedRoot::establish(claude_home)?;
+
+    let value: serde_json::Value = match root.read_child_to_string("settings.json")? {
+        Some(text) => {
             let parsed: serde_json::Value = serde_json::from_str(&text)
                 .map_err(|e| ConfigureError::MalformedSettings(e.to_string()))?;
             if !parsed.is_object() {
@@ -929,8 +954,7 @@ fn configure_claude_retention(claude_home: &Path, days: u32) -> Result<(), Confi
             }
             parsed
         }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => serde_json::json!({}),
-        Err(e) => return Err(ConfigureError::Io(e)),
+        None => serde_json::json!({}),
     };
     let mut value = value;
     value["cleanupPeriodDays"] = serde_json::json!(days);
@@ -940,26 +964,18 @@ fn configure_claude_retention(claude_home: &Path, days: u32) -> Result<(), Confi
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let tmp_path = claude_home.join(format!(
+    let tmp_name = format!(
         ".settings.json.{}.{unique_suffix}.cancellai-tmp",
         std::process::id()
-    ));
-    {
-        use std::io::Write as _;
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&tmp_path)?;
-        file.write_all(serialized.as_bytes())?;
-        file.sync_all()?;
-    }
-    // On a rename failure this leaves the unique, nanosecond-named temp file behind rather than
-    // cleaning it up: `scripts/check_mutation_boundary.py` (SI-019) permits raw
-    // `std::fs::remove_file`/`remove_dir_all` calls only inside `cancellai-platform`'s mutation
-    // executor, so this file - not a provider artifact, and never reused (its name is
-    // unique per attempt) - is simply orphaned on this rare I/O-error path rather than adding a
-    // second, narrower deletion primitive to a crate the boundary check exists to keep clean.
-    std::fs::rename(&tmp_path, &settings_path)?;
+    );
+
+    // On a failure after the temp child was created, this leaves it behind rather than
+    // cleaning it up - the same accepted tradeoff the prior path-based version documented:
+    // `scripts/check_mutation_boundary.py` (SI-019) permits raw filesystem removal only inside
+    // `cancellai-platform`'s mutation executor, and this uniquely-named, non-provider-artifact
+    // temp file is simply orphaned on this rare error path rather than adding a second,
+    // narrower deletion primitive to a crate that boundary exists to keep clean.
+    root.write_new_child_atomically(&tmp_name, "settings.json", serialized.as_bytes())?;
     Ok(())
 }
 

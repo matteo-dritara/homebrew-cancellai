@@ -40,6 +40,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   authority never rests on a lexical name alone"). Closes an E06 verifier review round 2
   finding: authority previously followed the lexical `$HOME/.claude` name alone, so a symlinked
   default root was still treated as mutation-eligible.
+- E07-S07 (round 2): closes an E07-S07 round-1 independent verifier review finding - `configure`'s
+  own re-check above narrowed but did not close its TOCTOU: a default root swapped to a symlink
+  *after* that check and before the raw path-based settings write reached outside the approved
+  root. `configure` now routes every read/write through a new `cancellai-sealedfs` crate
+  (`docs/adrs/0017-sealed-root-handle-for-configuration-writes.md`): the root is opened exactly
+  once with `O_NOFOLLOW` and retained, with every following operation issued via
+  `openat`/`renameat` against that descriptor rather than the original path, closing the race by
+  construction. **Behavior change**: `configure` now refuses outright (rather than attempting an
+  unprotected write) on every platform without a verified no-follow/handle-relative
+  implementation - today, every non-Unix platform - matching `clean`'s existing fail-closed
+  posture there.
 - E07-S08: `scripts/rust_python_parity.py`'s divergence allow-list is now structured
   (fixture/scenario/field-scoped, citation content-checked) rather than free-text, and its
   comparison surface grew from six to eight fields covering every discovered identity record,

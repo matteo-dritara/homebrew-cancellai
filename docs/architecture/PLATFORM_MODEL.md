@@ -140,6 +140,38 @@ Windows implementation reports `is_symlink() == true` for that reparse tag too, 
 refusal is expected, but this remains a disclosed residual rather than an empirically closed
 case (`docs/CLI_RUST.md`'s own "Known gaps" section records the same disclosure).
 
+#### `configure`'s TOCTOU: a re-checked path is not enough, only a retained handle is
+
+E07-S07's round-1 independent verifier review found that the paragraph above's own `configure`
+re-check did not actually close the gap it was added for: `cmd_configure` checked
+`roots::is_symlink` once, then `configure_claude_retention` performed `create_dir_all`/
+`read_to_string`/`OpenOptions::open`/`rename` against the same raw path again, several separate
+syscalls later. A same-user attacker who atomically replaces the real default root with a
+symlink in the gap between that check and the first of those path lookups causes every
+following operation to silently follow the link and write outside the approved root - a
+re-check immediately before use narrows this window but, being itself a separate syscall from
+the operations that follow it, cannot close it to zero.
+
+`cancellai-sealedfs` (ADR-0017) closes it by construction instead of by narrowing it:
+`SealedRoot::establish` opens the root exactly once with `O_NOFOLLOW`, and every subsequent
+child read/write/rename is issued via `openat`/`renameat` against that one retained directory
+descriptor - the kernel resolves these relative to the descriptor's own bound object, not
+whatever name currently occupies the original path, so a rename/symlink-swap of that path after
+`establish` returns cannot redirect anything. This needed real `openat`/`renameat` FFI, which
+`std` does not expose safely; `cancellai-sealedfs` is the one workspace crate ADR-0015
+anticipated in the abstract ("isolated in a small, dedicated crate whose only job is that
+unsafe boundary") and is now, concretely, not carrying `unsafe_code = "forbid"`. Non-Unix
+platforms have no verified reparse-safe equivalent yet, so `SealedRoot::establish` there always
+fails closed - `configure` now refuses on every non-Unix platform outright, the same posture
+`clean` already had there via `ApprovedRoot::establish` failing closed on `Unsupported`
+identity, closing the asymmetry the previous paragraph's "the only thing standing between a
+symlinked default-named root and a write through it" language described.
+
+A settings-file-level symlink (`$CLAUDE_HOME/settings.json` itself being a link, distinct from
+the root directory case above) remains the already-verified E06 round-1 behavior: read through,
+never written through (`O_EXCL` + `renameat` never follows a symlink at either name) - this ADR
+did not change or re-scope that case.
+
 ## Quarantine
 
 Quarantine prefers metadata-preserving atomic/same-volume moves. Cross-volume copy+delete is a materially different action with more disk-pressure and failure risk and requires separate capability/policy.

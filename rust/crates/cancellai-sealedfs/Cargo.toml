@@ -1,0 +1,20 @@
+[package]
+name = "cancellai-sealedfs"
+description = "Unsafe-isolated OS capability: a no-follow, handle-relative directory binding for provider-root writes that must survive a path-level link swap after validation (ADR-0017)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# ADR-0017/ADR-0015: this is the one workspace crate exempted from `unsafe_code = "forbid"`.
+# Its only job is the OS-specific no-follow/handle-relative directory capability that
+# `std` cannot express in safe code (opening a directory once and issuing every subsequent
+# child operation relative to that held descriptor, immune to a later rename/symlink-swap of
+# the original path). Every `unsafe` block in this crate carries its own `// SAFETY:`
+# justification; `git grep unsafe rust/crates` should return nothing outside this crate.
+[lints.rust]
+unsafe_code = "allow"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

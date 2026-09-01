@@ -2,11 +2,13 @@
 
 - Commit/PR: pending (this work item)
 - Executor: Claude
-- Independent verifier: pending (CR4 - see "Why this stops at `ready_for_review`" below)
+- Independent verifier: Codex, round 1 - `FAIL` (`project/evidence/E07-S07-VERIFIER-REVIEW.md`,
+  `project/evidence/E07-S07/SAFETY_VERDICT.md`); round 2 - pending (CR4, see "Why this stops at
+  `ready_for_review`" below)
 - Change Risk: CR4
-- Spec version/commit: `rust/crates/cancellai-cli/src/roots.rs`,
-  `rust/crates/cancellai-cli/src/main.rs` (`establish_verified_root`, `cmd_configure`),
-  `rust/crates/cancellai-cli/tests/cli_behavior.rs`
+- Spec version/commit: `rust/crates/cancellai-sealedfs/src/lib.rs` (new crate),
+  `rust/crates/cancellai-cli/src/main.rs` (`configure_claude_retention`, `cmd_configure`),
+  `docs/adrs/0017-sealed-root-handle-for-configuration-writes.md`
 
 ## Outcome
 
@@ -14,100 +16,123 @@ PARTIAL
 
 ## Scope
 
-Implements this story's outcome, "Reject provider roots whose root object or path resolution
-crosses a symbolic-link, junction, or reparse boundary before any Rust CLI mutation or provider
-configuration write" - the CR4 carry-forward backlog item E06 verifier review round 2 opened
-for `E06-S01`'s surviving default-root symlink finding (`project/evidence/
-E06-VERIFIER-REVIEW-ROUND2.md`). The Unix-symlink repair itself (root cause, mechanism, code) is
-recorded in full in `project/evidence/E06-S01/EVIDENCE.md`'s "Repair for the round-2 finding"
-and "Closure" sections - not duplicated verbatim here. This packet adds this closure session's
-own further work (the Windows-specific fixtures) and states the story-level AC mapping.
+Repairs the exact defect the round-1 independent verifier review found and rejected: `configure`'s
+root-swap TOCTOU (see "Reproduction / counterexample" in `project/evidence/
+E07-S07-VERIFIER-REVIEW.md`). That review found the story's first closure session's `configure`
+re-check (`cmd_configure`'s `roots::is_symlink`, still present) insufficient - it and the raw
+path-based read/write/rename that followed it in `configure_claude_retention` were separate
+syscalls, so a root swapped to a symlink in the gap between them redirected the write outside the
+approved root, violating SI-002/SI-003/SI-013/SI-019.
+
+This session adds `cancellai-sealedfs` (ADR-0017), a new, unsafe-isolated workspace crate
+providing `SealedRoot`: a directory opened exactly once with `O_NOFOLLOW` and retained, with every
+subsequent child read/write/rename issued via `openat`/`renameat` against that one descriptor
+rather than the original path. `configure_claude_retention` is rewritten against this capability
+in place of the previous raw `std::fs`/path sequence. The Unix-symlink classification-time/
+execution-time repair and the disclosed Windows-junction-fixture residual from the story's first
+closure session (recorded in `project/evidence/E06-S01/EVIDENCE.md` and this packet's prior
+revision) are unchanged by this session and not re-litigated here.
 
 ## Acceptance Criteria Evidence
 
 | AC | Evidence | Result |
 | --- | --- | --- |
-| AC1 - A default-named Claude or Codex root that is itself a link/reparse point is inspection-only and cannot be cleaned or configured | Unix: `roots::is_symlink` + `resolve_from` (classification), `main.rs::establish_verified_root`/`cmd_configure` (fresh re-check before mutation); proven end-to-end by `cli_behavior.rs::clean_refuses_to_mutate_when_home_dot_claude_is_itself_a_symlink`/`configure_refuses_when_home_dot_claude_is_itself_a_symlink` against the real built binary. Windows: identical code path (`is_symlink` uses `std`'s cross-platform `FileType::is_symlink()`, no `#[cfg(unix)]` gate); proven for a Windows directory symlink (`std::os::windows::fs::symlink_dir`) by the `#[cfg(windows)]` counterparts of the same two tests, cross-compile-clippy-verified (`--target x86_64-pc-windows-gnu`, clean) since no Windows runner is available in this environment - executes for real on this repo's Windows CI matrix on the next push. **Not covered**: a genuine NTFS junction (`IO_REPARSE_TAG_MOUNT_POINT`, distinct from a symlink, creatable only via `DeviceIoControl` - no `std` API, and this repo's dependency policy does not add one merely to reach it) is not separately fixture-proven; `std`'s own Windows implementation reports `is_symlink() == true` for that reparse tag too (verified against Rust's own documented behavior, not this repo's code), so the same refusal is expected but not empirically closed. | PARTIAL |
-| AC2 - Root identity and containment revalidation reject link/reparse drift at plan and execution time on every supported platform | `establish_verified_root`/`cmd_configure` re-check `is_symlink` fresh immediately before establishing the root (`clean`) or writing configuration (`configure`), independent of the cached fingerprint computed earlier in the run - closes the TOCTOU window between classification (top of `cmd_clean`, before the interactive confirmation prompt) and mutation. This is platform-uniform code (no `#[cfg]` gate), so "every supported platform" holds for the symlink case; the same NTFS-junction residual as AC1 applies. | PARTIAL |
-| AC3 - Unix symlink and Windows junction/reparse adversarial fixtures prove no provider mutation reaches the link target | Unix symlink: `cli_behavior.rs`'s two tests above, executed and green in this environment. Windows: the two `#[cfg(windows)]` symlink counterparts above are new in this closure session, cross-compile-verified but not executed (no Windows runner available); a true junction-specific fixture does not exist (see AC1's "Not covered"). | PARTIAL |
+| AC1 - A default-named Claude or Codex root that is itself a link/reparse point is inspection-only and cannot be cleaned or configured | Unchanged from the prior revision for the static (already-a-symlink-at-classification) case; unaffected by this session's fix, which addresses the *drift* case (AC2 below). Windows NTFS-junction fixture remains the same disclosed residual as before. | PARTIAL |
+| AC2 - Root identity and containment revalidation reject link/reparse drift at plan and execution time on every supported platform | Unix: `cancellai_sealedfs::SealedRoot::establish` binds `configure`'s root via a retained `O_NOFOLLOW` directory descriptor; every child operation is issued against that descriptor, not the original path, closing the round-1 finding by construction rather than by a tighter re-check. Proven by a deterministic adversarial unit test (`cancellai-sealedfs::unix_impl::tests::establish_rejects_a_root_swapped_to_a_symlink_after_final_validation_but_before_the_bind`) that reproduces the verifier's exact scenario via a test-only hook between the presence check and the authoritative open, and proves an outside sentinel is never created. Non-Unix: `SealedRoot::establish` always fails closed (`SealError::Unsupported`) - `configure` now refuses outright there rather than attempting an unprotected path-based write, matching `clean`'s existing `ApprovedRoot`/`IdentityObserver::Unsupported` posture. `clean`'s own root-drift re-check (`establish_verified_root`) is unchanged; it did not have this gap (E03-S05's `ApprovedRoot::establish`/`bind` already canonicalize-and-bind before mutation). | PASS (Unix, drift case); FAIL->PASS (Windows/other non-Unix, now fails closed instead of writing unprotected) |
+| AC3 - Unix symlink and Windows junction/reparse adversarial fixtures prove no provider mutation reaches the link target | Unix: the new deterministic root-swap test above, plus regression coverage - `establish_refuses_a_root_that_is_already_a_symlink`, `write_new_child_atomically_refuses_a_pre_planted_symlink_at_the_temp_name` (temp-name race, matching the pre-existing `O_EXCL` protection), `read_child_to_string_follows_a_preexisting_symlink_child_matching_prior_behavior` (proves the already-accepted settings.json-symlink read/write split from E06 round 1 is preserved, not silently tightened) - all in `cancellai-sealedfs`'s own unit test suite; the full `cli_behavior.rs` integration suite (18 tests, including `configure_never_writes_through_a_preexisting_settings_json_symlink_to_an_outside_file` and both `*_when_home_dot_claude_is_itself_a_symlink` tests) still passes end-to-end against the real built binary. Windows: unchanged from the prior revision - no genuine NTFS junction fixture exists yet (same disclosed residual); the *new* Windows behavior this session adds (fail-closed via `Unsupported`) is proven by `cancellai-sealedfs::fallback_impl::tests::establish_always_fails_closed_on_a_platform_with_no_verified_handle_capability`, cross-compile-clippy-verified for `x86_64-pc-windows-gnu` (no Windows runner in this environment; executes for real on this repo's Windows CI matrix on the next push). | PARTIAL |
+
+## Safety Evidence
+
+| Invariant | Counterexample tested | Evidence | Result |
+| --- | --- | --- | --- |
+| SI-002 | Root swapped to a symlink after classification, before the write | `SealedRoot::establish`'s `O_NOFOLLOW` open is the positive bound; the adversarial unit test above proves it refuses even when the swap happens after `establish`'s own presence check | PASS |
+| SI-003 | Child name crafted to escape the sealed directory (`../`, absolute path, embedded `/`) | `validate_child_name_rejects_escaping_and_malformed_names` (`cancellai-sealedfs`) | PASS |
+| SI-013 | Identity drift between the last check and the mutation | Same adversarial unit test as SI-002 - the descriptor, not a re-checked path, is what is bound for the operation's full duration | PASS |
+| SI-019 | A vendor-configuration write reaching outside its approved root without an authority-verified capability | `configure_claude_retention` now routes exclusively through `SealedRoot`; `scripts/check_mutation_boundary.py` is unaffected (this is a vendor-settings write, not a provider-artifact deletion, per that invariant's own documented scope) | PASS |
 
 ## Verification Commands
 
 ```text
-# rust/ (native, this environment)
 cargo fmt --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo check --workspace --all-targets
 cargo test --workspace
 cargo deny check
-
-# rust/ (Windows cross-compile, no execution - no Windows runner in this environment)
-rustup target add x86_64-pc-windows-gnu   # already installed
-cargo clippy --workspace --all-targets --all-features --target x86_64-pc-windows-gnu -- -D warnings
+python3 scripts/check_rust_workspace.py check
+python3 scripts/check_mutation_boundary.py check
+python3 scripts/check_docs.py check
+python3 scripts/project_os.py check
 ```
 
-All green, including the two new `#[cfg(windows)]` tests compiling cleanly for the Windows
-target. `cargo test --workspace` (native) shows the pre-existing Unix symlink tests passing
-unchanged; the Windows tests are correctly excluded from the native run by `#[cfg(windows)]`
-and will run for the first time on this repo's actual Windows CI matrix
-(`.github/workflows/rust.yml`) on the next push - that CI run is this evidence's remaining gap,
-not yet observed by this session.
+All green in this environment (macOS, native toolchain). `cargo test --workspace` includes the
+new `cancellai-sealedfs` crate's 8 unit tests (7 Unix, plus a non-Unix fallback test that does not
+execute natively here) and all pre-existing suites unchanged, including the full `cli_behavior.rs`
+integration suite. No Windows runner is available in this environment; the Windows-specific
+fail-closed behavior is a fresh `#[cfg(not(unix))]` code path this session added and has not been
+executed on real Windows CI yet - disclosed as a residual below, matching this story's own
+pre-existing disclosure pattern for the Windows-junction gap.
 
 ## Compatibility
 
-- `is_symlink`'s implementation is platform-uniform `std` code; the classification/re-check
-  call sites (`establish_verified_root`, `cmd_configure`) carry no platform `#[cfg]` at all.
-- `roots.rs`'s own pre-existing, disclosed "Unix-only for now" scope note is about `home_dir()`
-  reading only the `HOME` env var (not `%USERPROFILE%`) for production default-root resolution
-  on a real Windows machine - orthogonal to `is_symlink`'s detection logic, which this story's
-  new tests set `HOME` explicitly for, matching the existing test pattern.
+- `cancellai-sealedfs`'s Unix implementation is exercised natively in this environment (macOS).
+  Its non-Unix fallback (`Unsupported`, always fails closed) is new code not yet executed on a
+  real non-Unix CI runner - see Residual risks.
+- `libc` is scoped to `[target.'cfg(unix)'.dependencies]`; a non-Unix build does not compile or
+  link it at all.
 
 ## Performance / operability
 
-- No measurable change; the added checks are single `symlink_metadata` syscalls already on the
-  hot path for `clean`/`configure`.
+- `configure` now performs the same syscall shapes as before (one directory open, one child
+  read, one child create, one rename) but via `openat`/`renameat` instead of path-based
+  equivalents - no additional syscalls, no measurable change.
 
 ## Documentation updated
 
-- `docs/architecture/PLATFORM_MODEL.md`: new "Default-root authority never rests on a lexical
-  name alone" subsection under "Boundary rules", describing the classification-time and
-  execution-time repair and the disclosed NTFS-junction residual.
-- `docs/CLI_RUST.md`: "Known gaps versus the Python reference" gained the same disclosure.
-- `docs/security/SAFETY_INVARIANTS.md`: no change - SI-002/SI-003/SI-013 remain the terse
-  invariant statements this repair satisfies; their existing text already covers this case
-  without needing an implementation-specific annotation (contrast SI-007/SI-008, which carry
-  "not fully closed" annotations for a different, still-open reason).
+- `docs/adrs/0017-sealed-root-handle-for-configuration-writes.md` (new): the full decision,
+  alternatives considered, and consequences for this repair.
+- `docs/architecture/TARGET.md`: crate list gains `cancellai-sealedfs`; new prose in the
+  `MutationExecutor`/SI-019 discussion cross-referencing this crate and its relationship to that
+  module's own disclosed, different, unlink-specific residual.
+- `docs/architecture/PLATFORM_MODEL.md`: new "`configure`'s TOCTOU: a re-checked path is not
+  enough, only a retained handle is" subsection under "Default-root authority never rests on a
+  lexical name alone".
+- `docs/CLI_RUST.md`: `configure` section and "Known gaps" both updated for the new capability
+  and the Windows fail-closed behavior change.
+- `docs/security/SAFETY_INVARIANTS.md`: SI-002, SI-003, and SI-013 each gained an implementation
+  cross-reference to `cancellai-sealedfs::SealedRoot`.
+- `CHANGELOG.md`: `[Unreleased]` entry recording the user-visible behavior change (Windows
+  `configure` now refuses outright) alongside the security repair.
 
 ## Residual risks
 
-- **NTFS junction-specific fixture (the AC1/AC3 "Not covered" item above)**: not empirically
-  proven, only expected by documented `std` behavior. Closing this fully would need either a
-  real Windows CI run exercising a real junction (this repo has no `DeviceIoControl` FFI to
-  create one without a new dependency) or an accepted decision that the symlink-based Windows
-  fixture is sufficient evidence given `std`'s documented equivalence.
-- **Windows tests unexecuted in this environment**: cross-compile-clippy-verified only: no
-  Windows runner was available to actually run them. They will execute for real on the next
-  push to this repo's Windows CI matrix; this evidence packet does not yet reflect that result.
-- Everything else in this story's scope beyond the round-2 finding (a fuller root-drift/
-  revalidation audit unrelated to link/reparse points) was not re-examined here; this closure is
-  scoped strictly to the round-2 finding this backlog item was created to track.
+- **Windows fail-closed path is cross-compile-verified only, not executed**: no Windows runner is
+  available in this environment. It will run for the first time on this repo's actual Windows CI
+  matrix on the next push - not yet observed by this session, same disclosure shape as the prior
+  revision's Windows symlink tests.
+- **NTFS junction-specific fixture (carried over from the prior revision, unchanged by this
+  session)**: still not empirically proven; see the AC1/AC3 rows above.
+- **`SealedRoot::establish`'s create-if-absent window**: a small gap remains between
+  `create_dir_all` succeeding and the subsequent `O_NOFOLLOW` open, inherent to `mkdir` having no
+  atomic "create and return a handle" primitive on any targeted platform - disclosed in ADR-0017's
+  "Negative / cost" section as a materially narrower window than the one this session closes, not
+  claimed as fully closed.
+- **`cancellai-platform::mutation`'s own disclosed unlink-race residual is unrelated and not
+  closed by this session** - a different operation (deletion, not configuration write), a
+  different crate; ADR-0017 records this explicitly so it is not mistaken for having been
+  addressed here.
 
 ## Why this stops at `ready_for_review`
 
-This is a CR4 story. `AGENTS.md`'s constitutional non-negotiables require CR4 work to close only
-with independent verification and an owner-visible Safety Verdict, and explicitly prohibit the
-executor from writing its own CR4 Safety Verdict ("never mark your own work `verification` or
-`done`, and never write your own CR4 Safety Verdict"). The owner (chat session
-`session_01UHbEhSMb1QWc7gNTJnGeu2`, 2026-09-01) authorized closing this review round's other,
-non-CR4 carry-forward items (`E06-S01`, `E06-S02`, `E06-S03`, `E07-S08`) to `done` without a
-further review round. For this one CR4 item, rather than assume that instruction extends to
-self-authoring the specific artifact (`project/templates/SAFETY_VERDICT.md`) this repository's
-own tooling (`scripts/project_os.py check`) hard-requires - and structurally expects a distinct
-"Independent verifier" field from - closing a CR4 story, this executor stops at its normal exit
-state (`ready_for_review`) and surfaces the two remaining residuals above for an explicit owner
-decision on how this specific item should close.
+This is a CR4 story that a round-1 independent verifier review already rejected once. `AGENTS.md`'s
+constitutional non-negotiables require CR4 work to close only with independent verification and
+an owner-visible Safety Verdict, and explicitly prohibit the executor from writing its own CR4
+Safety Verdict or marking its own work `verification`/`done`. This session's repair addresses the
+round-1 finding directly (see the Safety Evidence table above) but does not substitute for the
+independent re-review that finding requires; per `docs/development/AGENT_PROTOCOL.md`'s bounded
+review process, this is round 2 of at most two - the story returns to `ready_for_review` for that
+round, with `project/evidence/E07-S07-VERIFIER-REVIEW.md` and `project/evidence/E07-S07/
+SAFETY_VERDICT.md` left unchanged as the round-1 historical record.
 
 ## Verifier verdict
 
-Pending. Not self-graduated to `done` or `verification` (see "Why this stops at
-`ready_for_review`" above).
+Pending (round 2). Not self-graduated to `verification` or `done`.
