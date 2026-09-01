@@ -46,6 +46,11 @@ impl TempHome {
         path
     }
 
+    // Only used by this file's real-deletion tests, which are `#[cfg(unix)]`-only (see the
+    // note above `clean_yes_deletes_a_stale_unprotected_session_and_reports_it_in_the_result_
+    // document`) - without this, a Windows build sees no caller at all and `-D warnings` turns
+    // that into a hard `dead_code` error.
+    #[cfg(unix)]
     fn write_stale_codex_session(&self, session_id: &str) -> PathBuf {
         let dir = self.0.join(".codex/sessions/2020/01/01");
         std::fs::create_dir_all(&dir).unwrap();
