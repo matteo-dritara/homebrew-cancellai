@@ -104,6 +104,42 @@ entirely regardless of how carefully typed the "legitimate" path was. Repaired a
 governance check, not type-level visibility alone, is what actually keeps the capability
 reachable only through the safety kernel.
 
+### Default-root authority never rests on a lexical name alone
+
+`ApprovedRoot::establish`/`bind` bind to the object identity found *after* canonicalization
+(SI-002/SI-003 above), which is exactly why E06 verifier review round 2 found a gap one layer
+up: `cancellai-cli`'s own classification of `$HOME/.claude`/`$HOME/.codex` as the OS-default,
+mutation-eligible root (ADR-0013) compared paths *before* canonicalization ever ran, so a
+default-named leaf that was itself a symlink/reparse point to an attacker- or
+operator-mistaken directory was still classified `origin=default` and mutated - the boundary
+capability above never got a chance to refuse it, because nothing told it the root candidate
+was a link in the first place.
+
+Repaired at E07-S07 (`rust/crates/cancellai-cli/src/roots.rs`): `is_symlink` inspects the
+literal leaf path (`symlink_metadata`, never following it) and `resolve_from` folds that fact
+into `is_default` uniformly, whether the path came from `$HOME/.claude`/`$HOME/.codex` directly
+or from an override that happens to name the same string. Classification alone is not trusted
+at mutation time either - a root classified `Default` when a run started could be swapped for a
+symlink during the interactive confirmation pause, so `main.rs::establish_verified_root` (used
+by `clean`) and `cmd_configure` both re-run `is_symlink` fresh, immediately before establishing
+the root or writing configuration, independent of the cached classification. `configure` in
+particular does not go through `ApprovedRoot`/`IdentityObserver` at all (it is a vendor
+settings-file write, not an artifact deletion), so on a platform where `IdentityObserver` is
+`Unsupported` (Windows, today - see above), `is_symlink`'s own correctness is the *only* thing
+standing between a symlinked default-named root and a write through it; `clean`'s deletion path
+gets a second, independent backstop from `ApprovedRoot::establish` failing closed on
+`Unsupported` identity.
+
+`is_symlink` uses `std`'s cross-platform `FileType::is_symlink()`, not a Unix-only syscall -
+verified fixtures exist for a real Unix symlink and a real Windows directory symlink
+(`std::os::windows::fs::symlink_dir`, cross-compile-clippy-verified for
+`x86_64-pc-windows-gnu`; runs for real on this repo's Windows CI matrix). A true NTFS junction
+(`IO_REPARSE_TAG_MOUNT_POINT`, creatable only via `DeviceIoControl` - no `std` API, and this
+repo does not add a dependency merely to reach it) is not separately fixture-proven; `std`'s own
+Windows implementation reports `is_symlink() == true` for that reparse tag too, so the same
+refusal is expected, but this remains a disclosed residual rather than an empirically closed
+case (`docs/CLI_RUST.md`'s own "Known gaps" section records the same disclosure).
+
 ## Quarantine
 
 Quarantine prefers metadata-preserving atomic/same-volume moves. Cross-volume copy+delete is a materially different action with more disk-pressure and failure risk and requires separate capability/policy.

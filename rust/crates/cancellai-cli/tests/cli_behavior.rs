@@ -585,3 +585,89 @@ fn configure_refuses_when_home_dot_claude_is_itself_a_symlink() {
         "a symlinked default-named root must never be written to: {written}"
     );
 }
+
+// Windows counterparts of the two Unix symlink-authority-bypass tests above (E07-S07). Rust's
+// cross-platform `FileType::is_symlink()` - what `roots::is_symlink` actually calls - reports
+// `true` for a Windows directory symlink created via `std::os::windows::fs::symlink_dir`, the
+// same std-only mechanism this crate's own dependency policy prefers over a new FFI/`windows-sys`
+// dependency for reparse-point creation (`AGENTS.md` "do not add a dependency merely to reduce
+// implementation effort"). This does not by itself prove NTFS *junction* reparse points (a
+// distinct reparse tag, `IO_REPARSE_TAG_MOUNT_POINT`, created only via `DeviceIoControl` - no std
+// API creates one) are refused identically; that remains this story's disclosed residual scope,
+// not claimed as covered here. Requires `SeCreateSymbolicLinkPrivilege` (Developer Mode or an
+// elevated process), which this repo's own Windows CI runners carry - see
+// `.github/workflows/rust.yml`.
+#[cfg(windows)]
+#[test]
+fn clean_refuses_to_mutate_when_home_dot_claude_is_itself_a_symlink() {
+    let home = TempHome::new("symlink-default-root-home");
+    let outside = TempHome::new("symlink-default-root-outside");
+    let project = outside.path().join("projects/proj-a");
+    std::fs::create_dir_all(&project).unwrap();
+    let session = project.join("11111111-1111-4111-8111-111111111111.jsonl");
+    std::fs::write(&session, "{}").unwrap();
+    set_old_mtime(&session);
+    std::os::windows::fs::symlink_dir(outside.path(), home.path().join(".claude")).unwrap();
+
+    let bin = std::env::var("CARGO_BIN_EXE_cancellai-cli").unwrap();
+    let output = Command::new(bin)
+        .args([
+            "clean",
+            "--tool",
+            "claude",
+            "--days",
+            "7",
+            "--keep-latest",
+            "0",
+            "--allow-running",
+            "--yes",
+            "--json",
+        ])
+        .env("HOME", home.path())
+        .env_remove("CLAUDE_CONFIG_DIR")
+        .env_remove("CODEX_HOME")
+        .output()
+        .expect("spawn cancellai-cli");
+
+    assert_eq!(
+        output.status.code(),
+        Some(4),
+        "a symlinked $HOME/.claude must never be treated as the default, mutation-eligible \
+         root: {}",
+        stdout(&output)
+    );
+    assert!(
+        session.exists(),
+        "a stale session reachable only through a symlinked default-named root must never be \
+         deleted"
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn configure_refuses_when_home_dot_claude_is_itself_a_symlink() {
+    let home = TempHome::new("configure-symlink-default-root-home");
+    let outside = TempHome::new("configure-symlink-default-root-outside");
+    std::fs::write(
+        outside.path().join("settings.json"),
+        serde_json::json!({"cleanupPeriodDays": 7}).to_string(),
+    )
+    .unwrap();
+    std::os::windows::fs::symlink_dir(outside.path(), home.path().join(".claude")).unwrap();
+
+    let bin = std::env::var("CARGO_BIN_EXE_cancellai-cli").unwrap();
+    let output = Command::new(bin)
+        .args(["configure", "--claude-retention", "30"])
+        .env("HOME", home.path())
+        .env_remove("CLAUDE_CONFIG_DIR")
+        .env_remove("CODEX_HOME")
+        .output()
+        .expect("spawn cancellai-cli");
+
+    assert_eq!(output.status.code(), Some(4), "{}", stdout(&output));
+    let written = std::fs::read_to_string(outside.path().join("settings.json")).unwrap();
+    assert!(
+        written.contains("\"cleanupPeriodDays\": 7") || written.contains("\"cleanupPeriodDays\":7"),
+        "a symlinked default-named root must never be written to: {written}"
+    );
+}

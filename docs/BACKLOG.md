@@ -723,7 +723,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S01 - Rust CLI contract parity
 
-**Status:** `in_progress` | **Change Risk:** `CR3` | **Dependencies:** E05-S03, E05-S04 | **Safety obligations:** SI-007
+**Status:** `done` | **Change Risk:** `CR3` | **Dependencies:** E05-S03, E05-S04 | **Safety obligations:** SI-007
 
 **Outcome.** Implement status/inspect/plan/clean/configure equivalents against the new engine without TUI concerns.
 
@@ -743,7 +743,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S02 - Differential parity gate
 
-**Status:** `blocked` | **Change Risk:** `CR2` | **Dependencies:** E06-S01, E01-S05 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E06-S01, E01-S05 | **Safety obligations:** none
 
 **Outcome.** Run Python and Rust over the full normative fixture corpus in CI.
 
@@ -762,7 +762,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S03 - Migration and rollback packaging
 
-**Status:** `blocked` | **Change Risk:** `CR2` | **Dependencies:** E06-S02 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E06-S02 | **Safety obligations:** none
 
 **Outcome.** Define side-by-side invocation, data compatibility, and rollback from Rust candidate to Python reference during beta.
 
@@ -925,7 +925,7 @@ Make macOS, Linux, Windows native, and WSL2 first-class platform targets.
 
 ### E07-S07 - Provider-root link authority boundary
 
-**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E03-S03, E03-S05, E06-S01 | **Safety obligations:** SI-002, SI-003, SI-013, SI-019
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E03-S03, E03-S05, E06-S01 | **Safety obligations:** SI-002, SI-003, SI-013, SI-019
 
 **Outcome.** Reject provider roots whose root object or path resolution crosses a symbolic-link, junction, or reparse boundary before any Rust CLI mutation or provider configuration write.
 
@@ -948,7 +948,7 @@ Make macOS, Linux, Windows native, and WSL2 first-class platform targets.
 
 ### E07-S08 - Differential semantic parity projection
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E01-S05, E06-S02 | **Safety obligations:** SI-001, SI-008, SI-009, SI-023
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E01-S05, E06-S02 | **Safety obligations:** SI-001, SI-008, SI-009, SI-023
 
 **Outcome.** Make the Python/Rust parity gate prove approved, fixture-specific semantic equivalence beyond deletion UUIDs and root state.
 

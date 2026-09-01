@@ -33,6 +33,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cutover gate status") and its current verdict - **not ready**; `cancellai.py` remains the
   sole canonical, shipping engine. No user-visible behavior changed in this entry; it exists so
   this file does not read, by omission, as though cutover had happened.
+- E07-S07: `cancellai-cli clean`/`configure` refuse a default-named root
+  (`$HOME/.claude`/`$HOME/.codex`, no override) that is itself a symlink/reparse point,
+  independently re-checked immediately before establishing the root or writing configuration -
+  not only at classification time (`docs/architecture/PLATFORM_MODEL.md` "Default-root
+  authority never rests on a lexical name alone"). Closes an E06 verifier review round 2
+  finding: authority previously followed the lexical `$HOME/.claude` name alone, so a symlinked
+  default root was still treated as mutation-eligible.
+- E07-S08: `scripts/rust_python_parity.py`'s divergence allow-list is now structured
+  (fixture/scenario/field-scoped, citation content-checked) rather than free-text, and its
+  comparison surface grew from six to eight fields covering every discovered identity record,
+  protection coverage, and root authority for every `NORMATIVE` fixture - closing an E06
+  verifier review round 2 finding where any real, accepted ADR citation could suppress an
+  unrelated divergence regardless of what it actually authorized
+  (`docs/development/MIGRATION_PYTHON_RUST.md` M6).
 
 ### Fixed
 

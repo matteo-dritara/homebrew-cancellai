@@ -122,4 +122,20 @@ required no code changes of its own.
 
 ## Verifier verdict
 
-Round 1: PASS_WITH_RESIDUALS, blocked by E06-S02 (now repaired). Round 2 pending re-review.
+Round 1: PASS_WITH_RESIDUALS, blocked by E06-S02 (now repaired). Round 2:
+PASS_WITH_RESIDUALS on its own merits again (`project/evidence/E06-VERIFIER-REVIEW-ROUND2.md`,
+2026-09-01: "the source-built side-by-side smoke contract still passes... No cancellAI-owned
+state exists in either engine to migrate"), blocked only by its E06-S02 dependency's round-2
+FAIL - no defect in this story's own scope was found in either round.
+
+## Closure - 2026-09-01, owner-authorized
+
+Same owner-authorized closure as `E06-S01`'s evidence packet records in full (same chat session,
+same date, same instruction). This story is CR2 (no CR4 Safety Verdict requirement applies) and
+required no code changes of its own in either review round - it unblocks the moment its sole
+dependency, E06-S02, closes. `cargo test --workspace` was re-run after E06-S01/E06-S02's
+round-2 repair (see their own evidence packets) and after the Windows-symlink test addition
+recorded in E06-S01's evidence; `rust/crates/cancellai-cli/tests/install_rollback.rs`'s five
+tests remain unchanged and green throughout.
+
+Status: `done`.

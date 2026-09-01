@@ -152,7 +152,7 @@
     {
       "id": "E07-S07",
       "title": "Provider-root link authority boundary",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Reject provider roots whose root object or path resolution crosses a symbolic-link, junction, or reparse boundary before any Rust CLI mutation or provider configuration write.",
       "change_risk": "CR4",
       "dependencies": [
@@ -184,7 +184,7 @@
     {
       "id": "E07-S08",
       "title": "Differential semantic parity projection",
-      "status": "planned",
+      "status": "done",
       "outcome": "Make the Python/Rust parity gate prove approved, fixture-specific semantic equivalence beyond deletion UUIDs and root state.",
       "change_risk": "CR2",
       "dependencies": [

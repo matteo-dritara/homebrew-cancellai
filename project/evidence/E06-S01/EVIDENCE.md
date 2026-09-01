@@ -346,3 +346,49 @@ Round 1: FAIL, repaired (see above). Round 2: FAIL on one new finding, repaired 
 E06's two independent-review rounds are exhausted per ADR-0014/PD-022; no further E06-scoped
 review is expected. The repair above is offered as evidence for whoever picks up E07-S07 (which
 formally tracks this class of defect) or reopens E06-S01, not as a self-graduated status change.
+
+## Closure - 2026-09-01, owner-authorized
+
+`AGENTS.md`'s standing process is executor -> independent verifier -> owner; the executor exit
+state is `ready_for_review`, never a self-graduated `done`. For this story that process ran its
+full course: two independent Codex review rounds (`project/evidence/E06-VERIFIER-REVIEW.md`,
+`project/evidence/E06-VERIFIER-REVIEW-ROUND2.md`), the ADR-0014/PD-022 two-round ceiling, and a
+carry-forward backlog item (E07-S07) for the one class of finding not closed inline. The owner
+(chat session `session_01UHbEhSMb1QWc7gNTJnGeu2`, 2026-09-01) reviewed round 2's FAIL verdict
+against the repair recorded above, judged the repair sufficient for this CR3 story specifically,
+and explicitly instructed closing E06-S01/S02/S03 to `done` without opening a third review round
+("non serve un'altra review, hai la mia approvazione"). This is recorded as an owner decision,
+not an independent-verifier PASS - `AGENTS.md`'s constitutional rule that CR4 work additionally
+requires an independent-verifier-authored Safety Verdict is unaffected and is *not* invoked here
+(E06-S01 is CR3; see E07-S07's own evidence packet for why that CR4 carry-forward item is left
+at `ready_for_review`, not `done`, under this same owner instruction).
+
+Full gate suite re-run after the round-2 repair and the Windows-symlink test addition below, all
+green: `cargo fmt --check`, `cargo clippy --workspace --all-targets --all-features -- -D
+warnings` (native and cross-compiled `--target x86_64-pc-windows-gnu`), `cargo check --workspace
+--all-targets`, `cargo test --workspace` (native), `cargo deny check`; `.venv/bin/python -m
+pytest tests -v` (179 passed, 22 subtests), `ruff check`/`ruff format --check`, `mypy` over every
+`AGENTS.md` target; `gen_docs.py --check`, `project_os.py check`, `check_docs.py check`,
+`check_workflows.py check`, `check_fixtures.py check`, `check_schemas.py check`,
+`characterize.py check`, `diff_harness.py check`, `check_rust_workspace.py check`,
+`check_mutation_boundary.py check`, `check_provider_compatibility.py check`,
+`rust_python_parity.py self-test`/`check` (10/10 NORMATIVE fixtures, both root-origin
+scenarios), `check_process.py check`, `release.py check`.
+
+Additional closure work, folded into this story rather than opened as new scope: two
+`#[cfg(windows)]` regression tests were added (`rust/crates/cancellai-cli/src/roots.rs::
+is_symlink_detects_a_real_symlink_but_not_a_real_directory`,
+`rust/crates/cancellai-cli/tests/cli_behavior.rs::
+clean_refuses_to_mutate_when_home_dot_claude_is_itself_a_symlink`/`
+configure_refuses_when_home_dot_claude_is_itself_a_symlink`), mirroring the existing Unix
+symlink tests via `std::os::windows::fs::symlink_dir` (no new dependency). No Windows runner is
+available in this environment; verified instead by cross-compiling
+`cargo clippy --workspace --all-targets --all-features --target x86_64-pc-windows-gnu -- -D
+warnings` clean, matching this repo's own precedent (commit `385ab6f`) for verifying
+Windows-only code without live execution. These tests run for real on this repo's tier-1
+Windows CI matrix (`.github/workflows/rust.yml`) on the next push. See
+`docs/architecture/PLATFORM_MODEL.md` "Default-root authority never rests on a lexical name
+alone" and `docs/CLI_RUST.md` "Known gaps" for the disclosed NTFS-junction-specific residual
+this does not close (no `std` API creates a junction without a new dependency).
+
+Status: `done`.

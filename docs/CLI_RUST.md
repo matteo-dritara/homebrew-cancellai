@@ -95,3 +95,14 @@ one-for-one:
   `SystemProcessObserver`/`SystemIdentityObserver` report an honest "unsupported"/"incomplete"
   result on non-Unix platforms today, per `docs/architecture/PLATFORM_MODEL.md`'s own
   escape hatch - never a false "not running"/"unchanged").
+- A default-named root (`$HOME/.claude`/`$HOME/.codex`, no override) that is itself a link is
+  refused as non-default on every platform (E07-S07, `rust/crates/cancellai-cli/src/roots.rs`'s
+  `is_symlink`) - proven with real fixtures for a Unix symlink and, since `std` exposes no
+  junction-creation API without a new dependency, a Windows directory symlink
+  (`std::os::windows::fs::symlink_dir`; cross-compile-clippy-verified for
+  `x86_64-pc-windows-gnu`, executes for real on this repo's Windows CI). A genuine NTFS
+  junction (the distinct `IO_REPARSE_TAG_MOUNT_POINT` reparse tag, created only via
+  `DeviceIoControl`) is not separately fixture-proven; Rust's own cross-platform
+  `FileType::is_symlink()` reports `true` for that reparse tag too (it is the same check this
+  gate calls), so the same refusal is expected to apply, but this is a disclosed residual, not
+  an empirically closed case.

@@ -291,3 +291,24 @@ Round 1: FAIL, repaired (see above). Round 2: FAIL on two new findings, repaired
 E06's two independent-review rounds are exhausted per ADR-0014/PD-022; no further E06-scoped
 review is expected. The repair above is offered as evidence for whoever picks up E07-S08 or
 reopens E06-S02, not as a self-graduated status change.
+
+## Closure - 2026-09-01, owner-authorized
+
+Same owner-authorized closure as `E06-S01`'s evidence packet records in full (same chat session,
+same date, same instruction) - not repeated verbatim here. This story is CR2 (no CR4 Safety
+Verdict requirement applies).
+
+`scripts/rust_python_parity.py check` re-run after the round-2 structured-allow-list/eight-field
+projection repair: `rust/python parity OK: 10 NORMATIVE fixture(s) match across engines, in both
+root-origin scenarios`. `self-test` re-run: `rust/python parity self-test OK: the comparator
+correctly catches every injected divergence class` (covers all eight projected fields, the
+unrelated-citation case, and the field-scoping case - see `docs/development/
+MIGRATION_PYTHON_RUST.md`'s M6 section, updated to describe the structured allow-list).
+
+**Disclosed residual, carried forward, not closed by this story:** a full per-artifact
+`knowledge_confidence`/`integrity_state`/`risk_class` diff remains out of scope - Python's
+`Action` model has no equivalent per-artifact vocabulary to compare against today. Recorded here
+so a future change to that model does not silently widen this gate's actual coverage without a
+corresponding `self_test` case.
+
+Status: `done`.

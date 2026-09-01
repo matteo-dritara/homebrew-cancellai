@@ -64,10 +64,9 @@ timestamp-precision flake at an exact cutoff boundary (`cancellai-platform::Time
 documented whole-second granularity versus `cancellai.py`'s float `time.time()`). Wired into
 `.pre-commit-config.yaml` (`rust-python-parity-gate`) and `AGENTS.md`'s "Current Python checks"
 list, run via the `governance.yml` `pre-commit` CI job. `rust_python_parity.py self-test`
-proves the comparator itself can fail (an injected divergence in each of: extra candidate,
-missing candidate, withheld-flag mismatch) before trusting it to pass. An
-`INTENTIONAL_DIVERGENCES` allow-list exists in the script for a future accepted, cited
-divergence; it is empty today - all ten current `NORMATIVE` fixtures match exactly.
+proves the comparator itself can fail before trusting it to pass. An `INTENTIONAL_DIVERGENCES`
+allow-list exists in the script for a future accepted, cited divergence; it is empty today - all
+ten current `NORMATIVE` fixtures match exactly, in both root-origin scenarios.
 
 Finding this gate immediately useful: running it against the just-implemented E06-S01 CLI
 surfaced two real defects before any review round, both fixed in the same change - an
@@ -75,6 +74,25 @@ incomplete companion-payload scan only downgraded the one degraded session inste
 withholding the whole tool (SI-008/SI-009), and a `claude_home` with no `projects/` directory
 was incorrectly treated as an incomplete scan rather than a legitimately empty one. Exactly the
 kind of cross-engine divergence this gate exists to catch before cutover, not after.
+
+**E07-S08 repaired two further gaps E06 verifier review round 2 found in the gate itself.**
+First, `INTENTIONAL_DIVERGENCES` was a free-text map keyed by fixture id: any real, `Status:
+Accepted` ADR citation suppressed a mismatch, whether or not that ADR had anything to do with
+the fixture or field diverging (the round's exact reproduction: an accepted ADR about release
+cadence suppressed a fully divergent comparison). It is now a tuple of structured
+`ApprovedDivergence` records (`fixture_id`, `scenario`, `fields`, `citation`); a field only
+suppresses when its own record names the exact fixture/scenario/field *and* the cited
+document's own text mentions that fixture id - `_citation_covers` checks the citation's content,
+not merely its acceptance status. Second, the comparison surface (`semantic_projection`) grew
+from six fields to eight: `non_delete_identities` (every discovered-but-not-deleted session UUID
+- together with `candidates`, the full discovered corpus, giving "discovered identity
+records"/"every proposed action" coverage) and `protected_count` (protection coverage),
+computed independently of `build_plan`'s own eligibility filtering on the Python side and of
+`plan --json`'s action list on the Rust side (`inspect --json`'s full artifact inventory feeds
+both). `rust_python_parity.py self_test` now injects a failure for every one of the eight
+projected fields, plus the unrelated-citation case and a field-scoping case (an approval naming
+one field must not silently also approve a different diverging field on the same
+fixture/scenario) - not just the four classes the gate originally covered.
 
 ### M7 - Beta side-by-side
 

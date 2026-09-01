@@ -268,4 +268,32 @@ mod tests {
 
         std::fs::remove_dir_all(&base).ok();
     }
+
+    // Windows counterpart of the Unix case above (E07-S07). `FileType::is_symlink()` reports
+    // `true` for a directory symlink created via `std::os::windows::fs::symlink_dir` - the same
+    // reparse-point machinery this module's own docs rely on - proving `is_symlink` rejects a
+    // symlinked default-named root on Windows too, not only Unix. Requires
+    // `SeCreateSymbolicLinkPrivilege` (Developer Mode or an elevated process), which this repo's
+    // Windows CI runners carry.
+    #[cfg(windows)]
+    #[test]
+    fn is_symlink_detects_a_real_symlink_but_not_a_real_directory() {
+        let base = std::env::temp_dir().join(format!(
+            "cancellai-roots-test-symlink-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let real_dir = base.join("real");
+        let link = base.join("link");
+        std::fs::create_dir_all(&real_dir).unwrap();
+        std::os::windows::fs::symlink_dir(&real_dir, &link).unwrap();
+
+        assert!(!is_symlink(&real_dir));
+        assert!(is_symlink(&link));
+
+        std::fs::remove_dir_all(&base).ok();
+    }
 }
