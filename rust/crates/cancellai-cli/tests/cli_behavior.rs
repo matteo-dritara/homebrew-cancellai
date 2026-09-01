@@ -173,6 +173,15 @@ fn clean_dry_run_never_deletes_anything() {
     assert!(session.exists(), "--dry-run must never delete anything");
 }
 
+// `cancellai-platform::identity::SystemIdentityObserver` reports `Unsupported` unconditionally
+// on non-Unix platforms today (E03-S01's own disclosed residual risk, `#[cfg(not(unix))]` in
+// `identity.rs`) - `ApprovedRoot::establish`/`bind` therefore always fails closed on Windows,
+// so a real deletion can never succeed there yet regardless of anything E06 changed (E07-S02
+// "Windows native backend" tracks closing this). First observed as an actual Windows CI failure
+// on 2026-09-01 - not a regression, but the first time this crate's mutation-path integration
+// tests were ever reached on Windows CI (an unrelated pre-existing clippy failure had aborted
+// the job before them on every prior run, the same pattern E07-S05/E07-S06 already document).
+#[cfg(unix)]
 #[test]
 fn clean_yes_deletes_a_stale_unprotected_session_and_reports_it_in_the_result_document() {
     let home = TempHome::new("clean-yes");
@@ -235,6 +244,9 @@ fn clean_without_confirmation_or_dry_run_declines_and_deletes_nothing() {
     );
 }
 
+// See the identical `#[cfg(unix)]` note above `clean_yes_deletes_a_stale_unprotected_session_
+// and_reports_it_in_the_result_document` - this test also requires a real deletion to succeed.
+#[cfg(unix)]
 #[test]
 fn keep_latest_protects_the_most_recent_session_from_a_json_clean_run() {
     let home = TempHome::new("clean-keep-latest");
@@ -488,4 +500,83 @@ fn configure_never_writes_through_a_preexisting_settings_json_symlink_to_an_outs
     let written = std::fs::read_to_string(&settings_path).unwrap();
     let value: serde_json::Value = serde_json::from_str(&written).unwrap();
     assert_eq!(value["cleanupPeriodDays"], 30);
+}
+
+// E06 verifier review round 2's exact reproduction: no CLAUDE_CONFIG_DIR override at all -
+// $HOME/.claude is itself a symlink to an unrelated directory. Authority must never come from
+// the lexical "$HOME/.claude" name alone (SI-002/ADR-0013); a stale session reachable only
+// through that symlink must not be deleted, and configure must not write through it either.
+#[cfg(unix)]
+#[test]
+fn clean_refuses_to_mutate_when_home_dot_claude_is_itself_a_symlink() {
+    let home = TempHome::new("symlink-default-root-home");
+    let outside = TempHome::new("symlink-default-root-outside");
+    let project = outside.path().join("projects/proj-a");
+    std::fs::create_dir_all(&project).unwrap();
+    let session = project.join("11111111-1111-4111-8111-111111111111.jsonl");
+    std::fs::write(&session, "{}").unwrap();
+    set_old_mtime(&session);
+    std::os::unix::fs::symlink(outside.path(), home.path().join(".claude")).unwrap();
+
+    let bin = std::env::var("CARGO_BIN_EXE_cancellai-cli").unwrap();
+    let output = Command::new(bin)
+        .args([
+            "clean",
+            "--tool",
+            "claude",
+            "--days",
+            "7",
+            "--keep-latest",
+            "0",
+            "--allow-running",
+            "--yes",
+            "--json",
+        ])
+        .env("HOME", home.path())
+        .env_remove("CLAUDE_CONFIG_DIR")
+        .env_remove("CODEX_HOME")
+        .output()
+        .expect("spawn cancellai-cli");
+
+    assert_eq!(
+        output.status.code(),
+        Some(4),
+        "a symlinked $HOME/.claude must never be treated as the default, mutation-eligible \
+         root: {}",
+        stdout(&output)
+    );
+    assert!(
+        session.exists(),
+        "a stale session reachable only through a symlinked default-named root must never be \
+         deleted"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn configure_refuses_when_home_dot_claude_is_itself_a_symlink() {
+    let home = TempHome::new("configure-symlink-default-root-home");
+    let outside = TempHome::new("configure-symlink-default-root-outside");
+    std::fs::write(
+        outside.path().join("settings.json"),
+        serde_json::json!({"cleanupPeriodDays": 7}).to_string(),
+    )
+    .unwrap();
+    std::os::unix::fs::symlink(outside.path(), home.path().join(".claude")).unwrap();
+
+    let bin = std::env::var("CARGO_BIN_EXE_cancellai-cli").unwrap();
+    let output = Command::new(bin)
+        .args(["configure", "--claude-retention", "30"])
+        .env("HOME", home.path())
+        .env_remove("CLAUDE_CONFIG_DIR")
+        .env_remove("CODEX_HOME")
+        .output()
+        .expect("spawn cancellai-cli");
+
+    assert_eq!(output.status.code(), Some(4), "{}", stdout(&output));
+    let written = std::fs::read_to_string(outside.path().join("settings.json")).unwrap();
+    assert!(
+        written.contains("\"cleanupPeriodDays\": 7") || written.contains("\"cleanupPeriodDays\":7"),
+        "a symlinked default-named root must never be written to: {written}"
+    );
 }

@@ -284,7 +284,65 @@ exactly the *custom*-root path and would never again reach the delete path these
 exercise. They now resolve the real OS-default root via `$HOME/.claude`/`$HOME/.codex` (no
 override), and new tests were added specifically for the custom-root path (see item 1 above).
 
+## Round 2 verifier verdict
+
+FAIL (`project/evidence/E06-VERIFIER-REVIEW-ROUND2.md`, 2026-09-01): round-1 fixes held (custom
+`CLAUDE_CONFIG_DIR` root, configuration symlink, malformed settings, partial scan, process
+precondition all reproduced closed), but a new, independently-reproduced defect survived: a
+*default-named* root that is itself a symlink (`$HOME/.claude -> <outside>`, no
+`CLAUDE_CONFIG_DIR` override at all) was still lexically classified `origin=default` and a
+stale session reachable only through it was deleted. Per the two-round ceiling (ADR-0014/
+PD-022), this was recorded as new backlog item E07-S07 rather than a third E06 review round;
+E06-S01 itself returned to `in_progress`.
+
+## Repair for the round-2 finding
+
+Root cause: `roots.rs`'s "no override" branch set `is_default: true` unconditionally, without
+ever checking whether the leaf path (`$HOME/.claude`/`$HOME/.codex`) is itself a symlink -
+authority was inferred from the lexical name alone, exactly as the finding states.
+
+Fixed:
+
+- `roots::is_symlink` (new, `pub`) checks the literal leaf path with `symlink_metadata` (never
+  following it) - a nonexistent path is correctly *not* a symlink (a fresh machine's absent
+  `~/.claude` stays positively default, matching `cancellai.py::fingerprint_root`'s own
+  "authoritative by definition, including when empty or absent").
+- `roots::resolve_from` now takes the caller's `default_is_symlink` fact and folds it into
+  `is_default` uniformly for *both* the no-override and override-naming-the-same-path branches
+  - an operator (or attacker) writing `CLAUDE_CONFIG_DIR=$HOME/.claude` when that path is itself
+  a symlink gets the same refusal as the bare no-override case.
+- Classification time was not enough on its own (the review's own repair text: "reject ... at
+  plan and execution time"): `main.rs::establish_verified_root` (new) re-checks `is_symlink`
+  fresh, independent of the cached fingerprint, immediately before `ApprovedRoot::establish` in
+  `execute_clean` - closing the TOCTOU window between `resolve_all()` (top of `cmd_clean`, before
+  the interactive confirmation prompt) and the real mutation. `cmd_configure` gained the
+  identical fresh re-check immediately before `configure_claude_retention`.
+
+Regression: `roots.rs` unit tests
+`a_default_path_that_is_itself_a_symlink_is_never_the_default_origin`,
+`an_override_literally_naming_the_default_path_is_still_refused_when_that_path_is_a_symlink`,
+`a_nonexistent_default_path_is_not_a_symlink`, `is_symlink_detects_a_real_symlink_but_not_a_real_directory`;
+`cli_behavior.rs`'s `clean_refuses_to_mutate_when_home_dot_claude_is_itself_a_symlink` and
+`configure_refuses_when_home_dot_claude_is_itself_a_symlink` reproduce the review's exact
+scenario end-to-end against the real built binary (no `CLAUDE_CONFIG_DIR` override, a real
+Unix symlink) and assert `SAFETY_BLOCK` (4) with the session/settings untouched.
+
+Verified: `cargo fmt --check` / `clippy --workspace --all-targets --all-features -D warnings` /
+`cargo test --workspace` / `cargo deny check`, run against *both* the pinned 1.94.0 toolchain
+and CI's actual 1.98.0 stable (via `rustup run 1.98.0 ...`) - all green.
+
+**Scope note, not overclaimed as done:** this closes the Unix symlink case only, matching
+`roots.rs`'s own pre-existing, disclosed "Unix-only for now" scope. E07-S07's full AC also
+covers Windows junction/reparse points, which remain untouched (tracked by that story, along
+with the pre-existing E03-S01/E07-S02 gap that Windows has no real file identity at all yet -
+see `docs/development/RELEASE_GATES.md`'s G3 section, updated 2026-09-01). This repair is
+recorded here, against the story whose files it lives in, rather than as a premature
+`ready_for_review` claim on E07-S07 itself, which depends on E06-S01 (still `in_progress`) and
+is not fully done.
+
 ## Verifier verdict
 
-Round 1: FAIL (see above). Round 2 pending re-review; this evidence packet documents the
-repairs and their independent regression coverage for that review.
+Round 1: FAIL, repaired (see above). Round 2: FAIL on one new finding, repaired (see above).
+E06's two independent-review rounds are exhausted per ADR-0014/PD-022; no further E06-scoped
+review is expected. The repair above is offered as evidence for whoever picks up E07-S07 (which
+formally tracks this class of defect) or reopens E06-S01, not as a self-graduated status change.

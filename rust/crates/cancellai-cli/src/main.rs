@@ -546,6 +546,33 @@ fn cmd_clean(args: &[String]) -> i32 {
     }
 }
 
+/// [`ApprovedRoot::establish`] alone verifies that `path` resolves to *some* real, identifiable
+/// object (SI-002) - it has no notion of "default vs custom" and correctly does not refuse a
+/// symlinked custom root (a custom root is already refused elsewhere by origin, symlinked or
+/// not). This wrapper adds the one thing `establish` cannot know on its own: a root this run
+/// classified as `Default` must, immediately before establishing it for real mutation, be
+/// re-confirmed to not be a symlink/reparse point at all (E06 verifier review round 2 - `roots
+/// ::is_symlink`'s own docs explain why authority must never rest on the lexical `$HOME/.claude`
+/// name alone). `fingerprint` is the classification already computed for this run;
+/// [`roots::is_symlink`] itself is evaluated fresh here, not read from that cached value.
+fn establish_verified_root(
+    path: &Path,
+    fingerprint: &cancellai_provider_api::RootFingerprint,
+    resolver: &SystemPathResolver,
+    observer: &SystemIdentityObserver,
+) -> Result<ApprovedRoot, cancellai_safety::BoundaryError> {
+    if fingerprint.origin == RootOrigin::Default && roots::is_symlink(path) {
+        return Err(cancellai_safety::BoundaryError::RootIdentityUnavailable(
+            format!(
+                "{} is a symlink; a default-named root must be a real directory, not a link, to \
+             carry destructive authority (SI-002/ADR-0013)",
+                path.display()
+            ),
+        ));
+    }
+    ApprovedRoot::establish(path, resolver, observer)
+}
+
 fn execute_clean(resolved: &Resolved, actions: &[Action], json: bool, allow_running: bool) -> i32 {
     let by_id: HashMap<ArtifactId, &ClassifiedArtifact> = resolved
         .resolutions
@@ -556,8 +583,23 @@ fn execute_clean(resolved: &Resolved, actions: &[Action], json: bool, allow_runn
 
     let resolver = SystemPathResolver;
     let observer = SystemIdentityObserver;
-    let claude_approved_root = ApprovedRoot::establish(&resolved.claude_root, &resolver, &observer);
-    let codex_approved_root = ApprovedRoot::establish(&resolved.codex_root, &resolver, &observer);
+    // Fresh, execution-time symlink re-check (E06 verifier review round 2), independent of
+    // `resolved`'s cached fingerprint - `resolved` was computed at the top of `cmd_clean`,
+    // before the interactive confirmation prompt a `clean --yes`-less run waits on; a root
+    // named `$HOME/.claude` could be swapped for a symlink during that pause. See
+    // `establish_verified_root`'s own docs.
+    let claude_approved_root = establish_verified_root(
+        &resolved.claude_root,
+        &resolved.claude_fingerprint,
+        &resolver,
+        &observer,
+    );
+    let codex_approved_root = establish_verified_root(
+        &resolved.codex_root,
+        &resolved.codex_fingerprint,
+        &resolver,
+        &observer,
+    );
 
     let mut results = Vec::new();
     let mut any_failed = false;
@@ -810,6 +852,15 @@ fn cmd_configure(args: &[String]) -> i32 {
             claude_resolved.path.display(),
             fingerprint.origin,
             fingerprint.confidence,
+        ));
+    }
+    // Fresh, execution-time re-check (E06 verifier review round 2), independent of
+    // `claude_resolved.is_default` above - see `establish_verified_root`'s identical rationale.
+    if roots::is_symlink(&claude_resolved.path) {
+        return safety_block(&format!(
+            "refusing to configure {}: it is a symlink, not a real directory - a default-named \
+             root must not carry destructive/configuration authority through a link (SI-002/ADR-0013)",
+            claude_resolved.path.display(),
         ));
     }
     match configure_claude_retention(&claude_resolved.path, days) {

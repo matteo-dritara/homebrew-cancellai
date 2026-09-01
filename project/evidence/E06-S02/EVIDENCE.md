@@ -227,7 +227,67 @@ All green: `self-test` reports every injected-divergence class (including the tw
 caught; `check` reports "10 NORMATIVE fixture(s) match across engines, in both root-origin
 scenarios."
 
+## Round 2 verifier verdict
+
+FAIL (`project/evidence/E06-VERIFIER-REVIEW-ROUND2.md`, 2026-09-01): the round-1 uncited-text
+finding was closed, but two new gaps survived: (1) `INTENTIONAL_DIVERGENCES={"fx": "unrelated
+accepted ADR-0014"}` suppressed a fully divergent comparison merely because *some* real,
+accepted ADR was cited - ADR-0014 concerns release cadence, not fixture `fx` or this specific
+difference; (2) the projection still only covered six fields and could not observe
+protected/unknown coverage, non-delete discovered identity records, or non-delete proposed
+actions. Per the two-round ceiling, recorded as new backlog item E07-S08 rather than a third
+E06 review round.
+
+## Repair for the round-2 finding
+
+1. **Free-text-but-cited suppression → structured, field-scoped, fixture-bound records.**
+   `INTENTIONAL_DIVERGENCES` is now a tuple of `ApprovedDivergence(fixture_id, scenario, fields,
+   citation)` records, not `dict[fixture_id, str]`. `_compare_results` checks every diverging
+   field independently: a field is only excused when an `ApprovedDivergence` names this exact
+   `fixture_id`/`scenario`/`field`, *and* `_citation_covers` confirms the citation resolves to a
+   real, `Status: Accepted` ADR/RFC whose own document text mentions this exact fixture id - not
+   merely any accepted document. `ADR-0014` (real, accepted, about epic closure/review bounding)
+   does not mention any fixture id string and therefore can never suppress anything under this
+   rule; `self_test` reproduces the exact round-2 scenario (an accepted-but-unrelated ADR) and
+   proves it no longer suppresses, alongside a new case proving a field-scoped approval covers
+   only its named field, not every diverging field on the same fixture/scenario.
+2. **Six-field projection → eight-field projection covering the named gaps.**
+   `semantic_projection` gained `non_delete_identities` (every discovered session UUID *not*
+   proposed for deletion - `candidates ∪ non_delete_identities` is the full discovered corpus
+   for the tool, giving "discovered identity records" and "every proposed action" coverage: an
+   artifact is always either a delete candidate or not, on both engines) and `protected_count`
+   (protection coverage). Python computes these by calling `discover_claude_sessions`/
+   `discover_codex_sessions` and `protected_component` directly - independent of `build_plan`'s
+   own eligibility filtering, which silently drops protected/blocked candidates from
+   `plan.actions` entirely, leaving nothing there to compare. Rust reads them from `inspect
+   --json`'s full `artifacts` array (every discovered artifact, not only delete actions) via
+   `identity_token`/`protection_state`. `scan_complete` remains the comparison surface for
+   "unknown coverage" (this codebase's own SI-008/SI-009 vocabulary) rather than inventing a
+   parallel field.
+   **Disclosed residual, not claimed as covered:** a full per-artifact
+   `knowledge_confidence`/`integrity_state`/`risk_class` diff remains out of scope - Python's
+   `Action` model has no equivalent per-artifact vocabulary to compare against (a materially
+   larger undertaking than this repair; tracked by whoever next touches E07-S08's own scope).
+
+Regression: `self_test` gained `non_delete_mismatch`, `protected_count_mismatch`, the
+unrelated-accepted-ADR case (exact round-2 reproduction), and a field-scoping case (approving
+only `candidates` must not silently also approve an unrelated `scan_complete` divergence, and
+an approval scoped to the `default` scenario must not cover `custom`). `check()` re-ran the
+full ten-fixture, two-scenario (20-comparison) corpus against the broadened projection: all
+still match with `INTENTIONAL_DIVERGENCES` empty.
+
+Verified: `python3 scripts/rust_python_parity.py self-test` / `check`, `ruff check`/`format
+--check`, `mypy scripts/rust_python_parity.py` - all green.
+
+**Scope note, not overclaimed as done:** recorded here, against the story whose file
+(`scripts/rust_python_parity.py`) this repair lives in, rather than as a premature
+`ready_for_review` claim on E07-S08 itself (which depends on E06-S02, still `blocked`, and
+whose own AC also expects the disclosed per-artifact-confidence residual above to eventually
+close).
+
 ## Verifier verdict
 
-Round 1: FAIL (see above). Round 2 pending re-review; this evidence packet documents the
-repairs and their independent regression coverage for that review.
+Round 1: FAIL, repaired (see above). Round 2: FAIL on two new findings, repaired (see above).
+E06's two independent-review rounds are exhausted per ADR-0014/PD-022; no further E06-scoped
+review is expected. The repair above is offered as evidence for whoever picks up E07-S08 or
+reopens E06-S02, not as a self-graduated status change.

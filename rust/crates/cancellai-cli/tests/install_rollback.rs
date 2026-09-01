@@ -160,6 +160,12 @@ fn every_read_only_command_leaves_no_trace_anywhere_under_home() {
     assert!(session.exists(), "the session itself must be untouched");
 }
 
+// `cancellai-platform::identity::SystemIdentityObserver` reports `Unsupported` unconditionally
+// on non-Unix platforms today (E03-S01's own disclosed residual risk) - `ApprovedRoot::
+// establish`/`bind` therefore always fails closed on Windows, so a real deletion can never
+// succeed there yet (E07-S02 "Windows native backend" tracks closing this) - see the identical
+// note in `cli_behavior.rs` above its own two real-deletion tests.
+#[cfg(unix)]
 #[test]
 fn a_real_clean_touches_only_the_provider_artifact_it_deletes_nothing_else_anywhere() {
     let home = TempHome::new("clean-no-side-state");
