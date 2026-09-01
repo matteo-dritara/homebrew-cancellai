@@ -110,7 +110,16 @@ All green. `cargo test --workspace` includes 5 new tests in
   own `configure_claude_retention` doc comment) and is not exercised by this story's snapshot
   tests, which only cover `status`/`inspect`/`plan`/`clean`.
 
+## Round 1 verifier verdict
+
+PASS_WITH_RESIDUALS on its own merits (`project/evidence/E06-VERIFIER-REVIEW.md`,
+2026-09-01), but blocked from closure because its dependency, E06-S02, failed round 1. No defect
+in this story's own scope was found. E06-S02's round-1 defects are now repaired (see that
+story's evidence packet); this story's own side-by-side/rollback tests
+(`cancellai-cli/tests/install_rollback.rs`) were re-run unchanged as part of `cargo test
+--workspace` after every E06-S01/E06-S02 repair above and remain green throughout - this story
+required no code changes of its own.
+
 ## Verifier verdict
 
-PENDING - epic E06 review runs once every story in E06 is `ready_for_review` (at most twice per
-epic, per ADR-0014).
+Round 1: PASS_WITH_RESIDUALS, blocked by E06-S02 (now repaired). Round 2 pending re-review.

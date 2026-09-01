@@ -723,7 +723,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S01 - Rust CLI contract parity
 
-**Status:** `in_progress` | **Change Risk:** `CR3` | **Dependencies:** E05-S03, E05-S04 | **Safety obligations:** SI-007
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E05-S03, E05-S04 | **Safety obligations:** SI-007
 
 **Outcome.** Implement status/inspect/plan/clean/configure equivalents against the new engine without TUI concerns.
 
@@ -743,7 +743,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S02 - Differential parity gate
 
-**Status:** `blocked` | **Change Risk:** `CR2` | **Dependencies:** E06-S01, E01-S05 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E06-S01, E01-S05 | **Safety obligations:** none
 
 **Outcome.** Run Python and Rust over the full normative fixture corpus in CI.
 
@@ -762,7 +762,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S03 - Migration and rollback packaging
 
-**Status:** `blocked` | **Change Risk:** `CR2` | **Dependencies:** E06-S02 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E06-S02 | **Safety obligations:** none
 
 **Outcome.** Define side-by-side invocation, data compatibility, and rollback from Rust candidate to Python reference during beta.
 
