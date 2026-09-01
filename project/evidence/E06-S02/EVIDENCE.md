@@ -164,7 +164,70 @@ this story's development.
   committed; E06-S01's evidence packet was not retroactively amended (this packet is the record
   of the fix instead). A verifier reviewing E06-S01 should read this packet alongside it.
 
+## Round 1 verifier verdict
+
+FAIL (`project/evidence/E06-VERIFIER-REVIEW.md`, 2026-09-01): "The supposedly ADR/RFC-cited
+allow-list accepts arbitrary text ... The actual comparator observes only delete-UUID sets and
+one withheld bit. It cannot detect the normative corpus' root-confidence/origin, protected/
+unknown coverage, or other classified artifact semantics."
+
+## Repairs for E06 verifier review round 1
+
+1. **`INTENTIONAL_DIVERGENCES` accepted any free text, uncited (AC2).** Root cause: a fixture id
+   present in the dict suppressed a mismatch unconditionally - the reason string was recorded
+   but never validated. Fixed: `_citation_is_accepted_adr_or_rfc` extracts every `ADR-NNNN`/
+   `RFC-NNNN` citation from the reason text and requires a real document at `docs/adrs/NNNN-*.md`
+   (or `docs/rfcs/`) whose first ~15 lines contain `Status: Accepted`; a divergence only
+   suppresses when at least one citation resolves. `self_test` now proves both directions: the
+   review's exact reproduction (`{"fx": "uncited free text"}`, and a fabricated `ADR-9999` that
+   does not exist) no longer suppresses, while a citation to a real, currently-accepted ADR
+   (`docs/adrs/0016-...md`) does.
+2. **Comparator observed only delete-UUID sets and one withheld bit (AC1).** Fixed:
+   `semantic_projection` is now the comparison surface - `candidates`, `withheld`, `root_origin`,
+   `root_confidence`, `mutation_eligible`, and `scan_complete`, compared field-by-field so a
+   divergence report names exactly which field disagreed. Rust's side reads `root_origin`/
+   `root_confidence`/`mutation_eligible` from `plan --json`'s real `provider_roots` entries and
+   `scan_complete` from `scan_completeness`, not inferred from action reason text. `self_test`
+   gained two new injected-divergence cases: identical candidate sets with a `root_origin`/
+   `mutation_eligible` mismatch, and a `scan_complete` mismatch - both are now caught; neither
+   could have been expressed by the old two-field comparison at all.
+3. **The gate could never surface a root-authority divergence in the first place, because it
+   always simulated "default root" on both engines by construction (AC1/AC2, "a real custom-root
+   fixture outside the characterization helper's default-root patch").** Root cause:
+   `python_result` always patched `cancellai.default_home` to point at the fixture, and
+   `rust_result` always set `CLAUDE_CONFIG_DIR`/`CODEX_HOME` to the fixture path - the *Rust*
+   side was therefore always exercising the custom-root path while the *Python* side was always
+   faked into the default-root path, and the pre-fix Rust bug (hard-coded `is_default_root:
+   true`, see E06-S01's repairs) happened to make both sides agree anyway, masking the gap. Fixed:
+   `compare_fixture` now runs every NORMATIVE fixture through two independent scenarios -
+   `default` (Rust sees the fixture literally named `.claude`/`.codex` under a synthetic `$HOME`,
+   no override; Python's `default_home` patch unchanged) and `custom` (Rust addressed through
+   `CLAUDE_CONFIG_DIR`/`CODEX_HOME` with `$HOME` pointed elsewhere; Python's `default_home` left
+   *unmocked*, so both engines see a genuinely non-default root through their own real
+   resolution logic, not a shared test fixture). `check()` now runs 20 comparisons (10 fixtures x
+   2 scenarios), all matching, including the `custom` scenario for every fixture - this is the
+   concrete, corpus-wide proof that E06-S01's root-authority fix (see that story's evidence)
+   actually holds across every NORMATIVE fixture, not only the one adversarial case reproduced
+   by hand.
+
+`INTENTIONAL_DIVERGENCES` remains empty: every NORMATIVE fixture matches exactly in both
+scenarios with no suppression needed.
+
+## Verification Commands (repairs)
+
+```text
+python3 scripts/rust_python_parity.py self-test
+python3 scripts/rust_python_parity.py check
+python3 -m ruff check .
+python3 -m ruff format --check .
+python3 -m mypy scripts/rust_python_parity.py
+```
+
+All green: `self-test` reports every injected-divergence class (including the two new ones)
+caught; `check` reports "10 NORMATIVE fixture(s) match across engines, in both root-origin
+scenarios."
+
 ## Verifier verdict
 
-PENDING - epic E06 review runs once every story in E06 is `ready_for_review` (at most twice per
-epic, per ADR-0014).
+Round 1: FAIL (see above). Round 2 pending re-review; this evidence packet documents the
+repairs and their independent regression coverage for that review.
