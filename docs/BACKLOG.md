@@ -723,7 +723,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S01 - Rust CLI contract parity
 
-**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E05-S03, E05-S04 | **Safety obligations:** SI-007
+**Status:** `in_progress` | **Change Risk:** `CR3` | **Dependencies:** E05-S03, E05-S04 | **Safety obligations:** SI-007
 
 **Outcome.** Implement status/inspect/plan/clean/configure equivalents against the new engine without TUI concerns.
 
@@ -743,7 +743,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S02 - Differential parity gate
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E06-S01, E01-S05 | **Safety obligations:** none
+**Status:** `blocked` | **Change Risk:** `CR2` | **Dependencies:** E06-S01, E01-S05 | **Safety obligations:** none
 
 **Outcome.** Run Python and Rust over the full normative fixture corpus in CI.
 
@@ -762,7 +762,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S03 - Migration and rollback packaging
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E06-S02 | **Safety obligations:** none
+**Status:** `blocked` | **Change Risk:** `CR2` | **Dependencies:** E06-S02 | **Safety obligations:** none
 
 **Outcome.** Define side-by-side invocation, data compatibility, and rollback from Rust candidate to Python reference during beta.
 
@@ -922,6 +922,51 @@ Make macOS, Linux, Windows native, and WSL2 first-class platform targets.
 **Documentation impact**
 
 - `docs/architecture/PLATFORM_MODEL.md`
+
+### E07-S07 - Provider-root link authority boundary
+
+**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E03-S03, E03-S05, E06-S01 | **Safety obligations:** SI-002, SI-003, SI-013, SI-019
+
+**Outcome.** Reject provider roots whose root object or path resolution crosses a symbolic-link, junction, or reparse boundary before any Rust CLI mutation or provider configuration write.
+
+**Acceptance criteria**
+
+- A default-named Claude or Codex root that is itself a link/reparse point is inspection-only and cannot be cleaned or configured.
+- Root identity and containment revalidation reject link/reparse drift at plan and execution time on every supported platform.
+- Unix symlink and Windows junction/reparse adversarial fixtures prove no provider mutation reaches the link target.
+
+**Verification**
+
+- Adversarial root-link/reparse clean and configure tests on every claimed platform.
+- Independent CR4 Safety Verdict.
+
+**Documentation impact**
+
+- `docs/architecture/PLATFORM_MODEL.md`
+- `docs/CLI_RUST.md`
+- `docs/security/SAFETY_INVARIANTS.md`
+
+### E07-S08 - Differential semantic parity projection
+
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E01-S05, E06-S02 | **Safety obligations:** SI-001, SI-008, SI-009, SI-023
+
+**Outcome.** Make the Python/Rust parity gate prove approved, fixture-specific semantic equivalence beyond deletion UUIDs and root state.
+
+**Acceptance criteria**
+
+- A divergence allow-list is structured and validates that its cited accepted ADR/RFC specifically authorizes the fixture and semantic difference being suppressed.
+- The comparison projects discovered identity records, protection/unknown coverage, scan completeness, root authority, and all proposed actions for every NORMATIVE fixture.
+- Injected divergences for every projected field, including an unrelated accepted ADR citation, fail the gate.
+
+**Verification**
+
+- Semantic-projection injected-divergence suite.
+- Full NORMATIVE corpus run in default and custom-root scenarios.
+
+**Documentation impact**
+
+- `docs/development/MIGRATION_PYTHON_RUST.md`
+- `docs/development/VERIFICATION_STRATEGY.md`
 
 ## E08 - Universal Artifact and Project Intelligence
 

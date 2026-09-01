@@ -148,6 +148,68 @@
       "documentation_impact": [
         "docs/architecture/PLATFORM_MODEL.md"
       ]
+    },
+    {
+      "id": "E07-S07",
+      "title": "Provider-root link authority boundary",
+      "status": "planned",
+      "outcome": "Reject provider roots whose root object or path resolution crosses a symbolic-link, junction, or reparse boundary before any Rust CLI mutation or provider configuration write.",
+      "change_risk": "CR4",
+      "dependencies": [
+        "E03-S03",
+        "E03-S05",
+        "E06-S01"
+      ],
+      "acceptance_criteria": [
+        "A default-named Claude or Codex root that is itself a link/reparse point is inspection-only and cannot be cleaned or configured.",
+        "Root identity and containment revalidation reject link/reparse drift at plan and execution time on every supported platform.",
+        "Unix symlink and Windows junction/reparse adversarial fixtures prove no provider mutation reaches the link target."
+      ],
+      "safety_obligations": [
+        "SI-002",
+        "SI-003",
+        "SI-013",
+        "SI-019"
+      ],
+      "verification": [
+        "Adversarial root-link/reparse clean and configure tests on every claimed platform.",
+        "Independent CR4 Safety Verdict."
+      ],
+      "documentation_impact": [
+        "docs/architecture/PLATFORM_MODEL.md",
+        "docs/CLI_RUST.md",
+        "docs/security/SAFETY_INVARIANTS.md"
+      ]
+    },
+    {
+      "id": "E07-S08",
+      "title": "Differential semantic parity projection",
+      "status": "planned",
+      "outcome": "Make the Python/Rust parity gate prove approved, fixture-specific semantic equivalence beyond deletion UUIDs and root state.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E01-S05",
+        "E06-S02"
+      ],
+      "acceptance_criteria": [
+        "A divergence allow-list is structured and validates that its cited accepted ADR/RFC specifically authorizes the fixture and semantic difference being suppressed.",
+        "The comparison projects discovered identity records, protection/unknown coverage, scan completeness, root authority, and all proposed actions for every NORMATIVE fixture.",
+        "Injected divergences for every projected field, including an unrelated accepted ADR citation, fail the gate."
+      ],
+      "safety_obligations": [
+        "SI-001",
+        "SI-008",
+        "SI-009",
+        "SI-023"
+      ],
+      "verification": [
+        "Semantic-projection injected-divergence suite.",
+        "Full NORMATIVE corpus run in default and custom-root scenarios."
+      ],
+      "documentation_impact": [
+        "docs/development/MIGRATION_PYTHON_RUST.md",
+        "docs/development/VERIFICATION_STRATEGY.md"
+      ]
     }
   ]
 }

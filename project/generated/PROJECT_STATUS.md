@@ -4,22 +4,22 @@
 
 Current phase: **P0**
 
-Epics: **20** | Stories: **92**
+Epics: **20** | Stories: **94**
 
 ## Story status
 
-- `blocked`: 1
+- `blocked`: 3
 - `done`: 33
-- `planned`: 55
-- `ready_for_review`: 3
+- `in_progress`: 1
+- `planned`: 57
 
 ## Change risk distribution
 
 - `CR0`: 1
 - `CR1`: 18
-- `CR2`: 32
+- `CR2`: 33
 - `CR3`: 20
-- `CR4`: 21
+- `CR4`: 22
 
 ## Explicitly ready work
 
@@ -27,6 +27,4 @@ Epics: **20** | Stories: **92**
 
 ## Awaiting independent review
 
-- **E06-S01** - Rust CLI contract parity (CR3)
-- **E06-S02** - Differential parity gate (CR2)
-- **E06-S03** - Migration and rollback packaging (CR2)
+- none

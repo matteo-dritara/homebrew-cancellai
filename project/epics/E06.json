@@ -12,7 +12,7 @@
     {
       "id": "E06-S01",
       "title": "Rust CLI contract parity",
-      "status": "ready_for_review",
+      "status": "in_progress",
       "outcome": "Implement status/inspect/plan/clean/configure equivalents against the new engine without TUI concerns.",
       "change_risk": "CR3",
       "dependencies": [
@@ -37,7 +37,7 @@
     {
       "id": "E06-S02",
       "title": "Differential parity gate",
-      "status": "ready_for_review",
+      "status": "blocked",
       "outcome": "Run Python and Rust over the full normative fixture corpus in CI.",
       "change_risk": "CR2",
       "dependencies": [
@@ -59,7 +59,7 @@
     {
       "id": "E06-S03",
       "title": "Migration and rollback packaging",
-      "status": "ready_for_review",
+      "status": "blocked",
       "outcome": "Define side-by-side invocation, data compatibility, and rollback from Rust candidate to Python reference during beta.",
       "change_risk": "CR2",
       "dependencies": [
