@@ -8,9 +8,10 @@ Epics: **20** | Stories: **92**
 
 ## Story status
 
+- `blocked`: 3
 - `done`: 33
+- `in_progress`: 1
 - `planned`: 55
-- `ready_for_review`: 4
 
 ## Change risk distribution
 
@@ -26,7 +27,4 @@ Epics: **20** | Stories: **92**
 
 ## Awaiting independent review
 
-- **E06-S01** - Rust CLI contract parity (CR3)
-- **E06-S02** - Differential parity gate (CR2)
-- **E06-S03** - Migration and rollback packaging (CR2)
-- **E06-S04** - Canonical engine switch (CR4)
+- none

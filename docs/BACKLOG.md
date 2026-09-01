@@ -717,13 +717,13 @@ Implement capability-based provider integration and achieve Claude/Codex semanti
 
 ## E06 - Rust CLI Parity and Cutover
 
-**Phase:** `P1` | **Status:** `planned` | **Epic dependencies:** E05
+**Phase:** `P1` | **Status:** `in_progress` | **Epic dependencies:** E05
 
 Make Rust the canonical engine only after observable parity, migration, and rollback evidence.
 
 ### E06-S01 - Rust CLI contract parity
 
-**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E05-S03, E05-S04 | **Safety obligations:** SI-007
+**Status:** `in_progress` | **Change Risk:** `CR3` | **Dependencies:** E05-S03, E05-S04 | **Safety obligations:** SI-007
 
 **Outcome.** Implement status/inspect/plan/clean/configure equivalents against the new engine without TUI concerns.
 
@@ -743,7 +743,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S02 - Differential parity gate
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E06-S01, E01-S05 | **Safety obligations:** none
+**Status:** `blocked` | **Change Risk:** `CR2` | **Dependencies:** E06-S01, E01-S05 | **Safety obligations:** none
 
 **Outcome.** Run Python and Rust over the full normative fixture corpus in CI.
 
@@ -762,7 +762,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S03 - Migration and rollback packaging
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E06-S02 | **Safety obligations:** none
+**Status:** `blocked` | **Change Risk:** `CR2` | **Dependencies:** E06-S02 | **Safety obligations:** none
 
 **Outcome.** Define side-by-side invocation, data compatibility, and rollback from Rust candidate to Python reference during beta.
 
@@ -782,7 +782,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S04 - Canonical engine switch
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E06-S03 | **Safety obligations:** SI-019
+**Status:** `blocked` | **Change Risk:** `CR4` | **Dependencies:** E06-S03 | **Safety obligations:** SI-019
 
 **Outcome.** Promote Rust to stable only after functional, safety, compatibility, and operability gates pass.
 
