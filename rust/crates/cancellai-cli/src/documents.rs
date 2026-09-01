@@ -40,7 +40,14 @@ impl ProviderRootDoc {
             provider_id,
             origin: origin_str(origin),
             confidence: confidence_str(confidence),
-            mutation_eligible: matches!(confidence, RootConfidence::Default | RootConfidence::High),
+            // ADR-0013: only the provider's own default directory may be mutated. Structural
+            // evidence (`High`/`Low` confidence) is reported for the operator's benefit - it is
+            // cheap to fabricate and therefore never proof of ownership (SI-002), so a custom
+            // root is never `mutation_eligible` regardless of how convincing its markers look
+            // (E06 verifier review round 1: an earlier version of this document also allowed
+            // `RootConfidence::High`, contradicting the destructive-authority gate this exact
+            // field is supposed to describe).
+            mutation_eligible: matches!(origin, RootOrigin::Default),
         }
     }
 }

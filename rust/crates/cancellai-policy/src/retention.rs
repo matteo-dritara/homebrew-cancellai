@@ -202,7 +202,7 @@ pub fn resolve_claude(
         .map(PathBuf::as_path)
         .collect();
 
-    let artifacts = discovered
+    let mut artifacts: Vec<ClassifiedArtifact> = discovered
         .sessions
         .iter()
         .map(|session| {
@@ -249,6 +249,15 @@ pub fn resolve_claude(
     // protected data" mistake SI-009 exists to prevent. Found via the E06-S02 differential
     // parity gate diverging from the committed `claude-partial-tree` characterization.
     if !discovered.degraded_companions.is_empty() {
+        // `docs/architecture/JSON_CONTRACTS.md`: "An artifact produced from a PARTIAL or
+        // UNKNOWN scan_completeness scope must carry knowledge_confidence no higher than
+        // LOW/UNKNOWN for that scope" - this applies to *every* artifact this scope produced,
+        // not only the one session whose own companion payload was degraded (E06 verifier
+        // review round 1: the other, perfectly-readable sessions in the same partial scan kept
+        // reporting `Verified`, overstating what this run actually proved).
+        for classified in &mut artifacts {
+            classified.artifact.knowledge_confidence = KnowledgeConfidence::LowUnknown;
+        }
         return ProviderResolution {
             provider_id: "claude-code",
             artifacts,
@@ -934,6 +943,20 @@ mod tests {
         assert!(
             !resolution.scan_complete,
             "a companion directory that could not be listed must mark the whole scan incomplete"
+        );
+        assert!(
+            resolution
+                .artifacts
+                .iter()
+                .all(|c| c.artifact.knowledge_confidence == KnowledgeConfidence::LowUnknown),
+            "JSON_CONTRACTS.md: every artifact from a PARTIAL/UNKNOWN scope must report \
+             knowledge_confidence no higher than LOW/UNKNOWN, including the two ordinary \
+             sessions whose own evidence was perfectly readable: {:?}",
+            resolution
+                .artifacts
+                .iter()
+                .map(|c| c.artifact.knowledge_confidence)
+                .collect::<Vec<_>>()
         );
         let actions = build_actions(std::slice::from_ref(&resolution));
         assert!(

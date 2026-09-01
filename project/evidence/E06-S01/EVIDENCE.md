@@ -188,7 +188,103 @@ or first appeared to be a bug (real `ps` on the development machine reports actu
 - **E06-S01's own review has not happened yet** - per `AGENT_PROTOCOL.md`, epic-scoped review
   begins once every story in E06 is `ready_for_review`; this is the first of four.
 
+## Round 1 verifier verdict
+
+FAIL (`project/evidence/E06-VERIFIER-REVIEW.md`, 2026-09-01). Four independently-reproduced
+defects, all repaired below.
+
+## Repairs for E06 verifier review round 1
+
+Each defect from the round-1 review, its root cause, the fix, and the regression test that now
+reproduces the exact adversarial case and proves it is closed:
+
+1. **Custom root treated as default (SI-002/SI-004).** Root cause: `resolve_all`/
+   `provider_root_docs` in `cancellai-cli/src/main.rs` each hard-coded
+   `ClaudeProvider::new(&root, true)`/`CodexProvider::new(&root, true)` - `is_default_root` was
+   never actually derived from whether `CLAUDE_CONFIG_DIR`/`CODEX_HOME` was set, so a custom
+   root was always fingerprinted `origin=default`. Fixed: `cancellai-cli/src/roots.rs` now
+   derives `is_default` from comparing the resolved path against the real
+   `$HOME/.claude`/`$HOME/.codex` path (matching `cancellai.py::fingerprint_root`'s own
+   comparison exactly, including the "an override that happens to point at the literal default
+   path is still default" edge case); `Resolved` computes each provider's fingerprint exactly
+   once from the real value and every caller reuses it. A new hard gate,
+   `withhold_for_root_authority` (ADR-0013: only `origin=default` may be mutated, confidence is
+   never sufficient on its own), downgrades every `Delete` action for a non-default root to
+   `Observe` before `plan`/`clean` ever see it, and `delete_one` independently re-checks the same
+   condition immediately before sealing/executing (defense in depth, not reliance on the
+   upstream decision alone). `documents.rs`'s `mutation_eligible` field, previously also wrongly
+   `true` for `RootConfidence::High`, now matches the same origin-only rule.
+   Regression: `cancellai-cli/tests/cli_behavior.rs::clean_refuses_to_mutate_a_custom_claude_config_dir_root_even_with_yes`,
+   `::plan_reports_a_custom_root_as_not_mutation_eligible_and_withholds_the_delete_candidate`;
+   `cancellai-cli/src/roots.rs` unit tests (`low_confidence_custom_root_containing_only_a_low_confidence_marker_is_still_non_default`
+   and 5 others covering absent-`$HOME`, override-equals-default, etc.). Independently
+   reproduced outside the automated suite too (recorded in this evidence packet's manual
+   verification note).
+2. **`configure` follows a predictable symlink and silently discards malformed settings
+   (SI-007/SI-019).** Root cause: the temp file used a fixed, guessable name
+   (`settings.json.cancellai-tmp`) written via `std::fs::write` (follows an existing symlink at
+   that path); a JSON parse failure silently fell back to `{}`, discarding whatever was there.
+   Fixed: `configure_claude_retention` now opens a per-attempt, PID-and-nanosecond-unique temp
+   path with `OpenOptions::create_new` (`O_CREAT|O_EXCL`, refuses to open anything already at
+   that path, symlink or not) and `fsync`s before the final `rename` (which POSIX-replaces
+   whatever sits at `settings.json` itself, never following it, matching
+   `cancellai.py::atomic_write_json`'s `tempfile.mkstemp` + `os.replace` shape); a JSON parse
+   failure or a non-object root now returns a distinct `ConfigureError::MalformedSettings` and
+   the command refuses (exit `SAFETY_BLOCK`), leaving the file untouched. `cmd_configure` also
+   now fingerprints the target root exactly like `clean` does and refuses a non-default root
+   before ever touching the filesystem.
+   Regression: `cli_behavior.rs::configure_never_writes_through_a_preexisting_settings_json_symlink_to_an_outside_file`
+   (asserts the symlink's outside target is byte-for-byte unchanged and `settings.json` is a
+   real file afterward), `::configure_refuses_malformed_settings_json_instead_of_silently_replacing_it`,
+   `::configure_refuses_a_custom_claude_config_dir_root`.
+3. **Partial-scan confidence/exit-code violations (SI-008/SI-009, `docs/architecture/
+   JSON_CONTRACTS.md`).** Root cause: `cancellai-policy::retention::classify` only downgraded
+   the *specific* artifact whose own companion evidence was degraded to `KnowledgeConfidence::
+   Observed` (not even `LOW/UNKNOWN`) - the other, perfectly-readable sessions from the same
+   incomplete scope kept `Verified`, violating JSON_CONTRACTS.md's documented ceiling. Separately,
+   `cmd_clean`'s `--dry-run` path and its "nothing to clean" short-circuit always returned exit 0
+   regardless of whether work was actually withheld. Fixed: `resolve_claude` now downgrades
+   every artifact from an incomplete scope to `LowUnknown` before returning, not only the
+   degraded one; `cmd_clean` computes `safety_withheld` (incomplete scan OR root-authority
+   withholding) once and every return path - dry-run, nothing-to-clean, and a real run - reflects
+   it in the exit code (`SAFETY_BLOCK`, 4). `cmd_version` now also rejects unrecognized arguments
+   instead of ignoring them silently.
+   Regression: `cancellai-policy::retention::tests::a_degraded_companion_withholds_every_action_for_the_whole_tool_not_only_its_own_session`
+   (extended with a `knowledge_confidence` assertion over every artifact, not just the degraded
+   one); `cli_behavior.rs::version_rejects_unrecognized_arguments`. Independently reproduced end
+   to end with a real built binary against a `claude-partial-tree`-shaped root plus an eligible
+   Codex candidate in the same run: `clean --dry-run` now exits 4 (was 0) and correctly names the
+   withheld tool; a real `clean --yes` exits 4 while still deleting the genuinely eligible Codex
+   candidate (partial safety-withholding is visible in the exit code even when other work
+   succeeds) - not committed as an automated test (ad hoc reproduction, recorded here per the
+   evidence hierarchy's "manual claim" tier), because it duplicates what the parity gate
+   (E06-S02) and the two automated tiers above already prove separately.
+4. **`process_not_running` recorded but never revalidated at execution time (SI-013's TOCTOU
+   principle, not yet applied to process liveness).** Root cause: `Action.execution_preconditions`
+   included a `process_not_running` entry in the emitted plan document, but nothing in
+   `cancellai-safety::mutation_executor::execute` ever re-checked it - only filesystem identity
+   was revalidated immediately before mutation. Fixed: `SealedPlan` now carries an optional
+   `process_guard: Option<&'static [&'static str]>`; `execute` re-probes it with a fresh
+   `ProcessObserver` call immediately before the delete operation (after identity revalidation,
+   before the OS call), failing closed exactly like `revalidate` does. `cancellai-cli::delete_one`
+   seals every real deletion with the correct provider process names, unless the operator passed
+   `--allow-running` (the same explicit override already governs the plan-build-time check, so a
+   stated intent is honored consistently rather than silently overridden by a second,
+   un-opt-out-able gate).
+   Regression: `cancellai-safety::mutation_executor::tests::execute_blocks_when_the_guarded_process_is_reported_running`,
+   `::execute_blocks_when_the_process_probe_is_incomplete_fail_closed`,
+   `::execute_never_calls_mutate_when_the_process_guard_blocks`,
+   `::execute_proceeds_when_the_guarded_process_is_confirmed_not_running`.
+
+Every existing test in the crate (including the pre-existing `cli_behavior.rs`/
+`install_rollback.rs` suites) was also updated where it depended on the old, incorrect
+behavior: both integration-test harnesses previously pointed `CLAUDE_CONFIG_DIR`/`CODEX_HOME` at
+their fixture directories unconditionally, which - once the root-authority gate was fixed - is
+exactly the *custom*-root path and would never again reach the delete path these tests exist to
+exercise. They now resolve the real OS-default root via `$HOME/.claude`/`$HOME/.codex` (no
+override), and new tests were added specifically for the custom-root path (see item 1 above).
+
 ## Verifier verdict
 
-PENDING - epic E06 review runs once every story in E06 is `ready_for_review` (at most twice per
-epic, per ADR-0014).
+Round 1: FAIL (see above). Round 2 pending re-review; this evidence packet documents the
+repairs and their independent regression coverage for that review.

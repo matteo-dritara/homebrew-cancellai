@@ -40,7 +40,7 @@
 
 use cancellai_model::ActionClass;
 use cancellai_platform::mutation::{MutationExecutor, MutationOperation};
-use cancellai_platform::{FileKind, IdentityObserver, IdentityToken};
+use cancellai_platform::{FileKind, IdentityObserver, IdentityToken, ProcessObserver};
 
 use crate::authority::{minimum_authority_for, reversibility_allowed};
 use crate::root_capability::BoundedPath;
@@ -77,6 +77,7 @@ pub fn execute(
     target: &BoundedPath,
     observer: &dyn IdentityObserver,
     executor: &dyn MutationExecutor,
+    process: &dyn ProcessObserver,
 ) -> ActionResult {
     if plan.root_identity() != target.root_identity() {
         return ActionResult::SafelyBlocked {
@@ -107,6 +108,23 @@ pub fn execute(
     let current = observer.observe(target.path());
     if let RevalidationOutcome::StalePlan { reason } = revalidate(plan, &current) {
         return ActionResult::SafelyBlocked { reason };
+    }
+
+    // SI-013/SI-014's TOCTOU principle applied to process liveness, not only filesystem
+    // identity (E06 verifier review round 1): `process_not_running` was recorded as an
+    // `execution_preconditions` entry in the emitted plan document but never actually
+    // re-checked here - a provider process could start between plan-build time and this
+    // moment. `ProcessObservation::is_running` already fails closed (an incomplete probe reads
+    // as "possibly running"), so this refuses exactly like a real positive.
+    if let Some(names) = plan.process_guard() {
+        let liveness = process.observe(names);
+        if names.iter().any(|name| liveness.is_running(name)) {
+            return ActionResult::SafelyBlocked {
+                reason: "a provider process guarding this artifact is running (or its liveness \
+                         could not be confirmed) immediately before deletion"
+                    .to_string(),
+            };
+        }
     }
 
     let operation = match plan.action_class() {
@@ -160,10 +178,11 @@ pub fn execute_all(
     plans: &[(SealedPlan, BoundedPath)],
     observer: &dyn IdentityObserver,
     executor: &dyn MutationExecutor,
+    process: &dyn ProcessObserver,
 ) -> Vec<ActionResult> {
     plans
         .iter()
-        .map(|(plan, target)| execute(plan, target, observer, executor))
+        .map(|(plan, target)| execute(plan, target, observer, executor, process))
         .collect()
 }
 
@@ -184,6 +203,7 @@ pub fn execute_with_system_capabilities(plan: &SealedPlan, target: &BoundedPath)
         target,
         &cancellai_platform::SystemIdentityObserver,
         &cancellai_platform::mutation::SystemMutationExecutor,
+        &cancellai_platform::SystemProcessObserver,
     )
 }
 
@@ -194,7 +214,10 @@ mod tests {
     use cancellai_platform::mutation::{
         MutationError, SyntheticMutationExecutor, SystemMutationExecutor,
     };
-    use cancellai_platform::{Clock, FrozenClock, IdentityObservation, SyntheticIdentityObserver};
+    use cancellai_platform::{
+        Clock, FrozenClock, IdentityObservation, SyntheticIdentityObserver,
+        SyntheticProcessObserver, SystemProcessObserver,
+    };
     use std::path::PathBuf;
 
     fn fingerprint() -> cancellai_model::RootFingerprint {
@@ -231,13 +254,30 @@ mod tests {
         authority: AuthorityLevel,
         reversibility: Reversibility,
     ) -> SealedPlan {
-        SealedPlan::new(
+        SealedPlan::new_with_process_guard(
             fingerprint(),
             root_identity,
             artifact_identity,
             action_class,
             authority,
             reversibility,
+            None,
+        )
+    }
+
+    fn plan_with_process_guard(
+        root_identity: IdentityToken,
+        artifact_identity: IdentityToken,
+        process_guard: &'static [&'static str],
+    ) -> SealedPlan {
+        SealedPlan::new_with_process_guard(
+            fingerprint(),
+            root_identity,
+            artifact_identity,
+            ActionClass::Delete,
+            AuthorityLevel::Govern,
+            Reversibility::Irreversible,
+            Some(process_guard),
         )
     }
 
@@ -294,8 +334,9 @@ mod tests {
         let mut observer = SyntheticIdentityObserver::new();
         observer.set(target.path(), IdentityObservation::Identity(identity));
         let executor = SyntheticMutationExecutor::new();
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
 
-        let result = execute(&plan, &target, &observer, &executor);
+        let result = execute(&plan, &target, &observer, &executor, &process);
         assert_eq!(result, ActionResult::Succeeded);
     }
 
@@ -320,8 +361,9 @@ mod tests {
             }),
         );
         let executor = SyntheticMutationExecutor::new();
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
 
-        let result = execute(&plan, &target, &observer, &executor);
+        let result = execute(&plan, &target, &observer, &executor, &process);
         assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
     }
 
@@ -340,6 +382,7 @@ mod tests {
         let mut observer = SyntheticIdentityObserver::new();
         observer.set(target.path(), IdentityObservation::Absent);
         let mut executor = SyntheticMutationExecutor::new();
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
         executor.set(
             target.path(),
             Err(MutationError(
@@ -347,7 +390,7 @@ mod tests {
             )),
         );
 
-        let result = execute(&plan, &target, &observer, &executor);
+        let result = execute(&plan, &target, &observer, &executor, &process);
         assert_eq!(
             result,
             ActionResult::SafelyBlocked {
@@ -368,12 +411,13 @@ mod tests {
         let mut observer = SyntheticIdentityObserver::new();
         observer.set(target.path(), IdentityObservation::Identity(identity));
         let mut executor = SyntheticMutationExecutor::new();
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
         executor.set(
             target.path(),
             Err(MutationError("No space left on device".into())),
         );
 
-        let result = execute(&plan, &target, &observer, &executor);
+        let result = execute(&plan, &target, &observer, &executor, &process);
         assert_eq!(
             result,
             ActionResult::Failed {
@@ -394,8 +438,9 @@ mod tests {
         let mut observer = SyntheticIdentityObserver::new();
         observer.set(target.path(), IdentityObservation::Identity(identity));
         let executor = SyntheticMutationExecutor::new();
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
 
-        let result = execute(&plan, &target, &observer, &executor);
+        let result = execute(&plan, &target, &observer, &executor, &process);
         assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
     }
 
@@ -422,8 +467,9 @@ mod tests {
         let mut observer = SyntheticIdentityObserver::new();
         observer.set(target.path(), IdentityObservation::Identity(identity));
         let executor = SyntheticMutationExecutor::new();
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
 
-        let result = execute(&plan, &target, &observer, &executor);
+        let result = execute(&plan, &target, &observer, &executor, &process);
         assert!(
             matches!(result, ActionResult::SafelyBlocked { .. }),
             "a directory must be refused, not deleted without the file-only identity confirmation"
@@ -452,8 +498,9 @@ mod tests {
             IdentityObservation::Identity(target_under_root_b.identity().clone()),
         );
         let executor = SyntheticMutationExecutor::new();
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
 
-        let result = execute(&plan, &target_under_root_b, &observer, &executor);
+        let result = execute(&plan, &target_under_root_b, &observer, &executor, &process);
         assert!(
             matches!(result, ActionResult::SafelyBlocked { .. }),
             "a plan for one root must never execute against a target bound under a different root"
@@ -476,8 +523,9 @@ mod tests {
         let mut observer = SyntheticIdentityObserver::new();
         observer.set(target.path(), IdentityObservation::Identity(identity));
         let executor = SyntheticMutationExecutor::new();
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
 
-        let result = execute(&plan, &target, &observer, &executor);
+        let result = execute(&plan, &target, &observer, &executor, &process);
         assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
         assert!(
             target.path().exists(),
@@ -499,8 +547,9 @@ mod tests {
         let mut observer = SyntheticIdentityObserver::new();
         observer.set(target.path(), IdentityObservation::Identity(identity));
         let executor = SyntheticMutationExecutor::new();
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
 
-        let result = execute(&plan, &target, &observer, &executor);
+        let result = execute(&plan, &target, &observer, &executor, &process);
         assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
         assert!(target.path().exists());
     }
@@ -536,13 +585,14 @@ mod tests {
         observer.set(target_c.path(), IdentityObservation::Identity(identity_c));
 
         let mut executor = SyntheticMutationExecutor::new();
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
         executor.set(
             target_c.path(),
             Err(MutationError("No space left on device".into())),
         );
 
         let plans = vec![(plan_a, target_a), (plan_b, target_b), (plan_c, target_c)];
-        let results = execute_all(&plans, &observer, &executor);
+        let results = execute_all(&plans, &observer, &executor, &process);
 
         assert_eq!(
             results.len(),
@@ -575,9 +625,101 @@ mod tests {
 
         let observer = cancellai_platform::SystemIdentityObserver;
         let executor = SystemMutationExecutor;
+        let process = SystemProcessObserver;
 
-        let result = execute(&plan, &target, &observer, &executor);
+        let result = execute(&plan, &target, &observer, &executor, &process);
         assert_eq!(result, ActionResult::Succeeded);
         assert!(!target.path().exists());
+    }
+
+    #[test]
+    fn execute_blocks_when_the_guarded_process_is_reported_running() {
+        // E06 verifier review round 1: `process_not_running` was recorded in the plan document
+        // but never actually revalidated immediately before deletion. This proves it now is.
+        let (_dir, target, identity) = real_bounded_file();
+        let plan = plan_with_process_guard(
+            target.root_identity().clone(),
+            identity.clone(),
+            &["claude"],
+        );
+
+        let mut observer = SyntheticIdentityObserver::new();
+        observer.set(target.path(), IdentityObservation::Identity(identity));
+        let executor = SyntheticMutationExecutor::new();
+        let process = SyntheticProcessObserver::complete(vec!["claude".to_string()]);
+
+        let result = execute(&plan, &target, &observer, &executor, &process);
+        assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
+        assert!(
+            target.path().exists(),
+            "the target must survive when its guarding process is running"
+        );
+    }
+
+    #[test]
+    fn execute_blocks_when_the_process_probe_is_incomplete_fail_closed() {
+        let (_dir, target, identity) = real_bounded_file();
+        let plan = plan_with_process_guard(
+            target.root_identity().clone(),
+            identity.clone(),
+            &["claude"],
+        );
+
+        let mut observer = SyntheticIdentityObserver::new();
+        observer.set(target.path(), IdentityObservation::Identity(identity));
+        let executor = SyntheticMutationExecutor::new();
+        let process = SyntheticProcessObserver::incomplete();
+
+        let result = execute(&plan, &target, &observer, &executor, &process);
+        assert!(
+            matches!(result, ActionResult::SafelyBlocked { .. }),
+            "an incomplete process probe must never be read as \"not running\""
+        );
+        assert!(target.path().exists());
+    }
+
+    #[test]
+    fn execute_never_calls_mutate_when_the_process_guard_blocks() {
+        // Stronger than the above: the mutation executor must not even be invoked - a stale
+        // identity check passing first must not let a running-process block be bypassed by
+        // reaching the OS call anyway.
+        let (_dir, target, identity) = real_bounded_file();
+        let plan = plan_with_process_guard(
+            target.root_identity().clone(),
+            identity.clone(),
+            &["claude"],
+        );
+
+        let mut observer = SyntheticIdentityObserver::new();
+        observer.set(target.path(), IdentityObservation::Identity(identity));
+        let mut executor = SyntheticMutationExecutor::new();
+        executor.set(
+            target.path(),
+            Err(MutationError(
+                "this must never be observed - mutate() should not have been called".into(),
+            )),
+        );
+        let process = SyntheticProcessObserver::complete(vec!["claude".to_string()]);
+
+        let result = execute(&plan, &target, &observer, &executor, &process);
+        assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
+    }
+
+    #[test]
+    fn execute_proceeds_when_the_guarded_process_is_confirmed_not_running() {
+        let (_dir, target, identity) = real_bounded_file();
+        let plan = plan_with_process_guard(
+            target.root_identity().clone(),
+            identity.clone(),
+            &["claude"],
+        );
+
+        let mut observer = SyntheticIdentityObserver::new();
+        observer.set(target.path(), IdentityObservation::Identity(identity));
+        let executor = SyntheticMutationExecutor::new();
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
+
+        let result = execute(&plan, &target, &observer, &executor, &process);
+        assert_eq!(result, ActionResult::Succeeded);
     }
 }

@@ -53,13 +53,16 @@ fn binary_path() -> PathBuf {
     )
 }
 
+/// Resolves the real OS-*default* root via `HOME` alone - see `cli_behavior.rs::run`'s own
+/// docs for why a `CLAUDE_CONFIG_DIR`/`CODEX_HOME` override (as an earlier version of this
+/// helper always set) exercises the wrong, never-mutation-eligible path instead (ADR-0013).
 fn run_in(home: &TempHome, cwd: &Path, args: &[&str]) -> Output {
     Command::new(binary_path())
         .args(args)
         .current_dir(cwd)
         .env("HOME", home.path())
-        .env("CLAUDE_CONFIG_DIR", home.path().join("claude"))
-        .env("CODEX_HOME", home.path().join("codex"))
+        .env_remove("CLAUDE_CONFIG_DIR")
+        .env_remove("CODEX_HOME")
         .output()
         .expect("spawn cancellai-cli")
 }
@@ -93,7 +96,7 @@ fn snapshot(home: &Path) -> BTreeSet<PathBuf> {
 }
 
 fn write_stale_claude_session(home: &TempHome, session_id: &str) -> PathBuf {
-    let dir = home.path().join("claude/projects/proj-a");
+    let dir = home.path().join(".claude/projects/proj-a");
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join(format!("{session_id}.jsonl"));
     std::fs::write(&path, "{}").unwrap();

@@ -56,16 +56,19 @@ pub struct SealedPlan {
     action_class: ActionClass,
     authority: AuthorityLevel,
     reversibility: Reversibility,
+    process_guard: Option<&'static [&'static str]>,
 }
 
 impl SealedPlan {
-    pub(crate) fn new(
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new_with_process_guard(
         root: RootFingerprint,
         root_identity: IdentityToken,
         artifact_identity: IdentityToken,
         action_class: ActionClass,
         authority: AuthorityLevel,
         reversibility: Reversibility,
+        process_guard: Option<&'static [&'static str]>,
     ) -> Self {
         Self {
             root,
@@ -74,6 +77,7 @@ impl SealedPlan {
             action_class,
             authority,
             reversibility,
+            process_guard,
         }
     }
 
@@ -88,13 +92,42 @@ impl SealedPlan {
         authority: AuthorityLevel,
         reversibility: Reversibility,
     ) -> Self {
-        Self::new(
+        Self::seal_with_process_guard(
+            root,
+            root_fingerprint,
+            target,
+            action_class,
+            authority,
+            reversibility,
+            None,
+        )
+    }
+
+    /// Same as [`Self::seal`], additionally recording which provider process name(s) must be
+    /// confirmed *not running* immediately before mutation (`execute`'s own re-check, not this
+    /// constructor - E06 verifier review round 1: `execution_preconditions`'s
+    /// `process_not_running` entry was recorded in the emitted plan document but never actually
+    /// revalidated at the one moment that matters, unlike `artifact_identity` which already had
+    /// a real TOCTOU-closing revalidation). `None` means this action class has no such
+    /// precondition to check (matches every existing call site/test unaffected by this addition).
+    #[allow(clippy::too_many_arguments)]
+    pub fn seal_with_process_guard(
+        root: &ApprovedRoot,
+        root_fingerprint: RootFingerprint,
+        target: &BoundedPath,
+        action_class: ActionClass,
+        authority: AuthorityLevel,
+        reversibility: Reversibility,
+        process_guard: Option<&'static [&'static str]>,
+    ) -> Self {
+        Self::new_with_process_guard(
             root_fingerprint,
             root.identity().clone(),
             target.identity().clone(),
             action_class,
             authority,
             reversibility,
+            process_guard,
         )
     }
 
@@ -126,6 +159,12 @@ impl SealedPlan {
 
     pub fn reversibility(&self) -> Reversibility {
         self.reversibility
+    }
+
+    /// Provider process name(s) that must be confirmed not-running immediately before this
+    /// plan mutates anything - `None` when this plan carries no such precondition.
+    pub fn process_guard(&self) -> Option<&'static [&'static str]> {
+        self.process_guard
     }
 }
 
@@ -211,13 +250,14 @@ mod tests {
     }
 
     fn plan_with(identity: IdentityToken) -> SealedPlan {
-        SealedPlan::new(
+        SealedPlan::new_with_process_guard(
             fingerprint(),
             root_token(),
             identity,
             ActionClass::Delete,
             AuthorityLevel::Govern,
             Reversibility::Irreversible,
+            None,
         )
     }
 

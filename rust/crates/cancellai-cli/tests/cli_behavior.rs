@@ -34,9 +34,11 @@ impl TempHome {
     }
 
     /// A stale Claude session file (mtime far in the past), matching `SI-008/SI-009`-relevant
-    /// fixtures elsewhere in this workspace: synthetic, never a real transcript.
+    /// fixtures elsewhere in this workspace: synthetic, never a real transcript. Written under
+    /// `.claude` (not `claude`) so this is the real OS-*default* root once a test's `run()`
+    /// sets only `HOME` - see that function's own docs for why this distinction now matters.
     fn write_stale_claude_session(&self, project: &str, session_id: &str) -> PathBuf {
-        let dir = self.0.join("claude/projects").join(project);
+        let dir = self.0.join(".claude/projects").join(project);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join(format!("{session_id}.jsonl"));
         std::fs::write(&path, "{}").unwrap();
@@ -45,7 +47,7 @@ impl TempHome {
     }
 
     fn write_stale_codex_session(&self, session_id: &str) -> PathBuf {
-        let dir = self.0.join("codex/sessions/2020/01/01");
+        let dir = self.0.join(".codex/sessions/2020/01/01");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join(format!("rollout-{session_id}.jsonl"));
         std::fs::write(
@@ -76,14 +78,37 @@ fn set_old_mtime(path: &Path) {
         .unwrap();
 }
 
+/// Runs the CLI against `home` as the real OS-*default* root (`$HOME/.claude`/`$HOME/.codex`,
+/// via `HOME` alone - no `CLAUDE_CONFIG_DIR`/`CODEX_HOME` override). This is deliberate, not
+/// incidental: most of this suite's fixtures exist to prove a real deletion happens under
+/// legitimate conditions, and only the *default* root is ever mutation-eligible (ADR-0013,
+/// `withhold_for_root_authority`) - a test that instead points `CLAUDE_CONFIG_DIR` at the
+/// fixture (as an earlier version of this harness did for every test) exercises the *custom*-
+/// root path unconditionally and could never have caught the E06 verifier review round 1
+/// defect where that path was silently treated as default anyway. `env_remove` guards against
+/// either override leaking in from whatever shell actually runs this suite.
 fn run(home: &TempHome, args: &[&str]) -> Output {
     let bin = std::env::var("CARGO_BIN_EXE_cancellai-cli")
         .expect("cargo sets this for integration tests");
     Command::new(bin)
         .args(args)
         .env("HOME", home.path())
-        .env("CLAUDE_CONFIG_DIR", home.path().join("claude"))
-        .env("CODEX_HOME", home.path().join("codex"))
+        .env_remove("CLAUDE_CONFIG_DIR")
+        .env_remove("CODEX_HOME")
+        .output()
+        .expect("spawn cancellai-cli")
+}
+
+/// Runs the CLI against a *custom* Claude root (`$CLAUDE_CONFIG_DIR`), with `HOME` pointed
+/// somewhere unrelated so the custom root can never coincidentally equal the real default path.
+fn run_custom_claude_root(claude_root: &Path, unrelated_home: &Path, args: &[&str]) -> Output {
+    let bin = std::env::var("CARGO_BIN_EXE_cancellai-cli")
+        .expect("cargo sets this for integration tests");
+    Command::new(bin)
+        .args(args)
+        .env("HOME", unrelated_home)
+        .env("CLAUDE_CONFIG_DIR", claude_root)
+        .env_remove("CODEX_HOME")
         .output()
         .expect("spawn cancellai-cli")
 }
@@ -192,8 +217,8 @@ fn clean_without_confirmation_or_dry_run_declines_and_deletes_nothing() {
     let output = Command::new(bin)
         .args(["clean", "--allow-running", "--keep-latest", "0"])
         .env("HOME", home.path())
-        .env("CLAUDE_CONFIG_DIR", home.path().join("claude"))
-        .env("CODEX_HOME", home.path().join("codex"))
+        .env_remove("CLAUDE_CONFIG_DIR")
+        .env_remove("CODEX_HOME")
         .stdin(std::process::Stdio::null())
         .output()
         .expect("spawn cancellai-cli");
@@ -263,7 +288,7 @@ fn clean_json_without_yes_or_dry_run_is_refused_before_touching_anything() {
 #[test]
 fn configure_writes_the_native_claude_retention_setting_and_preserves_other_keys() {
     let home = TempHome::new("configure");
-    let claude_dir = home.path().join("claude");
+    let claude_dir = home.path().join(".claude");
     std::fs::create_dir_all(&claude_dir).unwrap();
     std::fs::write(
         claude_dir.join("settings.json"),
@@ -286,4 +311,181 @@ fn version_prints_something_and_exits_zero() {
     let output = run(&home, &["version"]);
     assert!(output.status.success());
     assert!(stdout(&output).contains("cancellai-cli"));
+}
+
+#[test]
+fn version_rejects_unrecognized_arguments() {
+    let home = TempHome::new("version-invalid");
+    let output = run(&home, &["version", "--definitely-invalid"]);
+    assert_eq!(output.status.code(), Some(2));
+}
+
+/// E06 verifier review round 1's exact reproduction: a stale session under a root supplied
+/// through `CLAUDE_CONFIG_DIR`, containing only a low-confidence `projects/` marker, must never
+/// be deleted - the Python reference refuses every custom root regardless of confidence
+/// (ADR-0013), and this proves the Rust CLI now matches that instead of reporting the custom
+/// root as `origin=default` and deleting it.
+#[test]
+fn clean_refuses_to_mutate_a_custom_claude_config_dir_root_even_with_yes() {
+    let unrelated_home = TempHome::new("custom-root-unrelated-home");
+    let custom_root = TempHome::new("custom-root-claude-config-dir");
+    let project = custom_root.path().join("projects/proj-a");
+    std::fs::create_dir_all(&project).unwrap();
+    let session = project.join("11111111-1111-4111-8111-111111111111.jsonl");
+    std::fs::write(&session, "{}").unwrap();
+    set_old_mtime(&session);
+
+    let output = run_custom_claude_root(
+        custom_root.path(),
+        unrelated_home.path(),
+        &[
+            "clean",
+            "--yes",
+            "--json",
+            "--tool",
+            "claude",
+            "--allow-running",
+            "--keep-latest",
+            "0",
+        ],
+    );
+
+    assert_eq!(
+        output.status.code(),
+        Some(4),
+        "a withheld custom-root run must exit SAFETY_BLOCK(4): {}",
+        stdout(&output)
+    );
+    assert!(
+        session.exists(),
+        "a stale session under a custom, unverified root must never be deleted"
+    );
+}
+
+/// The same reproduction via `plan`, proving the preview agrees with what `clean` actually
+/// does (SI-007) instead of advertising a delete candidate the real run would refuse.
+#[test]
+fn plan_reports_a_custom_root_as_not_mutation_eligible_and_withholds_the_delete_candidate() {
+    let unrelated_home = TempHome::new("custom-root-plan-unrelated-home");
+    let custom_root = TempHome::new("custom-root-plan-claude-config-dir");
+    let project = custom_root.path().join("projects/proj-a");
+    std::fs::create_dir_all(&project).unwrap();
+    let session = project.join("22222222-2222-4222-8222-222222222222.jsonl");
+    std::fs::write(&session, "{}").unwrap();
+    set_old_mtime(&session);
+
+    let output = run_custom_claude_root(
+        custom_root.path(),
+        unrelated_home.path(),
+        &[
+            "plan",
+            "--json",
+            "--tool",
+            "claude",
+            "--allow-running",
+            "--keep-latest",
+            "0",
+        ],
+    );
+
+    assert_eq!(output.status.code(), Some(4), "{}", stdout(&output));
+    let doc: serde_json::Value = serde_json::from_str(&stdout(&output)).expect("valid JSON");
+    let claude_root_doc = doc["provider_roots"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["provider_id"] == "claude-code")
+        .expect("claude-code root entry");
+    assert_eq!(claude_root_doc["origin"], "custom");
+    assert_eq!(claude_root_doc["mutation_eligible"], false);
+    let actions = doc["actions"].as_array().expect("actions array");
+    assert!(
+        actions.iter().all(|a| a["action_class"] != "delete"),
+        "no delete candidate may be proposed for a non-default root: {actions:?}"
+    );
+}
+
+#[test]
+fn configure_refuses_a_custom_claude_config_dir_root() {
+    let unrelated_home = TempHome::new("configure-custom-root-unrelated-home");
+    let custom_root = TempHome::new("configure-custom-root");
+    std::fs::write(
+        custom_root.path().join("settings.json"),
+        serde_json::json!({"cleanupPeriodDays": 7}).to_string(),
+    )
+    .unwrap();
+
+    let output = run_custom_claude_root(
+        custom_root.path(),
+        unrelated_home.path(),
+        &["configure", "--claude-retention", "30"],
+    );
+
+    assert_eq!(output.status.code(), Some(4), "{}", stdout(&output));
+    let written = std::fs::read_to_string(custom_root.path().join("settings.json")).unwrap();
+    assert!(
+        written.contains("\"cleanupPeriodDays\": 7") || written.contains("\"cleanupPeriodDays\":7"),
+        "a custom root must never be written to: {written}"
+    );
+}
+
+#[test]
+fn configure_refuses_malformed_settings_json_instead_of_silently_replacing_it() {
+    let home = TempHome::new("configure-malformed");
+    let claude_dir = home.path().join(".claude");
+    std::fs::create_dir_all(&claude_dir).unwrap();
+    std::fs::write(claude_dir.join("settings.json"), "{not valid json").unwrap();
+
+    let output = run(&home, &["configure", "--claude-retention", "30"]);
+
+    assert_eq!(output.status.code(), Some(4), "{}", stdout(&output));
+    let unchanged = std::fs::read_to_string(claude_dir.join("settings.json")).unwrap();
+    assert_eq!(
+        unchanged, "{not valid json",
+        "invalid settings.json must be refused, never silently discarded and replaced"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn configure_never_writes_through_a_preexisting_settings_json_symlink_to_an_outside_file() {
+    // E06 verifier review round 1's exact reproduction: `settings.json` itself is a symlink
+    // pointing outside the approved root. The fix is unpredictable-tmp-name + `create_new`
+    // (O_EXCL) for the write, plus `rename`'s POSIX guarantee that it replaces the symlink
+    // itself rather than following it - this proves the outside file is never touched and the
+    // symlink is replaced by a real file.
+    let home = TempHome::new("configure-symlink-outside-home");
+    let claude_dir = home.path().join(".claude");
+    std::fs::create_dir_all(&claude_dir).unwrap();
+    let outside_dir = TempHome::new("configure-symlink-outside-target");
+    let outside_file = outside_dir.path().join("outside-settings.json");
+    // Valid JSON (the read side legitimately follows the symlink, same as
+    // `cancellai.py`'s own `settings.read_text()` would) - the property under test is the
+    // *write* side: this content must be byte-for-byte unchanged afterward, proving the
+    // O_EXCL-unique-tmp-file write never opened (and therefore never wrote through) this
+    // symlink's target.
+    let outside_sentinel = serde_json::json!({"outsideSentinel": "must-never-change"}).to_string();
+    std::fs::write(&outside_file, &outside_sentinel).unwrap();
+    std::os::unix::fs::symlink(&outside_file, claude_dir.join("settings.json")).unwrap();
+
+    let output = run(&home, &["configure", "--claude-retention", "30"]);
+    assert!(output.status.success(), "{}", stdout(&output));
+
+    let outside_after = std::fs::read_to_string(&outside_file).unwrap();
+    assert_eq!(
+        outside_after, outside_sentinel,
+        "the outside file the pre-existing symlink pointed to must never be written through"
+    );
+    let settings_path = claude_dir.join("settings.json");
+    assert!(
+        !settings_path
+            .symlink_metadata()
+            .unwrap()
+            .file_type()
+            .is_symlink(),
+        "settings.json must be replaced by a real file, not left as (or written through as) a symlink"
+    );
+    let written = std::fs::read_to_string(&settings_path).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&written).unwrap();
+    assert_eq!(value["cleanupPeriodDays"], 30);
 }
