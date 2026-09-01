@@ -139,13 +139,11 @@ impl InventorySnapshot {
             .iter()
             .filter(|f| matches!(f.logical_size, crate::file_facts::SizeMetric::Known { .. }))
             .collect();
-        known.sort_by(|a, b| {
-            let bytes_of = |f: &FileFacts| match f.logical_size {
-                crate::file_facts::SizeMetric::Known { bytes } => bytes,
-                crate::file_facts::SizeMetric::Unsupported { .. } => 0,
-            };
-            bytes_of(b).cmp(&bytes_of(a))
-        });
+        let bytes_of = |f: &FileFacts| match f.logical_size {
+            crate::file_facts::SizeMetric::Known { bytes } => bytes,
+            crate::file_facts::SizeMetric::Unsupported { .. } => 0,
+        };
+        known.sort_by_key(|f| std::cmp::Reverse(bytes_of(f)));
         known.truncate(n);
         known
     }

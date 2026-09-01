@@ -185,11 +185,7 @@ pub fn resolve_claude(
     // Protect the `keep_latest` most-recently-modified unique sessions, matching
     // `cancellai.py::choose_old_sessions` (mtime desc, unique by session_id).
     let mut ordered: Vec<&ClaudeSession> = discovered.sessions.iter().collect();
-    ordered.sort_by(|a, b| {
-        let ka = a.modified.map(observed_secs);
-        let kb = b.modified.map(observed_secs);
-        kb.cmp(&ka)
-    });
+    ordered.sort_by_key(|s| std::cmp::Reverse(s.modified.map(observed_secs)));
     let protected_ids: std::collections::HashSet<&str> = ordered
         .iter()
         .take(policy.keep_latest as usize)
@@ -358,7 +354,7 @@ pub fn resolve_codex(
         .collect();
 
     let mut ordered: Vec<&(String, TreeFacts, &[CodexSession])> = tree_facts.iter().collect();
-    ordered.sort_by(|a, b| b.1.effective_mtime.cmp(&a.1.effective_mtime));
+    ordered.sort_by_key(|(_, facts, _)| std::cmp::Reverse(facts.effective_mtime));
     let protected_roots: std::collections::HashSet<&str> = ordered
         .iter()
         .take(policy.keep_latest as usize)
