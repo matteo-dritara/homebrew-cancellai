@@ -32,6 +32,13 @@ impl TempHome {
             std::process::id()
         ));
         std::fs::create_dir_all(&dir).expect("create temp home");
+        // Canonicalize once, here, on a path this test harness itself just created - not a
+        // security-relevant resolution. Without it, macOS's `/var -> private/var` compatibility
+        // symlink (`std::env::temp_dir()` returns a `/var/folders/...` path there) would make
+        // `clean`'s new whole-path `verify_no_intermediate_links` check (E07-S09) refuse every
+        // test HOME here as "reached through an intermediate symlink" - a false positive from
+        // an OS-level symlink no attacker in this test's threat model controls.
+        let dir = std::fs::canonicalize(&dir).expect("canonicalize temp home");
         Self(dir)
     }
 
@@ -163,7 +170,7 @@ fn every_read_only_command_leaves_no_trace_anywhere_under_home() {
 // `cancellai-platform::identity::SystemIdentityObserver` reports `Unsupported` unconditionally
 // on non-Unix platforms today (E03-S01's own disclosed residual risk) - `ApprovedRoot::
 // establish`/`bind` therefore always fails closed on Windows, so a real deletion can never
-// succeed there yet (E07-S02 "Windows native backend" tracks closing this) - see the identical
+// succeed there yet (E20-S01 "Windows native backend" tracks closing this) - see the identical
 // note in `cli_behavior.rs` above its own two real-deletion tests.
 #[cfg(unix)]
 #[test]

@@ -18,7 +18,7 @@
       "change_risk": "CR3",
       "dependencies": [
         "E14-S04",
-        "E07-S04"
+        "E20-S03"
       ],
       "acceptance_criteria": [
         "Guardian can be enabled/disabled and status inspected consistently.",

@@ -24,6 +24,22 @@ deliberately does not go through `ApprovedRoot` (see SI-019 below) -
 bounding capability: it opens the root once with `O_NOFOLLOW` and retains that descriptor for
 every subsequent operation, rather than re-checking and re-resolving the path each time.
 
+E07-S07 round-2 independent verifier review found that round-1's `O_NOFOLLOW` bound only the
+*final* path component: `establish`'s pre-check and its `OpenOptions::open(path)` both still
+resolved every component *above* the leaf through the kernel's normal, link-following name
+resolution, so a `$HOME` (or any intermediate directory) that was itself a symlink was silently
+followed, and the real, non-symlink leaf it led to was then sealed and mutated as if it were the
+approved root. E07-S09 round 1 closed this for `configure`: `SealedRoot::establish` walks every component
+handle-relatively from the filesystem root (`/`, which cannot itself be a symlink) via
+`openat`/`O_NOFOLLOW`, refusing the moment any component - intermediate or final - is a link,
+and creates only the final, absent component via `mkdirat` against the already-held parent
+descriptor. Round-1 independent verifier review found this did not reach `clean`, which
+establishes its root through the separate `ApprovedRoot` capability (whose own `canonicalize()`
+step still resolved through an intermediate link): round 2 exports
+`cancellai_sealedfs::verify_no_intermediate_links` - the identical walk, but read-only (no
+`mkdirat`, `Ok(())` for a missing component) - and calls it immediately before
+`ApprovedRoot::establish` in `cancellai-cli::establish_verified_root`.
+
 ### SI-003 Mutation cannot escape or delete the approved root
 
 No filesystem mutation may target outside its approved root or the root object itself, including via path normalization tricks or link indirection.
@@ -131,6 +147,26 @@ swap. Unlike the `MutationExecutor` file-unlink case above, `cancellai-sealedfs:
 before mutation but bound for the mutation's entire duration - no path re-resolution ever
 happens again after `establish` returns.
 
+E07-S09 extends this to every component `establish` itself walks to reach that final
+descriptor, not only the descriptor it ends with: each intermediate directory is opened via
+`openat`/`O_NOFOLLOW` against the descriptor already held for its own parent, so an
+intermediate symlink is refused at the instant it is reached rather than silently resolved by
+the initial path-based lookup that used to precede the final `O_NOFOLLOW` open.
+
+E07-S05 found that identity revalidation's own disambiguator could itself collide: real Linux
+reproduction (a delete-and-recreate loop with no intervening delay, run inside a Docker
+container to get a genuine Linux filesystem rather than macOS's) showed the freed inode reused
+and `IdentityToken::Unix`'s whole-second `modified` unchanged in the overwhelming majority of
+back-to-back iterations - `device`+`inode`+`kind`+`modified` alone is not always enough, exactly
+as this invariant's own "identity is insufficient" framing already warns against trusting a
+weaker fact. `modified_nanos` (`rust/crates/cancellai-platform/src/identity.rs`), the raw
+sub-second `st_mtime_nsec` remainder, and its use in `cancellai-platform::mutation`'s own
+`confirmed_delete_file_inner` open-time and immediately-before-unlink checks (which previously
+compared device+inode only, not going through `IdentityToken` at all), close the gap for any
+real-world timing gap larger than the underlying clock's own granularity (measured directly at
+roughly 1ms in one containerized environment) - see SI-017 below for why an artificially
+zero-delay test fixture, not the disambiguator itself, needed the accompanying correction.
+
 ### SI-014 Safety-blocked/partial is not success
 
 Automation receives a distinct non-zero or structured status when requested mutation was materially blocked/skipped for safety or incomplete execution.
@@ -157,6 +193,18 @@ module doc comment and `docs/architecture/DOMAIN_MODEL.md`'s "SealedPlan" sectio
 ### SI-017 Platform-native identity semantics
 
 Unix inode/device assumptions are not applied to Windows reparse/file identity or other platforms without a verified mapping. Unsupported identity semantics lower authority.
+
+E07-S05's real Linux reproduction also disproved an assumption this codebase's own tests had
+been making about Unix identity itself: `identity.rs`'s `toctou_file_deleted_and_recreated_
+with_identical_content_still_changes_identity` asserted the recreated file's inode specifically
+must differ ("recreation must allocate a new inode") - true on macOS/APFS in this workspace's
+own CI, false on Linux under a zero-delay delete-recreate (inode reuse in ~98% of iterations
+measured directly). That assertion tested an incidental, platform-varying implementation detail
+rather than the actual invariant (the *whole* `IdentityToken` differs) and has been removed; the
+fixture now inserts a small real-world-realistic delay (SI-013's revalidate-before-mutate always
+follows a scan+plan+policy+confirmation cycle, never a zero-delay same-instant recreate) so the
+underlying clock genuinely advances, without weakening the "byte-identical content" case the
+test exists to prove.
 
 ### SI-018 Filesystem/volume boundaries are explicit
 

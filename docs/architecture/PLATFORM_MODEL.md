@@ -51,6 +51,28 @@ truthfulness). A follow-up story implements and verifies real Windows identity o
 exercised on Windows CI; until then, no artifact whose identity depends on Windows-native
 evidence can receive destructive authority through this seam.
 
+#### Accepted limitation: the inventory scanner cannot descend below the scope root on Windows
+
+E20-S04 (formerly E07-S06) found this residual has a consequence beyond mutation authority:
+`cancellai-inventory::scan::walk_directory` only recurses into a child whose identity is
+*confirmed* (`IdentityObservation::Identity`, never `Unsupported`) and that does not cross the
+scope's device boundary (SI-017 - "an unconfirmed identity never earns a descend by default").
+Since `SystemIdentityObserver` reports `Unsupported` unconditionally on Windows today, that
+condition is never true there, so a real Windows scan visits only the scope root itself -
+verified directly on Windows CI: a four-level nested fixture (`root/a/b/c`) produced
+`directories_visited == 1`, not `4`, and a fully-readable tree's completeness is `Partial`
+(`UnsupportedFilesystemFeature` for `identity`/`allocated_size`) rather than `Complete`.
+
+This is the safety gate working exactly as designed, not a traversal bug: weakening the
+identity-confirmed check to let the walk descend without real evidence would be the wrong fix,
+trading a correct fail-closed posture for a plausible-but-unverified one - precisely what this
+section's own Windows posture already refuses to do for mutation. Both outcomes are covered by
+Windows-specific tests (`completeness::tests::
+ac1_a_fully_readable_tree_is_partial_on_windows_pending_native_identity`, `scan::tests::
+ac1_traversal_stops_at_the_root_on_windows_pending_native_identity`) rather than left to fail
+silently. Real Windows traversal depth requires E20-S01's native identity implementation, not a
+scan-logic change.
+
 ## Allocated-size observation
 
 Logical size and allocated/physical size are different facts: a sparse file, a
@@ -171,6 +193,57 @@ A settings-file-level symlink (`$CLAUDE_HOME/settings.json` itself being a link,
 the root directory case above) remains the already-verified E06 round-1 behavior: read through,
 never written through (`O_EXCL` + `renameat` never follows a symlink at either name) - this ADR
 did not change or re-scope that case.
+
+#### Intermediate components need the same no-follow treatment as the leaf (E07-S09)
+
+E07-S07 round-1's `SealedRoot::establish` bound the *leaf* with `O_NOFOLLOW`, but its own
+pre-check (`symlink_metadata(path)`) and `OpenOptions::open(path)` still resolved every
+component above the leaf through ordinary, link-following path resolution first. E07-S07
+round-2 independent verifier review reproduced the consequence natively: with `$HOME` itself a
+symlink to an outside directory and a real `.claude` directory sitting under that outside
+target, `configure --claude-retention 30` exited `0` and wrote through to the outside
+directory - the leaf was a real, non-symlink directory, so the round-1 check never had a
+reason to refuse it.
+
+`establish` now performs one handle-relative walk for the *entire* path, not only its last
+component: it opens the filesystem root `/` (the one point in the walk with nothing upstream of
+it to have been swapped), then `openat`s each subsequent component - intermediate or final -
+against the descriptor already held for its parent, with `O_NOFOLLOW | O_DIRECTORY`, refusing
+outright the moment any of them is a symlink or reparse point. Only the final component may be
+created if absent, via `mkdirat` against the already-held parent descriptor, never
+`create_dir_all`'s path-based recursive creation. A relative path or a path containing a `.`/`..`
+component is refused outright (`SealError::NotAbsolute`/`PathNotNormalized`) rather than
+resolved, since resolving either safely would need the same kind of path-based lookup this walk
+exists to avoid.
+
+This closes the class of gap for Unix. Windows/reparse-point handling still has no verified
+handle-relative equivalent (`SealedRoot::establish` continues to fail closed there, per the
+existing residual above) - a genuine junction/reparse-safe walk remains E20-S01's scope (moved
+from E07 into a dedicated Windows/WSL epic pending real environment access).
+
+##### The fix had to reach `clean`, not only `configure` (E07-S09 round 2)
+
+E07-S09 round-1 independent verifier review found that the walk above closed the gap only for
+`configure`'s write path. `clean` establishes its provider root through a different capability,
+`cancellai-safety::ApprovedRoot::establish`, whose own `canonicalize()` step (deliberate -
+`ApprovedRoot::bind` relies on it to catch a *candidate* escaping through a symlink component,
+see this document's "Boundary rules" section above) silently resolves through the identical
+intermediate link `SealedRoot`'s walk exists to refuse. Native reproduction: `$HOME` a symlink
+to an outside directory containing a real `.claude` with a stale session underneath - `clean
+--yes` deleted it while `configure` (already repaired) correctly refused the same topology.
+
+`cancellai-sealedfs` exports a second, narrower entry point for exactly this shape of caller:
+`verify_no_intermediate_links(path)` performs the identical handle-relative, no-follow walk as
+`establish`, but never creates a missing component and returns `Ok(())` (not an error) for one -
+`clean` has no business materializing a provider root that does not exist, so a missing
+component is left for `ApprovedRoot::establish`'s own existing "root does not exist" error to
+report, not treated as this function's problem. `cancellai-cli`'s `establish_verified_root`
+(used by `clean`, for the default root only - a custom root is never mutation-eligible
+regardless of what this check would say about it) now calls this immediately before
+`ApprovedRoot::establish`, so the intermediate-link refusal happens before canonicalization ever
+gets a chance to resolve through one - the same "prove it, then hand off the already-verified
+path" shape `SealedRoot::establish` itself uses internally between its own walk and its final
+leaf bind.
 
 ## Quarantine
 

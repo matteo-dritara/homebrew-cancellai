@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "id": "E20",
+  "phase": "P2",
+  "title": "Windows and WSL Native Support",
+  "objective": "Make Windows native and WSL2 first-class platform targets, once a real Windows/WSL development or CI environment is available to verify against.",
+  "dependencies": [
+    "E06"
+  ],
+  "status": "planned",
+  "stories": [
+    {
+      "id": "E20-S01",
+      "title": "Windows native backend",
+      "status": "planned",
+      "outcome": "Implement Windows path, volume/file identity, reparse point, process, allocated-size, and atomic move semantics.",
+      "change_risk": "CR4",
+      "dependencies": [
+        "E07-S01"
+      ],
+      "acceptance_criteria": [
+        "Reparse points are never treated as Unix symlinks by assumption.",
+        "Drive/volume boundaries constrain quarantine and mutation."
+      ],
+      "safety_obligations": [
+        "SI-017",
+        "SI-018"
+      ],
+      "verification": [
+        "Windows CI with junction/symlink/reparse adversarial fixtures."
+      ],
+      "documentation_impact": [
+        "docs/architecture/PLATFORM_MODEL.md"
+      ]
+    },
+    {
+      "id": "E20-S02",
+      "title": "WSL environment model",
+      "status": "planned",
+      "outcome": "Treat WSL as Windows host plus Linux guest/filesystem context rather than generic Linux.",
+      "change_risk": "CR3",
+      "dependencies": [
+        "E20-S01"
+      ],
+      "acceptance_criteria": [
+        "WSL detection is explicit.",
+        "/mnt/* crossings are separately classified and performance/safety caveats surfaced."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "WSL integration smoke suite where available plus simulated path fixtures."
+      ],
+      "documentation_impact": [
+        "docs/architecture/PLATFORM_MODEL.md"
+      ]
+    },
+    {
+      "id": "E20-S03",
+      "title": "Tiered platform support contract",
+      "status": "planned",
+      "outcome": "Publish Tier 1/Tier 2 platform capability matrix and support policy.",
+      "change_risk": "CR1",
+      "dependencies": [
+        "E07-S01",
+        "E20-S01",
+        "E20-S02"
+      ],
+      "acceptance_criteria": [
+        "No platform is called supported without required CI and destructive safety fixtures.",
+        "Unsupported OSes remain inspect-only or refused explicitly."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Generated platform matrix check."
+      ],
+      "documentation_impact": [
+        "README.md",
+        "docs/PLATFORMS.md"
+      ]
+    },
+    {
+      "id": "E20-S04",
+      "title": "Windows inventory scan traversal test reliability",
+      "status": "ready_for_review",
+      "outcome": "Determine why cancellai-inventory's completeness::tests::ac1_a_fully_readable_tree_is_complete and scan::tests::ac1_one_traversal_visits_every_directory_exactly_once fail on Windows CI (observed 2026-08-31, the first time the Windows quality job in rust.yml ever actually reached these tests - an unrelated pre-existing clippy::large_enum_variant failure had aborted that job before test execution since at least 2026-08-29), and bring cancellai-inventory to genuine, verified Windows parity or document the gap explicitly.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E04-S02",
+        "E04-S03"
+      ],
+      "acceptance_criteria": [
+        "Root cause identified: a path-separator, symlink/junction-detection, or traversal-count assumption in scan_scope/derive_completeness that does not hold on Windows.",
+        "scan_scope/derive_completeness produce the same documented Complete/Partial/Unknown classification and traversal counters (directories_visited, paths_observed) on Windows as on macOS/Linux for the same fixture tree, or the platform difference is explicitly documented in PLATFORM_MODEL.md as a known, accepted Windows limitation rather than silently left failing."
+      ],
+      "safety_obligations": [
+        "SI-008",
+        "SI-009"
+      ],
+      "verification": [
+        "quality (windows-latest) in rust.yml green across repeated runs."
+      ],
+      "documentation_impact": [
+        "docs/architecture/PLATFORM_MODEL.md"
+      ]
+    }
+  ]
+}

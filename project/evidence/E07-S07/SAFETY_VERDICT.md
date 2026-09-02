@@ -2,9 +2,9 @@
 
 - Change: Provider-root link authority boundary
 - Risk: CR4
-- Commit/PR: `11e7b24..0bb7f6c72afd3dce6b98b83b8dea878954c8e9bb`
+- Commit/PR: `7e3d938..f9db57e`
 - Independent verifier: Codex (`/root`)
-- Date: 2026-09-01
+- Date: 2026-09-02
 
 ## Verdict
 
@@ -12,51 +12,54 @@
 
 ## Safety surface changed
 
-The change controls whether a default-named provider root can carry authority for `clean` and
-the vendor configuration write performed by `configure`.  It adds literal-root link detection
-at classification and immediately before these operations.
+The repair adds `cancellai-sealedfs::SealedRoot` for `configure`: the final root component is
+opened with `O_NOFOLLOW` and child operations use its retained descriptor. This closes the
+round-1 final-component swap, but does not reject a link/reparse point in an intermediate path
+component.
 
 ## Invariants
 
 | Invariant | Required property | Evidence | Result |
 | --- | --- | --- | --- |
-| SI-002 | A mutation/configuration write must have a positively bounded provider root. | `cmd_configure` checks `roots::is_symlink` at `main.rs:859`, but immediately passes the unbound raw path to `configure_claude_retention` at `main.rs:866`. A root directory can be atomically replaced with a link after the check. | FAIL |
-| SI-003 | No provider mutation may escape its approved root through link indirection. | After that swap, `configure_claude_retention` uses `create_dir_all`, `read_to_string`, `OpenOptions::open`, and `rename` on `claude_home.join(...)` (`main.rs:918-962`); these path operations resolve the replacement symlink and write the link target. | FAIL |
-| SI-013 | Link/reparse drift is rejected immediately before mutation. | The root check and the first write-side operation are separate syscalls with no retained directory handle, identity token, or no-follow/handle-relative operation. The following interleaving reaches an outside write: (1) start with real `$HOME/.claude`, so classification is Default; (2) let `is_symlink` at line 859 return false; (3) atomically rename that directory aside and atomically rename `$HOME/.claude -> <outside>` into place; (4) resume line 866. The configuration helper follows the link and creates/renames `<outside>/settings.json`. | FAIL |
-| SI-019 | Provider mutation is evidence-gated through an authority boundary. | The configuration path is deliberately outside `ApprovedRoot`/`IdentityObserver`; its added standalone check is not an atomic authority boundary and has the escape above. | FAIL |
+| SI-002 | A mutation/configuration write must have a positively bounded provider root. | `SealedRoot::establish` binds only the final path component. `HOME=<link-to-outside>` and its real `.claude` leaf are classified Default and configured successfully. | FAIL |
+| SI-003 | No provider mutation may escape its approved root through link indirection. | Native reproduction: `HOME=/private/tmp/.../home-link` where `home-link -> /private/tmp/.../outside`; `configure --claude-retention 30` exits 0 and changes `outside/.claude/settings.json` from 7 to 30. | FAIL |
+| SI-013 | Link/reparse drift is rejected immediately before mutation. | The retained descriptor closes a swap of the final root component after `establish`, but `symlink_metadata(path)`, `create_dir_all(path)`, and `open(path, O_NOFOLLOW|O_DIRECTORY)` still resolve all intermediate components lexically. | FAIL |
+| SI-019 | Provider mutation is evidence-gated through an authority boundary. | The new boundary is incomplete: an untrusted intermediate link selects the object retained by `SealedRoot`, so the later handle-relative operations faithfully mutate the wrong root. | FAIL |
 
 ## Adversarial cases
 
-- Native Unix root-link regression tests execute and pass: `clean_refuses_to_mutate_when_home_dot_claude_is_itself_a_symlink` and `configure_refuses_when_home_dot_claude_is_itself_a_symlink`.
-- The implementation still fails the required drift case for `configure`: a regular default root swapped to a symlink after its final `is_symlink` check is followed by raw path-based write operations. No test synchronizes this interval, so the passing static-link fixtures provide false confidence for this TOCTOU path.
-- Windows-only directory-symlink tests are not executable on this macOS verifier. A real NTFS junction is also not fixture-proven. These are open compatibility gaps, but the Unix configuration race already requires rejection.
+- The round-1 final-root swap is closed: `SealedRoot` holds an `O_NOFOLLOW` final-root descriptor and child writes are relative `openat`/`renameat` calls.
+- The new suite has no intermediate-component-link fixture. Its passing root-leaf, temp-name, and final-root-swap tests therefore provide false confidence for the stated path-resolution boundary.
+- Windows directory-symlink tests were not executed on this macOS verifier, and a real NTFS junction remains unproven. The fallback refuses configuration on non-Unix, but that does not repair the Unix intermediate-link escape.
 
 ## Differential / compatibility evidence
 
 - `cargo fmt --check`: PASS.
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings`: PASS.
 - `cargo check --workspace --all-targets`: PASS.
-- `cargo test --workspace`: PASS (native Unix suite; 18 CLI behavior tests, including static root-link refusal).
+- `cargo test --workspace`: PASS (native Unix suite; 18 CLI behavior tests and 8 `cancellai-sealedfs` tests).
 - `cargo deny check`: PASS; existing unmatched license-allowance warnings for BSD-2-Clause, BSD-3-Clause, and ISC.
 
 ## Known residual risks
 
 - The genuine NTFS-junction/reparse fixture and actual Windows execution remain unproven.
-- More importantly, the configuration root is not held by a no-follow, identity-bound capability across the write. This is a present authority escape, not an acceptable residual.
+- The final component is held safely after binding, but every intermediate component is still resolved through an untrusted lexical path. This is a present authority escape, not an acceptable residual.
 
 ## Required repair
 
-Route `configure` through a root-bound configuration-write capability that holds and verifies the
-provider root immediately through mutation. On Unix, open the root with no-follow semantics,
-verify its identity, and perform all settings/temp/rename operations relative to that retained
-directory handle; on Windows, implement or explicitly fail closed until equivalent reparse-safe
-handle semantics are verified. Add a deterministic adversarial test that swaps a real default
-root for a symlink after the final validation and proves the outside sentinel is unchanged.
+Create E07-S09 and repair the root establishment primitive: walk every Unix provider-root path
+component handle-relatively from a trusted anchor, opening every directory with `O_NOFOLLOW |
+O_DIRECTORY` and creating absent components with `mkdirat` only beneath a retained parent
+descriptor. Do not use lexical `create_dir_all`, `symlink_metadata`, or `open` to select a
+component after the anchor. Add deterministic configure and clean tests in which an intermediate
+component (including the `$HOME` prefix) is a symlink to an outside sentinel. On Windows, retain
+explicit refusal until equivalent verified handle/reparse semantics and a true junction fixture
+exist.
 
 ## Rollback / recovery
 
-No rollback is required: reject this implementation and retain E07-S07 in `in_progress` until
-the configuration authority path is repaired and independently re-reviewed.
+No rollback is required: reject this implementation, retain E07-S07 in `in_progress`, and track
+the surviving round-2 gap as E07-S09; do not open a third E07-S07 review round.
 
 ## Owner decision
 

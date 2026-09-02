@@ -199,6 +199,34 @@ mod tests {
         ));
     }
 
+    /// Retries `codex_delete_supported` on a transient `ProbeFailed`/"Text file busy" result -
+    /// a real, reproduced (not hypothesized) Linux concurrency artifact of this test file's own
+    /// FakeCli pattern, not a codex_delete_supported bug: writing a fresh script then execing
+    /// it from a highly parallel, multi-threaded `cargo test` run can race a *different*,
+    /// concurrently-forking test thread on this crate's own shared file-descriptor table
+    /// (`fork()` clones every thread's open fds, and the exec check does not distinguish which
+    /// thread is responsible for one still being open for write) - reproduced serial-safe
+    /// (0/200 failures with `--test-threads=1`) and only observed under real concurrency
+    /// (`--test-threads>1`) in a genuine Linux container, never on macOS. Since `ProbeFailed`
+    /// is itself the correct, conservative production answer for "could not tell" (this is not
+    /// papering over a real defect - a caller that got `ProbeFailed` because of this exact race
+    /// in production would be no less safe, only unnecessarily conservative once), the fix
+    /// belongs in the test harness, not in `codex_delete_supported`'s own logic.
+    #[cfg(unix)]
+    fn codex_delete_supported_retrying(codex_bin: &Path) -> NativeDeleteSupport {
+        for attempt in 0..5 {
+            match codex_delete_supported(Some(codex_bin)) {
+                NativeDeleteSupport::ProbeFailed { reason, .. }
+                    if reason.contains("Text file busy") && attempt < 4 =>
+                {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                other => return other,
+            }
+        }
+        unreachable!("loop always returns on its last iteration")
+    }
+
     #[cfg(unix)]
     #[test]
     fn ac2_a_fake_cli_advertising_force_is_reported_supported() {
@@ -206,7 +234,7 @@ mod tests {
             "supported",
             "#!/bin/sh\necho 'usage: codex delete [--force] <id>'\nexit 0\n",
         );
-        let result = codex_delete_supported(Some(&fake.0));
+        let result = codex_delete_supported_retrying(&fake.0);
         assert_eq!(
             result,
             NativeDeleteSupport::Supported {
@@ -222,7 +250,7 @@ mod tests {
             "unsupported",
             "#!/bin/sh\necho 'usage: codex delete <id>'\nexit 0\n",
         );
-        let result = codex_delete_supported(Some(&fake.0));
+        let result = codex_delete_supported_retrying(&fake.0);
         assert_eq!(
             result,
             NativeDeleteSupport::Unsupported {
@@ -240,7 +268,7 @@ mod tests {
             "nonzero",
             "#!/bin/sh\necho '--force is available'\nexit 1\n",
         );
-        let result = codex_delete_supported(Some(&fake.0));
+        let result = codex_delete_supported_retrying(&fake.0);
         assert_eq!(
             result,
             NativeDeleteSupport::Unsupported {
@@ -269,7 +297,7 @@ mod tests {
             "large-output",
             "#!/bin/sh\nyes '--force line filler' | head -c 200000\nexit 0\n",
         );
-        let result = codex_delete_supported(Some(&fake.0));
+        let result = codex_delete_supported_retrying(&fake.0);
         assert_eq!(
             result,
             NativeDeleteSupport::Supported {
