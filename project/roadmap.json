@@ -48,7 +48,8 @@
         "E07",
         "E08",
         "E09",
-        "E10"
+        "E10",
+        "E20"
       ]
     },
     {
@@ -129,6 +130,7 @@
     "project/epics/E16.json",
     "project/epics/E17.json",
     "project/epics/E18.json",
-    "project/epics/E19.json"
+    "project/epics/E19.json",
+    "project/epics/E20.json"
   ]
 }

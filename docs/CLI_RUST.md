@@ -115,8 +115,9 @@ one-for-one:
 - `configure`'s underlying write capability (`cancellai-sealedfs::SealedRoot`, ADR-0017) has no
   verified no-follow/handle-relative implementation on non-Unix platforms yet - `configure`
   refuses outright there (`SealError::Unsupported`), not only when the root happens to be a
-  link, until a future story (the natural home is E07-S02, "Windows native backend") implements
-  a genuine reparse-safe handle. This is a real, disclosed capability reduction versus the
+  link, until a future story (the natural home is E20-S01, "Windows native backend", split from
+  E07 into a dedicated Windows/WSL epic pending real environment access) implements a genuine
+  reparse-safe handle. This is a real, disclosed capability reduction versus the
   previous behavior of attempting the (unprotected) raw path write whenever `$HOME` happened to
   resolve on such a platform, not an oversight.
 - On Unix, `SealedRoot::establish` (E07-S09) refuses a root reached through an intermediate
@@ -127,4 +128,4 @@ one-for-one:
   verifier review found the round-1 patch only reached `configure` - via
   `cancellai_sealedfs::verify_no_intermediate_links`, called immediately before
   `ApprovedRoot::establish` for the default root. Windows/reparse-point intermediate-component
-  handling remains E07-S02 scope for both callers.
+  handling remains E20-S01 scope for both callers.

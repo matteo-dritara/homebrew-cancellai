@@ -189,11 +189,13 @@ fn clean_dry_run_never_deletes_anything() {
 // `cancellai-platform::identity::SystemIdentityObserver` reports `Unsupported` unconditionally
 // on non-Unix platforms today (E03-S01's own disclosed residual risk, `#[cfg(not(unix))]` in
 // `identity.rs`) - `ApprovedRoot::establish`/`bind` therefore always fails closed on Windows,
-// so a real deletion can never succeed there yet regardless of anything E06 changed (E07-S02
-// "Windows native backend" tracks closing this). First observed as an actual Windows CI failure
-// on 2026-09-01 - not a regression, but the first time this crate's mutation-path integration
-// tests were ever reached on Windows CI (an unrelated pre-existing clippy failure had aborted
-// the job before them on every prior run, the same pattern E07-S05/E07-S06 already document).
+// so a real deletion can never succeed there yet regardless of anything E06 changed (E20-S01
+// "Windows native backend" tracks closing this - moved from E07 into a dedicated epic once it
+// became clear this work needs a real Windows/WSL environment to verify against, see E07.json's
+// own objective note). First observed as an actual Windows CI failure on 2026-09-01 - not a
+// regression, but the first time this crate's mutation-path integration tests were ever reached
+// on Windows CI (an unrelated pre-existing clippy failure had aborted the job before them on
+// every prior run, the same pattern E07-S05/E20-S04 already document).
 #[cfg(unix)]
 #[test]
 fn clean_yes_deletes_a_stale_unprotected_session_and_reports_it_in_the_result_document() {

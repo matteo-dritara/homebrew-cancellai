@@ -4,15 +4,15 @@
 
 Current phase: **P0**
 
-Epics: **20** | Stories: **95**
+Epics: **21** | Stories: **95**
 
 ## Story status
 
 - `blocked`: 1
 - `done`: 37
 - `in_progress`: 1
-- `planned`: 54
-- `ready_for_review`: 2
+- `planned`: 53
+- `ready_for_review`: 3
 
 ## Change risk distribution
 
@@ -28,5 +28,6 @@ Epics: **20** | Stories: **95**
 
 ## Awaiting independent review
 
+- **E07-S01** - Unix platform backend (CR3)
 - **E07-S05** - Linux TOCTOU identity/mutation test reliability (CR3)
 - **E07-S09** - Provider-root intermediate-link containment (CR4)

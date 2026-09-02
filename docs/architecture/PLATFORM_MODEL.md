@@ -196,7 +196,8 @@ exists to avoid.
 
 This closes the class of gap for Unix. Windows/reparse-point handling still has no verified
 handle-relative equivalent (`SealedRoot::establish` continues to fail closed there, per the
-existing residual above) - a genuine junction/reparse-safe walk remains E07-S02's scope.
+existing residual above) - a genuine junction/reparse-safe walk remains E20-S01's scope (moved
+from E07 into a dedicated Windows/WSL epic pending real environment access).
 
 ##### The fix had to reach `clean`, not only `configure` (E07-S09 round 2)
 

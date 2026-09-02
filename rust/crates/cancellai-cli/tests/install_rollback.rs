@@ -170,7 +170,7 @@ fn every_read_only_command_leaves_no_trace_anywhere_under_home() {
 // `cancellai-platform::identity::SystemIdentityObserver` reports `Unsupported` unconditionally
 // on non-Unix platforms today (E03-S01's own disclosed residual risk) - `ApprovedRoot::
 // establish`/`bind` therefore always fails closed on Windows, so a real deletion can never
-// succeed there yet (E07-S02 "Windows native backend" tracks closing this) - see the identical
+// succeed there yet (E20-S01 "Windows native backend" tracks closing this) - see the identical
 // note in `cli_behavior.rs` above its own two real-deletion tests.
 #[cfg(unix)]
 #[test]
