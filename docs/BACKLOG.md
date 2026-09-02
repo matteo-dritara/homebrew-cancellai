@@ -848,9 +848,9 @@ Make macOS and Linux first-class, hardened platform targets, including provider-
 
 ### E07-S07 - Provider-root link authority boundary
 
-**Status:** `in_progress` | **Change Risk:** `CR4` | **Dependencies:** E03-S03, E03-S05, E06-S01 | **Safety obligations:** SI-002, SI-003, SI-013, SI-019
+**Status:** `cancelled` | **Change Risk:** `CR4` | **Dependencies:** E03-S03, E03-S05, E06-S01 | **Safety obligations:** SI-002, SI-003, SI-013, SI-019
 
-**Outcome.** Reject provider roots whose root object or path resolution crosses a symbolic-link, junction, or reparse boundary before any Rust CLI mutation or provider configuration write.
+**Outcome.** Reject provider roots whose root object or path resolution crosses a symbolic-link, junction, or reparse boundary before any Rust CLI mutation or provider configuration write. CANCELLED 2026-09-02: round-1's final-component fix stands (merged), but round-2 found a further gap (intermediate path components); per the two-round ceiling that finding was carried forward as E07-S09 rather than a third round, and E07-S09 now independently carries this outcome's remaining scope (including the round-2 gap and its own further round-1 finding on the clean path) to its own review. This story cannot reach done - its round-2 Safety Verdict correctly stands at REJECT and no third round is authorized - so it is closed as cancelled/superseded rather than left in_progress indefinitely blocking epic closure. See project/evidence/E07-S07-VERIFIER-REVIEW-ROUND2.md and project/evidence/E07-S09/EVIDENCE.md.
 
 **Acceptance criteria**
 

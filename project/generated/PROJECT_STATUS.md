@@ -9,8 +9,8 @@ Epics: **21** | Stories: **95**
 ## Story status
 
 - `blocked`: 1
+- `cancelled`: 1
 - `done`: 37
-- `in_progress`: 1
 - `planned`: 53
 - `ready_for_review`: 3
 
