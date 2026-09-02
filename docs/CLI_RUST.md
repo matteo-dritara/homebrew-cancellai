@@ -126,6 +126,8 @@ one-for-one:
   check. `clean`'s own root establishment (`ApprovedRoot`, a different capability than
   `configure`'s `SealedRoot`) needed the identical fix separately - E07-S09 round-1 independent
   verifier review found the round-1 patch only reached `configure` - via
-  `cancellai_sealedfs::verify_no_intermediate_links`, called immediately before
-  `ApprovedRoot::establish` for the default root. Windows/reparse-point intermediate-component
-  handling remains E20-S01 scope for both callers.
+  `cancellai_sealedfs::verify_no_intermediate_links`. Its returned directory handle is retained
+  through `ApprovedRoot::establish`, and the two native identities must match; this also refuses
+  a component swapped in the interval between the no-follow walk and canonicalization (found
+  during the owner-authorized combined verifier/executor closure review). Windows/reparse-point
+  intermediate-component handling remains E20-S01 scope for both callers.

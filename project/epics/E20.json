@@ -81,7 +81,7 @@
     {
       "id": "E20-S04",
       "title": "Windows inventory scan traversal test reliability",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Determine why cancellai-inventory's completeness::tests::ac1_a_fully_readable_tree_is_complete and scan::tests::ac1_one_traversal_visits_every_directory_exactly_once fail on Windows CI (observed 2026-08-31, the first time the Windows quality job in rust.yml ever actually reached these tests - an unrelated pre-existing clippy::large_enum_variant failure had aborted that job before test execution since at least 2026-08-29), and bring cancellai-inventory to genuine, verified Windows parity or document the gap explicitly.",
       "change_risk": "CR2",
       "dependencies": [

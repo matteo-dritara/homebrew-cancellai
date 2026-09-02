@@ -1,6 +1,6 @@
 [project]
 name = "cancellai"
-version = "1.6.0"
+version = "1.7.0"
 description = "Safely reclaim disk space from old Codex CLI and Claude Code session data."
 readme = "README.md"
 requires-python = ">=3.10"

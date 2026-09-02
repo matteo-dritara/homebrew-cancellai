@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-09-02
+
 ### Added
 
 - E06-S01: `cancellai-cli` gains its first real command surface -
@@ -65,9 +67,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   silently resolved through the identical intermediate link, so `clean --yes` could still purge
   a stale session reachable only through a symlinked `$HOME` (`docs/architecture/
   PLATFORM_MODEL.md` "The fix had to reach `clean`, not only `configure`"). Round 2 exports a
-  read-only counterpart, `verify_no_intermediate_links`, now called in `establish_verified_root`
-  before `ApprovedRoot::establish` for the default root - the same function `clean` already
-  used for its own leaf-only symlink re-check.
+  read-only counterpart, `verify_no_intermediate_links`, used by `establish_verified_root`
+  before `ApprovedRoot::establish` for the default root. The owner-authorized combined closure
+  review found one further race in that handoff: a component could be swapped after the walk
+  but before canonicalization. The walk now returns a retained final-directory handle, and
+  cleanup refuses unless the subsequently established root has the same device/inode identity.
 - E07-S08: `scripts/rust_python_parity.py`'s divergence allow-list is now structured
   (fixture/scenario/field-scoped, citation content-checked) rather than free-text, and its
   comparison surface grew from six to eight fields covering every discovered identity record,

@@ -3,16 +3,14 @@
   "id": "E07",
   "phase": "P2",
   "title": "Unix Cross-Platform Hardening",
-  "objective": "Make macOS and Linux first-class, hardened platform targets, including provider-root link/reparse authority boundaries. Windows/WSL native support moved to E20 (2026-09-02) once it became clear that work could not proceed responsibly without a real Windows/WSL environment to verify against - see project/evidence/E07-S01/DEPENDENCY_ESCALATION.md and this epic's own closure notes for the split rationale.",
-  "dependencies": [
-    "E06"
-  ],
-  "status": "planned",
+  "objective": "Make macOS and Linux first-class, hardened platform targets, including provider-root link/reparse authority boundaries. Windows/WSL native support moved to E20 (2026-09-02) once it became clear that work could not proceed responsibly without a real Windows/WSL environment to verify against. The stale epic-level E06 dependency was removed at closure because E06-S04 is a Rust cutover gate that itself depends on later platform/packaging work; retaining it recreated the operational cycle already documented for E07-S01. See project/evidence/E07-S01/DEPENDENCY_ESCALATION.md and the E07 verifier review.",
+  "dependencies": [],
+  "status": "done",
   "stories": [
     {
       "id": "E07-S01",
       "title": "Unix platform backend",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Implement macOS/Linux process, identity, allocated-size, notification, and filesystem semantics behind OS capabilities.",
       "change_risk": "CR3",
       "dependencies": [
@@ -34,7 +32,7 @@
     {
       "id": "E07-S05",
       "title": "Linux TOCTOU identity/mutation test reliability",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Determine why cancellai-platform's identity::tests::toctou_file_deleted_and_recreated_with_identical_content_still_changes_identity and mutation::tests::confirmed_delete_rejects_a_target_already_swapped_before_open fail intermittently on Linux CI (ubuntu-latest, observed across multiple runs on 2026-08-31) while never observed failing on macOS, and close whichever of a test-fixture gap or a real IdentityToken weakness it turns out to be.",
       "change_risk": "CR3",
       "dependencies": [
@@ -91,7 +89,7 @@
     {
       "id": "E07-S09",
       "title": "Provider-root intermediate-link containment",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Reject or safely bind provider-root paths whose intermediate components cross a symbolic-link, junction, or reparse boundary before any Rust CLI mutation or configuration write.",
       "change_risk": "CR4",
       "dependencies": [],

@@ -53,7 +53,7 @@ Become genuinely cross-platform and make agent state understandable by machine/p
 
 **Epics**
 
-- **E07 - Unix Cross-Platform Hardening** (`planned`): Make macOS and Linux first-class, hardened platform targets, including provider-root link/reparse authority boundaries. Windows/WSL native support moved to E20 (2026-09-02) once it became clear that work could not proceed responsibly without a real Windows/WSL environment to verify against - see project/evidence/E07-S01/DEPENDENCY_ESCALATION.md and this epic's own closure notes for the split rationale.
+- **E07 - Unix Cross-Platform Hardening** (`done`): Make macOS and Linux first-class, hardened platform targets, including provider-root link/reparse authority boundaries. Windows/WSL native support moved to E20 (2026-09-02) once it became clear that work could not proceed responsibly without a real Windows/WSL environment to verify against. The stale epic-level E06 dependency was removed at closure because E06-S04 is a Rust cutover gate that itself depends on later platform/packaging work; retaining it recreated the operational cycle already documented for E07-S01. See project/evidence/E07-S01/DEPENDENCY_ESCALATION.md and the E07 verifier review.
 - **E08 - Universal Artifact and Project Intelligence** (`planned`): Map provider state into the multidimensional AgentArtifact model and evidence-based project relationships.
 - **E09 - Atlas TUI** (`planned`): Deliver the first rich exploratory interface without duplicating engine logic.
 - **E10 - Storage Accounting and Performance** (`planned`): Make storage numbers trustworthy and the scanner inexpensive enough for continuous use.

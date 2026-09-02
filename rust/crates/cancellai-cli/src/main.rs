@@ -578,15 +578,33 @@ fn establish_verified_root(
         // handle-relative walk (already built for `configure`, `cancellai-sealedfs`, ADR-0017)
         // is reused here purely to prove no component of `path` - not only the leaf - is a
         // link, before `establish` gets a chance to canonicalize through one.
-        if let Err(e) = cancellai_sealedfs::verify_no_intermediate_links(path) {
+        let verified = cancellai_sealedfs::verify_no_intermediate_links(path).map_err(|e| {
+            cancellai_safety::BoundaryError::RootIdentityUnavailable(format!(
+                "{} is not a safely-establishable default root: {e} \
+                 (SI-002/SI-003/SI-013/ADR-0013)",
+                path.display()
+            ))
+        })?;
+        let established = ApprovedRoot::establish(path, resolver, observer)?;
+        let cancellai_platform::IdentityToken::Unix { device, inode, .. } = established.identity();
+        if !verified
+            .matches_unix_identity(*device, *inode)
+            .map_err(|e| {
+                cancellai_safety::BoundaryError::RootIdentityUnavailable(format!(
+                    "could not compare the held no-follow root identity for {}: {e}",
+                    path.display()
+                ))
+            })?
+        {
             return Err(cancellai_safety::BoundaryError::RootIdentityUnavailable(
                 format!(
-                    "{} is not a safely-establishable default root: {e} \
-                 (SI-002/SI-003/SI-013/ADR-0013)",
+                    "{} changed identity between the no-follow walk and root establishment; \
+                     refusing a raced or redirected provider root (SI-002/SI-003/SI-013)",
                     path.display()
                 ),
             ));
         }
+        return Ok(established);
     }
     ApprovedRoot::establish(path, resolver, observer)
 }
