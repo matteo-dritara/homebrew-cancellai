@@ -212,7 +212,14 @@ pub fn execute_with_system_capabilities(plan: &SealedPlan, target: &BoundedPath)
 // (E03-S01's disclosed residual) - found via real Windows CI (E20 verification session).
 // Gating the whole module, not each function individually, avoids leaving every shared test
 // helper (`plan_with`, `TempDir`, ...) as dead code there.
-#[cfg(all(test, unix))]
+// `scripts/check_mutation_boundary.py`'s `TEST_MODULE_MARKER` looks for the literal string
+// `#[cfg(test)]` to find where to stop scanning for direct filesystem mutation - it must stay
+// its own attribute, not folded into `cfg(all(test, unix))`, or this module's `TempDir::drop`
+// cleanup (a legitimate test-only `remove_dir_all`) gets scanned and flagged as a boundary
+// violation. Stacked `#[cfg]` attributes on one item combine with AND, so this is exactly
+// equivalent to `cfg(all(test, unix))`.
+#[cfg(test)]
+#[cfg(unix)]
 mod tests {
     use super::*;
     use cancellai_model::{AuthorityLevel, KnowledgeConfidence, Reversibility};
