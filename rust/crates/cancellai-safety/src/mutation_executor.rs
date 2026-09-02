@@ -358,6 +358,7 @@ mod tests {
                 inode: 999,
                 kind: FileKind::File,
                 modified: FrozenClock::at(1_000).now(),
+                modified_nanos: 0,
             }),
         );
         let executor = SyntheticMutationExecutor::new();

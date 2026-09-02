@@ -237,6 +237,7 @@ mod tests {
             inode,
             kind: FileKind::File,
             modified: FrozenClock::at(1_000).now(),
+            modified_nanos: 0,
         }
     }
 
@@ -246,6 +247,7 @@ mod tests {
             inode: 0,
             kind: FileKind::Directory,
             modified: FrozenClock::at(1_000).now(),
+            modified_nanos: 0,
         }
     }
 

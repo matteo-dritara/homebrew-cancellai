@@ -886,7 +886,7 @@ Make macOS, Linux, Windows native, and WSL2 first-class platform targets.
 
 ### E07-S05 - Linux TOCTOU identity/mutation test reliability
 
-**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E03-S01 | **Safety obligations:** SI-013, SI-017
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E03-S01 | **Safety obligations:** SI-013, SI-017
 
 **Outcome.** Determine why cancellai-platform's identity::tests::toctou_file_deleted_and_recreated_with_identical_content_still_changes_identity and mutation::tests::confirmed_delete_rejects_a_target_already_swapped_before_open fail intermittently on Linux CI (ubuntu-latest, observed across multiple runs on 2026-08-31) while never observed failing on macOS, and close whichever of a test-fixture gap or a real IdentityToken weakness it turns out to be.
 

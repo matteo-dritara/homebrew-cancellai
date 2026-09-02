@@ -75,6 +75,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   verifier review round 2 finding where any real, accepted ADR citation could suppress an
   unrelated divergence regardless of what it actually authorized
   (`docs/development/MIGRATION_PYTHON_RUST.md` M6).
+- E07-S05: closes the intermittent Linux CI failure of `cancellai-platform`'s
+  `identity::tests::toctou_file_deleted_and_recreated_with_identical_content_still_changes_
+  identity` and `mutation::tests::confirmed_delete_rejects_a_target_already_swapped_before_open`.
+  Reproduced natively in a real Linux container (not hypothesized): a zero-delay
+  delete-and-recreate reuses the freed inode in ~98% of iterations and lands within the same
+  ~1ms mtime clock tick, so `device`+`inode`+`kind`+whole-second-`modified` alone cannot always
+  distinguish the two objects - a real `IdentityToken` gap, not only a fixture one.
+  `IdentityToken::Unix` gains `modified_nanos` (the raw `st_mtime_nsec` sub-second remainder,
+  not derivable from the shared whole-second `Timestamp` clock/retention type);
+  `cancellai-platform::mutation`'s `confirmed_delete_file_inner` - which compared device+inode
+  only, bypassing `IdentityToken` entirely - now also compares it at both its open-time and
+  immediately-before-unlink checks (SI-013/SI-017). The two fixtures also had an
+  over-specific/false-on-Linux assertion ("recreation must allocate a new inode") removed and
+  gained a small real-world-realistic delay in place of an unrealistic zero-delay recreate,
+  without weakening the byte-identical-content case either test verifies. Verified with 60
+  consecutive passing runs (30 iterations of both tests) in a real Linux container - exceeding
+  the story's own 20-consecutive-run bar.
 
 ### Fixed
 

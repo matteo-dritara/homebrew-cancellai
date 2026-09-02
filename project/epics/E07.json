@@ -103,7 +103,7 @@
     {
       "id": "E07-S05",
       "title": "Linux TOCTOU identity/mutation test reliability",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Determine why cancellai-platform's identity::tests::toctou_file_deleted_and_recreated_with_identical_content_still_changes_identity and mutation::tests::confirmed_delete_rejects_a_target_already_swapped_before_open fail intermittently on Linux CI (ubuntu-latest, observed across multiple runs on 2026-08-31) while never observed failing on macOS, and close whichever of a test-fixture gap or a real IdentityToken weakness it turns out to be.",
       "change_risk": "CR3",
       "dependencies": [

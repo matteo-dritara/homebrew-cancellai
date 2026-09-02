@@ -309,6 +309,7 @@ mod tests {
             inode: 1,
             kind: FileKind::Directory,
             modified: Timestamp(0),
+            modified_nanos: 0,
         }
     }
 

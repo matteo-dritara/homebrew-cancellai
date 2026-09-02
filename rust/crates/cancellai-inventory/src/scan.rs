@@ -445,6 +445,7 @@ mod tests {
                 inode: 1,
                 kind: FileKind::Directory,
                 modified: Timestamp(1_000),
+                modified_nanos: 0,
             }),
         );
         identity.set(
@@ -454,6 +455,7 @@ mod tests {
                 inode: 2,
                 kind: FileKind::Directory,
                 modified: Timestamp(1_000),
+                modified_nanos: 0,
             }),
         );
 

@@ -28,6 +28,7 @@ fn a_fully_observed_file_produces_the_documented_golden_shape() {
             inode: 555,
             kind: FileKind::File,
             modified: Timestamp(1_700_000_000),
+            modified_nanos: 0,
         }),
     );
     let mut allocation = SyntheticAllocationObserver::new();
@@ -52,7 +53,8 @@ fn a_fully_observed_file_produces_the_documented_golden_shape() {
             "device": 1,
             "inode": 555,
             "kind": "file",
-            "modified": 1_700_000_000
+            "modified": 1_700_000_000,
+            "modified_nanos": 0
         },
         "logical_size": { "state": "known", "bytes": 10_485_760 },
         "allocated_size": { "state": "known", "bytes": 4_096 },

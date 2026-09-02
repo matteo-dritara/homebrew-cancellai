@@ -340,6 +340,7 @@ mod tests {
                 inode: 1,
                 kind: FileKind::Directory,
                 modified: Timestamp(1_000),
+                modified_nanos: 0,
             }),
         );
         identity.set(
@@ -465,6 +466,7 @@ mod tests {
                     inode: 1,
                     kind: cancellai_platform::FileKind::Directory,
                     modified: cancellai_platform::Timestamp(1_000),
+                    modified_nanos: 0,
                 }),
                 logical_size: crate::file_facts::SizeMetric::Known { bytes: 0 },
                 allocated_size: crate::file_facts::SizeMetric::Known { bytes: 0 },
