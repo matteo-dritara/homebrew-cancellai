@@ -108,6 +108,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`Partial`/`directories_visited == 1`), and `docs/architecture/PLATFORM_MODEL.md` gains an
   "Accepted limitation" subsection - real Windows traversal depth requires E20-S01's native
   identity implementation.
+- `cancellai-inventory/tests/performance_micro.rs`'s
+  `scan_scope_completes_within_budget_for_a_small_dataset` had the identical E20-S04
+  Windows-traversal assumption (an exact `paths_observed` count only reachable with confirmed
+  identity) - gated that specific assertion `#[cfg(unix)]`; the time-budget and
+  views-do-not-re-walk checks it also makes remain meaningful and run on every platform.
 - `cancellai-cli/tests/cli_behavior.rs`'s
   `configure_writes_the_native_claude_retention_setting_and_preserves_other_keys` was not
   `#[cfg(unix)]`-gated, so real Windows CI ran it expecting a successful write - but

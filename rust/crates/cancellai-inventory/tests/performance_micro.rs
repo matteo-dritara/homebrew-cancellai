@@ -21,6 +21,8 @@ const MICRO_MAX_SECONDS: f64 = 10.0;
 #[test]
 fn scan_scope_completes_within_budget_for_a_small_dataset() {
     let root = perf_support::temp_root("micro");
+    // Only consulted by the Unix-only exact-count assertion below.
+    #[cfg_attr(not(unix), allow(unused_variables))]
     let directories = perf_support::build_synthetic_tree(&root, MICRO_DATASET_SIZE, 100);
 
     let started = Instant::now();
@@ -34,11 +36,19 @@ fn scan_scope_completes_within_budget_for_a_small_dataset() {
 
     std::fs::remove_dir_all(&root).ok();
 
-    assert_eq!(
-        snapshot.paths_observed,
-        MICRO_DATASET_SIZE + (directories - 1)
-    );
-    assert_eq!(snapshot.facts.len(), snapshot.paths_observed);
+    // Windows cannot descend below the scope root without confirmed native identity yet
+    // (E03-S01 residual; see `docs/architecture/PLATFORM_MODEL.md`'s "Accepted limitation",
+    // E20-S04) - the exact traversal count this dataset should produce only holds where
+    // identity is implemented. The regression-detection properties below (time budget, views
+    // not re-walking) remain meaningful and checked on every platform regardless.
+    #[cfg(unix)]
+    {
+        assert_eq!(
+            snapshot.paths_observed,
+            MICRO_DATASET_SIZE + (directories - 1)
+        );
+        assert_eq!(snapshot.facts.len(), snapshot.paths_observed);
+    }
     assert!(
         elapsed.as_secs_f64() < MICRO_MAX_SECONDS,
         "scanning {MICRO_DATASET_SIZE} synthetic files took {:.2}s, budget is {MICRO_MAX_SECONDS}s \
