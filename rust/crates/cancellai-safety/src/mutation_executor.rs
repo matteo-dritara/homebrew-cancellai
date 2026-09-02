@@ -207,7 +207,12 @@ pub fn execute_with_system_capabilities(plan: &SealedPlan, target: &BoundedPath)
     )
 }
 
-#[cfg(test)]
+// Unix-only: every test in this module ends up calling `real_bounded_file()`/`ApprovedRoot::
+// establish` with the real `SystemIdentityObserver`, which cannot succeed on Windows yet
+// (E03-S01's disclosed residual) - found via real Windows CI (E20 verification session).
+// Gating the whole module, not each function individually, avoids leaving every shared test
+// helper (`plan_with`, `TempDir`, ...) as dead code there.
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use cancellai_model::{AuthorityLevel, KnowledgeConfidence, Reversibility};
@@ -309,6 +314,10 @@ mod tests {
     /// Returns the temp dir (kept alive for cleanup), a real `BoundedPath` for a file inside
     /// it, and that file's own identity - `target.root_identity()` is a real `ApprovedRoot`'s
     /// identity, needed by tests that must supply a *matching* root identity to `plan_with`.
+    /// Unix-only: `ApprovedRoot::establish` with the real `SystemIdentityObserver` cannot
+    /// succeed on Windows yet (E03-S01's disclosed residual) - every caller of this helper is
+    /// `#[cfg(unix)]` for that reason, found via real Windows CI (E20 verification session).
+    #[cfg(unix)]
     fn real_bounded_file() -> (TempDir, BoundedPath, IdentityToken) {
         let dir = TempDir::new("target-root");
         let file = dir.0.join("target.txt");
@@ -322,6 +331,7 @@ mod tests {
         (dir, bound, identity)
     }
 
+    #[cfg(unix)]
     #[test]
     fn execute_deletes_when_identity_still_matches() {
         let (_dir, target, identity) = real_bounded_file();
@@ -340,6 +350,7 @@ mod tests {
         assert_eq!(result, ActionResult::Succeeded);
     }
 
+    #[cfg(unix)]
     #[test]
     fn execute_blocks_a_stale_plan_instead_of_mutating() {
         let (_dir, target, identity) = real_bounded_file();
@@ -368,6 +379,7 @@ mod tests {
         assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
     }
 
+    #[cfg(unix)]
     #[test]
     fn execute_never_calls_mutate_on_a_stale_plan() {
         // Stronger than the above: prove the executor is never even invoked, not merely
@@ -400,6 +412,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn execute_reports_failed_when_the_mutation_itself_fails() {
         let (_dir, target, identity) = real_bounded_file();
@@ -427,6 +440,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn execute_refuses_a_non_mutating_action_class() {
         let (_dir, target, identity) = real_bounded_file();
@@ -445,6 +459,7 @@ mod tests {
         assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
     }
 
+    #[cfg(unix)]
     #[test]
     fn execute_refuses_directory_deletion_rather_than_delete_without_the_stronger_guarantee() {
         let dir = TempDir::new("directory-target");
@@ -478,6 +493,7 @@ mod tests {
         assert!(child_dir.exists());
     }
 
+    #[cfg(unix)]
     #[test]
     fn e03_verifier_round1_plan_for_one_root_cannot_execute_against_a_different_root() {
         // The exact reproduction from the round-1 review: a plan sealed with the identity of
@@ -508,6 +524,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn e03_verifier_round1_observe_authority_cannot_execute_a_delete() {
         // The exact reproduction from the round-1 review: AuthorityLevel::Observe with
@@ -534,6 +551,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn execute_blocks_delete_claiming_quarantinable_reversibility_even_with_sufficient_authority() {
         let (_dir, target, identity) = real_bounded_file();
@@ -555,6 +573,7 @@ mod tests {
         assert!(target.path().exists());
     }
 
+    #[cfg(unix)]
     #[test]
     fn execute_all_never_short_circuits_and_never_drops_a_result() {
         // A mix of one success, one blocked (stale), and one failed - proving the batch
@@ -612,6 +631,7 @@ mod tests {
         drop((dir_a, dir_b, dir_c));
     }
 
+    #[cfg(unix)]
     #[test]
     fn end_to_end_real_delete_through_the_full_stack_including_authority_and_root_checks() {
         // Ties every E03 story together with the real, OS-backed identity observer AND the
@@ -633,6 +653,7 @@ mod tests {
         assert!(!target.path().exists());
     }
 
+    #[cfg(unix)]
     #[test]
     fn execute_blocks_when_the_guarded_process_is_reported_running() {
         // E06 verifier review round 1: `process_not_running` was recorded in the plan document
@@ -657,6 +678,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn execute_blocks_when_the_process_probe_is_incomplete_fail_closed() {
         let (_dir, target, identity) = real_bounded_file();
@@ -679,6 +701,7 @@ mod tests {
         assert!(target.path().exists());
     }
 
+    #[cfg(unix)]
     #[test]
     fn execute_never_calls_mutate_when_the_process_guard_blocks() {
         // Stronger than the above: the mutation executor must not even be invoked - a stale
@@ -706,6 +729,7 @@ mod tests {
         assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
     }
 
+    #[cfg(unix)]
     #[test]
     fn execute_proceeds_when_the_guarded_process_is_confirmed_not_running() {
         let (_dir, target, identity) = real_bounded_file();

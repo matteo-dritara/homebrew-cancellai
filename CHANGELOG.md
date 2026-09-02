@@ -113,6 +113,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Windows-traversal assumption (an exact `paths_observed` count only reachable with confirmed
   identity) - gated that specific assertion `#[cfg(unix)]`; the time-budget and
   views-do-not-re-walk checks it also makes remain meaningful and run on every platform.
+- `cancellai-safety`'s `mutation_executor`/`root_capability`/`sealed_plan` had 19 tests
+  (`mutation_executor`'s entire test module, plus `root_capability::tests::bind_a_plain_child_
+  succeeds`/`bind_the_root_itself_is_rejected`/`bind_a_path_outside_the_root_is_rejected`, plus
+  `sealed_plan::tests::seal_derives_root_and_artifact_identity_from_real_capabilities`) that
+  construct a real `ApprovedRoot` via the real `SystemIdentityObserver` and were not
+  `#[cfg(unix)]`-gated - real Windows CI failed every one of them with the same
+  `CandidateIdentityUnsupported` error (E03-S01's pre-existing residual, unrelated to and
+  predating this session). `mutation_executor`'s entire `mod tests` is now `#[cfg(unix)]`
+  (every test in it depended on the same real-root helper); the three `root_capability` tests
+  and the one `sealed_plan` test are individually gated.
 - `cancellai-cli/tests/cli_behavior.rs`'s
   `configure_writes_the_native_claude_retention_setting_and_preserves_other_keys` was not
   `#[cfg(unix)]`-gated, so real Windows CI ran it expecting a successful write - but

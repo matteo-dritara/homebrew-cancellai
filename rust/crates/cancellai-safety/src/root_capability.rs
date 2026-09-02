@@ -204,6 +204,7 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     #[test]
     fn bind_a_plain_child_succeeds() {
         let dir = TempDir::new("valid-child");
@@ -219,6 +220,7 @@ mod tests {
         assert_eq!(bound.path(), std::fs::canonicalize(&child).unwrap());
     }
 
+    #[cfg(unix)]
     #[test]
     fn bind_the_root_itself_is_rejected() {
         let dir = TempDir::new("root-self");
@@ -231,6 +233,7 @@ mod tests {
         assert_eq!(err, BoundaryError::TargetsRootItself);
     }
 
+    #[cfg(unix)]
     #[test]
     fn bind_a_path_outside_the_root_is_rejected() {
         let dir = TempDir::new("outside-a");

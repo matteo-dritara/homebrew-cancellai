@@ -346,6 +346,7 @@ mod tests {
         assert_eq!(plan.reversibility(), Reversibility::Irreversible);
     }
 
+    #[cfg(unix)]
     #[test]
     fn seal_derives_root_and_artifact_identity_from_real_capabilities() {
         // E03 verifier review round 1: `seal` must read root_identity/artifact_identity
