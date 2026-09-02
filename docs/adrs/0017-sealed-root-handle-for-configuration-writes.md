@@ -203,3 +203,15 @@ neither, and is inconsistent with `clean`'s own existing fail-closed posture the
 
 If replaced later (e.g. a genuine Windows reparse-safe handle, or a switch to `rustix`/`nix`),
 keep this ADR and mark it superseded by the ADR that replaces it.
+
+## E07-S09 closure hardening (2026-09-02)
+
+E07-S09 reused the handle-relative walk for cleanup before `ApprovedRoot::establish`, whose
+path canonicalization is still necessary for candidate containment. The owner-authorized
+combined verifier/executor closure review found that a bare walk returning `Ok(())` recreated
+the check-then-use shape this ADR rejects: an intermediate component could be swapped after the
+walk and before canonicalization. `verify_no_intermediate_links` therefore returns a guard that
+retains the final directory descriptor; cleanup grants root authority only when the
+canonicalized root's native device/inode identity matches that held handle. This extends the
+ADR's retained-capability principle to the handoff between `cancellai-sealedfs` and
+`ApprovedRoot`, without changing the non-Unix fail-closed decision.

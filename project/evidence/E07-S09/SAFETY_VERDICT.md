@@ -2,60 +2,62 @@
 
 - Change: Provider-root intermediate-link containment
 - Risk: CR4
-- Commit/PR: `a4cb802..c519f86`
-- Independent verifier: Codex (`/root`)
+- Review target: `f9db57e..HEAD` on `e07-closure-release-1.7.0` (final squash merge/tag identify the immutable endpoint)
+- Verifier/executor: Codex (`/root`)
 - Date: 2026-09-02
+- Process exception: **Owner-authorized combined verify+fix+close round, 2026-09-02 - see conversation record.** The owner explicitly authorized Codex to act as verifier and executor, repair findings, re-verify, write this CR4 verdict, and close the named story for this round only.
 
 ## Verdict
 
-`FAIL`
+`PASS_WITH_RESIDUALS`
 
 ## Safety surface changed
 
-The change makes `cancellai-sealedfs::SealedRoot::establish` walk configuration roots
-handle-relatively. Cleanup still establishes its provider root through the separate
-`ApprovedRoot` path, which accepts the same intermediate-link resolution and can purge data
-outside the lexical provider root.
+Unix provider-root establishment now refuses every symlinked path component. Configuration
+operations remain handle-relative for their full lifetime. Cleanup performs the same no-follow
+walk and, after the verifier repair in this round, retains the final directory descriptor until
+`ApprovedRoot::establish` completes and requires its canonicalized device/inode identity to
+match the held handle. Non-Unix implementations remain explicitly unsupported/fail-closed.
 
 ## Invariants
 
 | Invariant | Required property | Evidence | Result |
 | --- | --- | --- | --- |
-| SI-002 | Every mutation has a positively bounded provider root. | With `$HOME` an intermediate symlink to `outside`, a real `outside/.claude` is treated as default for cleanup and is approved. | FAIL |
-| SI-003 | Mutation cannot escape through link indirection. | Native `clean --yes` deleted the stale session under `outside/.claude/projects/...`. | FAIL |
-| SI-013 | Root identity/link state is bound immediately before mutation. | `configure` binds a descriptor safely; cleanup re-resolves the lexical intermediate-link path through `ApprovedRoot`. | FAIL |
-| SI-019 | Mutation is evidence-gated through a complete authority boundary. | The leaf-only `roots::is_symlink` diagnostic allows the cleanup mutation path to bypass the newly complete configuration boundary. | FAIL |
+| SI-002 | Mutation has a positively bounded provider root. | Static intermediate-link CLI fixtures; `verified_path_detects_a_component_swapped_after_the_walk`; held-handle identity comparison in `establish_verified_root`. | PASS |
+| SI-003 | Mutation cannot escape through root link indirection. | Configure and clean outside sentinels remain unchanged; post-walk replacement identity is rejected. | PASS |
+| SI-013 | Root identity is revalidated at the authority handoff. | The no-follow-opened directory descriptor survives canonicalization and must match the established root's device/inode. | PASS |
+| SI-019 | No alternate artifact mutation path is introduced. | `python3 scripts/check_mutation_boundary.py check`; cleanup still routes deletion through `cancellai-safety`. | PASS |
 
 ## Adversarial cases
 
-- Direct `SealedRoot::establish` intermediate-link, relative-path, and `..` refusal tests pass.
-- End-to-end `configure` with symlinked `$HOME` exits 4 and preserves the outside settings file.
-- End-to-end `clean --yes` with the identical root topology exits 0 and deletes the outside
-  stale session. This is a present authority escape, not an acceptable residual.
-- `SealedRoot`'s `mkdirat` EEXIST retry and byte/NUL handling were inspected; no separate
-  configure-walk bypass was found.
-- Non-Unix `SealedRoot::establish` remains `Unsupported`; no Windows junction capability is
-  claimed.
+- Intermediate Unix symlink at `$HOME`: configuration and cleanup refuse; outside settings and stale-session sentinels remain untouched.
+- Final-component link: refused by `O_NOFOLLOW`.
+- Component swapped after the no-follow walk but before canonicalization: the retained handle and replacement identity differ, so authority is refused. This is the defect found and fixed during this combined round.
+- Missing root: verification creates nothing and downstream establishment refuses absence.
+- Relative and `.`/`..` paths: refused.
+- Concurrent leaf creation during `mkdirat`: `EEXIST` returns to the same no-follow open.
+- Windows/non-Unix: `Unsupported`; no junction/reparse mutation capability is claimed.
 
 ## Differential / compatibility evidence
 
-`cargo fmt --check`, clippy with warnings denied, workspace check, workspace test, and
-`cargo deny check` pass. Cargo deny reports only existing unmatched BSD-2-Clause, BSD-3-Clause,
-and ISC allow-list warnings.
+- Local macOS: full Rust fmt/clippy/check/test/deny suite passed after the repair.
+- Cross-target compilation passed for `x86_64-unknown-linux-gnu` and `x86_64-pc-windows-gnu`.
+- The PR CI matrix must pass on macOS/Linux/Windows before squash merge; its results become release evidence, not a substitute for this local adversarial review.
 
 ## Known residual risks
 
-The cleanup intermediate-link escape is unresolved. It blocks this CR4 change from closing.
+- Windows native junction/reparse containment is not implemented; both cleanup identity and sealed-root establishment fail closed until E20-S01 supplies verified native semantics.
+- Unix artifact unlink still has the previously documented final recheck-to-`unlink` race in `cancellai-platform::mutation`; it is not created or widened by E07-S09.
+- E07-S05 documents the filesystem-clock-granularity limit of metadata identity tokens. This review found no route by which either residual turns an intermediate-link root into authority.
+
+No unresolved HIGH/CRITICAL E07-S09-specific residual remains.
 
 ## Rollback / recovery
 
-No user data outside the synthetic verifier fixture was touched. Return E07-S09 to
-`in_progress`; a round-2 repair must bind cleanup roots with the same whole-path authority
-property before any cleanup mutation.
+Revert the E07-S09 cleanup/SealedRoot changes to return to fail-closed/non-release state; do not restore the former check-only handoff. The change introduces no persisted format or migration. All adversarial tests use synthetic temporary roots and touched no user/provider data.
 
 ## Owner decision
 
-`REJECT`
+`ACCEPT_WITH_RECORDED_RESIDUALS`
 
-Owner note: Do not accept until both configuration and cleanup refuse the same intermediate-link
-topology and preserve their outside sentinels.
+Owner note: The conversation authorizes Codex to complete this verdict and close the story for this round. Residuals above retain lower authority and are already assigned to explicit future platform/safety work.

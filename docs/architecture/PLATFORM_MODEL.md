@@ -234,16 +234,18 @@ to an outside directory containing a real `.claude` with a stale session underne
 
 `cancellai-sealedfs` exports a second, narrower entry point for exactly this shape of caller:
 `verify_no_intermediate_links(path)` performs the identical handle-relative, no-follow walk as
-`establish`, but never creates a missing component and returns `Ok(())` (not an error) for one -
+`establish`, but never creates a missing component and returns a missing-path guard for one -
 `clean` has no business materializing a provider root that does not exist, so a missing
 component is left for `ApprovedRoot::establish`'s own existing "root does not exist" error to
 report, not treated as this function's problem. `cancellai-cli`'s `establish_verified_root`
 (used by `clean`, for the default root only - a custom root is never mutation-eligible
-regardless of what this check would say about it) now calls this immediately before
-`ApprovedRoot::establish`, so the intermediate-link refusal happens before canonicalization ever
-gets a chance to resolve through one - the same "prove it, then hand off the already-verified
-path" shape `SealedRoot::establish` itself uses internally between its own walk and its final
-leaf bind.
+regardless of what this check would say about it) carries the walk's final directory descriptor
+through `ApprovedRoot::establish` and compares its device/inode identity with the canonicalized
+root before granting authority. The combined verifier/executor review found that merely calling
+the walk immediately before `canonicalize()` left another check-then-use race: an intermediate
+component could be swapped between those operations. The retained handle and identity match
+turn that race into a refusal because the replacement path cannot become the object already
+held open by the walk.
 
 ## Quarantine
 

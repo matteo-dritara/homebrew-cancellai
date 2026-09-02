@@ -803,13 +803,13 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ## E07 - Unix Cross-Platform Hardening
 
-**Phase:** `P2` | **Status:** `planned` | **Epic dependencies:** E06
+**Phase:** `P2` | **Status:** `done` | **Epic dependencies:** none
 
-Make macOS and Linux first-class, hardened platform targets, including provider-root link/reparse authority boundaries. Windows/WSL native support moved to E20 (2026-09-02) once it became clear that work could not proceed responsibly without a real Windows/WSL environment to verify against - see project/evidence/E07-S01/DEPENDENCY_ESCALATION.md and this epic's own closure notes for the split rationale.
+Make macOS and Linux first-class, hardened platform targets, including provider-root link/reparse authority boundaries. Windows/WSL native support moved to E20 (2026-09-02) once it became clear that work could not proceed responsibly without a real Windows/WSL environment to verify against. The stale epic-level E06 dependency was removed at closure because E06-S04 is a Rust cutover gate that itself depends on later platform/packaging work; retaining it recreated the operational cycle already documented for E07-S01. See project/evidence/E07-S01/DEPENDENCY_ESCALATION.md and the E07 verifier review.
 
 ### E07-S01 - Unix platform backend
 
-**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E03-S01, E04-S01 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR3` | **Dependencies:** E03-S01, E04-S01 | **Safety obligations:** none
 
 **Outcome.** Implement macOS/Linux process, identity, allocated-size, notification, and filesystem semantics behind OS capabilities.
 
@@ -828,7 +828,7 @@ Make macOS and Linux first-class, hardened platform targets, including provider-
 
 ### E07-S05 - Linux TOCTOU identity/mutation test reliability
 
-**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E03-S01 | **Safety obligations:** SI-013, SI-017
+**Status:** `done` | **Change Risk:** `CR3` | **Dependencies:** E03-S01 | **Safety obligations:** SI-013, SI-017
 
 **Outcome.** Determine why cancellai-platform's identity::tests::toctou_file_deleted_and_recreated_with_identical_content_still_changes_identity and mutation::tests::confirmed_delete_rejects_a_target_already_swapped_before_open fail intermittently on Linux CI (ubuntu-latest, observed across multiple runs on 2026-08-31) while never observed failing on macOS, and close whichever of a test-fixture gap or a real IdentityToken weakness it turns out to be.
 
@@ -871,7 +871,7 @@ Make macOS and Linux first-class, hardened platform targets, including provider-
 
 ### E07-S09 - Provider-root intermediate-link containment
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-002, SI-003, SI-013, SI-019
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-002, SI-003, SI-013, SI-019
 
 **Outcome.** Reject or safely bind provider-root paths whose intermediate components cross a symbolic-link, junction, or reparse boundary before any Rust CLI mutation or configuration write.
 
@@ -2004,7 +2004,7 @@ Make Windows native and WSL2 first-class platform targets, once a real Windows/W
 
 ### E20-S04 - Windows inventory scan traversal test reliability
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E04-S02, E04-S03 | **Safety obligations:** SI-008, SI-009
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E04-S02, E04-S03 | **Safety obligations:** SI-008, SI-009
 
 **Outcome.** Determine why cancellai-inventory's completeness::tests::ac1_a_fully_readable_tree_is_complete and scan::tests::ac1_one_traversal_visits_every_directory_exactly_once fail on Windows CI (observed 2026-08-31, the first time the Windows quality job in rust.yml ever actually reached these tests - an unrelated pre-existing clippy::large_enum_variant failure had aborted that job before test execution since at least 2026-08-29), and bring cancellai-inventory to genuine, verified Windows parity or document the gap explicitly.
 

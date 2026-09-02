@@ -153,8 +153,14 @@ fn validate_child_name(name: &str) -> Result<CString, SealError> {
 #[cfg(unix)]
 pub use unix_impl::SealedRoot;
 
+#[cfg(unix)]
+pub use unix_impl::VerifiedPath;
+
 #[cfg(not(unix))]
 pub use fallback_impl::SealedRoot;
+
+#[cfg(not(unix))]
+pub use fallback_impl::VerifiedPath;
 
 #[cfg(unix)]
 pub use unix_impl::verify_no_intermediate_links;
@@ -300,10 +306,32 @@ mod unix_impl {
     /// (e.g. `cancellai-safety::ApprovedRoot`, whose own `canonicalize()` step would otherwise
     /// silently resolve through one - the exact E07-S09 round-1 independent verifier review
     /// finding: `configure`'s repair did not extend to `clean`'s root establishment) takes over.
-    /// A caller that gets `Ok(())` back still has the same narrower revalidate-then-use window
-    /// this crate's own `establish` exists to close for its two callers - see this function's
-    /// call site in `cancellai-cli` for how narrow that window is kept in practice.
-    pub fn verify_no_intermediate_links(path: &Path) -> Result<(), SealError> {
+    /// The returned [`VerifiedPath`] retains the final directory descriptor. A caller that
+    /// must subsequently canonicalize the path can compare that result's native identity with
+    /// the held descriptor, so a component swap between this walk and that canonicalization
+    /// is refused rather than accepted as a merely narrow revalidate-then-use window.
+    #[derive(Debug)]
+    pub struct VerifiedPath {
+        dir: Option<File>,
+    }
+
+    impl VerifiedPath {
+        /// Confirms that a separately-observed Unix identity still names the exact directory
+        /// this no-follow walk bound. Keeping the descriptor alive until after the comparison
+        /// closes the walk-then-canonicalize swap window: a replacement path cannot inherit
+        /// the held object's device/inode pair merely by occupying the same name.
+        pub fn matches_unix_identity(&self, device: u64, inode: u64) -> Result<bool, SealError> {
+            use std::os::unix::fs::MetadataExt;
+
+            let Some(dir) = &self.dir else {
+                return Ok(false);
+            };
+            let metadata = dir.metadata()?;
+            Ok(metadata.dev() == device && metadata.ino() == inode)
+        }
+    }
+
+    pub fn verify_no_intermediate_links(path: &Path) -> Result<VerifiedPath, SealError> {
         let components = decompose_absolute_path(path)?;
         let mut current = open_root_dir()?;
         for name in &components {
@@ -312,11 +340,13 @@ mod unix_impl {
                 // A missing component means the leaf cannot exist either - nothing to protect,
                 // and the caller's own subsequent establishment step will report the absence
                 // with its own clear error.
-                Err(SealError::Io(e)) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+                Err(SealError::Io(e)) if e.kind() == io::ErrorKind::NotFound => {
+                    return Ok(VerifiedPath { dir: None });
+                }
                 Err(e) => return Err(e),
             }
         }
-        Ok(())
+        Ok(VerifiedPath { dir: Some(current) })
     }
 
     impl SealedRoot {
@@ -700,6 +730,33 @@ mod unix_impl {
         }
 
         #[test]
+        fn verified_path_detects_a_component_swapped_after_the_walk() {
+            use std::os::unix::fs::MetadataExt;
+
+            let base = TempDir::new("verify-post-walk-swap");
+            let home = base.path("home");
+            let root_path = home.join(".claude");
+            std::fs::create_dir_all(&root_path).unwrap();
+            let verified =
+                verify_no_intermediate_links(&root_path).expect("the initial real path must bind");
+
+            let original_home = base.path("original-home");
+            std::fs::rename(&home, &original_home).unwrap();
+            let outside = base.path("outside");
+            std::fs::create_dir_all(outside.join(".claude")).unwrap();
+            std::os::unix::fs::symlink(&outside, &home).unwrap();
+
+            let replacement = std::fs::metadata(&root_path).unwrap();
+            assert!(
+                !verified
+                    .matches_unix_identity(replacement.dev(), replacement.ino())
+                    .unwrap(),
+                "the held no-follow directory must not match the replacement reached by a \
+                 component symlink planted after the walk"
+            );
+        }
+
+        #[test]
         fn write_new_child_atomically_refuses_a_pre_planted_symlink_at_the_temp_name() {
             let base = TempDir::new("tmp-symlink-race");
             let root_path = base.path("root");
@@ -779,6 +836,17 @@ mod fallback_impl {
         _unreachable: std::convert::Infallible,
     }
 
+    #[derive(Debug)]
+    pub struct VerifiedPath {
+        _unreachable: std::convert::Infallible,
+    }
+
+    impl VerifiedPath {
+        pub fn matches_unix_identity(&self, _device: u64, _inode: u64) -> Result<bool, SealError> {
+            match self._unreachable {}
+        }
+    }
+
     impl SealedRoot {
         pub fn establish(_path: &Path) -> Result<Self, SealError> {
             Err(SealError::Unsupported(
@@ -805,7 +873,7 @@ mod fallback_impl {
     /// walk exists on this platform, so a caller cannot be told "no intermediate link found"
     /// with any real confidence - refuse rather than claim a check that was not actually
     /// performed.
-    pub fn verify_no_intermediate_links(_path: &Path) -> Result<(), SealError> {
+    pub fn verify_no_intermediate_links(_path: &Path) -> Result<VerifiedPath, SealError> {
         Err(SealError::Unsupported(
             "no verified no-follow/handle-relative directory capability exists for this \
              platform yet (E07-S07 residual)",

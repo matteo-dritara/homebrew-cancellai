@@ -2,9 +2,10 @@
 
 - Commit/PR: pending (this work item)
 - Executor: Claude
-- Independent verifier: pending
+- Independent verifier: Codex (`/root`), 2026-09-02
 - Change Risk: CR2
 - Spec version/commit: `project/epics/E20.json`'s E20-S04 story contract (formerly E07-S06)
+- Process exception: **Owner-authorized combined verify+fix+close round, 2026-09-02 - see conversation record.** The owner explicitly authorized Codex to verify, fix if needed, self-reverify, and close this named standalone story for this round only.
 
 ## Outcome
 
@@ -107,4 +108,19 @@ output, and the fix's own Windows-specific tests were verified passing on the sa
 
 ## Verifier verdict
 
-PENDING
+`PASS_WITH_RESIDUALS`
+
+Independently confirmed from `scan_scope`/`derive_completeness`, the Unix/Windows-specific
+tests, and cross-target compilation rather than accepting the executor packet as proof:
+
+- Windows `SystemIdentityObserver` remains `Unsupported`, so a child directory is recorded
+  but never earns recursive descent; the root and observed child carry explicit unsupported
+  identity/allocation reasons and completeness is `Partial`, never `Complete`.
+- The identity-confirmed descent condition is unchanged. Removing or weakening it would have
+  violated SI-008/SI-009/SI-017; this review made no such change.
+- `cargo check --workspace --all-targets --target x86_64-pc-windows-gnu` passes and compiles the
+  Windows-only root-only/Partial assertions. The PR's real `windows-latest` test execution must
+  pass before merge.
+- Residual: useful nested Windows inventory remains unavailable until E20-S01 implements and
+  verifies native file/volume/reparse identity. This is an explicit fail-closed limitation,
+  not destructive authority or a silently skipped red test.

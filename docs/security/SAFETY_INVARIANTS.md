@@ -37,8 +37,11 @@ descriptor. Round-1 independent verifier review found this did not reach `clean`
 establishes its root through the separate `ApprovedRoot` capability (whose own `canonicalize()`
 step still resolved through an intermediate link): round 2 exports
 `cancellai_sealedfs::verify_no_intermediate_links` - the identical walk, but read-only (no
-`mkdirat`, `Ok(())` for a missing component) - and calls it immediately before
-`ApprovedRoot::establish` in `cancellai-cli::establish_verified_root`.
+`mkdirat`, a missing-path guard for a missing component) - and carries its final directory
+descriptor through `ApprovedRoot::establish` in `cancellai-cli::establish_verified_root`.
+The combined verifier/executor closure review found that an immediate call alone still left a
+walk-then-canonicalize TOCTOU; cleanup now requires the canonicalized root's device/inode to
+match the retained no-follow handle before destructive authority is granted.
 
 ### SI-003 Mutation cannot escape or delete the approved root
 
