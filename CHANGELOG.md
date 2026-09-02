@@ -95,6 +95,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `cancellai-sealedfs` failed to build on Windows: `validate_child_name` and its `CString`
+  import lived outside the `#[cfg(unix)]` boundary, so they became genuine dead code once
+  `unix_impl` (the only caller) stopped compiling in on non-Unix targets - found on real
+  Windows CI while verifying E07-S09, not caught locally since this executor's environment is
+  macOS. Both are now `#[cfg(unix)]`-gated with the rest of the module they belong to.
+- `cancellai-provider-codex::native_delete`'s `FakeCli`-based tests
+  (`ac2_a_fake_cli_advertising_force_is_reported_supported` and three others) intermittently
+  failed on Linux CI with `ProbeFailed { reason: "Text file busy (os error 26)" }` - reproduced
+  directly in a real Linux container (not hypothesized): writing a fresh script then executing
+  it from a highly parallel `cargo test` run can race a *different*, concurrently-forking test
+  thread on the process's own shared file-descriptor table. Confirmed serial-safe (0/200
+  failures at `--test-threads=1`) and only observed under real concurrency, so the fix is a
+  bounded retry-on-`ProbeFailed` in the test harness itself (`codex_delete_supported_retrying`)
+  rather than any change to `codex_delete_supported`'s production logic - `ProbeFailed` is
+  already the correct, conservative production answer for "could not tell". Verified with 60
+  consecutive passing runs at `--test-threads=8` in the same container (previously ~14% flake
+  rate).
 - `directory_size`/`safe_lstat_size` no longer count a symlink's own `lstat().st_size` toward
   a reported byte total. For a symlink that value is the byte length of the stored target path
   string, not real disk footprint - reporting it as "size" made coverage/size output for any

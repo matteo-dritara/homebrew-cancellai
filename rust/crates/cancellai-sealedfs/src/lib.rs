@@ -68,6 +68,7 @@
 //! `symlink_metadata` + `OpenOptions::open(path)` pair was - each is opened exactly once,
 //! relative to a descriptor already proven safe.
 
+#[cfg(unix)]
 use std::ffi::CString;
 use std::io;
 
@@ -137,7 +138,11 @@ impl From<io::Error> for SealError {
 }
 
 /// A bare filename - no `/`, not `.`/`..`, not empty, no embedded NUL - ready for an `*at()`
-/// call. See [`SealError::InvalidChildName`].
+/// call. See [`SealError::InvalidChildName`]. Unix-only: `fallback_impl`'s methods are all
+/// unreachable (`match self._unreachable {}`), so this would be genuine dead code on a
+/// platform where `unix_impl` never compiles in - found by real Windows CI (E07-S09), not
+/// hypothesized.
+#[cfg(unix)]
 fn validate_child_name(name: &str) -> Result<CString, SealError> {
     if name.is_empty() || name == "." || name == ".." || name.contains('/') {
         return Err(SealError::InvalidChildName);
