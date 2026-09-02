@@ -51,6 +51,28 @@ truthfulness). A follow-up story implements and verifies real Windows identity o
 exercised on Windows CI; until then, no artifact whose identity depends on Windows-native
 evidence can receive destructive authority through this seam.
 
+#### Accepted limitation: the inventory scanner cannot descend below the scope root on Windows
+
+E20-S04 (formerly E07-S06) found this residual has a consequence beyond mutation authority:
+`cancellai-inventory::scan::walk_directory` only recurses into a child whose identity is
+*confirmed* (`IdentityObservation::Identity`, never `Unsupported`) and that does not cross the
+scope's device boundary (SI-017 - "an unconfirmed identity never earns a descend by default").
+Since `SystemIdentityObserver` reports `Unsupported` unconditionally on Windows today, that
+condition is never true there, so a real Windows scan visits only the scope root itself -
+verified directly on Windows CI: a four-level nested fixture (`root/a/b/c`) produced
+`directories_visited == 1`, not `4`, and a fully-readable tree's completeness is `Partial`
+(`UnsupportedFilesystemFeature` for `identity`/`allocated_size`) rather than `Complete`.
+
+This is the safety gate working exactly as designed, not a traversal bug: weakening the
+identity-confirmed check to let the walk descend without real evidence would be the wrong fix,
+trading a correct fail-closed posture for a plausible-but-unverified one - precisely what this
+section's own Windows posture already refuses to do for mutation. Both outcomes are covered by
+Windows-specific tests (`completeness::tests::
+ac1_a_fully_readable_tree_is_partial_on_windows_pending_native_identity`, `scan::tests::
+ac1_traversal_stops_at_the_root_on_windows_pending_native_identity`) rather than left to fail
+silently. Real Windows traversal depth requires E20-S01's native identity implementation, not a
+scan-logic change.
+
 ## Allocated-size observation
 
 Logical size and allocated/physical size are different facts: a sparse file, a

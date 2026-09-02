@@ -243,6 +243,13 @@ mod tests {
         )
     }
 
+    // Windows has no verified native identity yet (E03-S01's own disclosed residual:
+    // `SystemIdentityObserver` reports `Unsupported` unconditionally there), so a scope's root
+    // and every entry in it always carry an `UnsupportedFilesystemFeature` reason there - a
+    // "fully readable tree" can never actually be `Complete` on Windows today, no matter how
+    // readable it is. This is E20-S04 scope (formerly E07-S06): the Windows counterpart below
+    // documents the accepted limitation rather than weakening this test's Unix assertion.
+    #[cfg(unix)]
     #[test]
     fn ac1_a_fully_readable_tree_is_complete() {
         let tree = TempTree::new("complete");
@@ -251,6 +258,33 @@ mod tests {
 
         let snapshot = system_scan(&tree.0);
         assert_eq!(derive_completeness(&snapshot), ScopeCompleteness::Complete);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ac1_a_fully_readable_tree_is_partial_on_windows_pending_native_identity() {
+        let tree = TempTree::new("complete-windows");
+        std::fs::create_dir_all(tree.path("a/b")).unwrap();
+        std::fs::write(tree.path("a/f.txt"), b"data").unwrap();
+
+        let snapshot = system_scan(&tree.0);
+        match derive_completeness(&snapshot) {
+            ScopeCompleteness::Partial { reasons } => {
+                assert!(
+                    reasons.iter().all(|r| matches!(
+                        r,
+                        CompletenessReason::UnsupportedFilesystemFeature { feature, .. }
+                            if feature == "identity" || feature == "allocated_size"
+                    )),
+                    "every reason must be the disclosed identity/allocated_size gap, got {reasons:?}"
+                );
+                assert!(
+                    !reasons.is_empty(),
+                    "the root's own unsupported identity must produce at least one reason"
+                );
+            }
+            other => panic!("expected Partial (no verified Windows identity yet), got {other:?}"),
+        }
     }
 
     #[test]

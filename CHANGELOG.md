@@ -95,6 +95,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- E20-S04 (formerly E07-S06): identified why `cancellai-inventory`'s
+  `completeness::tests::ac1_a_fully_readable_tree_is_complete` and
+  `scan::tests::ac1_one_traversal_visits_every_directory_exactly_once` fail on real Windows CI -
+  `scan::walk_directory` only recurses into a child whose identity is *confirmed*
+  (`IdentityObservation::Identity`, never `Unsupported`, per SI-017), and
+  `SystemIdentityObserver` reports `Unsupported` unconditionally on Windows (E03-S01's
+  pre-existing residual), so a real Windows scan currently visits only the scope root -
+  correct, safety-driven behavior, not a traversal bug; weakening the identity-confirmed gate
+  to make the old assertions pass would have been the wrong fix. Both tests gated `#[cfg(unix)]`
+  with `#[cfg(windows)]` counterparts added asserting the actual current behavior
+  (`Partial`/`directories_visited == 1`), and `docs/architecture/PLATFORM_MODEL.md` gains an
+  "Accepted limitation" subsection - real Windows traversal depth requires E20-S01's native
+  identity implementation.
 - `cancellai-cli/tests/cli_behavior.rs`'s
   `configure_writes_the_native_claude_retention_setting_and_preserves_other_keys` was not
   `#[cfg(unix)]`-gated, so real Windows CI ran it expecting a successful write - but

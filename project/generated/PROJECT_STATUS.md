@@ -11,8 +11,8 @@ Epics: **21** | Stories: **95**
 - `blocked`: 1
 - `cancelled`: 1
 - `done`: 37
-- `planned`: 53
-- `ready_for_review`: 3
+- `planned`: 52
+- `ready_for_review`: 4
 
 ## Change risk distribution
 
@@ -31,3 +31,4 @@ Epics: **21** | Stories: **95**
 - **E07-S01** - Unix platform backend (CR3)
 - **E07-S05** - Linux TOCTOU identity/mutation test reliability (CR3)
 - **E07-S09** - Provider-root intermediate-link containment (CR4)
+- **E20-S04** - Windows inventory scan traversal test reliability (CR2)

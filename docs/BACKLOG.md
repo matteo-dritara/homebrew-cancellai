@@ -2004,7 +2004,7 @@ Make Windows native and WSL2 first-class platform targets, once a real Windows/W
 
 ### E20-S04 - Windows inventory scan traversal test reliability
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E04-S02, E04-S03 | **Safety obligations:** SI-008, SI-009
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E04-S02, E04-S03 | **Safety obligations:** SI-008, SI-009
 
 **Outcome.** Determine why cancellai-inventory's completeness::tests::ac1_a_fully_readable_tree_is_complete and scan::tests::ac1_one_traversal_visits_every_directory_exactly_once fail on Windows CI (observed 2026-08-31, the first time the Windows quality job in rust.yml ever actually reached these tests - an unrelated pre-existing clippy::large_enum_variant failure had aborted that job before test execution since at least 2026-08-29), and bring cancellai-inventory to genuine, verified Windows parity or document the gap explicitly.
 
