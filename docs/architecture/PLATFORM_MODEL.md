@@ -198,6 +198,30 @@ This closes the class of gap for Unix. Windows/reparse-point handling still has 
 handle-relative equivalent (`SealedRoot::establish` continues to fail closed there, per the
 existing residual above) - a genuine junction/reparse-safe walk remains E07-S02's scope.
 
+##### The fix had to reach `clean`, not only `configure` (E07-S09 round 2)
+
+E07-S09 round-1 independent verifier review found that the walk above closed the gap only for
+`configure`'s write path. `clean` establishes its provider root through a different capability,
+`cancellai-safety::ApprovedRoot::establish`, whose own `canonicalize()` step (deliberate -
+`ApprovedRoot::bind` relies on it to catch a *candidate* escaping through a symlink component,
+see this document's "Boundary rules" section above) silently resolves through the identical
+intermediate link `SealedRoot`'s walk exists to refuse. Native reproduction: `$HOME` a symlink
+to an outside directory containing a real `.claude` with a stale session underneath - `clean
+--yes` deleted it while `configure` (already repaired) correctly refused the same topology.
+
+`cancellai-sealedfs` exports a second, narrower entry point for exactly this shape of caller:
+`verify_no_intermediate_links(path)` performs the identical handle-relative, no-follow walk as
+`establish`, but never creates a missing component and returns `Ok(())` (not an error) for one -
+`clean` has no business materializing a provider root that does not exist, so a missing
+component is left for `ApprovedRoot::establish`'s own existing "root does not exist" error to
+report, not treated as this function's problem. `cancellai-cli`'s `establish_verified_root`
+(used by `clean`, for the default root only - a custom root is never mutation-eligible
+regardless of what this check would say about it) now calls this immediately before
+`ApprovedRoot::establish`, so the intermediate-link refusal happens before canonicalization ever
+gets a chance to resolve through one - the same "prove it, then hand off the already-verified
+path" shape `SealedRoot::establish` itself uses internally between its own walk and its final
+leaf bind.
+
 ## Quarantine
 
 Quarantine prefers metadata-preserving atomic/same-volume moves. Cross-volume copy+delete is a materially different action with more disk-pressure and failure risk and requires separate capability/policy.

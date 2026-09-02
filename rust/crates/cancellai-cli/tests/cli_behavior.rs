@@ -565,6 +565,62 @@ fn clean_refuses_to_mutate_when_home_dot_claude_is_itself_a_symlink() {
     );
 }
 
+// E07-S09 round-1 independent verifier review's exact native reproduction: unlike the test
+// above, `$HOME/.claude` itself is a *real* directory - `$HOME` is the symlink, one component
+// up. `roots::is_symlink` alone (which only ever inspected the leaf) cannot catch this;
+// `ApprovedRoot::establish`'s own `canonicalize()` would otherwise silently resolve through it.
+#[cfg(unix)]
+#[test]
+fn clean_refuses_to_mutate_when_home_itself_is_a_symlink_to_a_real_dot_claude() {
+    let home_target = TempHome::new("intermediate-symlink-home-target");
+    let home_like = home_target.path().parent().unwrap().join(format!(
+        "cancellai-cli-test-intermediate-symlink-home-link-{}",
+        std::process::id()
+    ));
+    std::os::unix::fs::symlink(home_target.path(), &home_like).unwrap();
+
+    let project = home_target.path().join(".claude/projects/proj-a");
+    std::fs::create_dir_all(&project).unwrap();
+    let session = project.join("11111111-1111-4111-8111-111111111111.jsonl");
+    std::fs::write(&session, "{}").unwrap();
+    set_old_mtime(&session);
+
+    let bin = std::env::var("CARGO_BIN_EXE_cancellai-cli").unwrap();
+    let output = Command::new(bin)
+        .args([
+            "clean",
+            "--tool",
+            "claude",
+            "--days",
+            "7",
+            "--keep-latest",
+            "0",
+            "--allow-running",
+            "--yes",
+            "--json",
+        ])
+        .env("HOME", &home_like)
+        .env_remove("CLAUDE_CONFIG_DIR")
+        .env_remove("CODEX_HOME")
+        .output()
+        .expect("spawn cancellai-cli");
+
+    std::fs::remove_file(&home_like).ok();
+
+    assert_eq!(
+        output.status.code(),
+        Some(4),
+        "a default root reached through an intermediate $HOME symlink must never be treated as \
+         mutation-eligible, even when $HOME/.claude itself is a real directory: {}",
+        stdout(&output)
+    );
+    assert!(
+        session.exists(),
+        "a stale session reachable only through an intermediate-symlinked $HOME must never be \
+         deleted"
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn configure_refuses_when_home_dot_claude_is_itself_a_symlink() {

@@ -122,5 +122,9 @@ one-for-one:
 - On Unix, `SealedRoot::establish` (E07-S09) refuses a root reached through an intermediate
   symlink component (e.g. `$HOME` itself being a link), not only a symlinked leaf - closing the
   gap E07-S07 round-2 independent verifier review found in round-1's leaf-only `O_NOFOLLOW`
-  check. Windows/reparse-point intermediate-component handling remains E07-S02 scope, same as
-  the leaf case above.
+  check. `clean`'s own root establishment (`ApprovedRoot`, a different capability than
+  `configure`'s `SealedRoot`) needed the identical fix separately - E07-S09 round-1 independent
+  verifier review found the round-1 patch only reached `configure` - via
+  `cancellai_sealedfs::verify_no_intermediate_links`, called immediately before
+  `ApprovedRoot::establish` for the default root. Windows/reparse-point intermediate-component
+  handling remains E07-S02 scope for both callers.

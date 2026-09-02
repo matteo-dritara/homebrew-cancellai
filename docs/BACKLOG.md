@@ -948,7 +948,7 @@ Make macOS, Linux, Windows native, and WSL2 first-class platform targets.
 
 ### E07-S09 - Provider-root intermediate-link containment
 
-**Status:** `in_progress` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-002, SI-003, SI-013, SI-019
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-002, SI-003, SI-013, SI-019
 
 **Outcome.** Reject or safely bind provider-root paths whose intermediate components cross a symbolic-link, junction, or reparse boundary before any Rust CLI mutation or configuration write.
 

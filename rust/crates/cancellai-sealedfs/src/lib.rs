@@ -152,6 +152,12 @@ pub use unix_impl::SealedRoot;
 pub use fallback_impl::SealedRoot;
 
 #[cfg(unix)]
+pub use unix_impl::verify_no_intermediate_links;
+
+#[cfg(not(unix))]
+pub use fallback_impl::verify_no_intermediate_links;
+
+#[cfg(unix)]
 mod unix_impl {
     use super::{SealError, validate_child_name};
     use std::ffi::CString;
@@ -279,6 +285,33 @@ mod unix_impl {
             }
             _ => Err(SealError::Io(e)),
         }
+    }
+
+    /// Walks every component of `path` handle-relatively from the filesystem root, refusing if
+    /// any component - intermediate or the leaf itself - is a symlink/reparse point. Unlike
+    /// [`SealedRoot::establish`], a missing component (including the leaf) is not created and
+    /// is not itself an error: this exists purely to *prove a path contains no link
+    /// indirection* before a different capability that does not hold a retained descriptor
+    /// (e.g. `cancellai-safety::ApprovedRoot`, whose own `canonicalize()` step would otherwise
+    /// silently resolve through one - the exact E07-S09 round-1 independent verifier review
+    /// finding: `configure`'s repair did not extend to `clean`'s root establishment) takes over.
+    /// A caller that gets `Ok(())` back still has the same narrower revalidate-then-use window
+    /// this crate's own `establish` exists to close for its two callers - see this function's
+    /// call site in `cancellai-cli` for how narrow that window is kept in practice.
+    pub fn verify_no_intermediate_links(path: &Path) -> Result<(), SealError> {
+        let components = decompose_absolute_path(path)?;
+        let mut current = open_root_dir()?;
+        for name in &components {
+            match open_child_dir_nofollow(&current, name) {
+                Ok(dir) => current = dir,
+                // A missing component means the leaf cannot exist either - nothing to protect,
+                // and the caller's own subsequent establishment step will report the absence
+                // with its own clear error.
+                Err(SealError::Io(e)) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
     }
 
     impl SealedRoot {
@@ -605,6 +638,63 @@ mod unix_impl {
         }
 
         #[test]
+        fn verify_no_intermediate_links_refuses_an_intermediate_symlink() {
+            // The E07-S09 round-1 independent verifier reproduction, one layer up: `clean`
+            // calls this (not `SealedRoot::establish`) ahead of `ApprovedRoot::establish`,
+            // which would otherwise silently canonicalize through the same intermediate link.
+            let base = TempDir::new("verify-intermediate-symlink");
+            let outside = base.path("outside");
+            let outside_leaf = outside.join("leaf");
+            std::fs::create_dir_all(&outside_leaf).unwrap();
+
+            let home_like = base.path("home-like");
+            std::os::unix::fs::symlink(&outside, &home_like).unwrap();
+            let root_path = home_like.join("leaf");
+
+            let err = verify_no_intermediate_links(&root_path)
+                .expect_err("an intermediate symlink must be refused");
+            assert!(matches!(err, SealError::IsSymlinkOrReparsePoint));
+        }
+
+        #[test]
+        fn verify_no_intermediate_links_refuses_a_symlinked_leaf_too() {
+            let base = TempDir::new("verify-symlink-leaf");
+            let real = base.path("real");
+            let link = base.path("link");
+            std::fs::create_dir_all(&real).unwrap();
+            std::os::unix::fs::symlink(&real, &link).unwrap();
+
+            let err = verify_no_intermediate_links(&link)
+                .expect_err("a symlinked leaf must be refused, not only intermediate links");
+            assert!(matches!(err, SealError::IsSymlinkOrReparsePoint));
+        }
+
+        #[test]
+        fn verify_no_intermediate_links_accepts_a_real_path_and_creates_nothing() {
+            let base = TempDir::new("verify-real-path");
+            let root_path = base.path("real-root");
+            std::fs::create_dir_all(&root_path).unwrap();
+
+            verify_no_intermediate_links(&root_path).expect("a real, link-free path must pass");
+        }
+
+        #[test]
+        fn verify_no_intermediate_links_treats_a_missing_leaf_as_ok_and_creates_nothing() {
+            // Unlike `establish`, this must never create anything - `clean` has no business
+            // materializing a provider root that does not exist. The caller's own subsequent
+            // `ApprovedRoot::establish` reports the absence with its own clear error.
+            let base = TempDir::new("verify-missing-leaf");
+            let root_path = base.path("does-not-exist");
+
+            verify_no_intermediate_links(&root_path)
+                .expect("a missing leaf is not this function's concern");
+            assert!(
+                !root_path.exists(),
+                "verify_no_intermediate_links must never create the path it checks"
+            );
+        }
+
+        #[test]
         fn write_new_child_atomically_refuses_a_pre_planted_symlink_at_the_temp_name() {
             let base = TempDir::new("tmp-symlink-race");
             let root_path = base.path("root");
@@ -704,6 +794,17 @@ mod fallback_impl {
         ) -> Result<(), SealError> {
             match self._unreachable {}
         }
+    }
+
+    /// Mirrors [`SealedRoot::establish`]'s fail-closed posture: no verified handle-relative
+    /// walk exists on this platform, so a caller cannot be told "no intermediate link found"
+    /// with any real confidence - refuse rather than claim a check that was not actually
+    /// performed.
+    pub fn verify_no_intermediate_links(_path: &Path) -> Result<(), SealError> {
+        Err(SealError::Unsupported(
+            "no verified no-follow/handle-relative directory capability exists for this \
+             platform yet (E07-S07 residual)",
+        ))
     }
 
     #[cfg(test)]

@@ -29,10 +29,16 @@ E07-S07 round-2 independent verifier review found that round-1's `O_NOFOLLOW` bo
 resolved every component *above* the leaf through the kernel's normal, link-following name
 resolution, so a `$HOME` (or any intermediate directory) that was itself a symlink was silently
 followed, and the real, non-symlink leaf it led to was then sealed and mutated as if it were the
-approved root. E07-S09 closes this: `establish` walks every component handle-relatively from the
-filesystem root (`/`, which cannot itself be a symlink) via `openat`/`O_NOFOLLOW`, refusing the
-moment any component - intermediate or final - is a link, and creates only the final, absent
-component via `mkdirat` against the already-held parent descriptor.
+approved root. E07-S09 round 1 closed this for `configure`: `SealedRoot::establish` walks every component
+handle-relatively from the filesystem root (`/`, which cannot itself be a symlink) via
+`openat`/`O_NOFOLLOW`, refusing the moment any component - intermediate or final - is a link,
+and creates only the final, absent component via `mkdirat` against the already-held parent
+descriptor. Round-1 independent verifier review found this did not reach `clean`, which
+establishes its root through the separate `ApprovedRoot` capability (whose own `canonicalize()`
+step still resolved through an intermediate link): round 2 exports
+`cancellai_sealedfs::verify_no_intermediate_links` - the identical walk, but read-only (no
+`mkdirat`, `Ok(())` for a missing component) - and calls it immediately before
+`ApprovedRoot::establish` in `cancellai-cli::establish_verified_root`.
 
 ### SI-003 Mutation cannot escape or delete the approved root
 

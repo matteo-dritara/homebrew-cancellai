@@ -185,7 +185,7 @@
     {
       "id": "E07-S09",
       "title": "Provider-root intermediate-link containment",
-      "status": "in_progress",
+      "status": "ready_for_review",
       "outcome": "Reject or safely bind provider-root paths whose intermediate components cross a symbolic-link, junction, or reparse boundary before any Rust CLI mutation or configuration write.",
       "change_risk": "CR4",
       "dependencies": [],

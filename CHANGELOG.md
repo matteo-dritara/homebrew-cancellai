@@ -59,7 +59,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   treatment as the leaf"). `cancellai-sealedfs::SealedRoot::establish` now walks every path
   component handle-relatively from the filesystem root, refusing the moment any component -
   intermediate or final - is a symlink/reparse point, and creating only the final absent
-  component via `mkdirat` against an already-held parent descriptor.
+  component via `mkdirat` against an already-held parent descriptor. E07-S09's own round-1
+  independent verifier review found this closure reached only `configure`: `clean` establishes
+  its root through the separate `ApprovedRoot` capability, whose `canonicalize()` step still
+  silently resolved through the identical intermediate link, so `clean --yes` could still purge
+  a stale session reachable only through a symlinked `$HOME` (`docs/architecture/
+  PLATFORM_MODEL.md` "The fix had to reach `clean`, not only `configure`"). Round 2 exports a
+  read-only counterpart, `verify_no_intermediate_links`, now called in `establish_verified_root`
+  before `ApprovedRoot::establish` for the default root - the same function `clean` already
+  used for its own leaf-only symlink re-check.
 - E07-S08: `scripts/rust_python_parity.py`'s divergence allow-list is now structured
   (fixture/scenario/field-scoped, citation content-checked) rather than free-text, and its
   comparison surface grew from six to eight fields covering every discovered identity record,

@@ -1,17 +1,47 @@
 # Evidence Packet - E07-S09
 
-- Commit/PR: pending (this work item)
+- Commit/PR: `c519f86` (round 1), round-2 repair pending commit
 - Executor: Claude
-- Independent verifier: Codex (pending, standalone CR4 carry-forward review, per E07-S07's own
-  precedent)
+- Independent verifier: Codex (round 1: `project/evidence/E07-S09-VERIFIER-REVIEW.md`, `FAIL`;
+  round 2 pending)
 - Change Risk: CR4
-- Spec version/commit: `project/evidence/E07-S07-VERIFIER-REVIEW-ROUND2.md` (the reproduction
-  and required repair this story closes), `docs/architecture/PLATFORM_MODEL.md`'s new
-  "Intermediate components need the same no-follow treatment as the leaf" section
+- Spec version/commit: `project/evidence/E07-S07-VERIFIER-REVIEW-ROUND2.md` (the original
+  reproduction and required repair), `project/evidence/E07-S09-VERIFIER-REVIEW.md` (round-1
+  rejection: the repair did not reach `clean`), `docs/architecture/PLATFORM_MODEL.md`'s
+  "Intermediate components need the same no-follow treatment as the leaf" and "The fix had to
+  reach `clean`, not only `configure`" sections
 
 ## Outcome
 
-PASS (executor self-assessment; independent verification pending, as CR4 requires)
+PASS (executor self-assessment of the round-2 repair; independent verification pending, as CR4
+requires)
+
+## Round 2 repair (this update)
+
+Round-1 independent verifier review (`project/evidence/E07-S09-VERIFIER-REVIEW.md`) found that
+the whole-path walk closed the intermediate-link gap for `configure` (via `SealedRoot`) but not
+for `clean`, which establishes its provider root through a different capability,
+`cancellai-safety::ApprovedRoot::establish` - its own `canonicalize()` step (deliberate, for a
+different purpose: catching a *candidate* escaping the root through a symlink, see
+`root_capability.rs`'s module docs) silently resolves through the identical intermediate link.
+Native reproduction confirmed: `$HOME` a symlink to an outside directory containing a real
+`.claude` with a stale session - `clean --yes` deleted it while the already-repaired `configure`
+correctly refused the same topology.
+
+`cancellai-sealedfs` now exports `verify_no_intermediate_links(path)` - the identical
+handle-relative, no-follow walk `SealedRoot::establish` performs, but read-only: it never calls
+`mkdirat`, and returns `Ok(())` (not an error) when a component is absent, since `clean` must
+never materialize a provider root that does not exist - the absence is left for
+`ApprovedRoot::establish`'s own existing error to report. `cancellai-cli::establish_verified_root`
+(the function `clean` already used for its leaf-only `roots::is_symlink` re-check) now calls
+`verify_no_intermediate_links` immediately before `ApprovedRoot::establish`, for the default
+root only (a custom root is never mutation-eligible for `clean` regardless of this check).
+
+New end-to-end regression test, `clean_refuses_to_mutate_when_home_itself_is_a_symlink_to_a_real_dot_claude`
+(`cancellai-cli/tests/cli_behavior.rs`) - the exact native reproduction from round 1, run as a
+real built binary. Verified to fail without the fix: reverting only the `main.rs` change and
+re-running this test reproduces round-1's exact escape (`clean --yes` exits `0`, deletes the
+stale session; `succeeded: 1`) before the fix and exits `4` with the session intact after it.
 
 E07-S07 round-1 bound only the sealed root's *final* path component with `O_NOFOLLOW`. Round-2
 independent verifier review reproduced the consequence natively: with `$HOME` itself a symlink
@@ -33,7 +63,7 @@ creation. A relative path or a path containing a `.`/`..` component is refused o
 
 | AC | Evidence | Result |
 | --- | --- | --- |
-| AC1 - A provider root reached through an intermediate Unix symlink is refused before any configuration or cleanup mutation reaches the symlink target | New test `establish_refuses_a_root_reached_through_an_intermediate_symlink_component` (`cancellai-sealedfs/src/lib.rs`) - native reproduction of the round-2 verifier's `configure` counterexample at the `SealedRoot` layer: a `home-like` directory symlinked to an `outside` directory, with a real `outside/leaf` directory. `establish(home_like.join("leaf"))` returns `Err(IsSymlinkOrReparsePoint)`; the outside sentinel is asserted absent. Since `establish` fails, no `SealedRoot` instance exists to write through - `configure`'s write path (`configure_claude_retention`) cannot reach the outside directory by construction, not merely by this test's own assertion. | PASS |
+| AC1 - A provider root reached through an intermediate Unix symlink is refused before any configuration or cleanup mutation reaches the symlink target | **configure**: `establish_refuses_a_root_reached_through_an_intermediate_symlink_component` (`cancellai-sealedfs/src/lib.rs`) - `establish(home_like.join("leaf"))` returns `Err(IsSymlinkOrReparsePoint)`; outside sentinel absent. **cleanup** (round-2 addition, closing the round-1 rejection): `clean_refuses_to_mutate_when_home_itself_is_a_symlink_to_a_real_dot_claude` (`cancellai-cli/tests/cli_behavior.rs`) - a real built `cancellai-cli clean --yes` against a symlinked `$HOME` with a real `.claude`/stale session underneath exits `4`; the session is asserted to still exist. Also unit-level: `verify_no_intermediate_links_refuses_an_intermediate_symlink`/`_refuses_a_symlinked_leaf_too` (`cancellai-sealedfs/src/lib.rs`). | PASS |
 | AC2 - Unix root establishment walks every component handle-relatively from a trusted anchor, using no-follow directory opens and mkdirat-style creation only beneath an already-held parent handle | `establish_with_hook`'s walk: `open_root_dir()` opens `/` directly (the trusted anchor - `/` cannot itself be a symlink); every subsequent component is opened via `open_child_dir_nofollow`, which issues `openat(parent_fd, name, O_NOFOLLOW\|O_DIRECTORY)`; the leaf, if absent, is created via `libc::mkdirat(current.as_raw_fd(), leaf, 0o700)` against the already-held parent descriptor, then re-opened no-follow. Existing tests `establish_creates_an_absent_root_before_binding_it` and the new `establish_refuses_a_relative_path`/`establish_refuses_a_path_containing_dot_dot` cover the anchor/creation and refusal-to-resolve-`.`/`..` requirements. | PASS |
 | AC3 - Windows junction/reparse handling either has equivalent verified handle-relative semantics with real junction fixtures or fails closed | Unchanged from E07-S07: `fallback_impl::SealedRoot::establish` on non-Unix targets always returns `SealError::Unsupported` - no code path attempts a Windows-specific walk. This is the disclosed fail-closed posture, not a new capability; a genuine Windows handle-relative walk remains E07-S02 scope (`docs/CLI_RUST.md`'s own "Known gaps"). | PASS (fail-closed, not implemented) |
 
@@ -41,10 +71,10 @@ creation. A relative path or a path containing a `.`/`..` component is refused o
 
 | Invariant | Counterexample tested | Evidence | Result |
 | --- | --- | --- | --- |
-| SI-002 | Root positively bound only after every component - not only the leaf - is proven non-symlink | `establish_refuses_a_root_reached_through_an_intermediate_symlink_component` | PASS |
-| SI-003 | Mutation cannot escape the approved root via an intermediate link | Same test; sentinel file under `outside/leaf/settings.json` never created | PASS |
-| SI-013 | Identity (of every component, not only the final one) is bound before any use, not merely re-checked | Handle-relative walk itself: each `openat` call resolves against an already-verified parent descriptor, never a re-derived path | PASS |
-| SI-019 | Single mutation boundary unaffected | No change to `mutation_executor.rs`/`scripts/check_mutation_boundary.py`'s reach; `configure`'s own single write path (`SealedRoot`) is the only thing changed | PASS (`scripts/check_mutation_boundary.py check` unaffected, still passes) |
+| SI-002 | Root positively bound only after every component - not only the leaf - is proven non-symlink, for both `configure` and `clean` | `establish_refuses_a_root_reached_through_an_intermediate_symlink_component`; `clean_refuses_to_mutate_when_home_itself_is_a_symlink_to_a_real_dot_claude` | PASS |
+| SI-003 | Mutation cannot escape the approved root via an intermediate link, for both callers | Same tests; outside settings sentinel and outside stale session both asserted unchanged/present | PASS |
+| SI-013 | Identity (of every component, not only the final one) is bound before any use, not merely re-checked | Handle-relative walk itself: each `openat` call resolves against an already-verified parent descriptor, never a re-derived path; `verify_no_intermediate_links` runs immediately before `ApprovedRoot::establish`'s own `canonicalize()` | PASS |
+| SI-019 | Single mutation boundary unaffected | No change to `mutation_executor.rs`/`scripts/check_mutation_boundary.py`'s reach; `configure`'s `SealedRoot` write path and `clean`'s pre-`ApprovedRoot` check are the only things changed, neither is a new mutation path | PASS (`scripts/check_mutation_boundary.py check` unaffected, still passes) |
 
 ## Verification Commands
 
@@ -66,14 +96,19 @@ BSD-3-Clause/ISC license-allowance warnings (unrelated to this change, present b
 - Exercised on macOS (this executor's environment) and via the existing Linux/macOS tier-1 CI
   matrix (`rust.yml`) once merged. Windows is unaffected (still fails closed via
   `fallback_impl`, not exercised by this change).
-- Test fixtures (`cancellai-sealedfs`'s own `TempDir`, `cancellai-cli/tests/cli_behavior.rs`'s
-  `TempHome`) now canonicalize their temp base directory once, at creation, on a path the test
-  harness itself just created - not a security-relevant resolution. Without it, macOS's `/tmp`/
-  `/var` compatibility symlinks (`std::env::temp_dir()` returns a `/var/folders/...` path there,
-  and `/var -> private/var`) would make the new strict whole-path walk refuse every existing
-  `SealedRoot`/`configure` test as "reached through an intermediate symlink" - a false positive
-  from an OS-level symlink outside this story's threat model (same-user attacker control of
-  paths under `$HOME`), not the attacker-planted symlinks these tests construct deliberately.
+- Test fixtures (`cancellai-sealedfs`'s own `TempDir`, and both `cancellai-cli/tests/
+  cli_behavior.rs`'s and `cancellai-cli/tests/install_rollback.rs`'s `TempHome`) now
+  canonicalize their temp base directory once, at creation, on a path the test harness itself
+  just created - not a security-relevant resolution. Without it, macOS's `/tmp`/`/var`
+  compatibility symlinks (`std::env::temp_dir()` returns a `/var/folders/...` path there, and
+  `/var -> private/var`) would make the new strict whole-path walk refuse every existing
+  `SealedRoot`/`configure`/`clean` test as "reached through an intermediate symlink" - a false
+  positive from an OS-level symlink outside this story's threat model (same-user attacker
+  control of paths under `$HOME`), not the attacker-planted symlinks these tests construct
+  deliberately. Round 2 found `install_rollback.rs`'s copy of this same helper had been missed
+  in round 1 - `cargo test --workspace` caught it immediately
+  (`a_real_clean_touches_only_the_provider_artifact_it_deletes_nothing_else_anywhere` failed
+  until it was fixed the same way).
 
 ## Performance / operability
 
@@ -84,13 +119,15 @@ BSD-3-Clause/ISC license-allowance warnings (unrelated to this change, present b
 
 ## Documentation updated
 
-- `docs/architecture/PLATFORM_MODEL.md` (declared documentation impact) - new "Intermediate
-  components need the same no-follow treatment as the leaf" section.
+- `docs/architecture/PLATFORM_MODEL.md` (declared documentation impact) - "Intermediate
+  components need the same no-follow treatment as the leaf" section (round 1), plus new round-2
+  subsection "The fix had to reach `clean`, not only `configure`".
 - `docs/CLI_RUST.md` (declared documentation impact) - "Known gaps" gains the intermediate-
-  component closure note.
+  component closure note, updated in round 2 to name both callers.
 - `docs/security/SAFETY_INVARIANTS.md` (declared documentation impact) - SI-002 and SI-013
-  sections extended with the E07-S09 closure.
-- `CHANGELOG.md` - new Unreleased/Added entry.
+  sections extended with the E07-S09 closure, updated in round 2 to describe both the
+  `SealedRoot`/`configure` and `verify_no_intermediate_links`/`clean` halves.
+- `CHANGELOG.md` - Unreleased/Added entry, extended in round 2.
 - `project/epics/E07.json`:
   - E07-S01's dependency corrected from `E06-S04` to `E03-S01`/`E04-S01` (see
     `project/evidence/E07-S01/DEPENDENCY_ESCALATION.md`'s "Resolution" section) - an
