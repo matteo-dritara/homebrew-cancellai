@@ -99,17 +99,18 @@ substitute for.
 **G3 Compatibility - not ready.** The tier-1 CI matrix (`rust.yml`) reached this crate's
 mutation-path integration tests on Windows for the first time on 2026-09-01 (an unrelated
 pre-existing clippy failure had aborted the quality job before them on every prior run, the
-same pattern E07-S05/E07-S06 already document) and found a real, concrete blocker, not merely
+same pattern E07-S05/E20-S04 already document) and found a real, concrete blocker, not merely
 missing confirmation: `cancellai-platform::identity::SystemIdentityObserver` reports
 `IdentityObservation::Unsupported` unconditionally on non-Unix platforms (E03-S01's own
 disclosed residual risk), so `ApprovedRoot::establish`/`bind` fails closed and a real deletion
 can never succeed on Windows today - correctly, not silently, but it does mean `clean --yes`
-cannot pass tier-1 Windows CI until E07-S02 ("Windows native backend") lands. The affected
-tests are now `#[cfg(unix)]`-scoped rather than left red, and `docs/PROVIDERS.md`'s generated
-compatibility matrix covers the provider adapters' own capabilities, not the CLI command
-surface E06-S01-S03 added. **This is a concrete addition to E06-S04's own blocker list, beyond
-the G4/E17 prerequisite cycle already recorded below**: tier-1-clean cutover requires E07-S02,
-not only E17's packaging work.
+cannot pass tier-1 Windows CI until E20-S01 ("Windows native backend", moved from E07 into a
+dedicated Windows/WSL epic pending real environment access) lands. The affected tests are now
+`#[cfg(unix)]`-scoped rather than left red, and `docs/PROVIDERS.md`'s generated compatibility
+matrix covers the provider adapters' own capabilities, not the CLI command surface E06-S01-S03
+added. **This is a concrete addition to E06-S04's own blocker list, beyond the G4/E17
+prerequisite cycle already recorded below**: tier-1-clean cutover requires E20-S01, not only
+E17's packaging work.
 
 **G4 Operability - not ready.** No packaged installer exists (Epic E17 scope, `docs/RELEASING.md`
 "Target Rust release factory"); no performance/self-budget measurement exists for the CLI's

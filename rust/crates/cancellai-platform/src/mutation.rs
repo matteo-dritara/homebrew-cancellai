@@ -128,6 +128,8 @@ fn confirmed_delete_file_inner(
     let IdentityToken::Unix {
         device: expected_device,
         inode: expected_inode,
+        modified: expected_modified,
+        modified_nanos: expected_modified_nanos,
         ..
     } = expected;
 
@@ -136,7 +138,17 @@ fn confirmed_delete_file_inner(
     let before = file
         .metadata()
         .map_err(|e| MutationError(format!("could not stat open target before deletion: {e}")))?;
-    if before.dev() != *expected_device || before.ino() != *expected_inode {
+    // E07-S05: device+inode alone was found, on real Linux, insufficient - a delete-and-
+    // recreate that happened to land within the same wall-clock second reused the just-freed
+    // inode too, so a swapped-in replacement could pass this check purely by chance. Comparing
+    // the sub-second modification-time remainder as well (the same disambiguator
+    // `IdentityToken::Unix::modified_nanos` now carries) catches what device+inode+whole-second
+    // `modified` cannot.
+    if before.dev() != *expected_device
+        || before.ino() != *expected_inode
+        || before.mtime() != expected_modified.0 as i64
+        || before.mtime_nsec() as u32 != *expected_modified_nanos
+    {
         return Err(MutationError(
             "target identity changed between revalidation and deletion (open-time check)"
                 .to_string(),
@@ -158,7 +170,11 @@ fn confirmed_delete_file_inner(
             "could not re-stat target immediately before deletion: {e}"
         ))
     })?;
-    if just_before.dev() != *expected_device || just_before.ino() != *expected_inode {
+    if just_before.dev() != *expected_device
+        || just_before.ino() != *expected_inode
+        || just_before.mtime() != expected_modified.0 as i64
+        || just_before.mtime_nsec() as u32 != *expected_modified_nanos
+    {
         return Err(MutationError(
             "target identity changed immediately before deletion (path re-check failed); refusing to delete a different object".to_string(),
         ));
@@ -267,7 +283,12 @@ mod tests {
             device: meta.dev(),
             inode: meta.ino(),
             kind: crate::identity::FileKind::File,
-            modified: crate::clock::Timestamp(0),
+            // The real mtime/nanos, not a placeholder: `confirmed_delete_file_inner` (E07-S05)
+            // now compares both against the live file's own metadata, so a hardcoded
+            // `Timestamp(0)` here would make every legitimate (no-swap) test below fail this
+            // helper's own identity capture, not just the swap-detection tests that want it to.
+            modified: crate::clock::Timestamp(meta.mtime() as u64),
+            modified_nanos: meta.mtime_nsec() as u32,
         }
     }
 
@@ -297,6 +318,7 @@ mod tests {
             inode: 0,
             kind: crate::identity::FileKind::File,
             modified: crate::clock::Timestamp(0),
+            modified_nanos: 0,
         };
         let executor = SystemMutationExecutor;
         let err = executor
@@ -315,7 +337,13 @@ mod tests {
 
         // Swap before any deletion attempt: replace the original with a different file at
         // the same path (same as an attacker winning the race entirely before this call).
+        // E07-S05: a real Linux reproduction found a zero-delay swap can reuse the freed inode
+        // and land within the same ~1ms mtime clock tick, defeating even the nanosecond-aware
+        // comparison this test wants to exercise - a brief sleep reflects a real race's actual
+        // timing (a separate attacker process needs at least a scheduling/syscall round trip),
+        // not a weakening of the swap this test constructs.
         std::fs::remove_file(&file).expect("remove original");
+        std::thread::sleep(std::time::Duration::from_millis(10));
         std::fs::write(&file, b"replacement").expect("create replacement");
 
         let executor = SystemMutationExecutor;
@@ -368,6 +396,7 @@ mod tests {
             inode: 0,
             kind: crate::identity::FileKind::File,
             modified: crate::clock::Timestamp(0),
+            modified_nanos: 0,
         };
         assert_eq!(
             executor.mutate(
@@ -391,6 +420,7 @@ mod tests {
             inode: 0,
             kind: crate::identity::FileKind::File,
             modified: crate::clock::Timestamp(0),
+            modified_nanos: 0,
         };
         assert_eq!(
             executor.mutate(

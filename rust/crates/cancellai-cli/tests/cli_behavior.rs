@@ -26,6 +26,14 @@ impl TempHome {
             std::process::id()
         ));
         std::fs::create_dir_all(&dir).expect("create temp home");
+        // Canonicalize once, here, on a path this test harness itself just created - not a
+        // security-relevant resolution. Without it, macOS's `/tmp`/`/var` compatibility
+        // symlinks (`std::env::temp_dir()` returns a `/var/folders/...` path there, and `/var`
+        // is itself `-> private/var`) would make `configure`'s `SealedRoot::establish` refuse
+        // every test HOME here as "reached through an intermediate symlink" (E07-S09) - a
+        // false positive from an OS-level symlink no attacker in this test's threat model
+        // controls, not the attacker-planted symlinks these tests construct deliberately below.
+        let dir = std::fs::canonicalize(&dir).expect("canonicalize temp home");
         Self(dir)
     }
 
@@ -181,11 +189,13 @@ fn clean_dry_run_never_deletes_anything() {
 // `cancellai-platform::identity::SystemIdentityObserver` reports `Unsupported` unconditionally
 // on non-Unix platforms today (E03-S01's own disclosed residual risk, `#[cfg(not(unix))]` in
 // `identity.rs`) - `ApprovedRoot::establish`/`bind` therefore always fails closed on Windows,
-// so a real deletion can never succeed there yet regardless of anything E06 changed (E07-S02
-// "Windows native backend" tracks closing this). First observed as an actual Windows CI failure
-// on 2026-09-01 - not a regression, but the first time this crate's mutation-path integration
-// tests were ever reached on Windows CI (an unrelated pre-existing clippy failure had aborted
-// the job before them on every prior run, the same pattern E07-S05/E07-S06 already document).
+// so a real deletion can never succeed there yet regardless of anything E06 changed (E20-S01
+// "Windows native backend" tracks closing this - moved from E07 into a dedicated epic once it
+// became clear this work needs a real Windows/WSL environment to verify against, see E07.json's
+// own objective note). First observed as an actual Windows CI failure on 2026-09-01 - not a
+// regression, but the first time this crate's mutation-path integration tests were ever reached
+// on Windows CI (an unrelated pre-existing clippy failure had aborted the job before them on
+// every prior run, the same pattern E07-S05/E20-S04 already document).
 #[cfg(unix)]
 #[test]
 fn clean_yes_deletes_a_stale_unprotected_session_and_reports_it_in_the_result_document() {
@@ -302,6 +312,13 @@ fn clean_json_without_yes_or_dry_run_is_refused_before_touching_anything() {
     assert!(session.exists());
 }
 
+// `configure`'s write path (`cancellai-sealedfs::SealedRoot`) has no verified handle-relative
+// implementation on non-Unix platforms and fails closed there by design (`docs/CLI_RUST.md`'s
+// own "Known gaps") - this success-path test is Unix-only for that reason; the Windows
+// counterpart below asserts the disclosed refusal instead. Missing this gate is exactly the
+// gap real Windows CI surfaced here (E07-S09 verification session, 2026-09-02) - not caught
+// locally since this workspace's own executor environment is macOS.
+#[cfg(unix)]
 #[test]
 fn configure_writes_the_native_claude_retention_setting_and_preserves_other_keys() {
     let home = TempHome::new("configure");
@@ -320,6 +337,33 @@ fn configure_writes_the_native_claude_retention_setting_and_preserves_other_keys
     let value: serde_json::Value = serde_json::from_str(&written).unwrap();
     assert_eq!(value["cleanupPeriodDays"], 30);
     assert_eq!(value["someOtherKey"], true);
+}
+
+#[cfg(windows)]
+#[test]
+fn configure_refuses_outright_with_no_verified_windows_sealed_root_capability() {
+    let home = TempHome::new("configure-windows-unsupported");
+    let claude_dir = home.path().join(".claude");
+    std::fs::create_dir_all(&claude_dir).unwrap();
+    std::fs::write(
+        claude_dir.join("settings.json"),
+        serde_json::json!({"someOtherKey": true}).to_string(),
+    )
+    .unwrap();
+
+    let output = run(&home, &["configure", "--claude-retention", "30"]);
+    assert_eq!(output.status.code(), Some(4), "{}", stdout(&output));
+
+    let written = std::fs::read_to_string(claude_dir.join("settings.json")).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&written).unwrap();
+    assert_eq!(
+        value["someOtherKey"], true,
+        "settings.json must be left untouched when SealedRoot has no verified Windows capability"
+    );
+    assert!(
+        value.get("cleanupPeriodDays").is_none(),
+        "cleanupPeriodDays must never be set without a verified handle-relative write: {written}"
+    );
 }
 
 #[test]
@@ -553,6 +597,62 @@ fn clean_refuses_to_mutate_when_home_dot_claude_is_itself_a_symlink() {
     assert!(
         session.exists(),
         "a stale session reachable only through a symlinked default-named root must never be \
+         deleted"
+    );
+}
+
+// E07-S09 round-1 independent verifier review's exact native reproduction: unlike the test
+// above, `$HOME/.claude` itself is a *real* directory - `$HOME` is the symlink, one component
+// up. `roots::is_symlink` alone (which only ever inspected the leaf) cannot catch this;
+// `ApprovedRoot::establish`'s own `canonicalize()` would otherwise silently resolve through it.
+#[cfg(unix)]
+#[test]
+fn clean_refuses_to_mutate_when_home_itself_is_a_symlink_to_a_real_dot_claude() {
+    let home_target = TempHome::new("intermediate-symlink-home-target");
+    let home_like = home_target.path().parent().unwrap().join(format!(
+        "cancellai-cli-test-intermediate-symlink-home-link-{}",
+        std::process::id()
+    ));
+    std::os::unix::fs::symlink(home_target.path(), &home_like).unwrap();
+
+    let project = home_target.path().join(".claude/projects/proj-a");
+    std::fs::create_dir_all(&project).unwrap();
+    let session = project.join("11111111-1111-4111-8111-111111111111.jsonl");
+    std::fs::write(&session, "{}").unwrap();
+    set_old_mtime(&session);
+
+    let bin = std::env::var("CARGO_BIN_EXE_cancellai-cli").unwrap();
+    let output = Command::new(bin)
+        .args([
+            "clean",
+            "--tool",
+            "claude",
+            "--days",
+            "7",
+            "--keep-latest",
+            "0",
+            "--allow-running",
+            "--yes",
+            "--json",
+        ])
+        .env("HOME", &home_like)
+        .env_remove("CLAUDE_CONFIG_DIR")
+        .env_remove("CODEX_HOME")
+        .output()
+        .expect("spawn cancellai-cli");
+
+    std::fs::remove_file(&home_like).ok();
+
+    assert_eq!(
+        output.status.code(),
+        Some(4),
+        "a default root reached through an intermediate $HOME symlink must never be treated as \
+         mutation-eligible, even when $HOME/.claude itself is a real directory: {}",
+        stdout(&output)
+    );
+    assert!(
+        session.exists(),
+        "a stale session reachable only through an intermediate-symlinked $HOME must never be \
          deleted"
     );
 }

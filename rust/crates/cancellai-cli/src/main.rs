@@ -561,14 +561,32 @@ fn establish_verified_root(
     resolver: &SystemPathResolver,
     observer: &SystemIdentityObserver,
 ) -> Result<ApprovedRoot, cancellai_safety::BoundaryError> {
-    if fingerprint.origin == RootOrigin::Default && roots::is_symlink(path) {
-        return Err(cancellai_safety::BoundaryError::RootIdentityUnavailable(
-            format!(
-                "{} is a symlink; a default-named root must be a real directory, not a link, to \
-             carry destructive authority (SI-002/ADR-0013)",
-                path.display()
-            ),
-        ));
+    if fingerprint.origin == RootOrigin::Default {
+        if roots::is_symlink(path) {
+            return Err(cancellai_safety::BoundaryError::RootIdentityUnavailable(
+                format!(
+                    "{} is a symlink; a default-named root must be a real directory, not a \
+                 link, to carry destructive authority (SI-002/ADR-0013)",
+                    path.display()
+                ),
+            ));
+        }
+        // E07-S09 round-1 independent verifier review: the leaf-only check above missed a
+        // default root reached through an *intermediate* symlink (e.g. `$HOME` itself being a
+        // link to a real, non-symlink `.claude` leaf) - `ApprovedRoot::establish` below
+        // canonicalizes `path`, which silently resolves through exactly that. `SealedRoot`'s
+        // handle-relative walk (already built for `configure`, `cancellai-sealedfs`, ADR-0017)
+        // is reused here purely to prove no component of `path` - not only the leaf - is a
+        // link, before `establish` gets a chance to canonicalize through one.
+        if let Err(e) = cancellai_sealedfs::verify_no_intermediate_links(path) {
+            return Err(cancellai_safety::BoundaryError::RootIdentityUnavailable(
+                format!(
+                    "{} is not a safely-establishable default root: {e} \
+                 (SI-002/SI-003/SI-013/ADR-0013)",
+                    path.display()
+                ),
+            ));
+        }
     }
     ApprovedRoot::establish(path, resolver, observer)
 }

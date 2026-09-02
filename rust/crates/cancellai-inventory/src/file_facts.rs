@@ -286,6 +286,7 @@ mod tests {
                 inode: 42,
                 kind: FileKind::File,
                 modified: Timestamp(1_000),
+                modified_nanos: 0,
             }),
         );
         // A sparse file: allocated is far smaller than logical - these must not be equal
@@ -320,6 +321,7 @@ mod tests {
                 inode: 1,
                 kind: FileKind::File,
                 modified: Timestamp(1_000),
+                modified_nanos: 0,
             }),
         );
         fixture.allocation.set(
@@ -429,6 +431,7 @@ mod tests {
                 inode: 1,
                 kind: FileKind::File,
                 modified: Timestamp(1_000),
+                modified_nanos: 0,
             }),
         );
         fixture
@@ -458,6 +461,7 @@ mod tests {
                 inode: 1,
                 kind: FileKind::Directory,
                 modified: Timestamp(1_000),
+                modified_nanos: 0,
             }),
         );
         fixture
@@ -518,6 +522,7 @@ mod tests {
                 inode: 1,
                 kind: FileKind::File,
                 modified: Timestamp(1_000),
+                modified_nanos: 0,
             }),
         );
         fixture

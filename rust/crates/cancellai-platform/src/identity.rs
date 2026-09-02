@@ -49,13 +49,25 @@ pub enum FileKind {
 #[serde(tag = "platform", rename_all = "snake_case")]
 pub enum IdentityToken {
     /// Device and inode uniquely identify an object on a given Unix filesystem for as long
-    /// as it exists; `kind`/`modified` are included so a same-inode reuse (astronomically
-    /// unlikely but not provably impossible after a delete) still shows up as a mismatch.
+    /// as it exists; `kind`/`modified`/`modified_nanos` are included so a same-inode reuse
+    /// still shows up as a mismatch. E07-S05 found this was not merely a theoretical
+    /// "astronomically unlikely" case: on Linux, a delete-and-recreate within the same
+    /// wall-clock second (routine under fast test/CI timing) both reused the just-freed inode
+    /// and left `modified` - `Timestamp`'s deliberately whole-second resolution, correct for
+    /// its own cross-cutting clock/retention use (E02-S04) but too coarse here - identical,
+    /// making `device`+`inode`+`kind`+`modified` alone unable to distinguish the two objects.
+    /// `modified_nanos` is the sub-second remainder of the same modification time, read
+    /// directly from the platform's raw `st_mtime_nsec` rather than derived from `Timestamp` -
+    /// two writes far enough apart to be genuinely different operations are reliably
+    /// nanoseconds apart even when they land in the same second (verified: a real
+    /// delete-and-recreate on Linux produced distinct nanosecond components while sharing
+    /// both inode and whole-second `modified`).
     Unix {
         device: u64,
         inode: u64,
         kind: FileKind,
         modified: Timestamp,
+        modified_nanos: u32,
     },
 }
 
@@ -144,6 +156,11 @@ fn observe_system_identity(path: &Path) -> IdentityObservation {
                     inode: meta.ino(),
                     kind,
                     modified,
+                    // `mtime_nsec()` is the sub-second remainder of the same modification
+                    // time `modified` above already captured whole-seconds-only (via
+                    // `modification_timestamp`/`Timestamp`) - always in `[0, 999_999_999]`
+                    // per POSIX, so the truncating cast is exact, never wrapping.
+                    modified_nanos: meta.mtime_nsec() as u32,
                 }),
                 Err(reason) => IdentityObservation::Unreadable { reason },
             }
@@ -305,7 +322,20 @@ mod tests {
     fn toctou_file_deleted_and_recreated_with_identical_content_still_changes_identity() {
         // The sharpest case: everything an mtime/size-only check could see (name, content,
         // roughly-similar timestamp) looks unchanged, but the object is not the one that was
-        // planned against - only device+inode catch this.
+        // planned against.
+        //
+        // E07-S05: this test used to also assert the inode specifically changed ("recreation
+        // must allocate a new inode") and relied on whole-second `modified` alone for the rest.
+        // A real Linux CI reproduction (measured directly, not hypothesized: a tight
+        // delete-recreate loop with no intervening delay) found *both* claims false in
+        // general - the freed inode was reused in ~98% of iterations, and this container's own
+        // mtime clock only advances in ~1ms steps, so a zero-delay recreate routinely lands in
+        // the same tick too. Neither is the actual safety property this codebase depends on;
+        // that property is "the whole `IdentityToken` differs", which `modified_nanos` (added
+        // for exactly this) now provides given any gap larger than the underlying clock's own
+        // granularity - a brief sleep here reflects the real-world case this guards
+        // (SI-013's revalidate-before-mutate happens after a scan+plan+policy+confirmation
+        // cycle, never in the same instant), not a weakening of "byte-identical content".
         let dir = TempDir::new("recreated-same-content");
         let target = dir.path("target");
         std::fs::write(&target, b"hello").expect("create file");
@@ -313,28 +343,14 @@ mod tests {
         let planned = token_of(observer.observe(&target));
 
         std::fs::remove_file(&target).expect("remove file");
+        std::thread::sleep(std::time::Duration::from_millis(10));
         std::fs::write(&target, b"hello").expect("recreate file with identical content");
         let revalidated = token_of(observer.observe(&target));
 
         assert_ne!(
-            planned.clone(),
-            revalidated,
+            planned, revalidated,
             "a deleted-and-recreated object must not be trusted as the same identity even \
              when its content is byte-identical"
-        );
-        let (
-            IdentityToken::Unix {
-                inode: planned_inode,
-                ..
-            },
-            IdentityToken::Unix {
-                inode: revalidated_inode,
-                ..
-            },
-        ) = (&planned, &revalidated);
-        assert_ne!(
-            planned_inode, revalidated_inode,
-            "recreation must allocate a new inode"
         );
     }
 
@@ -351,6 +367,7 @@ mod tests {
             inode: 42,
             kind: FileKind::Directory,
             modified: Timestamp(1_000),
+            modified_nanos: 0,
         };
         observer.set(&path, IdentityObservation::Identity(before.clone()));
         let planned = token_of(observer.observe(&path));
@@ -362,6 +379,7 @@ mod tests {
             inode: 42,
             kind: FileKind::Directory,
             modified: Timestamp(1_000),
+            modified_nanos: 0,
         };
         observer.set(&path, IdentityObservation::Identity(after));
         let revalidated = token_of(observer.observe(&path));
@@ -369,6 +387,35 @@ mod tests {
         assert_ne!(
             planned, revalidated,
             "a mount-boundary swap must change identity"
+        );
+    }
+
+    #[test]
+    fn same_second_delete_and_recreate_still_differs_via_nanosecond_resolution() {
+        // E07-S05: real Linux reproduction found `device`+`inode`+`kind`+`modified` alone can
+        // legitimately collide - a delete-and-recreate within the same wall-clock second both
+        // reused the just-freed inode and left the whole-second `modified` unchanged. This is
+        // the synthetic proof that `modified_nanos` is what actually saves the comparison in
+        // that exact shape, since a real filesystem's own sub-nanosecond-fast pair (needed to
+        // reproduce a genuine collision on both fields for real) is not something this test
+        // suite can force deterministically.
+        let same_second_but_different_nanos_before = IdentityToken::Unix {
+            device: 1,
+            inode: 42,
+            kind: FileKind::File,
+            modified: Timestamp(1_700_000_000),
+            modified_nanos: 163_341_198,
+        };
+        let same_second_but_different_nanos_after = IdentityToken::Unix {
+            device: 1,
+            inode: 42,
+            kind: FileKind::File,
+            modified: Timestamp(1_700_000_000),
+            modified_nanos: 166_347_725,
+        };
+        assert_ne!(
+            same_second_but_different_nanos_before, same_second_but_different_nanos_after,
+            "identical device/inode/kind/modified must still differ when modified_nanos differs"
         );
     }
 
@@ -381,6 +428,7 @@ mod tests {
             inode: 1,
             kind: FileKind::File,
             modified: Timestamp(0),
+            modified_nanos: 0,
         });
         let unsupported = IdentityObservation::Unsupported {
             reason: "no verified Windows identity yet".into(),
