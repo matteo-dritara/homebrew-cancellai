@@ -4,14 +4,14 @@
 
 Current phase: **P0**
 
-Epics: **20** | Stories: **94**
+Epics: **20** | Stories: **95**
 
 ## Story status
 
 - `blocked`: 1
 - `done`: 37
-- `planned`: 55
-- `ready_for_review`: 1
+- `in_progress`: 1
+- `planned`: 56
 
 ## Change risk distribution
 
@@ -19,7 +19,7 @@ Epics: **20** | Stories: **94**
 - `CR1`: 18
 - `CR2`: 33
 - `CR3`: 20
-- `CR4`: 22
+- `CR4`: 23
 
 ## Explicitly ready work
 
@@ -27,4 +27,4 @@ Epics: **20** | Stories: **94**
 
 ## Awaiting independent review
 
-- **E07-S07** - Provider-root link authority boundary (CR4)
+- none

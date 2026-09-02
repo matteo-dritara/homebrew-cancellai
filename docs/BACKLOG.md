@@ -925,7 +925,7 @@ Make macOS, Linux, Windows native, and WSL2 first-class platform targets.
 
 ### E07-S07 - Provider-root link authority boundary
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E03-S03, E03-S05, E06-S01 | **Safety obligations:** SI-002, SI-003, SI-013, SI-019
+**Status:** `in_progress` | **Change Risk:** `CR4` | **Dependencies:** E03-S03, E03-S05, E06-S01 | **Safety obligations:** SI-002, SI-003, SI-013, SI-019
 
 **Outcome.** Reject provider roots whose root object or path resolution crosses a symbolic-link, junction, or reparse boundary before any Rust CLI mutation or provider configuration write.
 
@@ -938,6 +938,30 @@ Make macOS, Linux, Windows native, and WSL2 first-class platform targets.
 **Verification**
 
 - Adversarial root-link/reparse clean and configure tests on every claimed platform.
+- Independent CR4 Safety Verdict.
+
+**Documentation impact**
+
+- `docs/architecture/PLATFORM_MODEL.md`
+- `docs/CLI_RUST.md`
+- `docs/security/SAFETY_INVARIANTS.md`
+
+### E07-S09 - Provider-root intermediate-link containment
+
+**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E07-S07 | **Safety obligations:** SI-002, SI-003, SI-013, SI-019
+
+**Outcome.** Reject or safely bind provider-root paths whose intermediate components cross a symbolic-link, junction, or reparse boundary before any Rust CLI mutation or configuration write.
+
+**Acceptance criteria**
+
+- A provider root reached through an intermediate Unix symlink is refused before any configuration or cleanup mutation reaches the symlink target.
+- Unix root establishment walks every component handle-relatively from a trusted anchor, using no-follow directory opens and mkdirat-style creation only beneath an already-held parent handle.
+- Windows junction/reparse handling either has equivalent verified handle-relative semantics with real junction fixtures or fails closed.
+
+**Verification**
+
+- Deterministic Unix intermediate-component symlink adversarial configure and clean fixtures proving outside sentinels are unchanged.
+- Windows junction/reparse adversarial fixture or explicit fail-closed execution evidence.
 - Independent CR4 Safety Verdict.
 
 **Documentation impact**

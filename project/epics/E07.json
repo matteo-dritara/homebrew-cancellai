@@ -152,7 +152,7 @@
     {
       "id": "E07-S07",
       "title": "Provider-root link authority boundary",
-      "status": "ready_for_review",
+      "status": "in_progress",
       "outcome": "Reject provider roots whose root object or path resolution crosses a symbolic-link, junction, or reparse boundary before any Rust CLI mutation or provider configuration write.",
       "change_risk": "CR4",
       "dependencies": [
@@ -173,6 +173,37 @@
       ],
       "verification": [
         "Adversarial root-link/reparse clean and configure tests on every claimed platform.",
+        "Independent CR4 Safety Verdict."
+      ],
+      "documentation_impact": [
+        "docs/architecture/PLATFORM_MODEL.md",
+        "docs/CLI_RUST.md",
+        "docs/security/SAFETY_INVARIANTS.md"
+      ]
+    },
+    {
+      "id": "E07-S09",
+      "title": "Provider-root intermediate-link containment",
+      "status": "planned",
+      "outcome": "Reject or safely bind provider-root paths whose intermediate components cross a symbolic-link, junction, or reparse boundary before any Rust CLI mutation or configuration write.",
+      "change_risk": "CR4",
+      "dependencies": [
+        "E07-S07"
+      ],
+      "acceptance_criteria": [
+        "A provider root reached through an intermediate Unix symlink is refused before any configuration or cleanup mutation reaches the symlink target.",
+        "Unix root establishment walks every component handle-relatively from a trusted anchor, using no-follow directory opens and mkdirat-style creation only beneath an already-held parent handle.",
+        "Windows junction/reparse handling either has equivalent verified handle-relative semantics with real junction fixtures or fails closed."
+      ],
+      "safety_obligations": [
+        "SI-002",
+        "SI-003",
+        "SI-013",
+        "SI-019"
+      ],
+      "verification": [
+        "Deterministic Unix intermediate-component symlink adversarial configure and clean fixtures proving outside sentinels are unchanged.",
+        "Windows junction/reparse adversarial fixture or explicit fail-closed execution evidence.",
         "Independent CR4 Safety Verdict."
       ],
       "documentation_impact": [
