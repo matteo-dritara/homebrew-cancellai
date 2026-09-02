@@ -16,7 +16,7 @@
       "outcome": "Implement lifecycle axes, risk, reversibility, confidence, authority ceiling, provenance, and relationships.",
       "change_risk": "CR2",
       "dependencies": [
-        "E07-S04"
+        "E20-S03"
       ],
       "acceptance_criteria": [
         "Artifact state axes are independent and validated.",

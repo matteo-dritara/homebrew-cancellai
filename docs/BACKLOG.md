@@ -801,15 +801,15 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 - `CHANGELOG.md`
 - `docs/development/RELEASE_GATES.md`
 
-## E07 - Cross-Platform Operating-System Layer
+## E07 - Unix Cross-Platform Hardening
 
 **Phase:** `P2` | **Status:** `planned` | **Epic dependencies:** E06
 
-Make macOS, Linux, Windows native, and WSL2 first-class platform targets.
+Make macOS and Linux first-class, hardened platform targets, including provider-root link/reparse authority boundaries. Windows/WSL native support moved to E20 (2026-09-02) once it became clear that work could not proceed responsibly without a real Windows/WSL environment to verify against - see project/evidence/E07-S01/DEPENDENCY_ESCALATION.md and this epic's own closure notes for the split rationale.
 
 ### E07-S01 - Unix platform backend
 
-**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E06-S04 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E03-S01, E04-S01 | **Safety obligations:** none
 
 **Outcome.** Implement macOS/Linux process, identity, allocated-size, notification, and filesystem semantics behind OS capabilities.
 
@@ -826,67 +826,9 @@ Make macOS, Linux, Windows native, and WSL2 first-class platform targets.
 
 - `docs/architecture/PLATFORM_MODEL.md`
 
-### E07-S02 - Windows native backend
-
-**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E07-S01 | **Safety obligations:** SI-017, SI-018
-
-**Outcome.** Implement Windows path, volume/file identity, reparse point, process, allocated-size, and atomic move semantics.
-
-**Acceptance criteria**
-
-- Reparse points are never treated as Unix symlinks by assumption.
-- Drive/volume boundaries constrain quarantine and mutation.
-
-**Verification**
-
-- Windows CI with junction/symlink/reparse adversarial fixtures.
-
-**Documentation impact**
-
-- `docs/architecture/PLATFORM_MODEL.md`
-
-### E07-S03 - WSL environment model
-
-**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E07-S02 | **Safety obligations:** none
-
-**Outcome.** Treat WSL as Windows host plus Linux guest/filesystem context rather than generic Linux.
-
-**Acceptance criteria**
-
-- WSL detection is explicit.
-- /mnt/* crossings are separately classified and performance/safety caveats surfaced.
-
-**Verification**
-
-- WSL integration smoke suite where available plus simulated path fixtures.
-
-**Documentation impact**
-
-- `docs/architecture/PLATFORM_MODEL.md`
-
-### E07-S04 - Tiered platform support contract
-
-**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E07-S01, E07-S02, E07-S03 | **Safety obligations:** none
-
-**Outcome.** Publish Tier 1/Tier 2 platform capability matrix and support policy.
-
-**Acceptance criteria**
-
-- No platform is called supported without required CI and destructive safety fixtures.
-- Unsupported OSes remain inspect-only or refused explicitly.
-
-**Verification**
-
-- Generated platform matrix check.
-
-**Documentation impact**
-
-- `README.md`
-- `docs/PLATFORMS.md`
-
 ### E07-S05 - Linux TOCTOU identity/mutation test reliability
 
-**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E03-S01 | **Safety obligations:** SI-013, SI-017
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E03-S01 | **Safety obligations:** SI-013, SI-017
 
 **Outcome.** Determine why cancellai-platform's identity::tests::toctou_file_deleted_and_recreated_with_identical_content_still_changes_identity and mutation::tests::confirmed_delete_rejects_a_target_already_swapped_before_open fail intermittently on Linux CI (ubuntu-latest, observed across multiple runs on 2026-08-31) while never observed failing on macOS, and close whichever of a test-fixture gap or a real IdentityToken weakness it turns out to be.
 
@@ -904,30 +846,11 @@ Make macOS, Linux, Windows native, and WSL2 first-class platform targets.
 
 - `docs/security/SAFETY_INVARIANTS.md`
 
-### E07-S06 - Windows inventory scan traversal test reliability
-
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E04-S02, E04-S03 | **Safety obligations:** SI-008, SI-009
-
-**Outcome.** Determine why cancellai-inventory's completeness::tests::ac1_a_fully_readable_tree_is_complete and scan::tests::ac1_one_traversal_visits_every_directory_exactly_once fail on Windows CI (observed 2026-08-31, the first time the Windows quality job in rust.yml ever actually reached these tests - an unrelated pre-existing clippy::large_enum_variant failure had aborted that job before test execution since at least 2026-08-29), and bring cancellai-inventory to genuine, verified Windows parity or document the gap explicitly.
-
-**Acceptance criteria**
-
-- Root cause identified: a path-separator, symlink/junction-detection, or traversal-count assumption in scan_scope/derive_completeness that does not hold on Windows.
-- scan_scope/derive_completeness produce the same documented Complete/Partial/Unknown classification and traversal counters (directories_visited, paths_observed) on Windows as on macOS/Linux for the same fixture tree, or the platform difference is explicitly documented in PLATFORM_MODEL.md as a known, accepted Windows limitation rather than silently left failing.
-
-**Verification**
-
-- quality (windows-latest) in rust.yml green across repeated runs.
-
-**Documentation impact**
-
-- `docs/architecture/PLATFORM_MODEL.md`
-
 ### E07-S07 - Provider-root link authority boundary
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E03-S03, E03-S05, E06-S01 | **Safety obligations:** SI-002, SI-003, SI-013, SI-019
+**Status:** `cancelled` | **Change Risk:** `CR4` | **Dependencies:** E03-S03, E03-S05, E06-S01 | **Safety obligations:** SI-002, SI-003, SI-013, SI-019
 
-**Outcome.** Reject provider roots whose root object or path resolution crosses a symbolic-link, junction, or reparse boundary before any Rust CLI mutation or provider configuration write.
+**Outcome.** Reject provider roots whose root object or path resolution crosses a symbolic-link, junction, or reparse boundary before any Rust CLI mutation or provider configuration write. CANCELLED 2026-09-02: round-1's final-component fix stands (merged), but round-2 found a further gap (intermediate path components); per the two-round ceiling that finding was carried forward as E07-S09 rather than a third round, and E07-S09 now independently carries this outcome's remaining scope (including the round-2 gap and its own further round-1 finding on the clean path) to its own review. This story cannot reach done - its round-2 Safety Verdict correctly stands at REJECT and no third round is authorized - so it is closed as cancelled/superseded rather than left in_progress indefinitely blocking epic closure. See project/evidence/E07-S07-VERIFIER-REVIEW-ROUND2.md and project/evidence/E07-S09/EVIDENCE.md.
 
 **Acceptance criteria**
 
@@ -938,6 +861,30 @@ Make macOS, Linux, Windows native, and WSL2 first-class platform targets.
 **Verification**
 
 - Adversarial root-link/reparse clean and configure tests on every claimed platform.
+- Independent CR4 Safety Verdict.
+
+**Documentation impact**
+
+- `docs/architecture/PLATFORM_MODEL.md`
+- `docs/CLI_RUST.md`
+- `docs/security/SAFETY_INVARIANTS.md`
+
+### E07-S09 - Provider-root intermediate-link containment
+
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-002, SI-003, SI-013, SI-019
+
+**Outcome.** Reject or safely bind provider-root paths whose intermediate components cross a symbolic-link, junction, or reparse boundary before any Rust CLI mutation or configuration write.
+
+**Acceptance criteria**
+
+- A provider root reached through an intermediate Unix symlink is refused before any configuration or cleanup mutation reaches the symlink target.
+- Unix root establishment walks every component handle-relatively from a trusted anchor, using no-follow directory opens and mkdirat-style creation only beneath an already-held parent handle.
+- Windows junction/reparse handling either has equivalent verified handle-relative semantics with real junction fixtures or fails closed.
+
+**Verification**
+
+- Deterministic Unix intermediate-component symlink adversarial configure and clean fixtures proving outside sentinels are unchanged.
+- Windows junction/reparse adversarial fixture or explicit fail-closed execution evidence.
 - Independent CR4 Safety Verdict.
 
 **Documentation impact**
@@ -976,7 +923,7 @@ Map provider state into the multidimensional AgentArtifact model and evidence-ba
 
 ### E08-S01 - AgentArtifact domain implementation
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E07-S04 | **Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E20-S03 | **Safety obligations:** none
 
 **Outcome.** Implement lifecycle axes, risk, reversibility, confidence, authority ceiling, provenance, and relationships.
 
@@ -1141,7 +1088,7 @@ Make storage numbers trustworthy and the scanner inexpensive enough for continuo
 
 ### E10-S01 - Reclaimability estimator
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E04-S01, E07-S04 | **Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E04-S01, E20-S03 | **Safety obligations:** none
 
 **Outcome.** Distinguish logical size, allocated size, shared/clone uncertainty, and expected reclaim on supported filesystems.
 
@@ -1539,7 +1486,7 @@ Run monitoring continuously using OS-native user services while keeping all acti
 
 ### E15-S01 - Cross-platform user-service runtime
 
-**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E14-S04, E07-S04 | **Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E14-S04, E20-S03 | **Safety obligations:** none
 
 **Outcome.** Implement launchd/systemd-user/Windows task-or-service adapters with one Guardian engine.
 
@@ -1764,7 +1711,7 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 ### E17-S02 - Automated multi-target build
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E17-S01, E07-S04 | **Safety obligations:** none
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E17-S01, E20-S03 | **Safety obligations:** none
 
 **Outcome.** Use a release toolchain such as dist/cargo-dist or equivalent to produce macOS/Linux/Windows artifacts and installers from tags.
 
@@ -1990,3 +1937,86 @@ Add a cross-platform desktop client only after CLI/TUI/Guardian domain contracts
 **Documentation impact**
 
 - `docs/PRODUCT.md`
+
+## E20 - Windows and WSL Native Support
+
+**Phase:** `P2` | **Status:** `planned` | **Epic dependencies:** E06
+
+Make Windows native and WSL2 first-class platform targets, once a real Windows/WSL development or CI environment is available to verify against.
+
+### E20-S01 - Windows native backend
+
+**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E07-S01 | **Safety obligations:** SI-017, SI-018
+
+**Outcome.** Implement Windows path, volume/file identity, reparse point, process, allocated-size, and atomic move semantics.
+
+**Acceptance criteria**
+
+- Reparse points are never treated as Unix symlinks by assumption.
+- Drive/volume boundaries constrain quarantine and mutation.
+
+**Verification**
+
+- Windows CI with junction/symlink/reparse adversarial fixtures.
+
+**Documentation impact**
+
+- `docs/architecture/PLATFORM_MODEL.md`
+
+### E20-S02 - WSL environment model
+
+**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E20-S01 | **Safety obligations:** none
+
+**Outcome.** Treat WSL as Windows host plus Linux guest/filesystem context rather than generic Linux.
+
+**Acceptance criteria**
+
+- WSL detection is explicit.
+- /mnt/* crossings are separately classified and performance/safety caveats surfaced.
+
+**Verification**
+
+- WSL integration smoke suite where available plus simulated path fixtures.
+
+**Documentation impact**
+
+- `docs/architecture/PLATFORM_MODEL.md`
+
+### E20-S03 - Tiered platform support contract
+
+**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E07-S01, E20-S01, E20-S02 | **Safety obligations:** none
+
+**Outcome.** Publish Tier 1/Tier 2 platform capability matrix and support policy.
+
+**Acceptance criteria**
+
+- No platform is called supported without required CI and destructive safety fixtures.
+- Unsupported OSes remain inspect-only or refused explicitly.
+
+**Verification**
+
+- Generated platform matrix check.
+
+**Documentation impact**
+
+- `README.md`
+- `docs/PLATFORMS.md`
+
+### E20-S04 - Windows inventory scan traversal test reliability
+
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E04-S02, E04-S03 | **Safety obligations:** SI-008, SI-009
+
+**Outcome.** Determine why cancellai-inventory's completeness::tests::ac1_a_fully_readable_tree_is_complete and scan::tests::ac1_one_traversal_visits_every_directory_exactly_once fail on Windows CI (observed 2026-08-31, the first time the Windows quality job in rust.yml ever actually reached these tests - an unrelated pre-existing clippy::large_enum_variant failure had aborted that job before test execution since at least 2026-08-29), and bring cancellai-inventory to genuine, verified Windows parity or document the gap explicitly.
+
+**Acceptance criteria**
+
+- Root cause identified: a path-separator, symlink/junction-detection, or traversal-count assumption in scan_scope/derive_completeness that does not hold on Windows.
+- scan_scope/derive_completeness produce the same documented Complete/Partial/Unknown classification and traversal counters (directories_visited, paths_observed) on Windows as on macOS/Linux for the same fixture tree, or the platform difference is explicitly documented in PLATFORM_MODEL.md as a known, accepted Windows limitation rather than silently left failing.
+
+**Verification**
+
+- quality (windows-latest) in rust.yml green across repeated runs.
+
+**Documentation impact**
+
+- `docs/architecture/PLATFORM_MODEL.md`

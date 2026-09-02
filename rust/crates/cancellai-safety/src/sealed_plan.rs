@@ -237,6 +237,7 @@ mod tests {
             inode,
             kind: FileKind::File,
             modified: FrozenClock::at(1_000).now(),
+            modified_nanos: 0,
         }
     }
 
@@ -246,6 +247,7 @@ mod tests {
             inode: 0,
             kind: FileKind::Directory,
             modified: FrozenClock::at(1_000).now(),
+            modified_nanos: 0,
         }
     }
 
@@ -344,6 +346,7 @@ mod tests {
         assert_eq!(plan.reversibility(), Reversibility::Irreversible);
     }
 
+    #[cfg(unix)]
     #[test]
     fn seal_derives_root_and_artifact_identity_from_real_capabilities() {
         // E03 verifier review round 1: `seal` must read root_identity/artifact_identity

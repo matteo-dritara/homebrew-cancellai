@@ -53,10 +53,11 @@ Become genuinely cross-platform and make agent state understandable by machine/p
 
 **Epics**
 
-- **E07 - Cross-Platform Operating-System Layer** (`planned`): Make macOS, Linux, Windows native, and WSL2 first-class platform targets.
+- **E07 - Unix Cross-Platform Hardening** (`planned`): Make macOS and Linux first-class, hardened platform targets, including provider-root link/reparse authority boundaries. Windows/WSL native support moved to E20 (2026-09-02) once it became clear that work could not proceed responsibly without a real Windows/WSL environment to verify against - see project/evidence/E07-S01/DEPENDENCY_ESCALATION.md and this epic's own closure notes for the split rationale.
 - **E08 - Universal Artifact and Project Intelligence** (`planned`): Map provider state into the multidimensional AgentArtifact model and evidence-based project relationships.
 - **E09 - Atlas TUI** (`planned`): Deliver the first rich exploratory interface without duplicating engine logic.
 - **E10 - Storage Accounting and Performance** (`planned`): Make storage numbers trustworthy and the scanner inexpensive enough for continuous use.
+- **E20 - Windows and WSL Native Support** (`planned`): Make Windows native and WSL2 first-class platform targets, once a real Windows/WSL development or CI environment is available to verify against.
 
 ## P3 - Govern
 

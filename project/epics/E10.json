@@ -17,7 +17,7 @@
       "change_risk": "CR2",
       "dependencies": [
         "E04-S01",
-        "E07-S04"
+        "E20-S03"
       ],
       "acceptance_criteria": [
         "Estimates are labeled by confidence.",

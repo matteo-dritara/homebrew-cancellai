@@ -39,7 +39,7 @@
       "change_risk": "CR2",
       "dependencies": [
         "E17-S01",
-        "E07-S04"
+        "E20-S03"
       ],
       "acceptance_criteria": [
         "Build matrix covers declared tier-1 targets.",

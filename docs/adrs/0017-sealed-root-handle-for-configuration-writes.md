@@ -169,7 +169,8 @@ neither, and is inconsistent with `clean`'s own existing fail-closed posture the
   document constitutes.
 - `configure` now fails closed on every non-Unix platform outright, not only when the root is
   actually a link - a real, disclosed capability reduction there until a future story
-  implements a verified Windows reparse-safe handle (E07-S02 is the natural home for that).
+  implements a verified Windows reparse-safe handle (E20-S01, in the dedicated Windows/WSL
+  epic, is the natural home for that).
 - `SealedRoot::establish`'s create-if-absent branch still has a small window between
   `create_dir_all` succeeding and the subsequent `O_NOFOLLOW` open (an attacker would need to
   delete the just-created empty directory and install a symlink in that instant) - inherent to
@@ -183,7 +184,7 @@ neither, and is inconsistent with `clean`'s own existing fail-closed posture the
 - `cancellai-platform::mutation`'s own disclosed unlink-race residual is unrelated to and not
   closed by this crate; a future story that wants to close it may reuse `cancellai-sealedfs` or
   reach its own decision on `rustix`/`nix` versus `libc` for that different operation shape.
-- A genuine Windows reparse-safe handle implementation (E07-S02) should extend or replace
+- A genuine Windows reparse-safe handle implementation (E20-S01) should extend or replace
   `cancellai-sealedfs`'s non-Unix fallback rather than leaving `configure` permanently refused
   there.
 
