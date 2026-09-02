@@ -95,6 +95,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `cancellai-cli/tests/cli_behavior.rs`'s
+  `configure_writes_the_native_claude_retention_setting_and_preserves_other_keys` was not
+  `#[cfg(unix)]`-gated, so real Windows CI ran it expecting a successful write - but
+  `configure`'s write capability (`SealedRoot`) has no verified handle-relative implementation
+  on non-Unix platforms and fails closed there by design (`docs/CLI_RUST.md`'s own "Known
+  gaps", unrelated to this session's other changes). Gated the success-path test `#[cfg(unix)]`
+  and added a `#[cfg(windows)]` counterpart asserting the disclosed refusal instead, matching
+  the existing pattern for the symlinked-`$HOME` configure/clean tests.
 - `cancellai-sealedfs` failed to build on Windows: `validate_child_name` and its `CString`
   import lived outside the `#[cfg(unix)]` boundary, so they became genuine dead code once
   `unix_impl` (the only caller) stopped compiling in on non-Unix targets - found on real
