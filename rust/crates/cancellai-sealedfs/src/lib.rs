@@ -45,6 +45,28 @@
 //! containment check is worse than an honest refusal, SI-017). [`SealedRoot::establish`] on
 //! those platforms always fails closed rather than silently falling back to the unprotected
 //! path-based operations this crate exists to replace.
+//!
+//! ## Intermediate-component containment (E07-S09)
+//!
+//! E07-S07 round-1 closed the *final*-component race: the leaf was opened with `O_NOFOLLOW`, so
+//! a symlink swap of the leaf itself is refused. E07-S07 round-2 independent verifier review
+//! found that this left every *intermediate* path component unprotected: `establish`'s
+//! pre-check (`std::fs::symlink_metadata(path)`) and the leaf's `OpenOptions::open(path)` both
+//! resolve the *whole* path through the kernel's normal (link-following) name resolution before
+//! `O_NOFOLLOW` is ever applied to the final component - so `$HOME` (or any directory between
+//! the trusted anchor and the leaf) being itself a symlink to an attacker- or
+//! operator-mistaken directory was silently followed, and a real, non-symlink `.claude`
+//! directory underneath it was then sealed and mutated as if it were the approved root.
+//!
+//! `establish` now walks every path component handle-relatively from the filesystem root: open
+//! `/` (which cannot itself be a symlink), then `openat` each subsequent component against the
+//! descriptor already held for its parent, with `O_NOFOLLOW | O_DIRECTORY`, refusing the moment
+//! any component - intermediate or final - turns out to be a link. Only the final component may
+//! be created if absent, via `mkdirat` against the already-held parent descriptor (never
+//! `create_dir_all`'s path-based, potentially link-following recursive creation). No component
+//! in the chain is ever looked up twice through two different mechanisms the way the old
+//! `symlink_metadata` + `OpenOptions::open(path)` pair was - each is opened exactly once,
+//! relative to a descriptor already proven safe.
 
 use std::ffi::CString;
 use std::io;
@@ -67,6 +89,16 @@ pub enum SealError {
     /// yet (see module docs); callers must fail closed rather than fall back to unprotected
     /// path-based operations.
     Unsupported(&'static str),
+    /// `establish` was given a relative path. There is no safe trusted anchor to walk a
+    /// relative path from (it would resolve against the process's current directory, which
+    /// this crate has no basis to trust) - refused rather than silently resolved against CWD.
+    NotAbsolute,
+    /// The path contains a `.` or `..` component. Resolving these safely would require the
+    /// same kind of path-based, potentially link-following lookup this crate exists to avoid
+    /// (`..` in particular cannot be walked handle-relatively without re-deriving a parent from
+    /// a name, which is exactly the TOCTOU shape this crate closes elsewhere) - refused rather
+    /// than resolved.
+    PathNotNormalized,
     Io(io::Error),
 }
 
@@ -87,6 +119,10 @@ impl std::fmt::Display for SealError {
                 )
             }
             SealError::Unsupported(reason) => write!(f, "unsupported on this platform: {reason}"),
+            SealError::NotAbsolute => write!(f, "root path must be absolute"),
+            SealError::PathNotNormalized => {
+                write!(f, "root path must not contain '.' or '..' components")
+            }
             SealError::Io(e) => write!(f, "{e}"),
         }
     }
@@ -118,11 +154,12 @@ pub use fallback_impl::SealedRoot;
 #[cfg(unix)]
 mod unix_impl {
     use super::{SealError, validate_child_name};
+    use std::ffi::CString;
     use std::fs::File;
     use std::io::{self, Read, Write};
-    use std::os::unix::fs::OpenOptionsExt;
-    use std::os::unix::io::{AsRawFd, FromRawFd};
-    use std::path::Path;
+    use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+    use std::path::{Component, Path};
 
     /// A directory opened with `O_NOFOLLOW`, retained for the lifetime of every operation
     /// performed against it. See the crate module docs for why holding this descriptor -
@@ -133,69 +170,172 @@ mod unix_impl {
         dir: File,
     }
 
+    /// Splits an absolute path into bare component names ready for handle-relative `*at()`
+    /// calls, refusing anything that would need path-based (link-following) resolution to
+    /// interpret safely: a relative path (no trusted anchor to walk it from) or a `.`/`..`
+    /// component (resolving `..` handle-relatively would need to ask the parent's parent for a
+    /// name, which is exactly the re-lookup shape this module exists to avoid). Built from raw
+    /// bytes ([`OsStrExt::as_bytes`]), not `&str`, so a component need not be valid UTF-8 -
+    /// Unix filenames are just byte strings.
+    fn decompose_absolute_path(path: &Path) -> Result<Vec<CString>, SealError> {
+        if !path.is_absolute() {
+            return Err(SealError::NotAbsolute);
+        }
+        let mut out = Vec::new();
+        for component in path.components() {
+            match component {
+                Component::RootDir => {}
+                Component::Normal(name) => {
+                    out.push(
+                        CString::new(name.as_bytes()).map_err(|_| SealError::InvalidChildName)?,
+                    );
+                }
+                Component::CurDir | Component::ParentDir => {
+                    return Err(SealError::PathNotNormalized);
+                }
+                Component::Prefix(_) => return Err(SealError::NotAbsolute),
+            }
+        }
+        Ok(out)
+    }
+
+    /// Opens the filesystem root. `/` cannot itself be a symlink, so this is the one open in
+    /// the walk with nothing upstream of it to have been swapped.
+    fn open_root_dir() -> Result<File, SealError> {
+        let root = CString::new("/").expect("literal has no embedded NUL");
+        // SAFETY: `root` is a valid NUL-terminated string naming the filesystem root, which
+        // always exists and is always a directory.
+        let fd = unsafe {
+            libc::open(
+                root.as_ptr(),
+                libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC,
+            )
+        };
+        if fd < 0 {
+            return Err(SealError::Io(io::Error::last_os_error()));
+        }
+        // SAFETY: non-negative fd on success is newly allocated and exclusively owned here.
+        Ok(unsafe { File::from_raw_fd(fd) })
+    }
+
+    /// `true` if `name`, looked up directly under `parent_fd` without following it, is a
+    /// symlink. Used only to classify an ambiguous `ENOTDIR` error for accurate reporting
+    /// (see [`open_child_dir_nofollow`]) - never as the containment check itself, which is the
+    /// no-follow `openat` call that already ran.
+    fn is_symlink_at(parent_fd: RawFd, name: &CString) -> bool {
+        let mut stat: libc::stat = unsafe { std::mem::zeroed() };
+        // SAFETY: `parent_fd` is a valid open directory descriptor for the call's duration;
+        // `stat` is a valid, appropriately-sized out-parameter; `AT_SYMLINK_NOFOLLOW` makes
+        // this itself a no-follow lookup, consistent with every other check in this module.
+        let rc = unsafe {
+            libc::fstatat(
+                parent_fd,
+                name.as_ptr(),
+                &mut stat,
+                libc::AT_SYMLINK_NOFOLLOW,
+            )
+        };
+        rc == 0 && (stat.st_mode & libc::S_IFMT) == libc::S_IFLNK
+    }
+
+    /// Opens `name` as a subdirectory of the already-held `parent`, with `O_NOFOLLOW`: refuses
+    /// outright if `name` is a symlink/reparse point rather than following it, regardless of
+    /// whether it is an intermediate component or the final one. This is the one primitive
+    /// [`SealedRoot::establish`]'s whole-path walk is built from.
+    fn open_child_dir_nofollow(parent: &File, name: &CString) -> Result<File, SealError> {
+        let parent_fd = parent.as_raw_fd();
+        // SAFETY: `parent_fd` is a valid open directory descriptor for the call's duration
+        // (borrowed from `parent`); `name` is a NUL-terminated bare component name. Resolution
+        // happens relative to `parent_fd`'s own bound object, not any path, and `O_NOFOLLOW`
+        // refuses rather than follows if `name` is itself a link.
+        let fd = unsafe {
+            libc::openat(
+                parent_fd,
+                name.as_ptr(),
+                libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_DIRECTORY | libc::O_CLOEXEC,
+            )
+        };
+        if fd >= 0 {
+            // SAFETY: non-negative fd on success is newly allocated and exclusively owned.
+            return Ok(unsafe { File::from_raw_fd(fd) });
+        }
+        let e = io::Error::last_os_error();
+        match e.raw_os_error() {
+            // `O_NOFOLLOW | O_DIRECTORY` against a symlink is reported as `ELOOP` on Linux but
+            // as `ENOTDIR` on macOS/BSD (verified empirically - the kernel checks "is this a
+            // directory" before "was the final component followed", so refusing the follow
+            // makes it look like a non-directory instead of a link). `ENOTDIR` is otherwise
+            // genuinely ambiguous (a plain file also produces it), so on that code only, a
+            // handle-relative `fstatat` disambiguates which one this actually is - purely for
+            // accurate error classification: the `openat` above has already unconditionally
+            // refused either way, this cannot reopen the race it closed.
+            Some(code) if code == libc::ELOOP => Err(SealError::IsSymlinkOrReparsePoint),
+            Some(code) if code == libc::ENOTDIR => {
+                if is_symlink_at(parent_fd, name) {
+                    Err(SealError::IsSymlinkOrReparsePoint)
+                } else {
+                    Err(SealError::NotADirectory)
+                }
+            }
+            _ => Err(SealError::Io(e)),
+        }
+    }
+
     impl SealedRoot {
-        /// Binds `path` as a sealed root: creates it if absent, then opens it with
-        /// `O_NOFOLLOW | O_DIRECTORY`. Creation is safe against a symlink pre-planted at
-        /// `path` - `create_dir_all`'s underlying `mkdir(2)` fails outright (`EEXIST`)
-        /// against anything already there, including a symlink; it never follows one to
-        /// create inside it. The subsequent open is the actual authority boundary: even a
-        /// caller that saw a real directory here microseconds ago gets nothing but a
-        /// refusal if the name now resolves to a link.
+        /// Binds `path` as a sealed root: walks every component handle-relatively from the
+        /// filesystem root, creates the final component if absent, then holds it open with
+        /// `O_NOFOLLOW | O_DIRECTORY`. See the crate module docs' "Intermediate-component
+        /// containment" section for why every component - not only the leaf - must be walked
+        /// this way.
         pub fn establish(path: &Path) -> Result<Self, SealError> {
             Self::establish_with_hook(path, || {})
         }
 
-        /// `before_open` runs after the create-if-absent step and immediately before the
-        /// authoritative open - solely so tests can deterministically reproduce "swapped
-        /// after final validation, before the bind" without relying on real thread-timing
-        /// luck, mirroring `cancellai-platform::mutation`'s own
-        /// `confirmed_delete_file_inner` test hook for the analogous unlink race.
+        /// `before_open` runs after every component up to and including the leaf's parent has
+        /// been walked and held, and immediately before the leaf itself is opened/created -
+        /// solely so tests can deterministically reproduce "swapped after the walk reached the
+        /// parent, before the leaf is bound" without relying on real thread-timing luck,
+        /// mirroring `cancellai-platform::mutation`'s own `confirmed_delete_file_inner` test
+        /// hook for the analogous unlink race.
         fn establish_with_hook(path: &Path, before_open: impl FnOnce()) -> Result<Self, SealError> {
-            match std::fs::symlink_metadata(path) {
-                Ok(meta) if meta.file_type().is_symlink() => {
-                    return Err(SealError::IsSymlinkOrReparsePoint);
-                }
-                Ok(_) => {}
-                Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                    std::fs::create_dir_all(path)?;
-                }
-                Err(e) => return Err(SealError::Io(e)),
+            let components = decompose_absolute_path(path)?;
+
+            let mut current = open_root_dir()?;
+            let Some((leaf, parents)) = components.split_last() else {
+                // `path == "/"` itself. Not a real provider-root shape, but handled rather
+                // than panicking: the already-open root descriptor is itself a valid sealed
+                // root (it was opened directly, with no path-based lookup at all).
+                return Ok(SealedRoot { dir: current });
+            };
+
+            for name in parents {
+                current = open_child_dir_nofollow(&current, name)?;
             }
 
             before_open();
 
-            let file = std::fs::OpenOptions::new()
-                .read(true)
-                .custom_flags(libc::O_NOFOLLOW | libc::O_DIRECTORY)
-                .open(path)
-                .map_err(|e| {
-                    // `O_NOFOLLOW | O_DIRECTORY` against a symlink is reported as `ELOOP` on
-                    // Linux but as `ENOTDIR` on macOS/BSD (verified empirically - the kernel
-                    // checks "is this a directory" before "was the final component followed",
-                    // so refusing the follow makes it look like a non-directory instead of a
-                    // link). `ENOTDIR` is otherwise genuinely ambiguous (a plain file also
-                    // produces it), so on that code only, a follow-up `symlink_metadata`
-                    // disambiguates which one this actually is - purely for accurate error
-                    // classification: the open above has already unconditionally refused
-                    // either way, this cannot reopen the race it closed.
-                    match e.raw_os_error() {
-                        Some(code) if code == libc::ELOOP => SealError::IsSymlinkOrReparsePoint,
-                        Some(code) if code == libc::ENOTDIR => {
-                            if std::fs::symlink_metadata(path)
-                                .is_ok_and(|m| m.file_type().is_symlink())
-                            {
-                                SealError::IsSymlinkOrReparsePoint
-                            } else {
-                                SealError::NotADirectory
-                            }
+            match open_child_dir_nofollow(&current, leaf) {
+                Ok(dir) => Ok(SealedRoot { dir }),
+                Err(SealError::Io(e)) if e.kind() == io::ErrorKind::NotFound => {
+                    // Leaf absent: create it beneath the already-held parent descriptor - never
+                    // `create_dir_all`, whose path-based recursive creation would re-open the
+                    // exact link-following resolution this walk exists to avoid. `EEXIST` here
+                    // means something was planted at this name after the lookup above and
+                    // before this call (e.g. a concurrently-created real directory, or an
+                    // attacker's symlink) - fall through to the no-follow open, which accepts
+                    // the former and refuses the latter, rather than treating either as this
+                    // call's own failure.
+                    let rc = unsafe { libc::mkdirat(current.as_raw_fd(), leaf.as_ptr(), 0o700) };
+                    if rc != 0 {
+                        let create_err = io::Error::last_os_error();
+                        if create_err.raw_os_error() != Some(libc::EEXIST) {
+                            return Err(SealError::Io(create_err));
                         }
-                        _ => SealError::Io(e),
                     }
-                })?;
-            if !file.metadata()?.is_dir() {
-                return Err(SealError::NotADirectory);
+                    open_child_dir_nofollow(&current, leaf).map(|dir| SealedRoot { dir })
+                }
+                Err(e) => Err(e),
             }
-            Ok(SealedRoot { dir: file })
         }
 
         /// Reads a direct child file by name, relative to the held directory descriptor -
@@ -301,6 +441,13 @@ mod unix_impl {
                     std::process::id()
                 ));
                 std::fs::create_dir_all(&dir).expect("create temp dir");
+                // Canonicalize once, here, on a path this test harness itself just created -
+                // not a security-relevant resolution. Without it, macOS's `/tmp`/`/var`
+                // compatibility symlinks (`/var` -> `/private/var`, and `std::env::temp_dir()`
+                // returns a `/var/folders/...` path there) would make every test below fail:
+                // `establish`'s handle-relative walk correctly refuses *any* symlink component,
+                // including OS-level ones no attacker in this test's threat model controls.
+                let dir = std::fs::canonicalize(&dir).expect("canonicalize temp dir");
                 Self(dir)
             }
 
@@ -407,6 +554,54 @@ mod unix_impl {
                 "the outside sentinel must never be created - no write may follow the swapped \
                  link"
             );
+        }
+
+        #[test]
+        fn establish_refuses_a_root_reached_through_an_intermediate_symlink_component() {
+            // E07-S07 round-2 independent verifier reproduction, tracked as E07-S09: the
+            // *leaf* is a real directory, but an intermediate component - standing in for
+            // `$HOME` in the real `configure --claude-retention` counterexample - is itself a
+            // symlink to an outside location. The round-1 fix bound only the leaf with
+            // `O_NOFOLLOW`; it never inspected anything above it, so the leaf opened
+            // successfully and the outside directory it actually lived in was sealed and
+            // written through. The whole-path handle-relative walk must refuse this before
+            // ever reaching the leaf.
+            let base = TempDir::new("intermediate-symlink");
+            let outside = base.path("outside");
+            let outside_leaf = outside.join("leaf");
+            std::fs::create_dir_all(&outside_leaf).unwrap();
+            let sentinel = outside_leaf.join("settings.json");
+
+            let home_like = base.path("home-like");
+            std::os::unix::fs::symlink(&outside, &home_like).unwrap();
+            let root_path = home_like.join("leaf");
+
+            let err = SealedRoot::establish(&root_path)
+                .expect_err("a root reached through an intermediate symlink must be refused");
+            assert!(
+                matches!(err, SealError::IsSymlinkOrReparsePoint),
+                "the refusal reason must be the intermediate link itself, got {err:?}"
+            );
+            assert!(
+                !sentinel.exists(),
+                "no write may ever reach the outside directory through the intermediate link"
+            );
+        }
+
+        #[test]
+        fn establish_refuses_a_relative_path() {
+            let err = SealedRoot::establish(Path::new("relative/path"))
+                .expect_err("a relative path has no trusted anchor to walk from");
+            assert!(matches!(err, SealError::NotAbsolute));
+        }
+
+        #[test]
+        fn establish_refuses_a_path_containing_dot_dot() {
+            let base = TempDir::new("dot-dot");
+            let root_path = base.path("real").join("..").join("real");
+            let err = SealedRoot::establish(&root_path)
+                .expect_err("a `..` component must be refused, not resolved");
+            assert!(matches!(err, SealError::PathNotNormalized));
         }
 
         #[test]

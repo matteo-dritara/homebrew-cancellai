@@ -172,6 +172,32 @@ the root directory case above) remains the already-verified E06 round-1 behavior
 never written through (`O_EXCL` + `renameat` never follows a symlink at either name) - this ADR
 did not change or re-scope that case.
 
+#### Intermediate components need the same no-follow treatment as the leaf (E07-S09)
+
+E07-S07 round-1's `SealedRoot::establish` bound the *leaf* with `O_NOFOLLOW`, but its own
+pre-check (`symlink_metadata(path)`) and `OpenOptions::open(path)` still resolved every
+component above the leaf through ordinary, link-following path resolution first. E07-S07
+round-2 independent verifier review reproduced the consequence natively: with `$HOME` itself a
+symlink to an outside directory and a real `.claude` directory sitting under that outside
+target, `configure --claude-retention 30` exited `0` and wrote through to the outside
+directory - the leaf was a real, non-symlink directory, so the round-1 check never had a
+reason to refuse it.
+
+`establish` now performs one handle-relative walk for the *entire* path, not only its last
+component: it opens the filesystem root `/` (the one point in the walk with nothing upstream of
+it to have been swapped), then `openat`s each subsequent component - intermediate or final -
+against the descriptor already held for its parent, with `O_NOFOLLOW | O_DIRECTORY`, refusing
+outright the moment any of them is a symlink or reparse point. Only the final component may be
+created if absent, via `mkdirat` against the already-held parent descriptor, never
+`create_dir_all`'s path-based recursive creation. A relative path or a path containing a `.`/`..`
+component is refused outright (`SealError::NotAbsolute`/`PathNotNormalized`) rather than
+resolved, since resolving either safely would need the same kind of path-based lookup this walk
+exists to avoid.
+
+This closes the class of gap for Unix. Windows/reparse-point handling still has no verified
+handle-relative equivalent (`SealedRoot::establish` continues to fail closed there, per the
+existing residual above) - a genuine junction/reparse-safe walk remains E07-S02's scope.
+
 ## Quarantine
 
 Quarantine prefers metadata-preserving atomic/same-volume moves. Cross-volume copy+delete is a materially different action with more disk-pressure and failure risk and requires separate capability/policy.

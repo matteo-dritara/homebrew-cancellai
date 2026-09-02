@@ -24,6 +24,16 @@ deliberately does not go through `ApprovedRoot` (see SI-019 below) -
 bounding capability: it opens the root once with `O_NOFOLLOW` and retains that descriptor for
 every subsequent operation, rather than re-checking and re-resolving the path each time.
 
+E07-S07 round-2 independent verifier review found that round-1's `O_NOFOLLOW` bound only the
+*final* path component: `establish`'s pre-check and its `OpenOptions::open(path)` both still
+resolved every component *above* the leaf through the kernel's normal, link-following name
+resolution, so a `$HOME` (or any intermediate directory) that was itself a symlink was silently
+followed, and the real, non-symlink leaf it led to was then sealed and mutated as if it were the
+approved root. E07-S09 closes this: `establish` walks every component handle-relatively from the
+filesystem root (`/`, which cannot itself be a symlink) via `openat`/`O_NOFOLLOW`, refusing the
+moment any component - intermediate or final - is a link, and creates only the final, absent
+component via `mkdirat` against the already-held parent descriptor.
+
 ### SI-003 Mutation cannot escape or delete the approved root
 
 No filesystem mutation may target outside its approved root or the root object itself, including via path normalization tricks or link indirection.
@@ -130,6 +140,12 @@ swap. Unlike the `MutationExecutor` file-unlink case above, `cancellai-sealedfs:
 `openat`/`renameat` against that descriptor, so identity is not merely revalidated immediately
 before mutation but bound for the mutation's entire duration - no path re-resolution ever
 happens again after `establish` returns.
+
+E07-S09 extends this to every component `establish` itself walks to reach that final
+descriptor, not only the descriptor it ends with: each intermediate directory is opened via
+`openat`/`O_NOFOLLOW` against the descriptor already held for its own parent, so an
+intermediate symlink is refused at the instant it is reached rather than silently resolved by
+the initial path-based lookup that used to precede the final `O_NOFOLLOW` open.
 
 ### SI-014 Safety-blocked/partial is not success
 

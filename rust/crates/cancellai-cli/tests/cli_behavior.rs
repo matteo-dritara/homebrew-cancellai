@@ -26,6 +26,14 @@ impl TempHome {
             std::process::id()
         ));
         std::fs::create_dir_all(&dir).expect("create temp home");
+        // Canonicalize once, here, on a path this test harness itself just created - not a
+        // security-relevant resolution. Without it, macOS's `/tmp`/`/var` compatibility
+        // symlinks (`std::env::temp_dir()` returns a `/var/folders/...` path there, and `/var`
+        // is itself `-> private/var`) would make `configure`'s `SealedRoot::establish` refuse
+        // every test HOME here as "reached through an intermediate symlink" (E07-S09) - a
+        // false positive from an OS-level symlink no attacker in this test's threat model
+        // controls, not the attacker-planted symlinks these tests construct deliberately below.
+        let dir = std::fs::canonicalize(&dir).expect("canonicalize temp home");
         Self(dir)
     }
 

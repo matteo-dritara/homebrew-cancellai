@@ -51,6 +51,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unprotected write) on every platform without a verified no-follow/handle-relative
   implementation - today, every non-Unix platform - matching `clean`'s existing fail-closed
   posture there.
+- E07-S09: closes an E07-S07 round-2 independent verifier review finding - round-1's
+  `O_NOFOLLOW` bound only `configure`'s final root component, so a *default* root reached
+  through an intermediate symlink (e.g. `$HOME` itself being a link, with a real, non-symlink
+  leaf directory underneath it) was still silently followed and written through
+  (`docs/architecture/PLATFORM_MODEL.md` "Intermediate components need the same no-follow
+  treatment as the leaf"). `cancellai-sealedfs::SealedRoot::establish` now walks every path
+  component handle-relatively from the filesystem root, refusing the moment any component -
+  intermediate or final - is a symlink/reparse point, and creating only the final absent
+  component via `mkdirat` against an already-held parent descriptor.
 - E07-S08: `scripts/rust_python_parity.py`'s divergence allow-list is now structured
   (fixture/scenario/field-scoped, citation content-checked) rather than free-text, and its
   comparison surface grew from six to eight fields covering every discovered identity record,

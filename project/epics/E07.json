@@ -16,7 +16,8 @@
       "outcome": "Implement macOS/Linux process, identity, allocated-size, notification, and filesystem semantics behind OS capabilities.",
       "change_risk": "CR3",
       "dependencies": [
-        "E06-S04"
+        "E03-S01",
+        "E04-S01"
       ],
       "acceptance_criteria": [
         "macOS and Linux behavior uses explicit capability checks rather than cfg sprawl in domain code.",
@@ -184,12 +185,10 @@
     {
       "id": "E07-S09",
       "title": "Provider-root intermediate-link containment",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Reject or safely bind provider-root paths whose intermediate components cross a symbolic-link, junction, or reparse boundary before any Rust CLI mutation or configuration write.",
       "change_risk": "CR4",
-      "dependencies": [
-        "E07-S07"
-      ],
+      "dependencies": [],
       "acceptance_criteria": [
         "A provider root reached through an intermediate Unix symlink is refused before any configuration or cleanup mutation reaches the symlink target.",
         "Unix root establishment walks every component handle-relatively from a trusted anchor, using no-follow directory opens and mkdirat-style creation only beneath an already-held parent handle.",

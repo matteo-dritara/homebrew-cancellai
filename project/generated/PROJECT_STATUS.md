@@ -11,7 +11,8 @@ Epics: **20** | Stories: **95**
 - `blocked`: 1
 - `done`: 37
 - `in_progress`: 1
-- `planned`: 56
+- `planned`: 55
+- `ready_for_review`: 1
 
 ## Change risk distribution
 
@@ -27,4 +28,4 @@ Epics: **20** | Stories: **95**
 
 ## Awaiting independent review
 
-- none
+- **E07-S09** - Provider-root intermediate-link containment (CR4)

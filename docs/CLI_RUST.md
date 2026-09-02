@@ -119,3 +119,8 @@ one-for-one:
   a genuine reparse-safe handle. This is a real, disclosed capability reduction versus the
   previous behavior of attempting the (unprotected) raw path write whenever `$HOME` happened to
   resolve on such a platform, not an oversight.
+- On Unix, `SealedRoot::establish` (E07-S09) refuses a root reached through an intermediate
+  symlink component (e.g. `$HOME` itself being a link), not only a symlinked leaf - closing the
+  gap E07-S07 round-2 independent verifier review found in round-1's leaf-only `O_NOFOLLOW`
+  check. Windows/reparse-point intermediate-component handling remains E07-S02 scope, same as
+  the leaf case above.
