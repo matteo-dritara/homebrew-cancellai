@@ -326,6 +326,10 @@ fn walk_rollouts(
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Only the `#[cfg(unix)]` partial-scope assertions name this type; every other test
+    // asserts through `ScopeObservation`. Scoped rather than blanket-allowed so a future
+    // unconditional use is still checked.
+    #[cfg(unix)]
     use cancellai_inventory::ScopeCompleteness;
 
     struct TempTree(PathBuf);
