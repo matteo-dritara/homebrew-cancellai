@@ -36,7 +36,33 @@ check, `release.py check`) and the full Rust set (`cargo fmt --check`, `clippy -
 `cargo test --workspace`, `cargo deny check`). Results: 179 Python tests, 327 Rust tests, 12
 NORMATIVE fixtures across both root-origin scenarios, all green.
 
-- G1 Functional: PASS
+### Correction, recorded after the tag
+
+**The `rust` workflow failed at the tagged commit `b5d83bd`, on one job: `quality
+(windows-latest)`.** `use cancellai_inventory::ScopeCompleteness` in both provider test modules
+is reached only by the `#[cfg(unix)]` partial-scope assertions, so on Windows it is an unused
+import and `clippy -D warnings` refuses it. Every other job in that run passed, on all three
+platforms and both toolchains, including `cargo check --workspace --all-targets` on Windows. No
+runtime behaviour is affected: it is a lint on test code, not a defect in the shipped tree.
+
+Repaired on `main` in `0ea7984`, where all four workflows pass. The tag is not moved:
+`docs/RELEASING.md` treats published tags as immutable history, and rewriting one to hide a
+failed check is the opposite of what this evidence exists for.
+
+**Why the release workflow did not catch it, and why that matters more than the lint.**
+`.github/workflows/release.yml` states that it re-runs *every* gate at the tagged commit. It
+does not: it runs no Rust check at all. It reported `success` for `v1.8.0` while the `rust`
+workflow was failing on the same commit. That is `CR-TE-06` from
+[the 2026-09-03 review](../../docs/audits/2026-09-03-CODE_REVIEW.md), filed hours earlier as an
+argument and demonstrated here as an incident, on the very release that closes the epic which
+found it. `E22-S01` carries the repair and now has a concrete reproduction behind it rather than
+a hypothesis.
+
+The gate results below describe the local pre-tag run. They were accurate for macOS, and the
+Windows lint is the one thing they overstated.
+
+- G1 Functional: PASS locally on macOS; `quality (windows-latest)` failed at the tag (see
+  correction above), repaired in `0ea7984`
 - G2 Safety: PASS **with residuals**, owner-accepted. One independent adversarial round was run
   and its findings repaired; the repairs carry no independent confirmation. See
   `project/evidence/E21-CLOSURE.md` and the two owner-acceptance verdicts.

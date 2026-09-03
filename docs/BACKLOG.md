@@ -2205,7 +2205,7 @@ Close the gaps between what the engineering system claims to enforce and what it
 
 **Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
 
-**Outcome.** Make the tagged commit face the same gate set as main, so the released artifact is verified at the commit it was cut from - which is what the workflow already states as its own reason for existing.
+**Outcome.** Make the tagged commit face the same gate set as main, so the released artifact is verified at the commit it was cut from - which is what the workflow already states as its own reason for existing. No longer hypothetical: at v1.8.0 the release workflow reported success while the rust workflow was failing on the same commit (quality (windows-latest)), because release.yml runs no Rust check at all. See project/evidence/RELEASE-v1.8.0.md's correction section.
 
 **Acceptance criteria**
 
@@ -2217,6 +2217,7 @@ Close the gaps between what the engineering system claims to enforce and what it
 
 - A deliberately removed gate in release.yml makes check_workflows.py fail.
 - A dry run of the release workflow on a tag reaches every added step.
+- Replaying the v1.8.0 situation - a commit whose Windows clippy job fails - must make the release workflow fail rather than report success.
 
 **Documentation impact**
 
