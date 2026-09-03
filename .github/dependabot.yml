@@ -9,3 +9,11 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
+
+  # E22-S02 (CR-TE-06 audit companion): the target-engine Rust workspace gets the same
+  # update-proposal coverage the Python reference already has (serde, serde_json,
+  # unicode-normalization, and libc inside cancellai-sealedfs, the only unsafe crate).
+  - package-ecosystem: "cargo"
+    directory: "/rust"
+    schedule:
+      interval: "monthly"

@@ -34,7 +34,7 @@
     {
       "id": "E22-S02",
       "title": "Rust supply chain has updates and static analysis",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Extend to the Rust workspace the supply-chain posture the Python reference already has, ahead of E17's full provenance work.",
       "change_risk": "CR1",
       "dependencies": [],

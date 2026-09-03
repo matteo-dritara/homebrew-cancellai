@@ -33,6 +33,8 @@ For a single-maintainer project, independent AI verification is useful evidence 
 
 Current CI actions are immutable-SHA pinned and checked by `scripts/check_workflows.py`; Python development/CI tools are version-pinned in `requirements-dev.txt`. Dependabot proposes updates, but workflow/development dependency updates are review-gated rather than auto-merged.
 
+The Rust workspace carries the same posture (E22-S02): `.github/dependabot.yml` proposes cargo-ecosystem updates for `rust/` (`serde`, `serde_json`, `unicode-normalization`, and `libc` - the last inside `cancellai-sealedfs`, the only crate in the workspace containing `unsafe`), and `.github/workflows/codeql.yml`'s `analyze-rust` job runs CodeQL over the built workspace - the authority kernel, the `sealedfs` FFI boundary, and the provider adapters - reporting to the same repository security-events channel the Python analysis already uses (`permissions.security-events: write`, shared by both jobs in that workflow).
+
 ## Dependency policy after Rust bootstrap
 
 E02-S02 implemented this policy at `rust/deny.toml` (ADR-0015), enforced by `cargo deny

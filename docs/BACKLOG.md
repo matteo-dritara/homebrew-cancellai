@@ -2227,7 +2227,7 @@ Close the gaps between what the engineering system claims to enforce and what it
 
 ### E22-S02 - Rust supply chain has updates and static analysis
 
-**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** Extend to the Rust workspace the supply-chain posture the Python reference already has, ahead of E17's full provenance work.
 
