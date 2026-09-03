@@ -19,6 +19,11 @@ serde_json = "1"
 # needs real NFD decomposition to match cancellai.py's canonical_name - MIT OR Apache-2.0, on
 # the ADR-0015 license allow-list.
 unicode-normalization = "0.1"
+# ADR-0019/E22-S03: outer-ring dependency, named in the ADR itself - replaces cancellai-cli's
+# hand-rolled argument parser. MIT OR Apache-2.0, already on the ADR-0015 allow-list. Not a
+# kernel-ring crate (cancellai-model/cancellai-safety/cancellai-platform/cancellai-sealedfs)
+# dependency - it stays out of those crates' Cargo.toml entirely.
+clap = { version = "4", features = ["derive"] }
 
 # ADR-0015: unsafe is forbidden workspace-wide by default. A future crate that genuinely
 # needs it (e.g. OS-specific identity/reparse-point handling in cancellai-platform, E07)

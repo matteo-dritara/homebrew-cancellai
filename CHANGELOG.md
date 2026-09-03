@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `cancellai-cli` (the beta target-engine CLI) now has a real `--help`/`-h`/`--version`
+  surface and per-command help (`cancellai-cli clean --help`, etc.), matching the reference
+  CLI's own top-level surface (E22-S03, `CR-TE-07`). Argument parsing moved from a hand-rolled
+  loop in `main.rs` to `clap` ([ADR-0019](docs/adrs/0019-dependency-rings-per-crate.md)).
+
+### Changed
+
+- `cancellai-cli` now refuses a flag irrelevant to the chosen command (e.g. `status --dry-run`,
+  `clean --claude-retention`) with exit code 2, instead of silently accepting and ignoring it
+  as every command's flags did before this release.
+
 ## [1.8.0] - 2026-09-03
 
 ### Fixed

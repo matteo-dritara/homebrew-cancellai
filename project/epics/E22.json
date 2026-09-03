@@ -57,7 +57,7 @@
     {
       "id": "E22-S03",
       "title": "Dependency rings, and a real command-line surface",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Keep the safety kernel dependency-free while letting the experience and persistence crates use mature, reviewed libraries - and use that to give the Rust CLI the help surface it currently lacks entirely.",
       "change_risk": "CR2",
       "dependencies": [

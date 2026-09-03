@@ -167,11 +167,25 @@ Linux, and Windows against both MSRV (1.85.0) and current stable, and the full q
 above (`fmt`, `clippy -D warnings`, `cargo test`, `cargo deny check`) on all three platforms
 against stable (ADR-0015).
 
-Do not add a dependency merely to reduce implementation effort. Provider/safety/runtime
-dependencies require the review appropriate to their risk and supply-chain impact; any new
-dependency's license must be in the `cargo-deny` allow-list ADR-0015 fixes (MIT, Apache-2.0,
-BSD-2/3-Clause, ISC, Unicode-3.0, Zlib), or the license list in `rust/deny.toml` needs its
-own reviewed change first.
+Dependency rules differ by ring ([ADR-0019](docs/adrs/0019-dependency-rings-per-crate.md),
+E22-S03). **Kernel ring** - `cancellai-model`, `cancellai-safety`, `cancellai-platform`,
+`cancellai-sealedfs`, and any future crate that participates in authority, identity, or
+mutation: do not add a dependency merely to reduce implementation effort; a dependency
+requires a dedicated, reviewed ADR naming the specific capability `std` cannot express
+(ADR-0017 is the template). **Outer ring** - `cancellai-cli`, `cancellai-tui`,
+`cancellai-store`, `cancellai-guardian`, and the provider adapters: a mature, widely-audited
+crate is admissible when it does not reach into authority/identity/mutation decisions and the
+story adopting it says what it replaces - reduced implementation effort is a legitimate
+reason here, because the thing being implemented is not a safety boundary. Both rings share
+two constraints that are not negotiable by ring membership: `unsafe_code = "forbid"` stays
+the workspace default (`cancellai-sealedfs` is the sole ADR-0017 exception), and an
+outer-ring dependency may never become a second path to a safety decision - it decides what
+the user asked for, never what is permitted (SI-007 in particular stays a property of this
+workspace's own command dispatch, regardless of which crate parses the tokens).
+
+Any new dependency's license must be in the `cargo-deny` allow-list ADR-0015 fixes (MIT,
+Apache-2.0, BSD-2/3-Clause, ISC, Unicode-3.0, Zlib), or the license list in `rust/deny.toml`
+needs its own reviewed change first, in either ring.
 
 ## Generated project docs
 

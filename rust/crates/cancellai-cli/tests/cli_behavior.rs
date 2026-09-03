@@ -130,6 +130,10 @@ fn stdout(output: &Output) -> String {
     String::from_utf8_lossy(&output.stdout).into_owned()
 }
 
+fn stderr(output: &Output) -> String {
+    String::from_utf8_lossy(&output.stderr).into_owned()
+}
+
 #[test]
 fn no_arguments_defaults_to_read_only_status_and_never_mutates() {
     let home = TempHome::new("default-status");
@@ -962,4 +966,97 @@ fn a_home_with_no_provider_installed_is_complete_and_exits_zero() {
         "a machine with no provider installed has nothing to observe and nothing to withhold: {}",
         stdout(&output)
     );
+}
+
+// E22-S03 (ADR-0019, CR-TE-07): the help/version/per-command-help surface this crate lacked
+// entirely before switching from a hand-rolled parser to `clap`, plus the SI-007-relevant
+// properties that must hold identically under the new parser - an unknown subcommand and a
+// flag irrelevant to the chosen command must both still be refused with exit code 2, never
+// silently accepted or guessed toward `clean`. These four tests are this story's own "golden
+// CLI snapshot for help/version output" (the Verification Contract's own words) - run on
+// every tier-1 platform because this file runs under `cargo test --workspace` in `rust.yml`'s
+// `quality` job matrix (macOS/Linux/Windows) and in `release.yml`'s `verify-rust` job.
+
+#[test]
+fn top_level_help_lists_every_command_and_exits_zero() {
+    let home = TempHome::new("top-level-help");
+    let output = run(&home, &["--help"]);
+    assert!(output.status.success(), "{}", stdout(&output));
+    let text = stdout(&output);
+    assert!(text.contains("Usage: cancellai-cli"), "{text}");
+    for command in ["status", "inspect", "plan", "clean", "configure", "version"] {
+        assert!(
+            text.contains(command),
+            "help output missing {command:?}: {text}"
+        );
+    }
+}
+
+#[test]
+fn top_level_short_help_flag_behaves_like_the_long_form() {
+    let home = TempHome::new("top-level-short-help");
+    let long = run(&home, &["--help"]);
+    let short = run(&home, &["-h"]);
+    assert!(short.status.success(), "{}", stdout(&short));
+    assert_eq!(stdout(&long), stdout(&short));
+}
+
+#[test]
+fn top_level_version_flag_prints_the_crate_version_and_exits_zero() {
+    let home = TempHome::new("top-level-version-flag");
+    let output = run(&home, &["--version"]);
+    assert!(output.status.success(), "{}", stdout(&output));
+    assert!(
+        stdout(&output).contains(env!("CARGO_PKG_VERSION")),
+        "{}",
+        stdout(&output)
+    );
+}
+
+#[test]
+fn every_subcommand_has_its_own_help_text() {
+    let home = TempHome::new("per-command-help");
+    for command in ["status", "inspect", "plan", "clean", "configure", "version"] {
+        let output = run(&home, &[command, "--help"]);
+        assert!(
+            output.status.success(),
+            "{command} --help should exit 0: {}",
+            stdout(&output)
+        );
+        assert!(
+            stdout(&output).contains(&format!("cancellai-cli {command}")),
+            "{command} --help should show its own usage line: {}",
+            stdout(&output)
+        );
+    }
+}
+
+#[test]
+fn an_unrecognized_subcommand_is_refused_with_exit_code_2_and_never_runs_anything() {
+    let home = TempHome::new("unrecognized-subcommand");
+    let session = home.write_stale_claude_session("proj-a", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+    let output = run(&home, &["frobnicate"]);
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "SI-007: an unrecognized subcommand must never be guessed at - exit INVALID_INPUT: {}",
+        stderr(&output)
+    );
+    assert!(session.exists());
+}
+
+#[test]
+fn a_flag_irrelevant_to_the_chosen_command_is_refused_not_silently_accepted() {
+    // Before E22-S03, `status --dry-run` was accepted and simply had no effect - the
+    // pre-`clap` parser recognized every flag across every command. `--dry-run` only has
+    // meaning for `clean`; `status` must now refuse it outright (AC3).
+    let home = TempHome::new("irrelevant-flag");
+    let output = run(&home, &["status", "--dry-run"]);
+    assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
+
+    let output = run(&home, &["plan", "--yes"]);
+    assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
+
+    let output = run(&home, &["configure", "--json"]);
+    assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
 }

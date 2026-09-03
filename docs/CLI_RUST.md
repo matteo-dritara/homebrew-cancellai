@@ -71,7 +71,7 @@ Prints the engine name and version.
 | `--days N` | status, inspect, plan, clean | Retention cutoff in days (default 7) |
 | `--keep-latest N` | status, inspect, plan, clean | Always protect the N most-recently-modified sessions per tool (default 2), independent of age |
 | `--tool {all,codex,claude}` | status, inspect, plan, clean | Restrict to one provider (default all) |
-| `--json` | every command | Machine-readable output |
+| `--json` | status, inspect, plan, clean | Machine-readable output (`configure`/`version` have no `--json`, and now refuse it - see "Argument parsing" above) |
 | `--allow-running` | status, inspect, plan, clean | Proceed even though a Codex/Claude process appears to be running, or process liveness could not be determined |
 | `--dry-run` | clean | Preview only; never mutates |
 | `--yes` / `-y` | clean | Skip interactive confirmation |
@@ -90,16 +90,26 @@ one-for-one:
 | 3 | `MUTATION_FAILURE` | At least one `clean` deletion failed |
 | 4 | `SAFETY_BLOCK` / `INCOMPLETE_INVENTORY` / `COMPATIBILITY_FAILURE` | Requested work was withheld or deferred for safety; nothing may be assumed cleaned |
 
-## Known gaps versus the Python reference (tracked, not silent)
+## Argument parsing
 
-- **No `--help`, `-h` or `--version` at all.** Each exits `2` with `unrecognized flag`, and
-  `help` exits `2` with `unrecognized command`. The Python reference has a full `argparse`
-  surface, `docs/CLI.md` is generated from it, and the Homebrew formula's own smoke test
-  asserts `cancellai --version`. Argument parsing here is hand-rolled in `main.rs`, which is
-  also why a flag a command cannot act on (`--dry-run` on `status`) is accepted rather than
-  refused. [ADR-0019](adrs/0019-dependency-rings-per-crate.md) decides the ring boundary that
-  allows a real parser; `E22-S03` implements it. Disclosed by the 2026-09-03 target-engine
-  review (`CR-TE-07`), which found this gap missing from this very section.
+E22-S03 replaced the hand-rolled parser `main.rs` used through E06 with `clap`
+([ADR-0019](adrs/0019-dependency-rings-per-crate.md)'s outer-ring dependency), closing
+`CR-TE-07`. `cancellai-cli --help`/`-h`/`--version` now work, matching the reference CLI's own
+top-level surface, and every subcommand has its own `--help` (`cancellai-cli clean --help`,
+etc.) generated from the same argument definitions that parse it - it cannot drift out of sync
+with what the command actually accepts the way a hand-written usage string could. A flag
+irrelevant to the chosen command (`--dry-run` on `status`, `--claude-retention` on `clean`) is
+now refused with exit `2`, not silently accepted-and-ignored as it was before this story - each
+subcommand has its own argument struct rather than one shared, permissive flag set.
+
+The one hand-written piece that remains, deliberately, is which token selects which
+subcommand at all (`cli::normalize_args`): no argument, or a leading flag with no subcommand,
+always normalizes to `status` - the read-only default - and the *only* token that can select
+`clean` is the literal string `"clean"` appearing first. This is SI-007's own property
+("ambiguous CLI/configuration is non-destructive"), and it is a property of this workspace's
+command dispatch regardless of which crate parses the tokens (ADR-0019): `clap` decides what
+a valid `status`/`plan`/`clean`/... invocation's flags mean, but never which subcommand an
+ambiguous or empty invocation resolves to.
 - **The detected Codex native delete backend is not wired to `clean`.**
   `cancellai-provider-codex` implements `codex_delete_supported`/`NativeDeleteSupport` with
   four distinct outcomes, and nothing calls them from the command surface: this CLI always

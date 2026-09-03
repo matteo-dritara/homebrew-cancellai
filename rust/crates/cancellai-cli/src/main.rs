@@ -15,6 +15,7 @@
 //! subcommand ever implies `clean`, per SI-007), `configure` (Claude Code's own
 //! `cleanupPeriodDays` retention setting), and `version`.
 
+mod cli;
 mod documents;
 mod roots;
 mod timestamp;
@@ -47,40 +48,24 @@ const CLAUDE_PROCESS_NAMES: &[&str] = &["claude"];
 const CODEX_PROCESS_NAMES: &[&str] = &["codex", "Codex"];
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-const COMMANDS: &[&str] = &["status", "inspect", "plan", "clean", "configure", "version"];
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     std::process::exit(run(&args));
 }
 
+/// `cli::parse` prints and calls `std::process::exit` itself for `--help`/`--version`/any
+/// usage error (unrecognized subcommand, unrecognized flag, missing required value) - it
+/// therefore never returns in those cases, matching this crate's `INVALID_INPUT` exit code
+/// exactly, since 2 is `clap`'s own default usage-error exit code (E22-S03, ADR-0019).
 fn run(args: &[String]) -> i32 {
-    let (command, rest) = match split_command(args) {
-        Ok(v) => v,
-        Err(message) => return invalid_input(&message),
-    };
-    match command.as_str() {
-        "status" => cmd_read_only(rest, RunMode::Status),
-        "inspect" => cmd_read_only(rest, RunMode::Inspect),
-        "plan" => cmd_read_only(rest, RunMode::Plan),
-        "clean" => cmd_clean(rest),
-        "configure" => cmd_configure(rest),
-        "version" => cmd_version(rest),
-        _ => unreachable!("split_command only returns a name from COMMANDS or \"status\""),
-    }
-}
-
-/// No subcommand, or a leading flag with no subcommand, always means `status` - the read-only
-/// default (SI-007: ambiguity never escalates toward mutation). An unrecognized leading token
-/// that is not a flag is refused outright rather than guessed at.
-fn split_command(args: &[String]) -> Result<(String, &[String]), String> {
-    match args.first() {
-        None => Ok(("status".to_string(), &args[0..0])),
-        Some(first) if COMMANDS.contains(&first.as_str()) => Ok((first.clone(), &args[1..])),
-        Some(first) if first.starts_with('-') => Ok(("status".to_string(), args)),
-        Some(other) => Err(format!(
-            "unrecognized command '{other}' - expected one of {COMMANDS:?}, or a flag for the default 'status' command"
-        )),
+    match cli::parse(args) {
+        cli::Invocation::Status(a) => cmd_read_only(a.into(), RunMode::Status),
+        cli::Invocation::Inspect(a) => cmd_read_only(a.into(), RunMode::Inspect),
+        cli::Invocation::Plan(a) => cmd_read_only(a.into(), RunMode::Plan),
+        cli::Invocation::Clean(a) => cmd_clean(a.into()),
+        cli::Invocation::Configure(a) => cmd_configure(a.claude_retention),
+        cli::Invocation::Version => cmd_version(),
     }
 }
 
@@ -100,62 +85,28 @@ struct CommonFlags {
     yes: bool,
 }
 
-/// Parses every flag this CLI recognizes across all commands. Flags irrelevant to a given
-/// command (e.g. `--dry-run` on `status`) are accepted but have no effect - `status`/`inspect`/
-/// `plan` are categorically incapable of mutation regardless, so accepting an unused token
-/// there cannot itself escalate authority (SI-007's concern is never-guess-toward-mutation, not
-/// strict per-command flag hygiene). An unrecognized flag, or a value-taking flag with a
-/// missing/malformed value, is always refused.
-fn parse_flags(args: &[String]) -> Result<CommonFlags, String> {
-    let mut flags = CommonFlags {
-        days: 7,
-        keep_latest: 2,
-        tool: ToolScope::All,
-        json: false,
-        allow_running: false,
-        dry_run: false,
-        yes: false,
-    };
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--days" => {
-                i += 1;
-                flags.days = parse_u32(args.get(i), "--days")?;
-            }
-            "--keep-latest" => {
-                i += 1;
-                flags.keep_latest = parse_u32(args.get(i), "--keep-latest")?;
-            }
-            "--tool" => {
-                i += 1;
-                flags.tool = match args.get(i).map(String::as_str) {
-                    Some("all") => ToolScope::All,
-                    Some("codex") => ToolScope::Codex,
-                    Some("claude") => ToolScope::Claude,
-                    other => {
-                        return Err(format!(
-                            "--tool expects one of all|codex|claude, got {other:?}"
-                        ));
-                    }
-                };
-            }
-            "--json" => flags.json = true,
-            "--allow-running" => flags.allow_running = true,
-            "--dry-run" => flags.dry_run = true,
-            "--yes" | "-y" => flags.yes = true,
-            other => return Err(format!("unrecognized flag '{other}'")),
+impl From<cli::ReadOnlyArgs> for CommonFlags {
+    fn from(a: cli::ReadOnlyArgs) -> Self {
+        CommonFlags {
+            days: a.days,
+            keep_latest: a.keep_latest,
+            tool: a.tool.into(),
+            json: a.json,
+            allow_running: a.allow_running,
+            dry_run: false,
+            yes: false,
         }
-        i += 1;
     }
-    Ok(flags)
 }
 
-fn parse_u32(value: Option<&String>, flag: &str) -> Result<u32, String> {
-    value
-        .ok_or_else(|| format!("{flag} requires a value"))?
-        .parse::<u32>()
-        .map_err(|_| format!("{flag} expects a non-negative integer"))
+impl From<cli::CleanArgs> for CommonFlags {
+    fn from(a: cli::CleanArgs) -> Self {
+        CommonFlags {
+            dry_run: a.dry_run,
+            yes: a.yes,
+            ..a.common.into()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -362,11 +313,7 @@ fn any_incomplete(resolved: &Resolved) -> bool {
     resolved.resolutions.iter().any(|r| !r.scan_complete())
 }
 
-fn cmd_read_only(args: &[String], mode: RunMode) -> i32 {
-    let flags = match parse_flags(args) {
-        Ok(f) => f,
-        Err(e) => return invalid_input(&e),
-    };
+fn cmd_read_only(flags: CommonFlags, mode: RunMode) -> i32 {
     let resolved = match resolve_all(&flags) {
         Ok(r) => r,
         Err(e) => return invalid_input(&e),
@@ -476,11 +423,7 @@ fn print_plan_summary(actions: &[Action]) {
     }
 }
 
-fn cmd_clean(args: &[String]) -> i32 {
-    let flags = match parse_flags(args) {
-        Ok(f) => f,
-        Err(e) => return invalid_input(&e),
-    };
+fn cmd_clean(flags: CommonFlags) -> i32 {
     // Automation safety: `--json` requesting a mutating run must state its intent explicitly
     // (`--yes` or `--dry-run`) - never inferred, matching `cancellai.py`'s own gate.
     if flags.json && !flags.yes && !flags.dry_run {
@@ -857,27 +800,7 @@ fn delete_one(
     }
 }
 
-fn cmd_configure(args: &[String]) -> i32 {
-    let mut retention_days: Option<u32> = None;
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--claude-retention" => {
-                i += 1;
-                match parse_u32(args.get(i), "--claude-retention") {
-                    Ok(v) if v >= 1 => retention_days = Some(v),
-                    Ok(_) => return invalid_input("--claude-retention must be at least 1"),
-                    Err(e) => return invalid_input(&e),
-                }
-            }
-            other => return invalid_input(&format!("unrecognized flag '{other}'")),
-        }
-        i += 1;
-    }
-    let Some(days) = retention_days else {
-        return invalid_input("configure requires --claude-retention DAYS");
-    };
-
+fn cmd_configure(days: u32) -> i32 {
     let claude_resolved = match roots::claude_home() {
         Some(r) => r,
         None => {
@@ -1026,10 +949,7 @@ fn configure_claude_retention(claude_home: &Path, days: u32) -> Result<(), Confi
     Ok(())
 }
 
-fn cmd_version(args: &[String]) -> i32 {
-    if !args.is_empty() {
-        return invalid_input(&format!("version accepts no arguments, got {args:?}"));
-    }
+fn cmd_version() -> i32 {
     println!("cancellai-cli {VERSION}");
     0
 }

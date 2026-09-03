@@ -2250,7 +2250,7 @@ Close the gaps between what the engineering system claims to enforce and what it
 
 ### E22-S03 - Dependency rings, and a real command-line surface
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E22-S01, E22-S02 | **Safety obligations:** SI-007
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E22-S01, E22-S02 | **Safety obligations:** SI-007
 
 **Outcome.** Keep the safety kernel dependency-free while letting the experience and persistence crates use mature, reviewed libraries - and use that to give the Rust CLI the help surface it currently lacks entirely.
 
