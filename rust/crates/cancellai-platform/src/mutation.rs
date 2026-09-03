@@ -31,37 +31,54 @@
 //! its link count dropped to zero. This narrows, but does not perfectly close, the race:
 //! step (2) and the unlink itself are still two separate syscalls with a small gap between
 //! them, and true prevention (not merely detection) needs an OS-specific handle-relative
-//! unlink (`openat`/`unlinkat` with `O_NOFOLLOW`, e.g. via a reviewed `rustix`/`nix`
-//! dependency, or `unsafe` libc calls) that this workspace does not have (`unsafe_code` is
-//! forbidden by default, ADR-0015, and no such dependency has been reviewed/added). Where
-//! that guarantee
-//! cannot be established this way, `mutate` reports `Err` rather than a possibly-false
-//! `Ok(())` - "refuse where the guarantee cannot be established," not guess. Consequently
-//! only `FileKind::File` deletion is confirmed this way; `cancellai-safety::mutation_executor`
-//! only ever requests it for that kind (directories/symlinks are refused before reaching this
-//! seam at all - see that module's own docs).
+//! unlink (`openat`/`unlinkat` with `O_NOFOLLOW`). Where that guarantee cannot be established,
+//! `mutate` reports `Err` rather than a possibly-false `Ok(())` - "refuse where the guarantee
+//! cannot be established," not guess. Consequently only `FileKind::File` deletion is confirmed
+//! this way; `cancellai-safety::mutation_executor` only ever requests it for that kind
+//! (directories/symlinks are refused before reaching this seam at all - see that module's own
+//! docs).
+//!
+//! ## Why this is still detection, and what changed underneath it (E21-S01)
+//!
+//! This module used to justify the residual by stating that the required capability did not
+//! exist here: no reviewed FFI dependency, and `unsafe_code` forbidden workspace-wide by
+//! ADR-0015. **That premise was superseded and the text was not updated.**
+//! `cancellai-sealedfs` (E07-S07/E07-S09, ADR-0017) now exists, depends on `libc`, is the one
+//! crate exempted from `unsafe_code = "forbid"`, and already implements `openat`/`renameat`/
+//! `mkdirat` with `O_NOFOLLOW` plus a component-by-component handle-relative walk. Adding
+//! `unlinkat` to it is a small extension well inside that crate's stated mandate, not a new
+//! dependency decision.
+//!
+//! The consequence, recorded plainly because the 2026-09-03 target-engine review
+//! (`docs/audits/2026-09-03-CODE_REVIEW.md`, `CR-TE-05`) found it: the risk ordering is
+//! currently inverted. Writing one JSON key into Claude Code's own settings file is protected
+//! by a retained no-follow handle; irreversibly deleting a user's file is not. The deletion
+//! path is narrow rather than open - the three checks above refuse rather than deleting the
+//! wrong object - but it is detection where prevention is now available.
+//!
+//! `E21-S07` carries the repair. Until it lands, this is a disclosed residual, not an
+//! unavailable capability.
 
 use std::path::Path;
 
 use crate::identity::IdentityToken;
 
 /// One class of real mutation this seam can perform.
+///
+/// Exactly one variant, on purpose (E21-S07). This enum previously also carried `Quarantine`
+/// (a bare `fs::rename`) and `DeleteDirectoryTree` (a bare `fs::remove_dir_all`), neither
+/// identity-confirmed and neither requested by any production caller. They were added so the
+/// contract "would not have to grow again" when E12 lands - but an unconfirmed, unreachable
+/// deletion primitive sitting in the one file the workspace permits to delete is an armed
+/// surface with no test protecting it, and `cancellai-safety::mutation_executor` refuses both
+/// action classes upstream anyway. The 2026-09-03 review recorded them as a rising risk
+/// (`CR-TE-11`); they are removed rather than left to be inherited by whoever implements E12.
+/// Re-adding either is that story's job, together with the confirmation technique it needs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MutationOperation<'a> {
-    /// Move to a quarantine location on the same filesystem (reversible). Not yet driven by
-    /// any production caller - `SealedPlan` (E03-S02) does not carry a quarantine
-    /// destination yet (E03-S05's own residual risk); the operation exists so this seam's
-    /// contract does not have to grow again the day that field lands. Not identity-confirmed
-    /// the way `DeleteFile` is (see module docs) - a future story implementing it for real
-    /// should extend the confirmation technique to it too, not merely rename blindly.
-    Quarantine { to: &'a Path },
-    /// Permanently remove a regular file. The only operation this seam confirms by
-    /// open-file-descriptor identity (see module docs); the only one
-    /// `cancellai-safety::mutation_executor` currently requests.
+pub enum MutationOperation {
+    /// Permanently remove a regular file. Confirmed by open-file-descriptor identity *and*
+    /// performed relative to a held, no-follow directory descriptor (see module docs).
     DeleteFile,
-    /// Permanently remove a directory tree. Not identity-confirmed the way `DeleteFile` is -
-    /// no production caller currently requests this either (see module docs).
-    DeleteDirectoryTree,
 }
 
 /// Why a real mutation attempt failed. Always the underlying OS error text, or this seam's
@@ -78,7 +95,7 @@ pub trait MutationExecutor: Send + Sync {
         &self,
         target: &Path,
         expected: &IdentityToken,
-        operation: MutationOperation<'_>,
+        operation: MutationOperation,
     ) -> Result<(), MutationError>;
 }
 
@@ -93,16 +110,10 @@ impl MutationExecutor for SystemMutationExecutor {
         &self,
         target: &Path,
         expected: &IdentityToken,
-        operation: MutationOperation<'_>,
+        operation: MutationOperation,
     ) -> Result<(), MutationError> {
         match operation {
-            MutationOperation::Quarantine { to } => {
-                std::fs::rename(target, to).map_err(|e| MutationError(e.to_string()))
-            }
             MutationOperation::DeleteFile => confirmed_delete_file(target, expected),
-            MutationOperation::DeleteDirectoryTree => {
-                std::fs::remove_dir_all(target).map_err(|e| MutationError(e.to_string()))
-            }
         }
     }
 }
@@ -180,13 +191,40 @@ fn confirmed_delete_file_inner(
         ));
     }
 
-    std::fs::remove_file(target).map_err(|e| MutationError(format!("delete failed: {e}")))?;
+    // E21-S07: the unlink itself is now issued relative to a directory descriptor opened once,
+    // with `O_NOFOLLOW` at every component, rather than through the target's path. That is the
+    // difference between detecting the swap and preventing it: `std::fs::remove_file(target)`
+    // re-resolved the whole path through the kernel's normal, link-following name resolution
+    // every time it ran, so a rename or symlink-swap of any intermediate directory in the
+    // window above redirected the removal. `cancellai-sealedfs` (ADR-0017) cannot be redirected
+    // that way, because there is no path left to redirect.
+    //
+    // The identity comparison inside `unlink_child_matching_unix_identity` is deliberately not
+    // a replacement for the two checks above - it is a third, handle-relative one, and the
+    // held file descriptor's post-unlink link-count check below still runs. Defence in depth
+    // over one clever check, as everywhere else in this kernel.
+    let parent = target.parent().ok_or_else(|| {
+        MutationError("target has no parent directory; refusing to delete".to_string())
+    })?;
+    let file_name = target.file_name().and_then(|n| n.to_str()).ok_or_else(|| {
+        MutationError(
+            "target's file name is not representable as UTF-8; refusing to delete a name \
+                 this seam cannot bind handle-relatively"
+                .to_string(),
+        )
+    })?;
+    let sealed = cancellai_sealedfs::SealedRoot::bind_existing(parent).map_err(|e| {
+        MutationError(format!(
+            "could not bind the target's parent directory without following a link: {e}"
+        ))
+    })?;
+    sealed
+        .unlink_child_matching_unix_identity(file_name, *expected_device, *expected_inode)
+        .map_err(|e| MutationError(format!("delete failed: {e}")))?;
 
     // Final corroboration via the fd opened at the very start: an open fd stays valid after
-    // its directory entry is unlinked (Unix semantics), so if `remove_file` above really
-    // unlinked the object this fd holds, that object's link count is now 0. This narrows,
-    // but - being itself a check *after* the mutation - cannot on its own fully close, the
-    // remaining gap between the immediately-preceding re-check and the unlink syscall.
+    // its directory entry is unlinked (Unix semantics), so if the unlink above really removed
+    // the object this fd holds, that object's link count is now 0.
     let after = file
         .metadata()
         .map_err(|e| MutationError(format!("could not stat held handle after deletion: {e}")))?;
@@ -237,7 +275,7 @@ impl MutationExecutor for SyntheticMutationExecutor {
         &self,
         target: &Path,
         _expected: &IdentityToken,
-        _operation: MutationOperation<'_>,
+        _operation: MutationOperation,
     ) -> Result<(), MutationError> {
         self.outcomes.get(target).cloned().unwrap_or(Ok(()))
     }
@@ -255,7 +293,18 @@ mod tests {
         fn new(label: &str) -> Self {
             static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
             let unique = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            let dir = std::env::temp_dir().join(format!(
+            // Canonicalized, because E21-S07's handle-relative unlink refuses to traverse a
+            // symlinked path component - and on macOS `std::env::temp_dir()` returns
+            // `/var/folders/...`, where `/var` is itself a link to `/private/var`. That refusal
+            // is the intended behaviour, not a test problem: E07-S09 already decided a provider
+            // root reached through an intermediate link may not carry destructive authority, and
+            // `cancellai-cli` proves the real root link-free before establishing it. The test
+            // tree simply has to meet the same bar the production path already meets.
+            // `a_symlinked_intermediate_component_refuses_the_delete` below pins the refusal
+            // itself, so canonicalizing here does not hide it.
+            let base = std::fs::canonicalize(std::env::temp_dir())
+                .unwrap_or_else(|_| std::env::temp_dir());
+            let dir = base.join(format!(
                 "cancellai-mutation-test-{label}-{}-{unique}",
                 std::process::id()
             ));
@@ -437,6 +486,60 @@ mod tests {
                 MutationOperation::DeleteFile
             ),
             Ok(())
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_intermediate_component_refuses_the_delete() {
+        // E21-S07's containment property, stated as a test rather than as a comment: the unlink
+        // is issued relative to a directory descriptor walked component-by-component with
+        // `O_NOFOLLOW`, so a path that reaches the target through a link is refused outright
+        // rather than followed. Same rule E07-S09 established for provider-root establishment,
+        // now holding at the moment of mutation too.
+        let dir = TempDir::new("symlinked-intermediate");
+        let real = dir.0.join("real");
+        std::fs::create_dir_all(&real).expect("create real dir");
+        let file = real.join("target.txt");
+        std::fs::write(&file, b"hello").expect("create file");
+        let expected = identity_of(&file);
+
+        let link = dir.0.join("via-link");
+        std::os::unix::fs::symlink(&real, &link).expect("create symlink");
+        let through_link = link.join("target.txt");
+
+        let err = SystemMutationExecutor
+            .mutate(&through_link, &expected, MutationOperation::DeleteFile)
+            .expect_err("a target reached through a symlinked component must be refused");
+        assert!(
+            err.0.contains("without following a link"),
+            "reason was: {}",
+            err.0
+        );
+        assert!(file.exists(), "the target must survive a refused deletion");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_unlink_refuses_a_name_that_no_longer_holds_the_confirmed_inode() {
+        // The handle-relative identity check, exercised directly: the directory descriptor is
+        // sound, but the *entry* now points somewhere else. `SealError::IdentityMismatch` is the
+        // refusal, and the replacement must survive.
+        let dir = TempDir::new("entry-swapped");
+        let file = dir.path("target.txt");
+        std::fs::write(&file, b"original").expect("create original");
+        let expected = identity_of(&file);
+
+        let result = confirmed_delete_file_inner(&file, &expected, || {
+            std::fs::remove_file(&file).expect("simulate concurrent removal");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            std::fs::write(&file, b"replacement").expect("simulate concurrent replacement");
+        });
+
+        assert!(result.is_err(), "a swapped entry must never be deleted");
+        assert_eq!(
+            std::fs::read_to_string(&file).expect("replacement must be intact"),
+            "replacement"
         );
     }
 }

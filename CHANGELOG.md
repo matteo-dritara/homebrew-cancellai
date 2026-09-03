@@ -7,6 +7,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-09-03
+
+### Fixed
+
+- **A directory the scan could not read no longer authorizes deletion** (E21-S03, `CR-TE-01`).
+  On an ordinary tree - one directory without read permission - `cancellai-cli` deleted an
+  eligible artifact and exited `0` while reporting the scope complete and its knowledge
+  verified; `cancellai.py` withheld every destructive action for that tool and exited `4`. Both
+  provider adapters discarded every failure to observe part of the tree with a bare
+  `else { continue }`. They now record each one with a cause and a path, withhold the whole
+  tool, and degrade `knowledge_confidence` for every artifact in the scope (SI-008, SI-009,
+  SI-010, C-02). The Claude side was broader than previously recorded: E06-S02 had repaired only
+  the companion-payload branch, and an unreadable **project** directory still passed silently,
+  disclosed nowhere.
+- `scan_completeness[].error_count` reports the real number of unobservable paths instead of
+  `u32::from(!complete)`, which was only ever `0` or `1` (`CR-TE-10`).
+- **The delete path prevents the path-swap race instead of detecting it** (E21-S07, `CR-TE-05`).
+  The unlink is issued through `cancellai-sealedfs`'s handle-relative `unlinkat` against a
+  directory descriptor opened once with `O_NOFOLLOW` at every component, so a rename or
+  symlink-swap after validation cannot redirect it. Consequence, intended and user-visible: a
+  provider root reached through a symlinked path component can no longer be cleaned - the rule
+  E07-S09 already set for root establishment, now holding at the moment of mutation.
+  `MutationOperation`'s two unconfirmed, unreachable variants (`Quarantine`,
+  `DeleteDirectoryTree`) were removed rather than left armed for E12 to inherit (`CR-TE-11`).
+- Rollout metadata reading honours the 512 KiB bound it documents instead of loading the whole
+  transcript (E21-S06, `CR-TE-04`). Measured on a single 287 MB rollout: peak RSS **2.9 MB**,
+  against 303 MB before - and below the Python reference's own 27.7 MB.
+
+### Added
+
+- Two fixtures the corpus never had - `codex-partial-tree` and `claude-partial-project` - both
+  `NORMATIVE` and running through the differential gate in both root-origin scenarios (E21-S02).
+  They were written to **fail** against the unrepaired engine, and did; the failing run is
+  committed in their evidence packet. `scripts/check_fixtures.py` now refuses an undeclared
+  category asymmetry between the two reference providers, because the corpus carrying
+  `partial_tree` for Claude and not for Codex is what let the gate stay green while the engine
+  deleted (`CR-TE-03`).
+- Scope completeness is a shared *type* obligation on every provider adapter
+  ([ADR-0018](docs/adrs/0018-scope-completeness-is-a-shared-type-not-a-shared-traversal.md),
+  E21-S04). `ProviderResolution` hands out planning candidates only through a value carrying the
+  scope's completeness, with a `compile_fail` regression proving the bare-candidates route is
+  unreachable; `scripts/check_rust_workspace.py` fails if `cancellai-cli` stops being able to
+  reach `cancellai-inventory` at all, which is how `CR-TE-02` went unnoticed.
+- A performance gate on the discovery path the CLI actually executes (E21-S05). Every timing
+  assertion is paired with an assertion on what the resolution produced, so a benchmark
+  measuring an empty tree fails instead of reporting an excellent number.
+
+### Note on how E21 was verified
+
+Round 1 of independent adversarial review (Codex) returned `FAIL` for five of the seven stories
+and reproduced a real escape the first implementation had left open: an unreadable Claude
+`projects/` root was converted into a clean empty scan, so `clean --yes` exited `0` where the
+frozen reference exits `4`. The completeness was computed correctly in discovery and discarded
+one layer up - the same class of defect this epic exists to close. Every finding is repaired and
+pinned by a regression written against the verifier's own reproduction; repairing them surfaced
+one more instance of the same pattern (`Path::exists()` collapsing "not installed" into "not
+readable"), also closed. The epic was closed by owner decision without spending the second
+review round, which means these repairs carry no independent confirmation -
+`project/evidence/E21-CLOSURE.md` records that and the residual risk it accepts.
+
+- An independent target-engine review is committed as
+  [`docs/audits/2026-09-03-CODE_REVIEW.md`](docs/audits/2026-09-03-CODE_REVIEW.md), with
+  thirteen findings (`CR-TE-01`..`CR-TE-13`) converted into story contracts under two new
+  epics rather than left as prose: **E21 Target Engine Trust Remediation** and **E22
+  Engineering System Hardening**. They are new epics, not additions to E06, because E06 has
+  already used both independent review rounds ADR-0014 permits.
+- [ADR-0018](docs/adrs/0018-scope-completeness-is-a-shared-type-not-a-shared-traversal.md):
+  scope completeness becomes a shared *type* obligation on every provider adapter, while the
+  adapters keep their layout-specific traversal. `cancellai-inventory`'s completeness model is
+  currently unreachable from the shipped binary, which is why the defect its own reviewer
+  rejected in E04-S03 reappeared in the adapters that replaced it.
+- [ADR-0019](docs/adrs/0019-dependency-rings-per-crate.md): the safety kernel stays
+  dependency-free except by dedicated ADR; the experience and persistence crates may use
+  mature, licence-checked libraries. This is what will give `cancellai-cli` the `--help`/
+  `--version` surface it currently lacks entirely.
+
+### Fixed
+
+- `project/roadmap.json` declared `current_phase: "P0"` while both P0 epics were `done` and P1
+  stood one epic from closing, so `PROJECT_STATUS.md` generated a phase the project had already
+  left. Corrected to `P1` (`CR-TE-12`).
+
+### Note
+
+No user-visible behavior changed in this entry. `cancellai.py` remains the sole canonical,
+shipping engine; the findings concern the beta Rust engine and the gates around it. `E06-S04`
+now records `E21` and `E22-S01` among its blockers, so this file does not read, by omission, as
+though the cutover checklist were unchanged.
+
 ## [1.7.0] - 2026-09-02
 
 ### Added

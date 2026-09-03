@@ -161,7 +161,7 @@ pub fn execute(
 /// guarantee (see that module's own docs for why: the open-file-descriptor confirmation
 /// technique does not generalize the same way to a symlink, which `File::open` would follow
 /// rather than operate on itself, or to a recursive directory tree).
-fn delete_operation_for(identity: &IdentityToken) -> Option<MutationOperation<'static>> {
+fn delete_operation_for(identity: &IdentityToken) -> Option<MutationOperation> {
     let IdentityToken::Unix { kind, .. } = identity;
     match kind {
         FileKind::File => Some(MutationOperation::DeleteFile),

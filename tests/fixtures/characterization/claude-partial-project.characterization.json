@@ -1,0 +1,69 @@
+{
+  "fixture_id": "claude-partial-project",
+  "tool": "claude",
+  "classification": "NORMATIVE",
+  "classification_rationale": "An unreadable *project* directory is recorded by discover_claude_sessions' own project_dir.iterdir() error branch and withholds the whole tool - a different branch from claude-partial-tree's companion payload directory, which is the only one E06-S02 repaired on the Rust side. Both must be pinned or repairing one leaves the other untested.",
+  "days": 30,
+  "keep_latest": 0,
+  "aggressive": true,
+  "plan_summary": {
+    "days": 30,
+    "keep_latest": 0,
+    "estimated_bytes": 0,
+    "actions": 0,
+    "by_tool": {},
+    "by_category": {},
+    "claude_history_lines": 0,
+    "notes": [
+      "Refusing destructive work on claude: the scan was incomplete, so absence of evidence cannot mean absence of data (1 unreadable path(s), e.g. <PROVIDER_ROOT>/projects/synthetic-project-e: Permission denied). Run `status` to see the full list.",
+      "Withheld 2 candidate(s) for: claude."
+    ],
+    "withheld_tools": [
+      "claude"
+    ],
+    "scan": {
+      "complete": false,
+      "incomplete_scopes": [
+        "claude"
+      ],
+      "unreadable": [
+        "<PROVIDER_ROOT>/projects/synthetic-project-e: Permission denied"
+      ]
+    },
+    "roots": {
+      "claude": {
+        "origin": "default",
+        "confidence": "default",
+        "markers": [
+          "keybindings.json",
+          "projects",
+          "settings.json"
+        ],
+        "destructive_allowed": true
+      },
+      "codex": {
+        "origin": "default",
+        "confidence": "default",
+        "markers": [],
+        "destructive_allowed": true
+      }
+    }
+  },
+  "coverage": {
+    "selective": {
+      "entries": 1,
+      "bytes": 34,
+      "names": [
+        "projects"
+      ]
+    },
+    "protected": {
+      "entries": 2,
+      "bytes": 4,
+      "names": [
+        "keybindings.json",
+        "settings.json"
+      ]
+    }
+  }
+}

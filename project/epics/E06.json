@@ -85,18 +85,22 @@
       "outcome": "Promote Rust to stable only after functional, safety, compatibility, and operability gates pass.",
       "change_risk": "CR4",
       "dependencies": [
-        "E06-S03"
+        "E06-S03",
+        "E21",
+        "E22-S01"
       ],
       "acceptance_criteria": [
         "Owner-visible migration Safety Verdict is accepted.",
         "Python remains tagged/archiveable as reference for at least one transition window.",
-        "Release notes state any intentional contract change."
+        "Release notes state any intentional contract change.",
+        "The blockers recorded in docs/development/RELEASE_GATES.md's cutover checklist are closed or explicitly accepted by the owner: E21 (target-engine scan-completeness authority), E22-S01 (a release workflow that actually verifies the Rust engine), and the platform/packaging prerequisites E20-S01 and E17 - or a scoped cutover perimeter decided by ADR."
       ],
       "safety_obligations": [
         "SI-019"
       ],
       "verification": [
-        "Full release evidence packet and independent verifier sign-off."
+        "Full release evidence packet and independent verifier sign-off.",
+        "A native reproduction on each platform inside the decided cutover perimeter, using the E21-S02 partial-scan fixtures, showing the engine withholds where the frozen reference withholds."
       ],
       "documentation_impact": [
         "CHANGELOG.md",

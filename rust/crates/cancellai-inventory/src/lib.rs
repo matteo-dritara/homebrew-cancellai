@@ -23,7 +23,8 @@ pub mod scan;
 mod test_doubles;
 
 pub use completeness::{
-    CompletenessReason, PlanningView, ScopeCompleteness, derive_completeness, planning_view,
+    CompletenessReason, MAX_RETAINED_REASONS, PlanningView, ReasonLog, ScopeCompleteness,
+    ScopeObservation, derive_completeness, planning_view,
 };
 pub use file_facts::{
     FactConfidence, FactObservation, FileFacts, ScopeBoundary, SizeMetric, observe_file_facts,

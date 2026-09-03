@@ -92,6 +92,26 @@ one-for-one:
 
 ## Known gaps versus the Python reference (tracked, not silent)
 
+- **No `--help`, `-h` or `--version` at all.** Each exits `2` with `unrecognized flag`, and
+  `help` exits `2` with `unrecognized command`. The Python reference has a full `argparse`
+  surface, `docs/CLI.md` is generated from it, and the Homebrew formula's own smoke test
+  asserts `cancellai --version`. Argument parsing here is hand-rolled in `main.rs`, which is
+  also why a flag a command cannot act on (`--dry-run` on `status`) is accepted rather than
+  refused. [ADR-0019](adrs/0019-dependency-rings-per-crate.md) decides the ring boundary that
+  allows a real parser; `E22-S03` implements it. Disclosed by the 2026-09-03 target-engine
+  review (`CR-TE-07`), which found this gap missing from this very section.
+- **The detected Codex native delete backend is not wired to `clean`.**
+  `cancellai-provider-codex` implements `codex_delete_supported`/`NativeDeleteSupport` with
+  four distinct outcomes, and nothing calls them from the command surface: this CLI always
+  deletes at the filesystem level, while `cancellai.py` prefers `codex delete --force` when the
+  installed CLI supports it, specifically so Codex's own subagent/thread bookkeeping stays
+  consistent. That is a behavioural divergence on user data, not only a missing flag. There is
+  also no `--codex-backend` selector. `E22-S05` resolves it, by wiring it or by stating the
+  divergence permanently (`CR-TE-10`).
+- **`--aggressive` remains unimplemented** - see the entry below; the two completeness gaps
+  that used to be listed here (a scope reported complete despite an unreadable directory, and
+  an `error_count` that was never a count) were repaired by `E21-S03` and are now covered by
+  the fixture corpus in both root-origin scenarios.
 - `--aggressive` (legacy/cache category widening) is not implemented - `cancellai-policy`
   finds a subset of what `cancellai.py --aggressive` would, never a superset (fail-closed, not
   a safety gap).

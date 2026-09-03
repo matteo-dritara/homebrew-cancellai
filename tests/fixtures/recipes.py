@@ -178,6 +178,53 @@ def build_claude_partial_tree(root: Path) -> None:
     locked_payload.chmod(0o000)
 
 
+def build_codex_partial_tree(root: Path) -> None:
+    """Two readable rollouts, plus a third inside a session directory that cannot be listed.
+
+    The Codex mirror of build_claude_partial_tree, and the fixture the corpus never had:
+    `docs/audits/2026-09-03-CODE_REVIEW.md` (CR-TE-01) reproduced the Rust engine *deleting*
+    the readable rollout here while cancellai.py withholds the whole tool. The gate could not
+    see that, because no Codex partial-scan fixture existed to run through it (CR-TE-03).
+
+    Locking a date directory under sessions/ - not a single file - is what actually produces
+    an unreadable scope: lstat on a 0o000 file still succeeds, but os.walk cannot list a 0o000
+    directory, so iter_files' onerror hook fires and Scan records the path. That is the exact
+    branch discover_codex_sessions takes, so the incompleteness is real rather than staged.
+
+    The caller must restore permissions (chmod 0o755) under `root` before removing the tree,
+    per build_claude_partial_tree's identical note.
+    """
+    _codex_markers(root)
+    _codex_rollout(root, "88888888-8888-4888-8888-888888888881", "2026-05-01", age_days=120)
+    _codex_rollout(root, "88888888-8888-4888-8888-888888888882", "2026-05-01", age_days=120)
+    _codex_rollout(root, "88888888-8888-4888-8888-888888888883", "2026-05-02", age_days=120)
+    locked_day = root / "sessions" / "2026" / "05" / "02"
+    _age(locked_day, 120)
+    locked_day.chmod(0o000)
+
+
+def build_claude_partial_project(root: Path) -> None:
+    """Two readable sessions in one project, plus a second project directory that cannot be listed.
+
+    Distinct from build_claude_partial_tree, which locks a session's *companion payload*
+    directory. E06-S02 repaired only that branch; discover_claude_sessions reaches a project
+    directory through a separate `project_dir.iterdir()` call, and an unreadable one there was
+    silently skipped by the Rust adapter with nothing recorded - a case no document disclosed
+    before CR-TE-01. Both branches must be in the corpus, or repairing one leaves the other
+    provably untested.
+
+    The caller must restore permissions (chmod 0o755) under `root` before removing the tree.
+    """
+    _claude_markers(root)
+    readable = "synthetic-project-d"
+    _claude_session(root, readable, "99999999-9999-4999-8999-999999999991", age_days=40)
+    _claude_session(root, readable, "99999999-9999-4999-8999-999999999992", age_days=40)
+    locked_project = root / "projects" / "synthetic-project-e"
+    _claude_session(root, "synthetic-project-e", "99999999-9999-4999-8999-999999999993", age_days=40)
+    _age(locked_project, 40)
+    locked_project.chmod(0o000)
+
+
 def build_codex_symlink_escape(root: Path) -> None:
     """A symlink inside sessions/ pointing outside the approved root.
 
@@ -225,6 +272,8 @@ FIXTURES: dict[str, Callable[[Path], None]] = {
     "claude-protected-state": build_claude_protected_state,
     "codex-protected-state": build_codex_protected_state,
     "claude-partial-tree": build_claude_partial_tree,
+    "claude-partial-project": build_claude_partial_project,
+    "codex-partial-tree": build_codex_partial_tree,
     "codex-symlink-escape": build_codex_symlink_escape,
     "claude-symlink-protected-name": build_claude_symlink_protected_name,
     "codex-layout-drift": build_codex_layout_drift,

@@ -46,3 +46,20 @@ Each fixture added by E01 should contain enough declarative metadata to describe
 The same fixture corpus will be consumed by the frozen Python reference and the Rust engine. Differences require either a defect fix or an explicit contract-change record; they must not be normalized away in the comparator.
 
 Large synthetic fixtures should be generated deterministically from small recipes rather than committed as multi-gigabyte blobs.
+
+## Category symmetry (E21-S02)
+
+A category covered for one reference provider must be covered for the other, or the asymmetry
+must be declared in `manifest.json`'s `category_asymmetry` with a real reason.
+`scripts/check_fixtures.py` enforces both directions: an undeclared asymmetry fails, and a
+declaration that no longer matches the corpus fails as a stale entry.
+
+This rule exists because the corpus carried `partial_tree` for Claude and not for Codex, so the
+differential parity gate was structurally unable to observe an incomplete Codex scan - while the
+engine was deleting on one (`docs/audits/2026-09-03-CODE_REVIEW.md`, `CR-TE-03`). A gate is only
+ever worth its corpus.
+
+A declaration states its `kind`: `structural` means the category cannot exist for that provider
+(Codex has a rollout parent/child graph; Claude has none), and `tracked_gap` means it could and
+does not yet. The distinction matters - it keeps a hole that was never examined from reading like
+a decision that was.

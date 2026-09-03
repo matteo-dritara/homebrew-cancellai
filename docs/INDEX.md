@@ -48,6 +48,7 @@ cancellAI treats documentation as part of the executable product system. This pa
 ## Evidence, research, and decisions
 
 - [audits/2026-08-27-CODE_REVIEW.md](audits/2026-08-27-CODE_REVIEW.md) - baseline code review and P0 findings.
+- [audits/2026-09-03-CODE_REVIEW.md](audits/2026-09-03-CODE_REVIEW.md) - target-engine review: scan-completeness authority, gate integrity, and the CR-TE findings carried by E21/E22.
 - [research/MARKET_AND_STANDARDS_2026-08.md](research/MARKET_AND_STANDARDS_2026-08.md) - market/standards research used to shape the system.
 - [adrs/](adrs/) - architecture decision records. Accepted ADRs are never deleted; superseded ADRs link forward.
 - [rfcs/README.md](rfcs/README.md) - when a design change requires an RFC before implementation.

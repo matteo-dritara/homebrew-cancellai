@@ -15,6 +15,7 @@
 //! Rust CLI simply finds fewer candidates than Python's `--aggressive` would, never more), so
 //! this is a tracked parity gap, not a safety gap - see the E06-S01 evidence packet.
 
+use cancellai_inventory::{CompletenessReason, ScopeCompleteness, ScopeObservation};
 use cancellai_model::{
     Action, ActionClass, ActivityState, AgentArtifact, ArtifactId, AuthorityLevel, Evidence,
     EvidenceId, IntegrityState, KnowledgeConfidence, Precondition, ProtectionState, ResidencyState,
@@ -23,7 +24,9 @@ use cancellai_model::{
 use cancellai_platform::{Clock, FsObserver, Observation, ProcessObserver, Timestamp};
 use cancellai_provider_api::ProtectionOutcome;
 use cancellai_provider_claude::{ClaudeSession, SessionDiscoveryScope, discover_claude_sessions};
-use cancellai_provider_codex::{CodexSession, discover_codex_sessions, group_into_subagent_trees};
+use cancellai_provider_codex::{
+    CodexSession, RolloutDiscoveryResult, discover_codex_sessions, group_into_subagent_trees,
+};
 use cancellai_safety::authority::minimum_authority_for;
 use cancellai_safety::{AuthorityInputs, TrustedTier, effective_authority};
 use std::collections::hash_map::DefaultHasher;
@@ -86,11 +89,147 @@ pub struct ClassifiedArtifact {
 /// all (SI-008, SI-009: a structurally incomplete scan withholds, it never silently proceeds
 /// with what little it saw).
 #[derive(Debug, Clone)]
+/// One provider's resolved scope. Its candidates are deliberately unreachable as a bare
+/// collection from outside this crate - the same construction-level guarantee
+/// `cancellai-inventory`'s `planning_view` carries (E04-S03), applied to the layer that
+/// actually feeds `clean` (E21-S04, ADR-0018).
+///
+/// This doctest is the regression: a downstream crate cannot take the artifacts and decide
+/// something with them while leaving the scope's completeness behind, because the field does
+/// not exist for it.
+///
+/// ```compile_fail
+/// # use cancellai_policy::ProviderResolution;
+/// fn propose_deletions(resolution: &ProviderResolution) -> usize {
+///     // `artifacts` is private: planning goes through `planning_view()`, which carries the
+///     // completeness, or through `observed()`, which is explicitly reporting-only.
+///     resolution.artifacts.len()
+/// }
+/// ```
+///
+/// The counterpart that must keep compiling, so the guarantee is a boundary rather than a wall:
+///
+/// ```
+/// # use cancellai_policy::ProviderResolution;
+/// fn render_status(resolution: &ProviderResolution) -> usize {
+///     resolution.observed().len()
+/// }
+/// ```
 pub struct ProviderResolution {
     pub provider_id: &'static str,
-    pub artifacts: Vec<ClassifiedArtifact>,
-    pub scan_complete: bool,
-    pub scan_incomplete_reason: Option<String>,
+    /// Private on purpose (E21-S04, ADR-0018). A caller that could take the artifacts and leave
+    /// the completeness behind is the shape of defect this epic exists to close: reach them
+    /// through [`ProviderResolution::observed`] for reporting, or through
+    /// [`ProviderResolution::planning_view`] - which cannot be built without completeness - for
+    /// anything that decides an action. This mirrors `cancellai-inventory`'s own
+    /// `planning_candidates`/`planning_view` split, which E04-S03's verifier round forced for
+    /// exactly the same reason.
+    artifacts: Vec<ClassifiedArtifact>,
+    /// The single source of truth for "how completely was this scope observed", carrying both
+    /// the classification and the truthful count of unobserved paths. `scan_complete`,
+    /// `scan_incomplete_reason` and `scan_error_count` are all derived from it rather than
+    /// stored beside it, so the three can never disagree about the same scan.
+    observation: ScopeObservation,
+}
+
+/// One scope's planning surface: its candidates and the completeness they were observed under,
+/// in one value with no bare-candidates constructor (E21-S04). [`build_actions`] takes these
+/// rather than [`ProviderResolution`]s, so "propose deletions without checking whether the scan
+/// was complete" is not an expressible program.
+#[derive(Debug, Clone)]
+pub struct ProviderPlanningView<'a> {
+    pub provider_id: &'static str,
+    pub observation: &'a ScopeObservation,
+    pub artifacts: &'a [ClassifiedArtifact],
+}
+
+impl ProviderResolution {
+    /// Everything this scope observed, for reporting surfaces (`status`, `inspect`) that render
+    /// facts and decide nothing. Deliberately *not* the planning route - see
+    /// [`ProviderResolution::planning_view`].
+    pub fn observed(&self) -> &[ClassifiedArtifact] {
+        &self.artifacts
+    }
+
+    /// The only route from a resolution to a planning decision. Bundling completeness with the
+    /// candidates is the invariant: SI-008/SI-009 say an incompletely observed scope may not
+    /// authorize destruction, and a type that hands out candidates alone makes that a rule
+    /// someone has to remember instead of one the compiler keeps.
+    pub fn planning_view(&self) -> ProviderPlanningView<'_> {
+        ProviderPlanningView {
+            provider_id: self.provider_id,
+            observation: &self.observation,
+            artifacts: &self.artifacts,
+        }
+    }
+
+    pub fn completeness(&self) -> &ScopeCompleteness {
+        self.observation.completeness()
+    }
+
+    pub fn scan_complete(&self) -> bool {
+        self.observation.is_complete()
+    }
+
+    pub fn scan_incomplete_reason(&self) -> Option<String> {
+        describe(self.provider_id, &self.observation).1
+    }
+
+    /// How many distinct paths this scope could not observe. A real count, not a boolean
+    /// widened to an integer: `docs/architecture/JSON_CONTRACTS.md`'s `scan_completeness[].
+    /// error_count` used to be computed as `u32::from(!scan_complete)`, so it was only ever
+    /// `0` or `1` while the reference enumerates every unreadable path (`CR-TE-10`). It is the
+    /// scope's *total*, which can exceed the number of individually retained reasons.
+    pub fn scan_error_count(&self) -> u32 {
+        self.observation.unobserved_count()
+    }
+}
+
+/// Turns a scope's completeness into the two things every caller needs: whether destructive
+/// work may proceed at all, and a sentence a person can act on. Kept in one place so Claude and
+/// Codex cannot drift into describing the same condition differently.
+fn describe(provider_id: &str, observation: &ScopeObservation) -> (bool, Option<String>, u32) {
+    if observation.is_complete() {
+        return (true, None, 0);
+    }
+    // The total, not the retained-reason count: retention is bounded and the count is not, so
+    // reporting `reasons.len()` here would understate how much of the scope went unobserved -
+    // the one direction SI-010 does not permit.
+    let count = observation.unobserved_count().max(1);
+    let first = observation
+        .retained_reasons()
+        .first()
+        .map(describe_reason)
+        .unwrap_or_else(|| "no reason retained".to_string());
+    (
+        false,
+        Some(format!(
+            "{provider_id}: {count} path(s) could not be observed (e.g. {first}); every action \
+             for this tool is withheld until the scan can be re-observed complete - absence of \
+             evidence cannot mean absence of data (SI-008/SI-009)"
+        )),
+        count,
+    )
+}
+
+fn describe_reason(reason: &CompletenessReason) -> String {
+    match reason {
+        CompletenessReason::ScopeRootUnavailable { path, detail } => {
+            format!("{}: scope root unavailable ({detail})", path.display())
+        }
+        CompletenessReason::PermissionDenied { path } => {
+            format!("{}: permission denied", path.display())
+        }
+        CompletenessReason::Disappeared { path } => {
+            format!("{}: disappeared during the scan", path.display())
+        }
+        CompletenessReason::Io { path, message } => format!("{}: {message}", path.display()),
+        CompletenessReason::UnsupportedFilesystemFeature {
+            path,
+            feature,
+            detail,
+        } => format!("{}: {feature} unsupported ({detail})", path.display()),
+    }
 }
 
 fn stable_id(prefix: &str, parts: &[&str]) -> String {
@@ -150,29 +289,43 @@ pub fn resolve_claude(
     let empty = || ProviderResolution {
         provider_id: "claude-code",
         artifacts: Vec::new(),
-        scan_complete: true,
-        scan_incomplete_reason: None,
+        observation: ScopeObservation::complete(),
     };
+    /// A scope with nothing to report but a real reason it could not be observed. Distinct from
+    /// `empty()`, and the distinction is the whole point: E21 round-1 independent review found
+    /// this function returning `empty()` - a `Complete` resolution - for *any* `Unavailable`
+    /// scope, which silently converted a genuinely `Unknown` observation into a clean empty
+    /// scan. A real `clean --yes` against a mode-000 `projects/` then exited `0` where the
+    /// frozen reference exits `4`, violating SI-008/SI-009/SI-010/SI-014 and C-02.
+    fn withheld(observation: ScopeObservation) -> ProviderResolution {
+        ProviderResolution {
+            provider_id: "claude-code",
+            artifacts: Vec::new(),
+            observation,
+        }
+    }
     if !policy.tool.includes_claude() {
         return empty();
     }
-    if !root.exists() {
-        // A provider simply not installed on this machine is a known-empty state, not missing
-        // evidence (SI-009 distinguishes the two): report it as complete.
-        return empty();
-    }
-
+    // Deliberately no `root.exists()` gate. `Path::exists()` answers `false` for *both* "not
+    // installed" and "I was not allowed to look" - the exact collapse `cancellai.py::observe`
+    // exists to prevent, and the one this epic is about. With an unreadable `$HOME`, that gate
+    // returned a `Complete` empty resolution and `clean --yes` exited `0` while the reference
+    // exits `4`. Discovery's own observation makes the distinction (`structurally_empty` vs
+    // `unobservable`), so the gate is not merely redundant, it was actively wrong.
     let discovered = discover_claude_sessions(root);
-    if discovered.scope == SessionDiscoveryScope::Unavailable {
+    match discovered.scope {
         // A `claude_home` that exists but has no `projects/` (or a symlinked one) is a
         // structurally empty install, not a failed observation - `cancellai.py`'s own
         // `build_plan` does not withhold the tool in this case either (E06-S02 differential
-        // gate finding: an earlier version of this function treated `Unavailable` the same as
-        // a mid-scan companion-listing failure, which withheld the whole tool for a fixture
-        // Python reports zero-candidates-but-not-withheld for). `discover_claude_sessions`
-        // already refuses to follow a symlinked `projects/` (SI-003), so there is no
-        // discoverable evidence being silently dropped here - only "nothing to report."
-        return empty();
+        // gate finding). `discover_claude_sessions` refuses to follow a symlinked `projects/`
+        // (SI-003), so nothing discoverable is being dropped here - only "nothing to report."
+        SessionDiscoveryScope::Unavailable => return empty(),
+        // A `projects/` that exists and could not be read at all. The reference records this
+        // through `observe()` and withholds the tool; carrying the observation through is what
+        // makes that happen here rather than reporting a clean empty scan.
+        SessionDiscoveryScope::Unobservable => return withheld(discovered.observation),
+        SessionDiscoveryScope::Observed => {}
     }
 
     let liveness = process.observe(&["claude"]);
@@ -235,47 +388,36 @@ pub fn resolve_claude(
         })
         .collect();
 
-    // SI-008/SI-009: a companion payload directory that could not be fully listed makes the
-    // *whole tool's* scan partial, not merely that one session's evidence - `cancellai.py`'s
-    // own `build_plan` withholds every candidate for a tool the instant any of its scan scopes
-    // is incomplete (`Plan.withheld`), never just the specific artifact whose evidence was
-    // degraded. Without this, two other, perfectly ordinary sessions in the same fixture would
-    // still be proposed for deletion even though this run could not prove the tool's directory
-    // tree was fully observed - exactly the "absence of evidence read as absence of active/
-    // protected data" mistake SI-009 exists to prevent. Found via the E06-S02 differential
-    // parity gate diverging from the committed `claude-partial-tree` characterization.
-    if !discovered.degraded_companions.is_empty() {
+    // SI-008/SI-009: any part of this tool's tree that could not be observed makes the *whole
+    // tool's* scan partial, not merely the one artifact whose own evidence was degraded -
+    // `cancellai.py`'s `build_plan` withholds every candidate for a tool the instant any of its
+    // scan scopes is incomplete (`Plan.withheld`). Without this, perfectly ordinary sessions
+    // beside the unobservable one would still be proposed for deletion even though this run
+    // could not prove the tree was fully seen: exactly the "absence of evidence read as absence
+    // of active/protected data" mistake SI-009 exists to prevent.
+    //
+    // E06-S02 derived this verdict from `degraded_companions` alone, so it only ever covered the
+    // companion-payload branch. `CR-TE-01` reproduced the branch it missed - an unreadable
+    // *project* directory - deleting real artifacts the reference withholds. The verdict now
+    // comes from the scope's own `ScopeCompleteness` (ADR-0018), which every failure path in
+    // discovery contributes to, rather than from one symptom of one branch.
+    let (scan_complete, _, _) = describe("claude-code", &discovered.observation);
+    if !scan_complete {
         // `docs/architecture/JSON_CONTRACTS.md`: "An artifact produced from a PARTIAL or
         // UNKNOWN scan_completeness scope must carry knowledge_confidence no higher than
         // LOW/UNKNOWN for that scope" - this applies to *every* artifact this scope produced,
-        // not only the one session whose own companion payload was degraded (E06 verifier
-        // review round 1: the other, perfectly-readable sessions in the same partial scan kept
-        // reporting `Verified`, overstating what this run actually proved).
+        // not only the one whose own evidence was degraded (E06 verifier review round 1: the
+        // other, perfectly-readable sessions in the same partial scan kept reporting
+        // `Verified`, overstating what this run actually proved).
         for classified in &mut artifacts {
             classified.artifact.knowledge_confidence = KnowledgeConfidence::LowUnknown;
         }
-        return ProviderResolution {
-            provider_id: "claude-code",
-            artifacts,
-            scan_complete: false,
-            scan_incomplete_reason: Some(format!(
-                "{} companion payload director{} could not be fully listed; every action for \
-                 this tool is withheld until the scan can be re-observed complete",
-                discovered.degraded_companions.len(),
-                if discovered.degraded_companions.len() == 1 {
-                    "y"
-                } else {
-                    "ies"
-                }
-            )),
-        };
     }
 
     ProviderResolution {
         provider_id: "claude-code",
         artifacts,
-        scan_complete: true,
-        scan_incomplete_reason: None,
+        observation: discovered.observation,
     }
 }
 
@@ -297,17 +439,18 @@ pub fn resolve_codex(
     let empty = || ProviderResolution {
         provider_id: "codex-cli",
         artifacts: Vec::new(),
-        scan_complete: true,
-        scan_incomplete_reason: None,
+        observation: ScopeObservation::complete(),
     };
     if !policy.tool.includes_codex() {
         return empty();
     }
-    if !root.exists() {
-        return empty();
-    }
-
-    let sessions = discover_codex_sessions(root);
+    // Same reasoning as `resolve_claude`: no `root.exists()` gate, because it cannot tell "not
+    // installed" from "not readable". `discover_codex_sessions` records the difference itself -
+    // a missing `sessions/` is a known-empty state, an unreadable one is missing evidence.
+    let RolloutDiscoveryResult {
+        sessions,
+        observation,
+    } = discover_codex_sessions(root);
     let trees = group_into_subagent_trees(&sessions);
     let liveness = process.observe(&["codex", "Codex"]);
     let process_active =
@@ -394,11 +537,22 @@ pub fn resolve_codex(
         }
     }
 
+    // SI-008/SI-009, the Codex branch. Before E21-S03 this was a hard-coded `scan_complete:
+    // true`: `discover_codex_sessions` returned a bare `Vec` with no way to say "I could not
+    // see all of it", so an unreadable directory under `sessions/` was indistinguishable from
+    // an empty one and the tool proceeded to delete what it happened to find (`CR-TE-01`,
+    // reproduced against the reference's exit-4 withholding).
+    let (scan_complete, _, _) = describe("codex-cli", &observation);
+    if !scan_complete {
+        for classified in &mut artifacts {
+            classified.artifact.knowledge_confidence = KnowledgeConfidence::LowUnknown;
+        }
+    }
+
     ProviderResolution {
         provider_id: "codex-cli",
         artifacts,
-        scan_complete: true,
-        scan_incomplete_reason: None,
+        observation,
     }
 }
 
@@ -539,25 +693,25 @@ fn classify(
 /// unprotected artifacts that can reach `Delete`'s required authority become `Delete`
 /// candidates with real execution preconditions; everything else is reported as `Observe`,
 /// with a reason naming why (SI-007: never silently omitted, always explained).
-pub fn build_actions(resolutions: &[ProviderResolution]) -> Vec<Action> {
+pub fn build_actions(views: &[ProviderPlanningView<'_>]) -> Vec<Action> {
     let delete_minimum = minimum_authority_for(ActionClass::Delete);
-    resolutions
+    views
         .iter()
-        .flat_map(|resolution| {
-            resolution
-                .artifacts
+        .flat_map(|view| {
+            view.artifacts
                 .iter()
-                .map(move |classified| (resolution, classified))
+                .map(move |classified| (view, classified))
         })
-        .map(|(resolution, classified)| {
+        .map(|(view, classified)| {
             let target = classified.artifact.artifact_id.clone();
             // SI-008/SI-009: an incomplete scan withholds every action for the whole tool, not
             // only the specific artifact whose own evidence was degraded - see
             // `resolve_claude`'s own module-doc note on why (E06-S02 differential gate finding).
-            if !resolution.scan_complete {
-                let reason = resolution
-                    .scan_incomplete_reason
-                    .clone()
+            // E21-S04: `view` carries the completeness by construction, so this branch cannot be
+            // reached with the question unanswered.
+            if !view.observation.is_complete() {
+                let reason = describe(view.provider_id, view.observation)
+                    .1
                     .unwrap_or_else(|| "provider scan was incomplete".to_string());
                 return observe_action(target, &classified.artifact.evidence_ids, &reason);
             }
@@ -662,8 +816,8 @@ mod tests {
         let trust = crate::trust::builtin_provider_trust();
 
         let resolution = resolve_claude(&root, clear, &policy, &process, &clock, trust);
-        assert!(resolution.scan_complete);
-        assert!(resolution.artifacts.is_empty());
+        assert!(resolution.scan_complete());
+        assert!(resolution.observed().is_empty());
     }
 
     #[test]
@@ -685,8 +839,8 @@ mod tests {
         let trust = crate::trust::builtin_provider_trust();
 
         let resolution = resolve_claude(&dir, clear, &policy, &process, &clock, trust);
-        assert_eq!(resolution.artifacts.len(), 1);
-        let classified = &resolution.artifacts[0];
+        assert_eq!(resolution.observed().len(), 1);
+        let classified = &resolution.observed()[0];
         assert_eq!(classified.artifact.activity_state, ActivityState::Stale);
         assert_eq!(
             classified.reachable_authority,
@@ -695,7 +849,7 @@ mod tests {
             classified.binding_constraints
         );
 
-        let actions = build_actions(std::slice::from_ref(&resolution));
+        let actions = build_actions(std::slice::from_ref(&resolution.planning_view()));
         assert_eq!(actions.len(), 1);
         assert_eq!(actions[0].action_class, ActionClass::Delete);
 
@@ -722,7 +876,7 @@ mod tests {
         let trust = crate::trust::builtin_provider_trust();
 
         let resolution = resolve_claude(&dir, clear, &policy, &process, &clock, trust);
-        let actions = build_actions(std::slice::from_ref(&resolution));
+        let actions = build_actions(std::slice::from_ref(&resolution.planning_view()));
         assert_eq!(actions.len(), 1);
         assert_eq!(
             actions[0].action_class,
@@ -752,7 +906,7 @@ mod tests {
         let trust = crate::trust::builtin_provider_trust();
 
         let resolution = resolve_claude(&dir, clear, &policy, &process, &clock, trust);
-        let actions = build_actions(std::slice::from_ref(&resolution));
+        let actions = build_actions(std::slice::from_ref(&resolution.planning_view()));
         assert_eq!(actions[0].action_class, ActionClass::Observe);
 
         std::fs::remove_dir_all(&dir).ok();
@@ -787,10 +941,10 @@ mod tests {
             trust,
         );
         assert_eq!(
-            resolution.artifacts[0].artifact.authority_ceiling,
+            resolution.observed()[0].artifact.authority_ceiling,
             AuthorityLevel::Observe
         );
-        let actions = build_actions(std::slice::from_ref(&resolution));
+        let actions = build_actions(std::slice::from_ref(&resolution.planning_view()));
         assert_eq!(actions[0].action_class, ActionClass::Observe);
 
         std::fs::remove_dir_all(&dir).ok();
@@ -818,7 +972,7 @@ mod tests {
         let trust = crate::trust::builtin_provider_trust();
 
         let resolution = resolve_claude(&dir, clear, &policy, &process, &clock, trust);
-        let actions = build_actions(std::slice::from_ref(&resolution));
+        let actions = build_actions(std::slice::from_ref(&resolution.planning_view()));
         let delete_targets: Vec<_> = actions
             .iter()
             .filter(|a| a.action_class == ActionClass::Delete)
@@ -882,7 +1036,7 @@ mod tests {
         let trust = crate::trust::builtin_provider_trust();
 
         let resolution = resolve_codex(&dir, clear, &policy, &fs, &process, &clock, trust);
-        let actions = build_actions(std::slice::from_ref(&resolution));
+        let actions = build_actions(std::slice::from_ref(&resolution.planning_view()));
         assert!(
             actions
                 .iter()
@@ -937,7 +1091,7 @@ mod tests {
         std::fs::set_permissions(&companion, std::fs::Permissions::from_mode(0o755)).unwrap();
 
         assert!(
-            !resolution.scan_complete,
+            !resolution.scan_complete(),
             "a companion directory that could not be listed must mark the whole scan incomplete"
         );
         assert!(
@@ -954,7 +1108,7 @@ mod tests {
                 .map(|c| c.artifact.knowledge_confidence)
                 .collect::<Vec<_>>()
         );
-        let actions = build_actions(std::slice::from_ref(&resolution));
+        let actions = build_actions(std::slice::from_ref(&resolution.planning_view()));
         assert!(
             actions
                 .iter()

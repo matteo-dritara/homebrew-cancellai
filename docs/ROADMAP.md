@@ -4,7 +4,7 @@
 
 **North star:** Become the local-first, cross-platform control plane for state created by AI agents.
 
-**Current phase:** `P0`
+**Current phase:** `P1`
 
 The roadmap is capability- and evidence-gated, not date-driven. A later phase may be researched in parallel, but it cannot acquire release authority before its dependency gates are satisfied.
 
@@ -40,6 +40,8 @@ Build and prove the provider-neutral Rust engine, formal safety kernel, inventor
 - **E04 - Single-Pass Inventory Engine** (`done`): Build a fast, evidence-rich inventory that scans once and never equates unknown with safe.
 - **E05 - Provider API and Reference Adapters** (`done`): Implement capability-based provider integration and achieve Claude/Codex semantic parity.
 - **E06 - Rust CLI Parity and Cutover** (`in_progress`): Make Rust the canonical engine only after observable parity, migration, and rollback evidence.
+- **E21 - Target Engine Trust Remediation** (`done`): Repair the target engine's scan-completeness authority so that unknown state cannot become destructive permission, and make the differential gate capable of proving it.
+- **E22 - Engineering System Hardening** (`planned`): Close the gaps between what the engineering system claims to enforce and what it actually enforces, so a green gate means what the repository says it means.
 
 ## P2 - Atlas
 

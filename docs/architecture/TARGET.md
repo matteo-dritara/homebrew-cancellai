@@ -132,6 +132,16 @@ cancellAI-tracked artifact deletion, per SI-019's own scope). `MutationExecutor`
 narrower, unlink-specific race remains open and is unrelated to this fix (a different
 operation, a different crate) - see that module's docs for its own residual.
 
+Scope completeness is a **shared type, not a shared traversal** (E21-S04,
+[ADR-0018](../adrs/0018-scope-completeness-is-a-shared-type-not-a-shared-traversal.md)). The
+provider adapters keep their own layout-specific walks - Claude's flat project/session shape and
+Codex's date-partitioned rollout tree are different problems - but every one of them must return
+`cancellai-inventory`'s `ScopeCompleteness`, and `cancellai-policy` can only obtain planning
+candidates through a value that carries it. `scan_scope` remains the reference implementation of
+that model rather than the shipped traversal; `scripts/check_rust_workspace.py` fails if
+`cancellai-cli` stops being able to reach the crate at all, because a crate nothing ships is a
+crate whose guarantees nothing has.
+
 E04-S01/E04-S02/E04-S03 implement `cancellai-inventory`'s share of the OBSERVE stage below:
 `FileFacts`/`observe_file_facts` (per-path evidence composed from three `cancellai-platform`
 seams), `scan_scope` (one recursive walk per scope, never re-walked by its report views), and

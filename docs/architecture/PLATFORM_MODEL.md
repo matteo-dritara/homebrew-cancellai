@@ -263,3 +263,18 @@ filesystem_context: linux | windows-mounted | other
 ```
 
 Operations across `/mnt/c` or similar mounts may have different identity, performance, permission, and atomicity semantics. These differences are surfaced rather than abstracted away.
+
+## Handle-relative mutation (E21-S07)
+
+The mutation seam's confirmed file deletion issues its unlink through
+`cancellai-sealedfs`'s `unlinkat`, against a directory descriptor opened once with `O_NOFOLLOW`
+at every component, rather than through the target's path
+([ADR-0017](../adrs/0017-sealed-root-handle-for-configuration-writes.md)'s E21-S07 extension).
+This is the same containment rule E07-S09 established for provider-root establishment, now
+holding at the moment of mutation: a target reached through a symlinked intermediate component
+is refused outright rather than followed, and a swap of any path component after validation
+cannot redirect the removal.
+
+The consequence is user-visible and intended: a provider root whose path crosses a link cannot
+be cleaned. `cancellai-cli` already proves the default root link-free before establishing it, so
+the deletion path simply meets the same bar the establishment path already set.

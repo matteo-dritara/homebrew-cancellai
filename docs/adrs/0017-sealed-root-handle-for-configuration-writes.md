@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-09-01
 - Owners: project owner
-- Related: ADR-0013, ADR-0015, E06-S01, E07-S07, SI-002, SI-003, SI-013, SI-019
+- Related: ADR-0013, ADR-0015, E06-S01, E07-S07, E07-S09, E21-S07, SI-002, SI-003, SI-013, SI-019
 
 ## Context
 
@@ -215,3 +215,35 @@ retains the final directory descriptor; cleanup grants root authority only when 
 canonicalized root's native device/inode identity matches that held handle. This extends the
 ADR's retained-capability principle to the handoff between `cancellai-sealedfs` and
 `ApprovedRoot`, without changing the non-Unix fail-closed decision.
+
+## Extension: the same capability now serves the deletion path (E21-S07)
+
+This ADR was written for `configure`, and its title still says so. E21-S07 extended the crate
+with `bind_existing` (walk an existing directory handle-relatively, never create the leaf) and
+`unlink_child_matching_unix_identity` (`fstatat` with `AT_SYMLINK_NOFOLLOW`, then `unlinkat`,
+both against one held descriptor), and routed `cancellai-platform::mutation`'s confirmed file
+deletion through them.
+
+The reason is recorded here rather than in a new ADR because it is the same decision applied to
+a second caller, not a different one. `cancellai-platform::mutation` had justified its unclosed
+unlink race by stating that no reviewed FFI dependency and no `unsafe` allowance existed in this
+workspace - a premise this ADR itself superseded, and which nobody revisited. The 2026-09-03
+target-engine review found the resulting inversion (`CR-TE-05`): writing one JSON key into a
+vendor settings file was protected by a retained no-follow handle, while irreversibly deleting a
+user's file was not.
+
+What this closes and what it does not:
+
+- **Closed**: the *directory* the removal is issued against cannot be swapped after validation.
+  There is no path left to re-resolve, so a rename or symlink-swap of any component is inert.
+- **Open, and stated rather than implied**: POSIX has no "unlink only if this name still points
+  at this inode" primitive, so `fstatat` and `unlinkat` remain two syscalls. An attacker with
+  write access to that specific directory can still replace the entry between them. That is
+  strictly smaller than the previous surface, and the mutation seam's own held file descriptor
+  plus post-unlink link-count check still *detects* such a swap where it cannot prevent it.
+- **Unchanged**: non-Unix platforms fail closed, exactly as `configure` already did.
+
+E21-S07 also removed `MutationOperation::Quarantine` and `MutationOperation::DeleteDirectoryTree`
+- neither identity-confirmed, neither requested by any production caller, both sitting inside the
+one file the workspace permits to call a removal primitive. Re-adding either belongs to E12,
+together with the confirmation technique it needs.

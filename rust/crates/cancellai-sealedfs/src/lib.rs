@@ -90,6 +90,10 @@ pub enum SealError {
     /// yet (see module docs); callers must fail closed rather than fall back to unprotected
     /// path-based operations.
     Unsupported(&'static str),
+    /// The child name still exists, but no longer refers to the object the caller confirmed.
+    /// Refused rather than removed: deleting whatever happens to sit at a name is precisely the
+    /// failure `cancellai-platform::mutation`'s identity confirmation exists to prevent.
+    IdentityMismatch,
     /// `establish` was given a relative path. There is no safe trusted anchor to walk a
     /// relative path from (it would resolve against the process's current directory, which
     /// this crate has no basis to trust) - refused rather than silently resolved against CWD.
@@ -120,6 +124,11 @@ impl std::fmt::Display for SealError {
                 )
             }
             SealError::Unsupported(reason) => write!(f, "unsupported on this platform: {reason}"),
+            SealError::IdentityMismatch => write!(
+                f,
+                "the child no longer refers to the confirmed object; refusing to remove a \
+                 different one"
+            ),
             SealError::NotAbsolute => write!(f, "root path must be absolute"),
             SealError::PathNotNormalized => {
                 write!(f, "root path must not contain '.' or '..' components")
@@ -404,6 +413,81 @@ mod unix_impl {
                 }
                 Err(e) => Err(e),
             }
+        }
+
+        /// Binds an *existing* directory as a sealed root, walking every component
+        /// handle-relatively exactly as [`establish`](Self::establish) does but never creating
+        /// the leaf (E21-S07).
+        ///
+        /// `establish`'s create-if-absent behaviour is right for `configure`, which may
+        /// legitimately need to create `~/.claude`. It is wrong for a deletion path: bringing a
+        /// directory into existence as a side effect of removing a file inside it is not an
+        /// operation anything should be able to perform by accident.
+        pub fn bind_existing(path: &Path) -> Result<Self, SealError> {
+            let components = decompose_absolute_path(path)?;
+            let mut current = open_root_dir()?;
+            for name in &components {
+                current = open_child_dir_nofollow(&current, name)?;
+            }
+            Ok(SealedRoot { dir: current })
+        }
+
+        /// Removes a direct child by name, relative to the held directory descriptor, but only
+        /// if that name still resolves - without following links - to the exact
+        /// `(device, inode)` the caller confirmed (E21-S07, SI-013).
+        ///
+        /// This is the prevention half of `cancellai-platform::mutation`'s delete path. Its
+        /// three checks used to be a held *file* descriptor plus two *path* lookups, so the
+        /// object being unlinked was identified by a name resolved afresh through every
+        /// intermediate directory, any of which could be swapped between the check and the
+        /// call. Here both the identity check and the removal are issued against one directory
+        /// descriptor that was opened once, with `O_NOFOLLOW` at every component: a rename or
+        /// symlink-swap of any part of the path after `bind_existing` returned cannot redirect
+        /// either of them.
+        ///
+        /// **Residual, stated rather than implied.** POSIX has no "unlink this entry only if it
+        /// still points at this inode" primitive, so `fstatat` and `unlinkat` remain two
+        /// syscalls. What this closes is the *directory* being swapped; what remains is an
+        /// attacker with write access to that specific directory replacing the entry in the
+        /// window between them. That is a strictly smaller surface than the path-based version,
+        /// and `cancellai-platform::mutation` still holds its own open descriptor to the target
+        /// file and re-checks its link count afterwards, so such a swap is detected even where
+        /// it cannot be prevented.
+        pub fn unlink_child_matching_unix_identity(
+            &self,
+            name: &str,
+            device: u64,
+            inode: u64,
+        ) -> Result<(), SealError> {
+            let cname = validate_child_name(name)?;
+            let dirfd = self.dir.as_raw_fd();
+
+            let mut stat: libc::stat = unsafe { std::mem::zeroed() };
+            // SAFETY: `dirfd` is a valid open directory descriptor for this call's duration
+            // (borrowed from `self.dir`); `cname` is a NUL-terminated bare filename validated
+            // above, so it cannot resolve outside the bound directory; `stat` is a valid,
+            // appropriately-sized out-parameter. `AT_SYMLINK_NOFOLLOW` keeps this a no-follow
+            // lookup, so a symlink planted at `name` is measured as the link itself and will
+            // not match the caller's expected regular-file identity.
+            let rc = unsafe {
+                libc::fstatat(dirfd, cname.as_ptr(), &mut stat, libc::AT_SYMLINK_NOFOLLOW)
+            };
+            if rc != 0 {
+                return Err(SealError::Io(io::Error::last_os_error()));
+            }
+            if stat.st_dev as u64 != device || stat.st_ino as u64 != inode {
+                return Err(SealError::IdentityMismatch);
+            }
+
+            // SAFETY: same invariants as the `fstatat` above - a valid borrowed directory
+            // descriptor and a validated bare filename. `0` (no `AT_REMOVEDIR`) removes a
+            // non-directory entry only, so this cannot remove a directory even if one appeared
+            // at this name.
+            let rc = unsafe { libc::unlinkat(dirfd, cname.as_ptr(), 0) };
+            if rc != 0 {
+                return Err(SealError::Io(io::Error::last_os_error()));
+            }
+            Ok(())
         }
 
         /// Reads a direct child file by name, relative to the held directory descriptor -
@@ -848,6 +932,24 @@ mod fallback_impl {
     }
 
     impl SealedRoot {
+        pub fn bind_existing(_path: &Path) -> Result<Self, SealError> {
+            Err(SealError::Unsupported(
+                "no verified no-follow, handle-relative directory binding exists for this \
+                 platform yet (see the crate module docs)",
+            ))
+        }
+
+        pub fn unlink_child_matching_unix_identity(
+            &self,
+            _name: &str,
+            _device: u64,
+            _inode: u64,
+        ) -> Result<(), SealError> {
+            Err(SealError::Unsupported(
+                "no verified no-follow, handle-relative unlink exists for this platform yet",
+            ))
+        }
+
         pub fn establish(_path: &Path) -> Result<Self, SealError> {
             Err(SealError::Unsupported(
                 "no verified no-follow/handle-relative directory capability exists for this \

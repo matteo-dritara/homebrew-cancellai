@@ -771,3 +771,195 @@ fn configure_refuses_when_home_dot_claude_is_itself_a_symlink() {
         "a symlinked default-named root must never be written to: {written}"
     );
 }
+
+// ----------------------------------------------------------------------------------------
+// E21 round-1 independent review: the native regression the verifier required. A `projects/`
+// directory that exists and cannot be read must withhold and exit 4, not report a clean empty
+// scan and exit 0. Reproduced by Codex against the round-1 implementation; pinned here so the
+// escape cannot reopen.
+// ----------------------------------------------------------------------------------------
+
+/// chmod(0o000) denies a non-root reader only. If this process can still read such a directory
+/// the assertions below would pass for the wrong reason, so skip loudly instead.
+#[cfg(unix)]
+fn can_deny_reads(path: &Path) -> bool {
+    std::fs::read_dir(path).is_err()
+}
+
+#[cfg(unix)]
+#[test]
+fn an_unreadable_claude_projects_root_withholds_and_exits_four() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let home = TempHome::new("unreadable-projects-root");
+    let session = home.write_stale_claude_session("proj-a", "11111111-1111-4111-8111-111111111111");
+    let projects = home.path().join(".claude/projects");
+    std::fs::set_permissions(&projects, std::fs::Permissions::from_mode(0o000)).unwrap();
+    if !can_deny_reads(&projects) {
+        std::fs::set_permissions(&projects, std::fs::Permissions::from_mode(0o755)).unwrap();
+        eprintln!("skipped: this process can read a 0o000 directory (running as root?)");
+        return;
+    }
+
+    let output = run(
+        &home,
+        &[
+            "clean",
+            "--yes",
+            "--allow-running",
+            "--days",
+            "1",
+            "--keep-latest",
+            "0",
+            "--tool",
+            "claude",
+        ],
+    );
+    std::fs::set_permissions(&projects, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    assert_eq!(
+        output.status.code(),
+        Some(4),
+        "an unobservable provider root must exit 4 (SAFETY_BLOCK), not 0: stdout={} stderr={}",
+        stdout(&output),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        session.exists(),
+        "nothing may be deleted from a scope this run could not observe (SI-008/SI-009/C-02)"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn an_unreadable_claude_projects_root_is_reported_incomplete_with_a_real_count() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let home = TempHome::new("unreadable-projects-inspect");
+    home.write_stale_claude_session("proj-a", "22222222-2222-4222-8222-222222222222");
+    let projects = home.path().join(".claude/projects");
+    std::fs::set_permissions(&projects, std::fs::Permissions::from_mode(0o000)).unwrap();
+    if !can_deny_reads(&projects) {
+        std::fs::set_permissions(&projects, std::fs::Permissions::from_mode(0o755)).unwrap();
+        eprintln!("skipped: this process can read a 0o000 directory (running as root?)");
+        return;
+    }
+
+    let output = run(
+        &home,
+        &["inspect", "--json", "--allow-running", "--tool", "claude"],
+    );
+    std::fs::set_permissions(&projects, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let doc: serde_json::Value =
+        serde_json::from_str(&stdout(&output)).expect("inspect emits JSON");
+    let claude = doc["scan_completeness"]
+        .as_array()
+        .expect("scan_completeness is an array")
+        .iter()
+        .find(|s| s["scope"] == "claude-code")
+        .expect("claude scope present")
+        .clone();
+    assert_eq!(claude["complete"], serde_json::json!(false));
+    assert_eq!(
+        claude["error_count"],
+        serde_json::json!(1),
+        "error_count must be the real number of unobserved paths"
+    );
+}
+
+/// The counterexample that keeps the two tests above from being satisfied by "always withhold":
+/// a Claude home with no `projects/` at all is a structurally empty install, and must stay
+/// non-destructive *and* non-withholding.
+#[test]
+fn a_claude_home_without_projects_is_complete_not_withheld() {
+    let home = TempHome::new("no-projects-dir");
+    std::fs::create_dir_all(home.path().join(".claude")).unwrap();
+    std::fs::write(home.path().join(".claude/settings.json"), "{}").unwrap();
+
+    let output = run(
+        &home,
+        &["inspect", "--json", "--allow-running", "--tool", "claude"],
+    );
+    let doc: serde_json::Value =
+        serde_json::from_str(&stdout(&output)).expect("inspect emits JSON");
+    let claude = doc["scan_completeness"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["scope"] == "claude-code")
+        .unwrap()
+        .clone();
+    assert_eq!(
+        claude["complete"],
+        serde_json::json!(true),
+        "a provider that is simply not installed is a known-empty state, not missing evidence"
+    );
+    assert_eq!(output.status.code(), Some(0));
+}
+
+#[cfg(unix)]
+#[test]
+fn an_unreadable_home_withholds_rather_than_reporting_nothing_to_clean() {
+    use std::os::unix::fs::PermissionsExt;
+
+    // Found during E21's own post-review self-check, one level above the verifier's finding and
+    // in the same class: `resolve_*` gated on `root.exists()`, and `Path::exists()` answers
+    // `false` for both "not installed" and "not allowed to look". With an unreadable `$HOME`
+    // the engine reported a clean empty scan and exited 0 while the reference exits 4.
+    let home = TempHome::new("unreadable-home");
+    home.write_stale_claude_session("proj-a", "33333333-3333-4333-8333-333333333333");
+    std::fs::set_permissions(home.path(), std::fs::Permissions::from_mode(0o000)).unwrap();
+    if std::fs::read_dir(home.path()).is_ok() {
+        std::fs::set_permissions(home.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+        eprintln!("skipped: this process can read a 0o000 directory (running as root?)");
+        return;
+    }
+
+    let output = run(
+        &home,
+        &[
+            "clean",
+            "--yes",
+            "--allow-running",
+            "--days",
+            "1",
+            "--keep-latest",
+            "0",
+        ],
+    );
+    std::fs::set_permissions(home.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    assert_eq!(
+        output.status.code(),
+        Some(4),
+        "an unreadable home must withhold, not report nothing to clean: stdout={} stderr={}",
+        stdout(&output),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// The counterexample that keeps the test above from being satisfied by "always withhold": a
+/// home with neither provider installed is a known-empty state and must stay at exit 0.
+#[test]
+fn a_home_with_no_provider_installed_is_complete_and_exits_zero() {
+    let home = TempHome::new("no-provider-installed");
+    let output = run(
+        &home,
+        &[
+            "clean",
+            "--yes",
+            "--allow-running",
+            "--days",
+            "1",
+            "--keep-latest",
+            "0",
+        ],
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "a machine with no provider installed has nothing to observe and nothing to withhold: {}",
+        stdout(&output)
+    );
+}

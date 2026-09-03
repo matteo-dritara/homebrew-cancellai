@@ -14,8 +14,8 @@ pub mod retention;
 mod trust;
 
 pub use retention::{
-    ClassifiedArtifact, ProviderResolution, RetentionPolicy, ToolScope, build_actions,
-    resolve_claude, resolve_codex,
+    ClassifiedArtifact, ProviderPlanningView, ProviderResolution, RetentionPolicy, ToolScope,
+    build_actions, resolve_claude, resolve_codex,
 };
 pub use trust::builtin_provider_trust;
 

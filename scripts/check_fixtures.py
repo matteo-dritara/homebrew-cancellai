@@ -6,6 +6,8 @@ Python -> Rust migration. Checks:
 
 - every manifest entry has a matching recipe in tests/fixtures/recipes.py;
 - the required fixture categories are all represented;
+- a category covered for one reference provider is covered for the other, or the asymmetry is
+  declared in the manifest with a reason (E21-S02);
 - every fixture builds without error;
 - built fixture trees contain no obvious real path/secret/email pattern.
 
@@ -40,6 +42,7 @@ REQUIRED_CATEGORIES = {
     "layout_drift",
 }
 VALID_TOOLS = {"claude", "codex"}
+VALID_ASYMMETRY_KINDS = {"structural", "tracked_gap"}
 
 FORBIDDEN_PATTERNS = [
     re.compile(r"/Users/[^/\s]+"),
@@ -103,6 +106,68 @@ def _scan_tree(base: Path, fixture_id: str, errors: list[str]) -> None:
         _scan_text(content, f"{fixture_id}:{relative} (content)", errors)
 
 
+def _check_category_symmetry(fixtures: list[dict[str, Any]], declared: Any, errors: list[str]) -> None:
+    """A category covered for one reference provider must be covered for the other.
+
+    The 2026-09-03 target-engine review (CR-TE-03) found the corpus carried `partial_tree` for
+    Claude and not for Codex, and the differential parity gate was therefore structurally unable
+    to observe an incomplete Codex scan - while the engine was deleting on one. The gate is only
+    ever worth its corpus, so the corpus itself needs a rule.
+
+    An asymmetry is allowed, but only when the manifest declares it and says why. `structural`
+    means the category cannot exist for that provider (Codex has a rollout parent/child graph,
+    Claude has none). `tracked_gap` means it could and does not yet - which stays visible in the
+    manifest instead of being indistinguishable from a deliberate decision.
+    """
+    covered: dict[str, set[str]] = {}
+    for entry in fixtures:
+        category, tool = entry.get("category"), entry.get("tool")
+        if isinstance(category, str) and tool in VALID_TOOLS:
+            covered.setdefault(category, set()).add(tool)
+
+    if declared is None:
+        declared = []
+    if not isinstance(declared, list):
+        errors.append("manifest 'category_asymmetry' must be a list of declarations")
+        return
+
+    allowed: dict[tuple[str, str], dict[str, Any]] = {}
+    for item in declared:
+        if not isinstance(item, dict):
+            errors.append(f"category_asymmetry entry must be an object: {item!r}")
+            continue
+        category, absent_for = item.get("category"), item.get("absent_for")
+        kind, reason = item.get("kind"), item.get("reason")
+        if not isinstance(category, str) or category not in REQUIRED_CATEGORIES:
+            errors.append(f"category_asymmetry: invalid category {category!r}")
+            continue
+        if absent_for not in VALID_TOOLS:
+            errors.append(f"category_asymmetry[{category}]: 'absent_for' must be one of {sorted(VALID_TOOLS)}")
+            continue
+        if kind not in VALID_ASYMMETRY_KINDS:
+            errors.append(f"category_asymmetry[{category}]: 'kind' must be one of {sorted(VALID_ASYMMETRY_KINDS)}")
+        # A reason short enough to be a label explains nothing; the point of the declaration is
+        # that a reader can tell a deliberate decision from an unexamined hole.
+        if not isinstance(reason, str) or len(reason.strip()) < 40:
+            errors.append(f"category_asymmetry[{category}]: 'reason' must be a real explanation, not a label")
+        allowed[(category, absent_for)] = item
+
+    for category, tools in sorted(covered.items()):
+        for tool in sorted(VALID_TOOLS - tools):
+            if (category, tool) not in allowed:
+                errors.append(
+                    f"category {category!r} is covered for {sorted(tools)} but not for {tool!r}, and the "
+                    f"manifest does not declare the asymmetry. Add a fixture, or declare it in "
+                    f"'category_asymmetry' with a reason (E21-S02 / CR-TE-03)."
+                )
+
+    for category, tool in sorted(allowed):
+        if tool in covered.get(category, set()):
+            errors.append(
+                f"category_asymmetry declares {category!r} absent for {tool!r}, but a fixture now covers it. Remove the stale declaration."
+            )
+
+
 def validate() -> list[str]:
     errors: list[str] = []
     data = load_manifest()
@@ -153,6 +218,8 @@ def validate() -> list[str]:
                 continue
             _scan_tree(base, fixture_id, errors)
             _restore_permissions(base)
+
+    _check_category_symmetry(fixtures, data.get("category_asymmetry"), errors)
 
     orphaned_recipes = set(recipes.FIXTURES) - seen_ids
     if orphaned_recipes:

@@ -31,8 +31,8 @@ use cancellai_platform::{
     Clock, SystemClock, SystemIdentityObserver, SystemPathResolver, SystemProcessObserver,
 };
 use cancellai_policy::{
-    ClassifiedArtifact, ProviderResolution, RetentionPolicy, ToolScope, build_actions,
-    builtin_provider_trust, resolve_claude, resolve_codex,
+    ClassifiedArtifact, ProviderPlanningView, ProviderResolution, RetentionPolicy, ToolScope,
+    build_actions, builtin_provider_trust, resolve_claude, resolve_codex,
 };
 use cancellai_provider_api::{RootConfidence, RootOrigin};
 use cancellai_provider_claude::ClaudeProvider;
@@ -284,7 +284,7 @@ fn provider_id_by_target(resolved: &Resolved) -> HashMap<ArtifactId, &'static st
         .resolutions
         .iter()
         .flat_map(|r| {
-            r.artifacts
+            r.observed()
                 .iter()
                 .map(move |c| (c.artifact.artifact_id.clone(), r.provider_id))
         })
@@ -335,20 +335,31 @@ fn withhold_for_root_authority(
     (actions, withheld)
 }
 
+/// Every resolution's planning surface. `build_actions` takes these rather than the
+/// resolutions themselves (E21-S04, ADR-0018): a planning view cannot be constructed without
+/// the scope's completeness, so proposing deletions while ignoring whether the scan was
+/// complete is not a program that compiles.
+fn planning_views(resolutions: &[ProviderResolution]) -> Vec<ProviderPlanningView<'_>> {
+    resolutions.iter().map(|r| r.planning_view()).collect()
+}
+
 fn scan_completeness_docs(resolved: &Resolved) -> Vec<ScanCompletenessDoc> {
     resolved
         .resolutions
         .iter()
         .map(|r| ScanCompletenessDoc {
             scope: r.provider_id,
-            complete: r.scan_complete,
-            error_count: u32::from(!r.scan_complete),
+            complete: r.scan_complete(),
+            // A real count of unobservable paths, not a boolean widened to an integer: the
+            // reference enumerates every unreadable path, and a consumer treating this field
+            // as a count was previously misled (`CR-TE-10`, E21-S03).
+            error_count: r.scan_error_count(),
         })
         .collect()
 }
 
 fn any_incomplete(resolved: &Resolved) -> bool {
-    resolved.resolutions.iter().any(|r| !r.scan_complete)
+    resolved.resolutions.iter().any(|r| !r.scan_complete())
 }
 
 fn cmd_read_only(args: &[String], mode: RunMode) -> i32 {
@@ -368,7 +379,7 @@ fn cmd_read_only(args: &[String], mode: RunMode) -> i32 {
             let artifacts: Vec<_> = resolved
                 .resolutions
                 .iter()
-                .flat_map(|r| r.artifacts.iter())
+                .flat_map(|r| r.observed().iter())
                 .map(|c| c.artifact.clone())
                 .collect();
             if flags.json || mode == RunMode::Inspect {
@@ -390,7 +401,7 @@ fn cmd_read_only(args: &[String], mode: RunMode) -> i32 {
             // the real run is itself a safety defect) - see `withhold_for_root_authority`'s docs.
             let provider_by_target = provider_id_by_target(&resolved);
             let (actions, withheld) = withhold_for_root_authority(
-                build_actions(&resolved.resolutions),
+                build_actions(&planning_views(&resolved.resolutions)),
                 &resolved,
                 &provider_by_target,
             );
@@ -435,13 +446,13 @@ fn cmd_read_only(args: &[String], mode: RunMode) -> i32 {
 
 fn print_status_summary(resolved: &Resolved) {
     for resolution in &resolved.resolutions {
-        let total_bytes: u64 = resolution.artifacts.iter().map(|c| c.size_bytes).sum();
+        let total_bytes: u64 = resolution.observed().iter().map(|c| c.size_bytes).sum();
         println!(
             "{}: {} artifact(s), {} bytes, scan_complete={}",
             resolution.provider_id,
-            resolution.artifacts.len(),
+            resolution.observed().len(),
             total_bytes,
-            resolution.scan_complete
+            resolution.scan_complete()
         );
     }
 }
@@ -484,7 +495,7 @@ fn cmd_clean(args: &[String]) -> i32 {
     };
     let provider_by_target = provider_id_by_target(&resolved);
     let (actions, withheld) = withhold_for_root_authority(
-        build_actions(&resolved.resolutions),
+        build_actions(&planning_views(&resolved.resolutions)),
         &resolved,
         &provider_by_target,
     );
@@ -613,7 +624,7 @@ fn execute_clean(resolved: &Resolved, actions: &[Action], json: bool, allow_runn
     let by_id: HashMap<ArtifactId, &ClassifiedArtifact> = resolved
         .resolutions
         .iter()
-        .flat_map(|r| r.artifacts.iter())
+        .flat_map(|r| r.observed().iter())
         .map(|c| (c.artifact.artifact_id.clone(), c))
         .collect();
 

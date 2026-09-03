@@ -67,6 +67,15 @@ three. Traversal never follows a symlink and never descends across a device/file
 boundary a directory's identity reveals (SI-018) - a boundary-crossing directory is still
 recorded as a fact, just not read into.
 
+`scan_scope` is not the traversal the shipped CLI runs. E05/E06 built layout-specific discovery
+inside the provider adapters instead, and E21-S04
+([ADR-0018](../adrs/0018-scope-completeness-is-a-shared-type-not-a-shared-traversal.md))
+confirmed that split while closing what it had cost: the adapters must express what they
+observed as `ScopeCompleteness`, and `cancellai-policy`'s `ProviderResolution` hands out planning
+candidates only through a `ProviderPlanningView` that carries it - the same construction-level
+guarantee `planning_view` gives here, applied to the layer that actually feeds `clean`. What
+E04 contributes to the product is therefore this model, not this walk.
+
 E04-S03 (`rust/crates/cancellai-inventory/src/completeness.rs`) classifies every scope
 `Complete`, `Partial`, or `Unknown` from that same snapshot - the scope root itself being
 unobservable is `Unknown`; a readable root with some unreadable/permission-denied/vanished

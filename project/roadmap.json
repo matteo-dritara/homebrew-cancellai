@@ -2,7 +2,7 @@
   "schema_version": 1,
   "project": "cancellAI",
   "north_star": "Become the local-first, cross-platform control plane for state created by AI agents.",
-  "current_phase": "P0",
+  "current_phase": "P1",
   "phases": [
     {
       "id": "P0",
@@ -32,7 +32,9 @@
         "E03",
         "E04",
         "E05",
-        "E06"
+        "E06",
+        "E21",
+        "E22"
       ]
     },
     {
@@ -131,6 +133,8 @@
     "project/epics/E17.json",
     "project/epics/E18.json",
     "project/epics/E19.json",
-    "project/epics/E20.json"
+    "project/epics/E20.json",
+    "project/epics/E21.json",
+    "project/epics/E22.json"
   ]
 }

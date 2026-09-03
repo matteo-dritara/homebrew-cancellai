@@ -8,6 +8,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use cancellai_inventory::ScopeObservation;
 use cancellai_provider_codex::{CodexProvider, RolloutCategory};
 
 struct FixtureRoot(PathBuf);
@@ -91,7 +92,14 @@ fn codex_normal_session_matches_the_committed_characterization() {
         vec!["auth.json", "config.toml", "sessions"]
     );
 
-    let sessions = provider.discover_sessions();
+    let discovered = provider.discover_sessions();
+    assert_eq!(
+        discovered.observation,
+        ScopeObservation::complete(),
+        "this fixture is fully readable: any recorded completeness reason means the walk failed \
+         to observe something it should have (E21-S03)"
+    );
+    let sessions = discovered.sessions;
     assert_eq!(sessions.len(), 1);
     assert_eq!(sessions[0].category, RolloutCategory::Session);
     assert_eq!(
@@ -133,7 +141,14 @@ fn codex_subagent_tree_matches_the_committed_characterization() {
         vec!["auth.json", "config.toml", "sessions"]
     );
 
-    let sessions = provider.discover_sessions();
+    let discovered = provider.discover_sessions();
+    assert_eq!(
+        discovered.observation,
+        ScopeObservation::complete(),
+        "this fixture is fully readable: any recorded completeness reason means the walk failed \
+         to observe something it should have (E21-S03)"
+    );
+    let sessions = discovered.sessions;
     assert_eq!(sessions.len(), 3, "all three rollouts must be discovered");
 
     let trees = provider.subagent_trees();
@@ -215,7 +230,14 @@ fn codex_symlink_escape_matches_the_committed_characterization() {
     std::os::unix::fs::symlink(&outside_file, fixture.0.join("sessions/escape.jsonl")).unwrap();
 
     let provider = CodexProvider::new(&fixture.0, true);
-    let sessions = provider.discover_sessions();
+    let discovered = provider.discover_sessions();
+    assert_eq!(
+        discovered.observation,
+        ScopeObservation::complete(),
+        "this fixture is fully readable: any recorded completeness reason means the walk failed \
+         to observe something it should have (E21-S03)"
+    );
+    let sessions = discovered.sessions;
     assert_eq!(
         sessions.len(),
         1,
@@ -260,7 +282,14 @@ fn codex_layout_drift_matches_the_committed_characterization() {
     );
     assert!(!provider.fingerprint().markers.contains(&"plugin_cache_v2"));
 
-    let sessions = provider.discover_sessions();
+    let discovered = provider.discover_sessions();
+    assert_eq!(
+        discovered.observation,
+        ScopeObservation::complete(),
+        "this fixture is fully readable: any recorded completeness reason means the walk failed \
+         to observe something it should have (E21-S03)"
+    );
+    let sessions = discovered.sessions;
     assert_eq!(sessions.len(), 1);
     assert_eq!(
         sessions[0].session_id,

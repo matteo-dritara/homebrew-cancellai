@@ -782,7 +782,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S04 - Canonical engine switch
 
-**Status:** `blocked` | **Change Risk:** `CR4` | **Dependencies:** E06-S03 | **Safety obligations:** SI-019
+**Status:** `blocked` | **Change Risk:** `CR4` | **Dependencies:** E06-S03, E21, E22-S01 | **Safety obligations:** SI-019
 
 **Outcome.** Promote Rust to stable only after functional, safety, compatibility, and operability gates pass.
 
@@ -791,10 +791,12 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 - Owner-visible migration Safety Verdict is accepted.
 - Python remains tagged/archiveable as reference for at least one transition window.
 - Release notes state any intentional contract change.
+- The blockers recorded in docs/development/RELEASE_GATES.md's cutover checklist are closed or explicitly accepted by the owner: E21 (target-engine scan-completeness authority), E22-S01 (a release workflow that actually verifies the Rust engine), and the platform/packaging prerequisites E20-S01 and E17 - or a scoped cutover perimeter decided by ADR.
 
 **Verification**
 
 - Full release evidence packet and independent verifier sign-off.
+- A native reproduction on each platform inside the decided cutover perimeter, using the E21-S02 partial-scan fixtures, showing the engine withholds where the frozen reference withholds.
 
 **Documentation impact**
 
@@ -2020,3 +2022,319 @@ Make Windows native and WSL2 first-class platform targets, once a real Windows/W
 **Documentation impact**
 
 - `docs/architecture/PLATFORM_MODEL.md`
+
+## E21 - Target Engine Trust Remediation
+
+**Phase:** `P1` | **Status:** `done` | **Epic dependencies:** none
+
+Repair the target engine's scan-completeness authority so that unknown state cannot become destructive permission, and make the differential gate capable of proving it.
+
+### E21-S01 - Truthful disclosure of target-engine gaps
+
+**Status:** `done` | **Change Risk:** `CR0` | **Dependencies:** none | **Safety obligations:** none
+
+**Outcome.** Correct every place where the repository currently states, or implies by omission, a stronger guarantee than the target engine provides - before any of it is repaired, so the record is honest even mid-repair.
+
+**Acceptance criteria**
+
+- docs/development/RELEASE_GATES.md reclassifies the Codex incomplete-scan gap from G1 Functional to G2 Safety, and adds the Claude project-directory case, which no document currently discloses.
+- cancellai-platform/src/mutation.rs's residual note no longer justifies the unclosed unlink race with the claim that no reviewed FFI dependency exists, a premise cancellai-sealedfs (ADR-0017) superseded.
+- docs/CLI_RUST.md's Known gaps section names the absent --help/-h/--version surface, the unwired Codex native delete backend, and the scan_completeness error_count that never reports a real count.
+- project/roadmap.json declares the phase the project is actually in; PROJECT_STATUS.md no longer generates a current phase whose epics are all done.
+
+**Verification**
+
+- Each corrected claim is checked against the behavior reproduced in docs/audits/2026-09-03-CODE_REVIEW.md, not against the previous prose.
+- python3 scripts/project_os.py check and python3 scripts/check_docs.py check pass with the regenerated control plane.
+
+**Documentation impact**
+
+- `docs/development/RELEASE_GATES.md`
+- `docs/CLI_RUST.md`
+- `project/roadmap.json`
+
+### E21-S02 - Symmetric partial-scan fixture coverage
+
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E21-S01 | **Safety obligations:** SI-008, SI-009, SI-010
+
+**Outcome.** Give the differential parity gate the fixtures it needs to observe an incomplete scan on every provider and every discovery branch, so the class of defect CR-TE-01 describes cannot pass the gate again.
+
+**Acceptance criteria**
+
+- A codex-partial-tree fixture exists, is classified NORMATIVE, and contains a rollout inside a directory the scan cannot list.
+- A claude-partial-project fixture exists, is classified NORMATIVE, and contains a session inside a project directory the scan cannot list - the branch the E06-S02 companion-payload repair never covered.
+- scripts/check_fixtures.py fails when a fixture category exists for one reference provider and not the other, unless the asymmetry is declared in the manifest with a reason.
+- Both fixtures run through scripts/rust_python_parity.py in both root-origin scenarios.
+
+**Verification**
+
+- Against the engine as it stands before E21-S03, both new fixtures must make the parity gate FAIL, reproducing the divergence the audit measured. A fixture that passes on the unrepaired engine is not exercising the defect.
+- An injected regression that removes the completeness propagation E21-S03 adds must make the gate fail again.
+
+**Documentation impact**
+
+- `tests/fixtures/README.md`
+- `docs/development/VERIFICATION_STRATEGY.md`
+
+### E21-S03 - Scan completeness propagation in provider adapters
+
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** E21-S02 | **Safety obligations:** SI-008, SI-009, SI-010, SI-014
+
+**Outcome.** Make an unobservable directory reduce authority in the Rust engine exactly as it does in the frozen Python reference: reported, never silently skipped, and never a basis for deletion.
+
+**Acceptance criteria**
+
+- Every directory-listing, file-type and metadata failure during Claude and Codex discovery is recorded with a named reason and a path, never discarded by a bare else-continue.
+- A provider scope carrying any such failure resolves scan_complete=false, withholds every destructive action for that tool, and degrades knowledge_confidence to LOW/UNKNOWN for every artifact in that scope - not only for the artifact whose own evidence was degraded.
+- scan_completeness[].error_count reports the real number of unobservable paths, not a boolean widened to an integer.
+- clean, plan and clean --dry-run all report the withholding in the exit code, so a preview never disagrees with a real run.
+
+**Verification**
+
+- The E21-S02 fixtures pass the differential gate in both root-origin scenarios, having failed it before this story.
+- Adversarial cases beyond permission denial: a directory that disappears mid-walk, an entry read_dir lists but whose metadata cannot be read, and a scope whose root itself becomes unreadable after discovery starts.
+- A native reproduction of the audit's own scenario - a real chmod 000 directory holding an eligible rollout - must exit 4 with nothing deleted.
+- Independent adversarial verifier and an owner-visible Safety Verdict, per CR4.
+
+**Documentation impact**
+
+- `docs/CLI_RUST.md`
+- `docs/architecture/JSON_CONTRACTS.md`
+- `docs/development/RELEASE_GATES.md`
+- `CHANGELOG.md`
+
+### E21-S04 - ScopeCompleteness as the shared planning contract
+
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E21-S03 | **Safety obligations:** SI-008, SI-009
+
+**Outcome.** Make completeness impossible to omit by construction rather than by review, reusing the type-level guarantee E04 built instead of leaving a second, weaker model beside it.
+
+**Acceptance criteria**
+
+- Provider discovery returns cancellai-inventory's ScopeCompleteness; the provider adapters keep their layout-specific traversal, since Claude's and Codex's on-disk shapes genuinely differ (ADR-0018).
+- cancellai-policy obtains planning candidates only through a value that cannot be constructed without completeness, mirroring the compile_fail regression E04-S03 already committed for planning_view.
+- cancellai-inventory is reachable from the shipped cancellai-cli dependency graph, and a check fails if it becomes unreachable again.
+- ADR-0018 records the decision and the alternatives weighed, including the rejected full rebase of the adapters onto scan_scope.
+
+**Verification**
+
+- A compile-fail test proves the bare-candidates path is unreachable from outside the crate, as E04-S03's own regression does.
+- The differential gate stays green across the refactor: this story must not change a single observable classification.
+
+**Documentation impact**
+
+- `docs/adrs/0018-scope-completeness-is-a-shared-type-not-a-shared-traversal.md`
+- `docs/architecture/TARGET.md`
+- `docs/architecture/DOMAIN_MODEL.md`
+
+### E21-S05 - Performance gates measure the shipped discovery path
+
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** E21-S04 | **Safety obligations:** none
+
+**Outcome.** Point the performance budget at the code the binary actually executes, instead of a traversal no production caller reaches.
+
+**Acceptance criteria**
+
+- The CI microbenchmark and the scheduled benchmarks exercise the provider discovery path as cancellai-cli invokes it, not scan_scope in isolation.
+- A benchmark that stops covering the shipped path fails rather than silently measuring dead code.
+- The machine-readable trend artifact keeps its existing shape so historical comparisons remain readable.
+
+**Verification**
+
+- The retargeted microbenchmark detects an injected quadratic regression in provider discovery.
+- The scheduled 10k/100k datasets run to completion on the existing workflow budget.
+
+**Documentation impact**
+
+- `docs/development/RELEASE_GATES.md`
+- `.github/workflows/rust-benchmark.yml`
+
+### E21-S06 - Bounded streaming read of Codex rollout metadata
+
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
+
+**Outcome.** Make read_codex_parent_session_id honour the bound it already documents, instead of loading an entire transcript to inspect its first ten lines.
+
+**Acceptance criteria**
+
+- At most the first 10 records or 512 KiB of a rollout are read from disk, streamed rather than buffered whole.
+- Peak memory during discovery is bounded independently of the largest transcript present.
+- The parsed result is byte-for-byte identical to the current implementation on every fixture, including malformed and non-UTF-8 input.
+
+**Verification**
+
+- A test over a synthetic rollout of at least 256 MiB asserts a memory ceiling; the audit measured 303 MB peak RSS against the Python reference's 27.8 MB on a 287 MB file.
+- The differential gate stays green: this story must not change discovery semantics.
+
+**Documentation impact**
+
+- `docs/development/RELEASE_GATES.md`
+
+### E21-S07 - Handle-relative unlink for confirmed deletion
+
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** E21-S01 | **Safety obligations:** SI-013, SI-016, SI-019, SI-020
+
+**Outcome.** Replace detection of the delete-path swap race with prevention, using the no-follow handle capability the workspace already reviewed and shipped for configuration writes.
+
+**Acceptance criteria**
+
+- cancellai-sealedfs gains an unlinkat-based child removal, with the same per-block SAFETY justification and the same fail-closed behaviour on platforms with no verified implementation.
+- SystemMutationExecutor's confirmed file deletion issues the unlink relative to a held directory descriptor, so a path-level swap after validation cannot redirect it.
+- scripts/check_mutation_boundary.py still finds exactly one file permitted to call a removal primitive, and unsafe code still exists in exactly one crate.
+- The MutationOperation variants no production caller requests - Quarantine and DeleteDirectoryTree - are either identity-confirmed or removed from the seam until E12 needs them, rather than left armed and unconfirmed.
+
+**Verification**
+
+- The existing mid-flight swap tests must now show the swap cannot occur, not merely that it is detected afterwards.
+- A test proves the deletion follows the held descriptor after the original path has been renamed away.
+- Independent adversarial verifier and an owner-visible Safety Verdict, per CR4.
+
+**Documentation impact**
+
+- `docs/adrs/0017-sealed-root-handle-for-configuration-writes.md`
+- `docs/architecture/PLATFORM_MODEL.md`
+- `CHANGELOG.md`
+
+## E22 - Engineering System Hardening
+
+**Phase:** `P1` | **Status:** `planned` | **Epic dependencies:** none
+
+Close the gaps between what the engineering system claims to enforce and what it actually enforces, so a green gate means what the repository says it means.
+
+### E22-S01 - The release workflow re-runs every gate it claims to
+
+**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
+
+**Outcome.** Make the tagged commit face the same gate set as main, so the released artifact is verified at the commit it was cut from - which is what the workflow already states as its own reason for existing.
+
+**Acceptance criteria**
+
+- release.yml runs the full checker set AGENTS.md lists, including the differential parity gate, the fixture/schema/characterization checks, the mutation-boundary and provider-compatibility checks, and scripts/release.py check.
+- release.yml runs the Rust quality set: cargo fmt --check, clippy with denied warnings, cargo test, cargo deny check.
+- scripts/check_workflows.py fails when the release gate set drifts from the pre-commit gate set, so this cannot silently regress.
+
+**Verification**
+
+- A deliberately removed gate in release.yml makes check_workflows.py fail.
+- A dry run of the release workflow on a tag reaches every added step.
+
+**Documentation impact**
+
+- `docs/RELEASING.md`
+- `docs/development/RELEASE_GATES.md`
+- `.github/workflows/release.yml`
+
+### E22-S02 - Rust supply chain has updates and static analysis
+
+**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
+
+**Outcome.** Extend to the Rust workspace the supply-chain posture the Python reference already has, ahead of E17's full provenance work.
+
+**Acceptance criteria**
+
+- dependabot covers the cargo ecosystem, so serde, serde_json, unicode-normalization and libc - the last inside the only unsafe crate - receive update proposals.
+- CodeQL analyses Rust alongside Python, so the authority kernel, the FFI boundary and the provider adapters are within static-analysis scope.
+- A CodeQL finding in Rust surfaces in the same security-events channel the Python analysis already uses.
+
+**Verification**
+
+- The CodeQL Rust job completes on a real run and reports a non-empty analysis, not a skipped language.
+- A synthetic outdated pin produces a dependabot proposal.
+
+**Documentation impact**
+
+- `docs/security/SUPPLY_CHAIN.md`
+- `.github/dependabot.yml`
+- `.github/workflows/codeql.yml`
+
+### E22-S03 - Dependency rings, and a real command-line surface
+
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E22-S01, E22-S02 | **Safety obligations:** SI-007
+
+**Outcome.** Keep the safety kernel dependency-free while letting the experience and persistence crates use mature, reviewed libraries - and use that to give the Rust CLI the help surface it currently lacks entirely.
+
+**Acceptance criteria**
+
+- ADR-0019 defines the kernel ring - model, safety, platform, sealedfs - as dependency-free except by dedicated ADR, exactly as today, and an outer ring governed by a reviewed allow-list.
+- cancellai-cli supports --help, -h, --version and per-command help, matching the reference CLI's own surface, with argument parsing no longer hand-rolled in main.rs.
+- Flags irrelevant to a command are rejected rather than silently accepted, and no parsing change weakens SI-007: no flag and no missing subcommand may resolve toward clean.
+- Every added dependency's licence is already inside rust/deny.toml's allow-list, or the allow-list change is its own reviewed decision.
+
+**Verification**
+
+- Golden CLI snapshots for help and version output on every tier-1 platform.
+- The existing SI-007 tests - bare flags, unknown subcommands, --json without explicit intent - must pass unchanged against the new parser.
+- cargo deny check passes with the new dependency graph.
+
+**Documentation impact**
+
+- `docs/adrs/0019-dependency-rings-per-crate.md`
+- `docs/CLI_RUST.md`
+- `AGENTS.md`
+- `CHANGELOG.md`
+
+### E22-S04 - Direct coverage for the retention resolver
+
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** SI-005, SI-012
+
+**Outcome.** Test the hand-translated policy rules directly, instead of delegating their entire verification to a differential gate fed by a small corpus.
+
+**Acceptance criteria**
+
+- cancellai-policy has unit coverage for each rule ported from the reference: the age cutoff, keep-latest applied per subagent tree rather than per file, the interaction between pinning and protection, process liveness, and tool scoping.
+- Each test names the reference behaviour it pins, so a future divergence is legible as a divergence rather than as a failing assertion.
+- Boundary cases are covered explicitly: keep-latest zero, keep-latest above the session count, an unobservable mtime, and a tree whose members disagree in age.
+
+**Verification**
+
+- Mutation-style spot checks: inverting a comparison or dropping the tree grouping must make a named test fail, not only the differential gate.
+- Coverage of retention.rs is reported, and the story states the figure reached rather than a target.
+
+**Documentation impact**
+
+- `docs/development/VERIFICATION_STRATEGY.md`
+
+### E22-S05 - Codex native delete backend is wired or explicitly refused
+
+**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E22-S03 | **Safety obligations:** SI-004, SI-019, SI-021
+
+**Outcome.** Resolve a behavioural divergence on user data: the reference prefers the provider's own delete command to keep its bookkeeping consistent, and the target engine always deletes at the filesystem level without saying so.
+
+**Acceptance criteria**
+
+- cancellai-cli either routes Codex deletion through the detected native command when the adapter reports it supported, or refuses to claim parity and states the divergence in docs/CLI_RUST.md's Known gaps.
+- If wired, capability detection never assumes filesystem fallback equivalence: the four NativeDeleteSupport outcomes stay distinct, per TM-09.
+- If wired, a --codex-backend selector exists with the same semantics as the reference's, and the default is never silently the weaker path.
+
+**Verification**
+
+- A synthetic codex binary exercises each of the four detection outcomes, including probe timeout.
+- Deletion through the native path still routes its authority decision through the safety boundary; the provider command never becomes a second mutation path (C-07).
+
+**Documentation impact**
+
+- `docs/CLI_RUST.md`
+- `docs/PROVIDERS.md`
+- `CHANGELOG.md`
+
+### E22-S06 - The review-round ceiling counts every review round
+
+**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
+
+**Outcome.** Make the bound ADR-0014 defines actually apply, including to review records named after a story rather than an epic.
+
+**Acceptance criteria**
+
+- scripts/check_process.py counts story-scoped verifier review records against their epic's ceiling; today the pattern misses them, so E07 reads as one round while four were run.
+- Rounds already committed under the previous counting are recorded as explicit exceptions with a reason, in the same way E00's three rounds already are - never silently exempted.
+- The ceiling failure message names which records were counted, so an author can see why the bound fired.
+
+**Verification**
+
+- A synthetic third story-scoped record for an epic at the ceiling makes check_process.py fail.
+- The existing repository passes with its recorded exceptions and without any new ones.
+
+**Documentation impact**
+
+- `docs/development/WORK_ITEM_MODEL.md`
+- `docs/adrs/0014-epic-closure-is-a-release-and-review-is-bounded.md`

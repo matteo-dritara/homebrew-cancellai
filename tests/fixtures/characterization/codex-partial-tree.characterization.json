@@ -1,0 +1,70 @@
+{
+  "fixture_id": "codex-partial-tree",
+  "tool": "codex",
+  "classification": "NORMATIVE",
+  "classification_rationale": "The locked session directory marks the codex scan incomplete and withholds destructive authority for the whole tool (SI-008/SI-009) - the same E00-S05 behavior claude-partial-tree pins on the Claude side. Added by E21-S02 because the corpus had no Codex partial-scan fixture at all, which is why the differential gate could not observe the target engine deleting here (docs/audits/2026-09-03-CODE_REVIEW.md, CR-TE-01/CR-TE-03).",
+  "days": 30,
+  "keep_latest": 0,
+  "aggressive": true,
+  "plan_summary": {
+    "days": 30,
+    "keep_latest": 0,
+    "estimated_bytes": 0,
+    "actions": 0,
+    "by_tool": {},
+    "by_category": {},
+    "claude_history_lines": 0,
+    "notes": [
+      "Codex filesystem fallback is enabled explicitly. It removes rollout JSONL files directly and may leave stale session metadata in Codex SQLite indexes; prefer the default auto backend on current Codex versions.",
+      "Refusing destructive work on codex: the scan was incomplete, so absence of evidence cannot mean absence of data (1 unreadable path(s), e.g. <PROVIDER_ROOT>/sessions/2026/05/02: Permission denied). Run `status` to see the full list.",
+      "Withheld 2 candidate(s) for: codex."
+    ],
+    "withheld_tools": [
+      "codex"
+    ],
+    "scan": {
+      "complete": false,
+      "incomplete_scopes": [
+        "codex"
+      ],
+      "unreadable": [
+        "<PROVIDER_ROOT>/sessions/2026/05/02: Permission denied"
+      ]
+    },
+    "roots": {
+      "claude": {
+        "origin": "default",
+        "confidence": "default",
+        "markers": [],
+        "destructive_allowed": true
+      },
+      "codex": {
+        "origin": "default",
+        "confidence": "default",
+        "markers": [
+          "auth.json",
+          "config.toml",
+          "sessions"
+        ],
+        "destructive_allowed": true
+      }
+    }
+  },
+  "coverage": {
+    "selective": {
+      "entries": 1,
+      "bytes": 240,
+      "names": [
+        "sessions"
+      ]
+    },
+    "protected": {
+      "entries": 2,
+      "bytes": 22,
+      "names": [
+        "auth.json",
+        "config.toml"
+      ]
+    }
+  }
+}

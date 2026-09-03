@@ -145,19 +145,31 @@ impl ProviderCapabilities for ClaudeProvider {
                         Vec::new(),
                         None,
                     ),
-                    SessionDiscoveryScope::Observed if !result.degraded_companions.is_empty() => {
+                    // Distinct from the above since E21 round-1 review: a root that exists and
+                    // cannot be read is missing evidence, not a structurally empty install, and
+                    // must not present as merely "unsupported".
+                    SessionDiscoveryScope::Unobservable => CapabilityOutcome::new(
+                        SupportState::ErrorPartial,
+                        KnowledgeConfidence::LowUnknown,
+                        "projects/ exists but could not be observed; no claim about session \
+                         relationships can be made from this scan",
+                        Vec::new(),
+                        Some(AuthorityLevel::Observe),
+                    ),
+                    // E21-S03: this branch used to key off `degraded_companions` alone, so an
+                    // unreadable *project* directory reported full support while a whole
+                    // project's sessions had never been seen - the capability surface carrying
+                    // the same defect `CR-TE-01` found in the planning surface. The scope's own
+                    // completeness covers every branch of the walk, not one symptom of one.
+                    SessionDiscoveryScope::Observed if !result.observation.is_complete() => {
+                        let unobserved = result.observation.unobserved_count();
                         CapabilityOutcome::new(
                             SupportState::ErrorPartial,
-                            KnowledgeConfidence::Observed,
+                            KnowledgeConfidence::LowUnknown,
                             format!(
-                                "{} session(s) observed, but {} companion payload director{} could not be fully listed",
+                                "{} session(s) observed, but {unobserved} path(s) could not be observed; \
+                                 relationships derived from a partial scan are not proof of what is there",
                                 result.sessions.len(),
-                                result.degraded_companions.len(),
-                                if result.degraded_companions.len() == 1 {
-                                    "y"
-                                } else {
-                                    "ies"
-                                }
                             ),
                             Vec::new(),
                             Some(AuthorityLevel::Recommend),

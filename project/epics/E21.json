@@ -1,0 +1,204 @@
+{
+  "schema_version": 1,
+  "id": "E21",
+  "phase": "P1",
+  "title": "Target Engine Trust Remediation",
+  "objective": "Repair the target engine's scan-completeness authority so that unknown state cannot become destructive permission, and make the differential gate capable of proving it.",
+  "dependencies": [],
+  "status": "done",
+  "stories": [
+    {
+      "id": "E21-S01",
+      "title": "Truthful disclosure of target-engine gaps",
+      "status": "done",
+      "outcome": "Correct every place where the repository currently states, or implies by omission, a stronger guarantee than the target engine provides - before any of it is repaired, so the record is honest even mid-repair.",
+      "change_risk": "CR0",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "docs/development/RELEASE_GATES.md reclassifies the Codex incomplete-scan gap from G1 Functional to G2 Safety, and adds the Claude project-directory case, which no document currently discloses.",
+        "cancellai-platform/src/mutation.rs's residual note no longer justifies the unclosed unlink race with the claim that no reviewed FFI dependency exists, a premise cancellai-sealedfs (ADR-0017) superseded.",
+        "docs/CLI_RUST.md's Known gaps section names the absent --help/-h/--version surface, the unwired Codex native delete backend, and the scan_completeness error_count that never reports a real count.",
+        "project/roadmap.json declares the phase the project is actually in; PROJECT_STATUS.md no longer generates a current phase whose epics are all done."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Each corrected claim is checked against the behavior reproduced in docs/audits/2026-09-03-CODE_REVIEW.md, not against the previous prose.",
+        "python3 scripts/project_os.py check and python3 scripts/check_docs.py check pass with the regenerated control plane."
+      ],
+      "documentation_impact": [
+        "docs/development/RELEASE_GATES.md",
+        "docs/CLI_RUST.md",
+        "project/roadmap.json"
+      ]
+    },
+    {
+      "id": "E21-S02",
+      "title": "Symmetric partial-scan fixture coverage",
+      "status": "done",
+      "outcome": "Give the differential parity gate the fixtures it needs to observe an incomplete scan on every provider and every discovery branch, so the class of defect CR-TE-01 describes cannot pass the gate again.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E21-S01"
+      ],
+      "acceptance_criteria": [
+        "A codex-partial-tree fixture exists, is classified NORMATIVE, and contains a rollout inside a directory the scan cannot list.",
+        "A claude-partial-project fixture exists, is classified NORMATIVE, and contains a session inside a project directory the scan cannot list - the branch the E06-S02 companion-payload repair never covered.",
+        "scripts/check_fixtures.py fails when a fixture category exists for one reference provider and not the other, unless the asymmetry is declared in the manifest with a reason.",
+        "Both fixtures run through scripts/rust_python_parity.py in both root-origin scenarios."
+      ],
+      "safety_obligations": [
+        "SI-008",
+        "SI-009",
+        "SI-010"
+      ],
+      "verification": [
+        "Against the engine as it stands before E21-S03, both new fixtures must make the parity gate FAIL, reproducing the divergence the audit measured. A fixture that passes on the unrepaired engine is not exercising the defect.",
+        "An injected regression that removes the completeness propagation E21-S03 adds must make the gate fail again."
+      ],
+      "documentation_impact": [
+        "tests/fixtures/README.md",
+        "docs/development/VERIFICATION_STRATEGY.md"
+      ]
+    },
+    {
+      "id": "E21-S03",
+      "title": "Scan completeness propagation in provider adapters",
+      "status": "done",
+      "outcome": "Make an unobservable directory reduce authority in the Rust engine exactly as it does in the frozen Python reference: reported, never silently skipped, and never a basis for deletion.",
+      "change_risk": "CR4",
+      "dependencies": [
+        "E21-S02"
+      ],
+      "acceptance_criteria": [
+        "Every directory-listing, file-type and metadata failure during Claude and Codex discovery is recorded with a named reason and a path, never discarded by a bare else-continue.",
+        "A provider scope carrying any such failure resolves scan_complete=false, withholds every destructive action for that tool, and degrades knowledge_confidence to LOW/UNKNOWN for every artifact in that scope - not only for the artifact whose own evidence was degraded.",
+        "scan_completeness[].error_count reports the real number of unobservable paths, not a boolean widened to an integer.",
+        "clean, plan and clean --dry-run all report the withholding in the exit code, so a preview never disagrees with a real run."
+      ],
+      "safety_obligations": [
+        "SI-008",
+        "SI-009",
+        "SI-010",
+        "SI-014"
+      ],
+      "verification": [
+        "The E21-S02 fixtures pass the differential gate in both root-origin scenarios, having failed it before this story.",
+        "Adversarial cases beyond permission denial: a directory that disappears mid-walk, an entry read_dir lists but whose metadata cannot be read, and a scope whose root itself becomes unreadable after discovery starts.",
+        "A native reproduction of the audit's own scenario - a real chmod 000 directory holding an eligible rollout - must exit 4 with nothing deleted.",
+        "Independent adversarial verifier and an owner-visible Safety Verdict, per CR4."
+      ],
+      "documentation_impact": [
+        "docs/CLI_RUST.md",
+        "docs/architecture/JSON_CONTRACTS.md",
+        "docs/development/RELEASE_GATES.md",
+        "CHANGELOG.md"
+      ]
+    },
+    {
+      "id": "E21-S04",
+      "title": "ScopeCompleteness as the shared planning contract",
+      "status": "done",
+      "outcome": "Make completeness impossible to omit by construction rather than by review, reusing the type-level guarantee E04 built instead of leaving a second, weaker model beside it.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E21-S03"
+      ],
+      "acceptance_criteria": [
+        "Provider discovery returns cancellai-inventory's ScopeCompleteness; the provider adapters keep their layout-specific traversal, since Claude's and Codex's on-disk shapes genuinely differ (ADR-0018).",
+        "cancellai-policy obtains planning candidates only through a value that cannot be constructed without completeness, mirroring the compile_fail regression E04-S03 already committed for planning_view.",
+        "cancellai-inventory is reachable from the shipped cancellai-cli dependency graph, and a check fails if it becomes unreachable again.",
+        "ADR-0018 records the decision and the alternatives weighed, including the rejected full rebase of the adapters onto scan_scope."
+      ],
+      "safety_obligations": [
+        "SI-008",
+        "SI-009"
+      ],
+      "verification": [
+        "A compile-fail test proves the bare-candidates path is unreachable from outside the crate, as E04-S03's own regression does.",
+        "The differential gate stays green across the refactor: this story must not change a single observable classification."
+      ],
+      "documentation_impact": [
+        "docs/adrs/0018-scope-completeness-is-a-shared-type-not-a-shared-traversal.md",
+        "docs/architecture/TARGET.md",
+        "docs/architecture/DOMAIN_MODEL.md"
+      ]
+    },
+    {
+      "id": "E21-S05",
+      "title": "Performance gates measure the shipped discovery path",
+      "status": "done",
+      "outcome": "Point the performance budget at the code the binary actually executes, instead of a traversal no production caller reaches.",
+      "change_risk": "CR1",
+      "dependencies": [
+        "E21-S04"
+      ],
+      "acceptance_criteria": [
+        "The CI microbenchmark and the scheduled benchmarks exercise the provider discovery path as cancellai-cli invokes it, not scan_scope in isolation.",
+        "A benchmark that stops covering the shipped path fails rather than silently measuring dead code.",
+        "The machine-readable trend artifact keeps its existing shape so historical comparisons remain readable."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "The retargeted microbenchmark detects an injected quadratic regression in provider discovery.",
+        "The scheduled 10k/100k datasets run to completion on the existing workflow budget."
+      ],
+      "documentation_impact": [
+        "docs/development/RELEASE_GATES.md",
+        ".github/workflows/rust-benchmark.yml"
+      ]
+    },
+    {
+      "id": "E21-S06",
+      "title": "Bounded streaming read of Codex rollout metadata",
+      "status": "done",
+      "outcome": "Make read_codex_parent_session_id honour the bound it already documents, instead of loading an entire transcript to inspect its first ten lines.",
+      "change_risk": "CR1",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "At most the first 10 records or 512 KiB of a rollout are read from disk, streamed rather than buffered whole.",
+        "Peak memory during discovery is bounded independently of the largest transcript present.",
+        "The parsed result is byte-for-byte identical to the current implementation on every fixture, including malformed and non-UTF-8 input."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "A test over a synthetic rollout of at least 256 MiB asserts a memory ceiling; the audit measured 303 MB peak RSS against the Python reference's 27.8 MB on a 287 MB file.",
+        "The differential gate stays green: this story must not change discovery semantics."
+      ],
+      "documentation_impact": [
+        "docs/development/RELEASE_GATES.md"
+      ]
+    },
+    {
+      "id": "E21-S07",
+      "title": "Handle-relative unlink for confirmed deletion",
+      "status": "done",
+      "outcome": "Replace detection of the delete-path swap race with prevention, using the no-follow handle capability the workspace already reviewed and shipped for configuration writes.",
+      "change_risk": "CR4",
+      "dependencies": [
+        "E21-S01"
+      ],
+      "acceptance_criteria": [
+        "cancellai-sealedfs gains an unlinkat-based child removal, with the same per-block SAFETY justification and the same fail-closed behaviour on platforms with no verified implementation.",
+        "SystemMutationExecutor's confirmed file deletion issues the unlink relative to a held directory descriptor, so a path-level swap after validation cannot redirect it.",
+        "scripts/check_mutation_boundary.py still finds exactly one file permitted to call a removal primitive, and unsafe code still exists in exactly one crate.",
+        "The MutationOperation variants no production caller requests - Quarantine and DeleteDirectoryTree - are either identity-confirmed or removed from the seam until E12 needs them, rather than left armed and unconfirmed."
+      ],
+      "safety_obligations": [
+        "SI-013",
+        "SI-016",
+        "SI-019",
+        "SI-020"
+      ],
+      "verification": [
+        "The existing mid-flight swap tests must now show the swap cannot occur, not merely that it is detected afterwards.",
+        "A test proves the deletion follows the held descriptor after the original path has been renamed away.",
+        "Independent adversarial verifier and an owner-visible Safety Verdict, per CR4."
+      ],
+      "documentation_impact": [
+        "docs/adrs/0017-sealed-root-handle-for-configuration-writes.md",
+        "docs/architecture/PLATFORM_MODEL.md",
+        "CHANGELOG.md"
+      ]
+    }
+  ]
+}

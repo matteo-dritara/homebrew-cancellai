@@ -142,3 +142,21 @@ Fixtures classify expected results as:
 Never commit real transcripts, source code, auth data, API keys, or developer home paths. Synthetic fixture generators are preferred. Any captured vendor metadata must be scrubbed and reviewed.
 
 Synthetic fixture policy and layout: [`tests/fixtures/README.md`](../../tests/fixtures/README.md).
+
+## Corpus coverage is part of the gate (E21-S02)
+
+The differential parity gate is worth exactly what the fixture corpus is worth. Its own
+defect-injection self-test proves the *comparison* cannot silently swallow a divergence; it says
+nothing about whether any fixture exercises a given invariant. The 2026-09-03 target-engine
+review found the difference between those two claims expensive: the gate was green, its
+self-test passed, and the engine was deleting artifacts the frozen reference withholds, because
+no fixture placed an unreadable directory in a Codex tree (`CR-TE-01`/`CR-TE-03`).
+
+Two rules follow, both enforced rather than intended:
+
+- `scripts/check_fixtures.py` fails on an undeclared category asymmetry between the two
+  reference providers, and on a declaration the corpus has outgrown.
+- A fixture added to close a reproduced defect must **fail** the gate against the unrepaired
+  engine before the repair lands. A fixture that passes on the unrepaired engine is not
+  exercising the defect, whatever its name says. E21-S02's evidence packet records the failing
+  run for both new fixtures, taken before E21-S03 existed.

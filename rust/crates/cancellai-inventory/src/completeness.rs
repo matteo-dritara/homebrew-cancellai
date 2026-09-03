@@ -71,6 +71,127 @@ impl ScopeCompleteness {
     }
 }
 
+/// How many distinct reasons a scope retains before it stops storing them. A hostile or simply
+/// broken tree can produce a failure per entry, and an unbounded `Vec<CompletenessReason>` would
+/// turn "this scan could not read anything" into memory pressure inside the process that is
+/// supposed to be governing storage (C-11). E21 round-1 independent review recorded this as a
+/// required fail-closed operability repair.
+///
+/// Retention is bounded; the *count* is not. Truncating the count would understate how much of a
+/// scope went unobserved, which is the one direction SI-010 does not permit.
+pub const MAX_RETAINED_REASONS: usize = 64;
+
+/// A scope's completeness plus the truthful number of paths it could not observe.
+///
+/// These travel together because they answer one question and must never disagree: an
+/// observation is `Complete` exactly when `unobserved_count == 0`. [`ReasonLog`] is the only way
+/// to build a non-complete one, so the invariant holds by construction rather than by review.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScopeObservation {
+    completeness: ScopeCompleteness,
+    unobserved_count: u32,
+}
+
+impl ScopeObservation {
+    /// A scope that was observed in full.
+    pub fn complete() -> Self {
+        Self {
+            completeness: ScopeCompleteness::Complete,
+            unobserved_count: 0,
+        }
+    }
+
+    pub fn completeness(&self) -> &ScopeCompleteness {
+        &self.completeness
+    }
+
+    /// Every path this scope failed to observe, including any beyond [`MAX_RETAINED_REASONS`]
+    /// whose individual reason was not retained.
+    pub fn unobserved_count(&self) -> u32 {
+        self.unobserved_count
+    }
+
+    pub fn is_complete(&self) -> bool {
+        self.completeness.is_complete()
+    }
+
+    /// The retained reasons, for explanation. Never a substitute for
+    /// [`unobserved_count`](Self::unobserved_count) when reporting how much went unseen.
+    pub fn retained_reasons(&self) -> &[CompletenessReason] {
+        match &self.completeness {
+            ScopeCompleteness::Complete => &[],
+            ScopeCompleteness::Partial { reasons } | ScopeCompleteness::Unknown { reasons } => {
+                reasons
+            }
+        }
+    }
+}
+
+/// Accumulates observation failures during a bespoke provider walk and turns them into one
+/// [`ScopeObservation`] (ADR-0018).
+///
+/// `cancellai-inventory`'s own `scan_scope` derives completeness from an [`InventorySnapshot`];
+/// the provider adapters keep their layout-specific traversals and have no snapshot to derive
+/// from, so this is the shared accumulator they record into instead. Same vocabulary, same
+/// invariants, different walk.
+#[derive(Debug, Clone, Default)]
+pub struct ReasonLog {
+    retained: Vec<CompletenessReason>,
+    total: u32,
+    root_unavailable: bool,
+}
+
+impl ReasonLog {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Records one path this walk could not observe. Always counted; retained only while under
+    /// [`MAX_RETAINED_REASONS`].
+    pub fn record(&mut self, reason: CompletenessReason) {
+        self.total = self.total.saturating_add(1);
+        if self.retained.len() < MAX_RETAINED_REASONS {
+            self.retained.push(reason);
+        }
+    }
+
+    /// Records a failure to observe the scope *root* itself - the strongest form of missing
+    /// evidence, which makes the whole observation `Unknown` rather than `Partial`. Distinct
+    /// from a root that is simply absent or symlinked, which is a known-empty state and must
+    /// not be recorded here at all (SI-009).
+    pub fn record_root_unavailable(&mut self, reason: CompletenessReason) {
+        self.root_unavailable = true;
+        self.record(reason);
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.total == 0
+    }
+
+    pub fn total(&self) -> u32 {
+        self.total
+    }
+
+    pub fn into_observation(self) -> ScopeObservation {
+        if self.total == 0 {
+            return ScopeObservation::complete();
+        }
+        let completeness = if self.root_unavailable {
+            ScopeCompleteness::Unknown {
+                reasons: self.retained,
+            }
+        } else {
+            ScopeCompleteness::Partial {
+                reasons: self.retained,
+            }
+        };
+        ScopeObservation {
+            completeness,
+            unobserved_count: self.total,
+        }
+    }
+}
+
 /// Derives a scope's completeness from everything an [`InventorySnapshot`] already recorded:
 /// the root fact (including a *present-but-degraded* root, E04 round-1 repair - see below),
 /// every directory-listing error, every `read_dir`-listed-but-unobservable entry
@@ -672,5 +793,78 @@ mod tests {
 
         assert!(view.candidates.is_empty());
         assert!(!view.completeness.is_complete());
+    }
+
+    // ----------------------------------------------------------------------------------
+    // E21 round-1 independent review: an unbounded reason vector is its own operability
+    // failure on a hostile or simply broken tree (C-11). Retention is bounded; the count is not.
+    // ----------------------------------------------------------------------------------
+
+    fn permission_reason(index: usize) -> CompletenessReason {
+        CompletenessReason::PermissionDenied {
+            path: PathBuf::from(format!("/synthetic/{index}")),
+        }
+    }
+
+    #[test]
+    fn an_empty_reason_log_observes_a_complete_scope() {
+        let observation = ReasonLog::new().into_observation();
+        assert_eq!(observation, ScopeObservation::complete());
+        assert_eq!(observation.unobserved_count(), 0);
+        assert!(observation.retained_reasons().is_empty());
+    }
+
+    #[test]
+    fn reason_retention_is_bounded_but_the_count_is_not() {
+        let mut log = ReasonLog::new();
+        let recorded = MAX_RETAINED_REASONS * 10 + 7;
+        for index in 0..recorded {
+            log.record(permission_reason(index));
+        }
+        let observation = log.into_observation();
+
+        assert_eq!(
+            observation.unobserved_count(),
+            recorded as u32,
+            "truncating the count would understate how much of the scope went unobserved - the \
+             one direction SI-010 does not permit"
+        );
+        assert_eq!(
+            observation.retained_reasons().len(),
+            MAX_RETAINED_REASONS,
+            "retention must stop at the cap so a failure-per-entry tree cannot grow this vector \
+             without bound"
+        );
+        assert!(!observation.is_complete());
+    }
+
+    #[test]
+    fn a_root_failure_makes_the_observation_unknown_not_partial() {
+        let mut log = ReasonLog::new();
+        log.record_root_unavailable(CompletenessReason::ScopeRootUnavailable {
+            path: PathBuf::from("/synthetic/root"),
+            detail: "permission denied".to_string(),
+        });
+        log.record(permission_reason(1));
+        let observation = log.into_observation();
+
+        assert!(
+            matches!(
+                observation.completeness(),
+                ScopeCompleteness::Unknown { .. }
+            ),
+            "a scope whose root could not be observed is Unknown: nothing at all was seen"
+        );
+        assert_eq!(observation.unobserved_count(), 2);
+    }
+
+    #[test]
+    fn a_non_root_failure_makes_the_observation_partial() {
+        let mut log = ReasonLog::new();
+        log.record(permission_reason(1));
+        assert!(matches!(
+            log.into_observation().completeness(),
+            ScopeCompleteness::Partial { .. }
+        ));
     }
 }

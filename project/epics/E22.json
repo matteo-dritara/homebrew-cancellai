@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "id": "E22",
+  "phase": "P1",
+  "title": "Engineering System Hardening",
+  "objective": "Close the gaps between what the engineering system claims to enforce and what it actually enforces, so a green gate means what the repository says it means.",
+  "dependencies": [],
+  "status": "planned",
+  "stories": [
+    {
+      "id": "E22-S01",
+      "title": "The release workflow re-runs every gate it claims to",
+      "status": "planned",
+      "outcome": "Make the tagged commit face the same gate set as main, so the released artifact is verified at the commit it was cut from - which is what the workflow already states as its own reason for existing.",
+      "change_risk": "CR1",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "release.yml runs the full checker set AGENTS.md lists, including the differential parity gate, the fixture/schema/characterization checks, the mutation-boundary and provider-compatibility checks, and scripts/release.py check.",
+        "release.yml runs the Rust quality set: cargo fmt --check, clippy with denied warnings, cargo test, cargo deny check.",
+        "scripts/check_workflows.py fails when the release gate set drifts from the pre-commit gate set, so this cannot silently regress."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "A deliberately removed gate in release.yml makes check_workflows.py fail.",
+        "A dry run of the release workflow on a tag reaches every added step."
+      ],
+      "documentation_impact": [
+        "docs/RELEASING.md",
+        "docs/development/RELEASE_GATES.md",
+        ".github/workflows/release.yml"
+      ]
+    },
+    {
+      "id": "E22-S02",
+      "title": "Rust supply chain has updates and static analysis",
+      "status": "planned",
+      "outcome": "Extend to the Rust workspace the supply-chain posture the Python reference already has, ahead of E17's full provenance work.",
+      "change_risk": "CR1",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "dependabot covers the cargo ecosystem, so serde, serde_json, unicode-normalization and libc - the last inside the only unsafe crate - receive update proposals.",
+        "CodeQL analyses Rust alongside Python, so the authority kernel, the FFI boundary and the provider adapters are within static-analysis scope.",
+        "A CodeQL finding in Rust surfaces in the same security-events channel the Python analysis already uses."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "The CodeQL Rust job completes on a real run and reports a non-empty analysis, not a skipped language.",
+        "A synthetic outdated pin produces a dependabot proposal."
+      ],
+      "documentation_impact": [
+        "docs/security/SUPPLY_CHAIN.md",
+        ".github/dependabot.yml",
+        ".github/workflows/codeql.yml"
+      ]
+    },
+    {
+      "id": "E22-S03",
+      "title": "Dependency rings, and a real command-line surface",
+      "status": "planned",
+      "outcome": "Keep the safety kernel dependency-free while letting the experience and persistence crates use mature, reviewed libraries - and use that to give the Rust CLI the help surface it currently lacks entirely.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E22-S01",
+        "E22-S02"
+      ],
+      "acceptance_criteria": [
+        "ADR-0019 defines the kernel ring - model, safety, platform, sealedfs - as dependency-free except by dedicated ADR, exactly as today, and an outer ring governed by a reviewed allow-list.",
+        "cancellai-cli supports --help, -h, --version and per-command help, matching the reference CLI's own surface, with argument parsing no longer hand-rolled in main.rs.",
+        "Flags irrelevant to a command are rejected rather than silently accepted, and no parsing change weakens SI-007: no flag and no missing subcommand may resolve toward clean.",
+        "Every added dependency's licence is already inside rust/deny.toml's allow-list, or the allow-list change is its own reviewed decision."
+      ],
+      "safety_obligations": [
+        "SI-007"
+      ],
+      "verification": [
+        "Golden CLI snapshots for help and version output on every tier-1 platform.",
+        "The existing SI-007 tests - bare flags, unknown subcommands, --json without explicit intent - must pass unchanged against the new parser.",
+        "cargo deny check passes with the new dependency graph."
+      ],
+      "documentation_impact": [
+        "docs/adrs/0019-dependency-rings-per-crate.md",
+        "docs/CLI_RUST.md",
+        "AGENTS.md",
+        "CHANGELOG.md"
+      ]
+    },
+    {
+      "id": "E22-S04",
+      "title": "Direct coverage for the retention resolver",
+      "status": "planned",
+      "outcome": "Test the hand-translated policy rules directly, instead of delegating their entire verification to a differential gate fed by a small corpus.",
+      "change_risk": "CR2",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "cancellai-policy has unit coverage for each rule ported from the reference: the age cutoff, keep-latest applied per subagent tree rather than per file, the interaction between pinning and protection, process liveness, and tool scoping.",
+        "Each test names the reference behaviour it pins, so a future divergence is legible as a divergence rather than as a failing assertion.",
+        "Boundary cases are covered explicitly: keep-latest zero, keep-latest above the session count, an unobservable mtime, and a tree whose members disagree in age."
+      ],
+      "safety_obligations": [
+        "SI-005",
+        "SI-012"
+      ],
+      "verification": [
+        "Mutation-style spot checks: inverting a comparison or dropping the tree grouping must make a named test fail, not only the differential gate.",
+        "Coverage of retention.rs is reported, and the story states the figure reached rather than a target."
+      ],
+      "documentation_impact": [
+        "docs/development/VERIFICATION_STRATEGY.md"
+      ]
+    },
+    {
+      "id": "E22-S05",
+      "title": "Codex native delete backend is wired or explicitly refused",
+      "status": "planned",
+      "outcome": "Resolve a behavioural divergence on user data: the reference prefers the provider's own delete command to keep its bookkeeping consistent, and the target engine always deletes at the filesystem level without saying so.",
+      "change_risk": "CR3",
+      "dependencies": [
+        "E22-S03"
+      ],
+      "acceptance_criteria": [
+        "cancellai-cli either routes Codex deletion through the detected native command when the adapter reports it supported, or refuses to claim parity and states the divergence in docs/CLI_RUST.md's Known gaps.",
+        "If wired, capability detection never assumes filesystem fallback equivalence: the four NativeDeleteSupport outcomes stay distinct, per TM-09.",
+        "If wired, a --codex-backend selector exists with the same semantics as the reference's, and the default is never silently the weaker path."
+      ],
+      "safety_obligations": [
+        "SI-004",
+        "SI-019",
+        "SI-021"
+      ],
+      "verification": [
+        "A synthetic codex binary exercises each of the four detection outcomes, including probe timeout.",
+        "Deletion through the native path still routes its authority decision through the safety boundary; the provider command never becomes a second mutation path (C-07)."
+      ],
+      "documentation_impact": [
+        "docs/CLI_RUST.md",
+        "docs/PROVIDERS.md",
+        "CHANGELOG.md"
+      ]
+    },
+    {
+      "id": "E22-S06",
+      "title": "The review-round ceiling counts every review round",
+      "status": "planned",
+      "outcome": "Make the bound ADR-0014 defines actually apply, including to review records named after a story rather than an epic.",
+      "change_risk": "CR1",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "scripts/check_process.py counts story-scoped verifier review records against their epic's ceiling; today the pattern misses them, so E07 reads as one round while four were run.",
+        "Rounds already committed under the previous counting are recorded as explicit exceptions with a reason, in the same way E00's three rounds already are - never silently exempted.",
+        "The ceiling failure message names which records were counted, so an author can see why the bound fired."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "A synthetic third story-scoped record for an epic at the ceiling makes check_process.py fail.",
+        "The existing repository passes with its recorded exceptions and without any new ones."
+      ],
+      "documentation_impact": [
+        "docs/development/WORK_ITEM_MODEL.md",
+        "docs/adrs/0014-epic-closure-is-a-release-and-review-is-bounded.md"
+      ]
+    }
+  ]
+}

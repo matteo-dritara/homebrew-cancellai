@@ -29,7 +29,7 @@ pub use fingerprint::fingerprint_codex_root;
 pub use graph::{SubagentTree, group_into_subagent_trees};
 pub use native_delete::{NativeDeleteSupport, codex_delete_supported};
 pub use protected_names::{CODEX_PROTECTED_NAMES, codex_protected_component};
-pub use session::{CodexSession, RolloutCategory, discover_codex_sessions};
+pub use session::{CodexSession, RolloutCategory, RolloutDiscoveryResult, discover_codex_sessions};
 
 /// A Codex CLI provider adapter bound to one candidate root.
 pub struct CodexProvider {
@@ -62,12 +62,16 @@ impl CodexProvider {
         fingerprint_codex_root(&self.root, self.is_default_root)
     }
 
-    pub fn discover_sessions(&self) -> Vec<CodexSession> {
+    pub fn discover_sessions(&self) -> RolloutDiscoveryResult {
         discover_codex_sessions(&self.root)
     }
 
+    /// Subagent trees for whatever this scan could observe. Deliberately drops the scope's
+    /// completeness, so it is only for callers that do not decide anything destructive - the
+    /// planning path goes through `cancellai-policy::resolve_codex`, which consumes
+    /// `RolloutDiscoveryResult` whole and withholds on an incomplete scope (E21-S03).
     pub fn subagent_trees(&self) -> Vec<SubagentTree> {
-        group_into_subagent_trees(&self.discover_sessions())
+        group_into_subagent_trees(&self.discover_sessions().sessions)
     }
 
     pub fn native_delete_support(&self) -> NativeDeleteSupport {

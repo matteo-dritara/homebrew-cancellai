@@ -64,9 +64,16 @@ completeness state each entry's classification depends on.
 schema_version, document_type="inventory", generated_at, generator   (common envelope)
 inventory_id
 provider_roots: [ ProviderRoot projection, ... ]   (id, provider_id, origin, confidence, mutation_eligible)
-scan_completeness: [ { scope, complete: bool, error_count: integer }, ... ]
+scan_completeness: [ { scope, complete: bool, error_count: integer }, ... ]  (see note below)
 artifacts: [ AgentArtifact projection, ... ]
 ```
+
+`scan_completeness[].error_count` is the number of distinct paths the scope could not
+observe, and `complete` is `false` whenever that number is non-zero. It was previously derived
+as `u32::from(!complete)`, so it never exceeded `1` while the Python reference enumerates every
+unreadable path - a consumer treating it as a count was misled (`CR-TE-10`, repaired in
+E21-S03). An artifact produced from an incomplete scope carries `knowledge_confidence` no higher
+than `LOW/UNKNOWN`, and no `delete` action is proposed for that scope at all.
 
 Each `artifacts[]` entry carries at minimum: `artifact_id`, `identity_token`, `provider_id`,
 `artifact_type`, `risk_class`, `reversibility`, `knowledge_confidence`, `activity_state`,

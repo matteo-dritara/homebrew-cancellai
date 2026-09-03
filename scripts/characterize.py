@@ -90,6 +90,21 @@ CLASSIFICATIONS: dict[str, tuple[str, str]] = {
         "The locked subtree marks the claude scan incomplete and withholds destructive "
         "authority for the whole tool (SI-008) - the documented E00-S05 behavior.",
     ),
+    "codex-partial-tree": (
+        "NORMATIVE",
+        "The locked session directory marks the codex scan incomplete and withholds destructive "
+        "authority for the whole tool (SI-008/SI-009) - the same E00-S05 behavior claude-partial-tree "
+        "pins on the Claude side. Added by E21-S02 because the corpus had no Codex partial-scan "
+        "fixture at all, which is why the differential gate could not observe the target engine "
+        "deleting here (docs/audits/2026-09-03-CODE_REVIEW.md, CR-TE-01/CR-TE-03).",
+    ),
+    "claude-partial-project": (
+        "NORMATIVE",
+        "An unreadable *project* directory is recorded by discover_claude_sessions' own "
+        "project_dir.iterdir() error branch and withholds the whole tool - a different branch from "
+        "claude-partial-tree's companion payload directory, which is the only one E06-S02 repaired "
+        "on the Rust side. Both must be pinned or repairing one leaves the other untested.",
+    ),
     "codex-symlink-escape": (
         "NORMATIVE",
         "The injected symlink is not named like a rollout file, so discovery never surfaces it "

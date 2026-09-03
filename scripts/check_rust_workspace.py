@@ -14,7 +14,13 @@ Checks:
   message here is cheaper than reading a Cargo error);
 - the one dependency-direction rule expressible purely from Cargo.toml - cancellai-model and
   cancellai-safety may never depend on a provider adapter or UI/Guardian crate - actually
-  holds, not merely intended.
+  holds, not merely intended;
+- crates that a shipped binary is *required* to reach are actually reachable from it (E21-S04,
+  ADR-0018). This exists because `cancellai-inventory` - four `done` stories, including the
+  completeness model an adversarial review round forced into shape - turned out to be
+  unreachable from `cancellai-cli` entirely, and the defect its verifier had rejected
+  reappeared in the adapters that replaced it (docs/audits/2026-09-03-CODE_REVIEW.md, CR-TE-02).
+  A crate nothing ships is a crate whose guarantees nothing has.
 """
 
 from __future__ import annotations
@@ -121,6 +127,49 @@ def find_cycle(graph: dict[str, set[str]]) -> list[str] | None:
     return None
 
 
+# A crate the shipped binary must actually depend on, transitively, and why. Being green here
+# is not a claim that the crate is used *well* - only that its guarantees are on the path the
+# product executes, which is the thing CR-TE-02 found to be false.
+REQUIRED_REACHABILITY: dict[str, dict[str, str]] = {
+    "cancellai-cli": {
+        "cancellai-inventory": (
+            "the scan-completeness model (ScopeCompleteness/CompletenessReason) the provider "
+            "adapters must express their observations in - ADR-0018"
+        ),
+    },
+}
+
+
+def reachable_from(graph: dict[str, set[str]], start: str) -> set[str]:
+    """Every crate `start` depends on, transitively. Plain DFS - the graph is a dozen nodes."""
+    seen: set[str] = set()
+    stack = [start]
+    while stack:
+        node = stack.pop()
+        for dep in graph.get(node, set()):
+            if dep not in seen:
+                seen.add(dep)
+                stack.append(dep)
+    return seen
+
+
+def _check_required_reachability(graph: dict[str, set[str]], errors: list[str]) -> None:
+    for binary, requirements in sorted(REQUIRED_REACHABILITY.items()):
+        if binary not in graph:
+            # Not an error here: a crate that disappeared or was renamed is already caught by the
+            # TARGET.md drift check above, which compares the documented crate list against what
+            # is on disk. Failing again here would only make this rule impossible to unit-test
+            # against a minimal synthetic workspace, without adding any real coverage.
+            continue
+        reachable = reachable_from(graph, binary)
+        for crate, why in sorted(requirements.items()):
+            if crate not in reachable:
+                errors.append(
+                    f"{binary} can no longer reach {crate}: {why}. A crate the shipped binary "
+                    f"does not depend on cannot enforce anything for it (CR-TE-02 / ADR-0018)."
+                )
+
+
 def validate() -> list[str]:
     errors: list[str] = []
     if not RUST_CRATES_DIR.is_dir():
@@ -153,6 +202,8 @@ def validate() -> list[str]:
     cycle = find_cycle(graph)
     if cycle:
         errors.append(f"dependency cycle: {' -> '.join(cycle)}")
+
+    _check_required_reachability(graph, errors)
 
     for isolated in sorted(ALLOWED_INTERNAL_DEPENDENCIES.keys() & set(graph)):
         allowed = ALLOWED_INTERNAL_DEPENDENCIES[isolated]

@@ -1,75 +1,109 @@
 {
-  "schema_version": 1,
-  "fixtures": [
-    {
-      "id": "claude-normal-session",
-      "tool": "claude",
-      "category": "normal_session",
-      "layout": "default",
-      "description": "One well-formed session inside the retention window; nothing is eligible for any action."
-    },
-    {
-      "id": "codex-normal-session",
-      "tool": "codex",
-      "category": "normal_session",
-      "layout": "default",
-      "description": "One well-formed rollout inside the retention window; nothing is eligible for any action."
-    },
-    {
-      "id": "codex-subagent-tree",
-      "tool": "codex",
-      "category": "subagent_tree",
-      "layout": "default",
-      "description": "A root rollout with two subagent children linked by parent_thread_id; --keep-latest must count the tree, not the files."
-    },
-    {
-      "id": "claude-active-data",
-      "tool": "claude",
-      "category": "active_data",
-      "layout": "default",
-      "description": "A session touched moments ago, standing in for a provider that is mid-write."
-    },
-    {
-      "id": "claude-protected-state",
-      "tool": "claude",
-      "category": "protected_state",
-      "layout": "default",
-      "description": "Every CLAUDE_PROTECTED_NAMES entry, aged far past any cutoff, to prove age never overrides protection."
-    },
-    {
-      "id": "codex-protected-state",
-      "tool": "codex",
-      "category": "protected_state",
-      "layout": "default",
-      "description": "Every CODEX_PROTECTED_NAMES entry, aged far past any cutoff, to prove age never overrides protection."
-    },
-    {
-      "id": "claude-partial-tree",
-      "tool": "claude",
-      "category": "partial_tree",
-      "layout": "default",
-      "description": "Two ordinary sessions plus a third whose companion payload directory cannot be listed; the scan must record the scope as incomplete, not as empty."
-    },
-    {
-      "id": "codex-symlink-escape",
-      "tool": "codex",
-      "category": "symlink",
-      "layout": "default",
-      "description": "A symlink inside sessions/ pointing outside the approved root; must never be followed for deletion or size accounting."
-    },
-    {
-      "id": "claude-symlink-protected-name",
-      "tool": "claude",
-      "category": "symlink",
-      "layout": "default",
-      "description": "A case-variant symlink of a protected name, pointing outside the root; protection must survive case/decomposition variants."
-    },
-    {
-      "id": "codex-layout-drift",
-      "tool": "codex",
-      "category": "layout_drift",
-      "layout": "unknown_version",
-      "description": "An unrecognized top-level entry alongside the known layout; must be reported as unknown, never treated as cleanable."
-    }
-  ]
+ "schema_version": 1,
+ "fixtures": [
+  {
+   "id": "claude-normal-session",
+   "tool": "claude",
+   "category": "normal_session",
+   "layout": "default",
+   "description": "One well-formed session inside the retention window; nothing is eligible for any action."
+  },
+  {
+   "id": "codex-normal-session",
+   "tool": "codex",
+   "category": "normal_session",
+   "layout": "default",
+   "description": "One well-formed rollout inside the retention window; nothing is eligible for any action."
+  },
+  {
+   "id": "codex-subagent-tree",
+   "tool": "codex",
+   "category": "subagent_tree",
+   "layout": "default",
+   "description": "A root rollout with two subagent children linked by parent_thread_id; --keep-latest must count the tree, not the files."
+  },
+  {
+   "id": "claude-active-data",
+   "tool": "claude",
+   "category": "active_data",
+   "layout": "default",
+   "description": "A session touched moments ago, standing in for a provider that is mid-write."
+  },
+  {
+   "id": "claude-protected-state",
+   "tool": "claude",
+   "category": "protected_state",
+   "layout": "default",
+   "description": "Every CLAUDE_PROTECTED_NAMES entry, aged far past any cutoff, to prove age never overrides protection."
+  },
+  {
+   "id": "codex-protected-state",
+   "tool": "codex",
+   "category": "protected_state",
+   "layout": "default",
+   "description": "Every CODEX_PROTECTED_NAMES entry, aged far past any cutoff, to prove age never overrides protection."
+  },
+  {
+   "id": "claude-partial-tree",
+   "tool": "claude",
+   "category": "partial_tree",
+   "layout": "default",
+   "description": "Two ordinary sessions plus a third whose companion payload directory cannot be listed; the scan must record the scope as incomplete, not as empty."
+  },
+  {
+   "id": "codex-symlink-escape",
+   "tool": "codex",
+   "category": "symlink",
+   "layout": "default",
+   "description": "A symlink inside sessions/ pointing outside the approved root; must never be followed for deletion or size accounting."
+  },
+  {
+   "id": "claude-symlink-protected-name",
+   "tool": "claude",
+   "category": "symlink",
+   "layout": "default",
+   "description": "A case-variant symlink of a protected name, pointing outside the root; protection must survive case/decomposition variants."
+  },
+  {
+   "id": "codex-layout-drift",
+   "tool": "codex",
+   "category": "layout_drift",
+   "layout": "unknown_version",
+   "description": "An unrecognized top-level entry alongside the known layout; must be reported as unknown, never treated as cleanable."
+  },
+  {
+   "id": "codex-partial-tree",
+   "tool": "codex",
+   "category": "partial_tree",
+   "layout": "default",
+   "description": "Two readable rollouts plus a third inside a session directory that cannot be listed; the scan must record the scope as incomplete and withhold the whole tool, not delete what it happened to see."
+  },
+  {
+   "id": "claude-partial-project",
+   "tool": "claude",
+   "category": "partial_tree",
+   "layout": "default",
+   "description": "Two readable sessions plus a second project directory that cannot be listed; the project-directory branch of discovery, distinct from the companion-payload branch claude-partial-tree covers."
+  }
+ ],
+ "category_asymmetry": [
+  {
+   "category": "subagent_tree",
+   "absent_for": "claude",
+   "kind": "structural",
+   "reason": "Claude session relationships are flat: a project directory groups top-level transcripts and there is no parent/child rollout graph to model, so this category cannot exist for Claude. See cancellai-provider-claude/src/session.rs (E05-S03) and cancellai-provider-codex/src/graph.rs (E05-S04)."
+  },
+  {
+   "category": "active_data",
+   "absent_for": "codex",
+   "kind": "tracked_gap",
+   "reason": "Not structural - a freshly written rollout is perfectly representable. The corpus simply never gained one. Recorded as a gap rather than silently tolerated; E22-S04's direct retention coverage is the nearer fix, and a codex-active-data fixture remains a candidate."
+  },
+  {
+   "category": "layout_drift",
+   "absent_for": "claude",
+   "kind": "tracked_gap",
+   "reason": "Not structural - an unrecognized top-level entry under ~/.claude is equally possible. The corpus covers the Codex side only; recorded as a gap so it stays visible."
+  }
+ ]
 }

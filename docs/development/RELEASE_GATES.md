@@ -33,8 +33,34 @@ A release is eligible only when the gates required by its changes are green. The
 - documentation and troubleshooting paths exist;
 - observability/audit evidence is sufficient for failures.
 
-### Performance budget baseline (`cancellai-inventory`, E04-S04)
+### Performance budget baseline
 
+Two gates, because they measure two different things and only one of them is the product.
+
+**The shipped discovery path (`cancellai-cli`, E21-S05) - the primary evidence.**
+Measured at two scales, both against `resolve_claude`/`resolve_codex`, the exact functions
+`cancellai-cli`'s `resolve_all` calls:
+
+- `tests/performance_shipped_path.rs` runs on every `cargo test` and additionally pins two
+  structural properties - planning reads the resolved inventory instead of re-walking the
+  filesystem, and the protection probe runs exactly once per artifact;
+- `tests/performance_scheduled_shipped.rs` carries the heavy 10k/100k datasets, `#[ignore]`d and
+  run by `.github/workflows/rust-benchmark.yml`, emitting the machine-readable trend artifact
+  under the same `CANCELLAI_BENCH_SIZES`/`CANCELLAI_BENCH_OUTPUT` contract and the same
+  `BenchResult` schema the inventory job uses.
+
+Every timing assertion is paired with an assertion on what the resolution actually produced,
+because `CR-TE-02`'s lesson is that a benchmark silently measuring an empty tree is
+indistinguishable from a fast one. E21 round-1 independent review found the first version of this
+story running only the small per-PR test while the heavy datasets still went through
+`cancellai-inventory`, which proved the old traversal met its budget rather than the shipped
+one.
+
+**The inventory traversal (`cancellai-inventory`, E04-S04) - a crate-contract guard.**
+
+This measures `scan_scope`, which ADR-0018 keeps as the reference implementation of scan
+completeness but which the shipped binary does not call - so it is a guard on that crate's own
+contract, not on user-visible latency.
 `rust/crates/cancellai-inventory/tests/performance_micro.rs` is a CI-friendly regression
 ceiling (a few thousand synthetic files, runs on every `cargo test`) that catches a gross
 traversal regression without being a tight SLA. The heavy 10k/100k(/1M-on-demand)-entry
@@ -85,11 +111,47 @@ gate confirms parity with the Python reference on the full `NORMATIVE` fixture c
 `--aggressive` (legacy/cache category widening), no `status --paths/--coverage/--top`, no
 `clean --keep-claude-history`/`--verbose`, no deletion of a session's companion payload
 directory (only the session file itself - `mutation_executor` has no directory-tree deletion
-path yet), no Codex-side incomplete-scan detection (a directory-read failure during rollout
-discovery is silently skipped rather than surfaced, unlike the Claude-side fix E06-S02 made -
-`cancellai-provider-codex`, E05-S04, pre-existing gap outside E06's own crates).
+path yet), no `--help`/`-h`/`--version` surface at all (each exits `2` with `unrecognized
+flag`, while the reference has a full `argparse` surface and the Homebrew formula's own smoke
+test asserts `cancellai --version`), and the detected Codex native delete backend is
+implemented in the adapter but never wired to `clean`, so the Rust engine always deletes at the
+filesystem level where the reference prefers `codex delete --force`.
 
-**G2 Safety - not ready.** SI-007/SI-008/SI-009/SI-019/SI-020/SI-021/SI-022 are exercised by
+The incomplete-scan gap that used to be listed here has moved to G2. It was recorded as a
+missing feature; the 2026-09-03 target-engine review reproduced it deleting an artifact the
+frozen reference withholds, which makes it a safety-invariant violation rather than a
+functional shortfall. See G2 below.
+
+**G2 Safety - the blocking defect is repaired; the gate still awaits its independent pass.**
+`docs/audits/2026-09-03-CODE_REVIEW.md` (`CR-TE-01`) reproduced, end to end on a synthetic
+tree, that a directory the scan could not list was silently skipped by both Rust provider
+adapters without making the scope incomplete: on the same tree, `cancellai.py` withheld every
+destructive action and exited `4` while `cancellai-cli` deleted the eligible artifact and
+exited `0`, reporting `scan_complete: true` and `knowledge_confidence: verified`. That violated
+SI-008, SI-009, SI-010 and constitutional C-02.
+
+E21 repaired it (`E21-S03`), and did so behind fixtures that fail against the unrepaired engine
+(`E21-S02`) so the class cannot silently return: `codex-partial-tree` and
+`claude-partial-project` are `NORMATIVE` and run through the differential gate in both
+root-origin scenarios. Both providers were affected - the Claude branch more broadly than
+previously recorded, since E06-S02 had repaired only the *companion payload* case and an
+unreadable **project** directory still passed silently, disclosed nowhere until that review.
+`E21-S04` moved the verdict onto `cancellai-inventory`'s own `ScopeCompleteness` (ADR-0018) and
+made planning candidates unobtainable without it, so the invariant is now a type obligation
+rather than a rule each adapter is trusted to remember.
+
+`E21-S07` additionally replaced detection with prevention on the delete path: the unlink is
+issued through `cancellai-sealedfs`'s handle-relative `unlinkat`, so a path-level swap after
+validation cannot redirect it, and the two unconfirmed `MutationOperation` variants no caller
+requested were removed rather than left armed for E12 to inherit.
+
+**What still blocks this gate is the process, not the defect**: every claim above is executor
+self-assessment, and `AGENT_PROTOCOL.md` is explicit that a verifier does not treat executor
+tests as proof. E21 has had no independent review round yet, and its two CR4 stories
+(`E21-S03`, `E21-S07`) require an owner-visible Safety Verdict that this document cannot
+substitute for.
+
+Separately, SI-007/SI-008/SI-009/SI-019/SI-020/SI-021/SI-022 are exercised by
 targeted unit/integration tests (E06-S01/S02 evidence packets). Missing for CR4: the
 independent verifier's own adversarial pass (this section, and every claim in it, is executor
 self-assessment - `AGENT_PROTOCOL.md` is explicit that a verifier does not treat executor
@@ -114,11 +176,26 @@ E17's packaging work.
 
 **G4 Operability - not ready.** No packaged installer exists (Epic E17 scope, `docs/RELEASING.md`
 "Target Rust release factory"); no performance/self-budget measurement exists for the CLI's
-own command paths (only `cancellai-inventory`'s scan performance is benchmarked,
-`RELEASE_GATES.md`'s own "Performance budget baseline" section above); no crash/recovery
-testing beyond what unit tests exercise.
+own command paths. The benchmark that does exist measures `cancellai-inventory`'s `scan_scope`,
+which the 2026-09-03 review found (`CR-TE-02`) is not reachable from the shipped binary at all -
+so the performance gate is not merely narrow, it is pointed at code the CLI never executes.
+`E21-S05` retargeted it: `cancellai-cli/tests/performance_shipped_path.rs` now measures
+`resolve_claude`/`resolve_codex` on every `cargo test`, with every timing assertion paired to an
+assertion on what the resolution actually produced, so a benchmark measuring an empty tree fails
+instead of reporting an excellent number. The same review measured `CR-TE-04`: peak RSS of
+303 MB against the reference's 27.8 MB on a single 287 MB rollout, because rollout metadata
+reading buffered the whole file despite documenting a 512 KiB bound. `E21-S06` made the read
+streaming and bounded; the same measurement now reads **2.9 MB**, an order of magnitude below
+the reference itself. There is still no crash/recovery testing beyond what unit tests exercise,
+and no self-budget measurement.
 
-**Conclusion**: cutover is not recommended at this time. Closing E06-S04 (and E06 as a whole)
+The release workflow itself is also weaker than it states (`CR-TE-06`): it claims to re-run
+every gate at the tagged commit and runs fewer than half, omitting the differential parity gate
+and every Rust check. `E22-S01` carries that, and `E06-S04` names it as a dependency - a
+canonical-engine release whose workflow does not verify the engine is not evidence about the
+artifact users install.
+
+**Conclusion**: cutover is not recommended at this time, and as of 2026-09-03 the reason is no longer only packaging and platform coverage - G2 carries a reproduced authority defect. Closing E06-S04 (and E06 as a whole)
 requires this checklist to read "ready" against real evidence, an independent CR4 verifier
 pass, and the owner's own Safety Verdict acceptance - none of which the executor grants itself
 (`AGENT_PROTOCOL.md`: "an executor's work is finished at `ready_for_review`... it does not
