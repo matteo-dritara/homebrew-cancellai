@@ -189,11 +189,16 @@ streaming and bounded; the same measurement now reads **2.9 MB**, an order of ma
 the reference itself. There is still no crash/recovery testing beyond what unit tests exercise,
 and no self-budget measurement.
 
-The release workflow itself is also weaker than it states (`CR-TE-06`): it claims to re-run
-every gate at the tagged commit and runs fewer than half, omitting the differential parity gate
-and every Rust check. `E22-S01` carries that, and `E06-S04` names it as a dependency - a
-canonical-engine release whose workflow does not verify the engine is not evidence about the
-artifact users install.
+The release workflow used to be weaker than it stated (`CR-TE-06`): it claimed to re-run every
+gate at the tagged commit and ran fewer than half, omitting the differential parity gate and
+every Rust check. `E22-S01` closed that: `release.yml`'s `verify` job now runs the full Python
+checker set AGENTS.md lists, and a new `verify-rust` job runs the Rust quality set (`fmt
+--check`, `clippy -D warnings`, `cargo test`, `cargo deny check`) on all three tier-1
+platforms, so the Windows-only clippy failure that slipped through at v1.8.0
+(`project/evidence/RELEASE-v1.8.0.md`) would now fail the tag. `scripts/check_workflows.py`
+derives the required gate set from `.pre-commit-config.yaml` and `rust.yml`'s `quality` job
+rather than a hand-copied list, so this cannot silently regress the way it did the first time.
+`E06-S04` no longer carries this as a blocker.
 
 **Conclusion**: cutover is not recommended at this time, and as of 2026-09-03 the reason is no longer only packaging and platform coverage - G2 carries a reproduced authority defect. Closing E06-S04 (and E06 as a whole)
 requires this checklist to read "ready" against real evidence, an independent CR4 verifier

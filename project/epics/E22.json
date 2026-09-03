@@ -10,7 +10,7 @@
     {
       "id": "E22-S01",
       "title": "The release workflow re-runs every gate it claims to",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Make the tagged commit face the same gate set as main, so the released artifact is verified at the commit it was cut from - which is what the workflow already states as its own reason for existing. No longer hypothetical: at v1.8.0 the release workflow reported success while the rust workflow was failing on the same commit (quality (windows-latest)), because release.yml runs no Rust check at all. See project/evidence/RELEASE-v1.8.0.md's correction section.",
       "change_risk": "CR1",
       "dependencies": [],

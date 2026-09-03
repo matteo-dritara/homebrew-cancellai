@@ -11,7 +11,8 @@ Epics: **23** | Stories: **108**
 - `blocked`: 1
 - `cancelled`: 1
 - `done`: 48
-- `planned`: 58
+- `planned`: 57
+- `ready_for_review`: 1
 
 ## Change risk distribution
 
@@ -27,4 +28,4 @@ Epics: **23** | Stories: **108**
 
 ## Awaiting independent review
 
-- none
+- **E22-S01** - The release workflow re-runs every gate it claims to (CR1)

@@ -12,6 +12,13 @@ jobs:
   verify:
     # Re-run every gate at the tagged commit. A release verified against whatever `main`
     # looked like afterwards is not evidence about the artifact users install.
+    #
+    # This must stay in lockstep with the pre-commit local-hook gate set
+    # (.pre-commit-config.yaml) and with rust.yml's `quality` job: scripts/check_workflows.py
+    # fails the build if either one adds a gate this job does not also run (E22-S01,
+    # regression guard for CR-TE-06 / the v1.8.0 incident recorded in
+    # project/evidence/RELEASE-v1.8.0.md, where this job reported success while `rust /
+    # quality (windows-latest)` was failing on the same commit).
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -20,6 +27,9 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14"
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          toolchain: stable
       - run: python3 -m pip install -r requirements-dev.txt
       - run: python3 -m pytest tests -v
       - run: python3 -m ruff check .
@@ -29,7 +39,17 @@ jobs:
       - run: python3 scripts/project_os.py check
       - run: python3 scripts/check_docs.py check
       - run: python3 scripts/check_workflows.py check
+      - run: python3 scripts/check_fixtures.py check
+      - run: python3 scripts/check_schemas.py check
+      - run: python3 scripts/characterize.py check
+      - run: python3 scripts/diff_harness.py check
+      - run: python3 scripts/check_rust_workspace.py check
+      - run: python3 scripts/check_mutation_boundary.py check
+      - run: python3 scripts/check_provider_compatibility.py check
+      - run: python3 scripts/rust_python_parity.py self-test
+      - run: python3 scripts/rust_python_parity.py check
       - run: python3 scripts/check_process.py check
+      - run: python3 scripts/release.py check
       - name: the tag must match the version in the source
         run: |
           set -euo pipefail
@@ -42,8 +62,37 @@ jobs:
       - name: the release evidence packet must exist
         run: test -f "project/evidence/RELEASE-${GITHUB_REF_NAME}.md"
 
+  # Mirrors rust.yml's `quality` job (ADR-0015): the tagged commit must face the same
+  # fmt/clippy/test/deny gate the pre-merge workflow already runs on all three tier-1
+  # platforms, per-platform, because CR-TE-06 was exactly this job missing entirely - a
+  # Windows-only clippy failure at the tag went unreported (v1.8.0, see the `verify` job's
+  # comment above).
+  verify-rust:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+      - run: cargo fmt --check
+        working-directory: rust
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        working-directory: rust
+      - run: cargo test --workspace
+        working-directory: rust
+      - run: cargo install cargo-deny@0.20.2 --locked
+      - run: cargo deny check
+        working-directory: rust
+
   publish:
-    needs: verify
+    needs: [verify, verify-rust]
     runs-on: ubuntu-latest
     permissions:
       contents: write

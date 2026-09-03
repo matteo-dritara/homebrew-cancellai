@@ -2203,7 +2203,7 @@ Close the gaps between what the engineering system claims to enforce and what it
 
 ### E22-S01 - The release workflow re-runs every gate it claims to
 
-**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** Make the tagged commit face the same gate set as main, so the released artifact is verified at the commit it was cut from - which is what the workflow already states as its own reason for existing. No longer hypothetical: at v1.8.0 the release workflow reported success while the rust workflow was failing on the same commit (quality (windows-latest)), because release.yml runs no Rust check at all. See project/evidence/RELEASE-v1.8.0.md's correction section.
 

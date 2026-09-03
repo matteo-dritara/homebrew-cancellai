@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
+from unittest import mock
 
 from scripts import check_workflows
 
@@ -24,6 +27,70 @@ class WorkflowPolicyTests(unittest.TestCase):
         declared = check_workflows.declared_check_names()
         for name in required:
             self.assertIn(name, declared, name)
+
+
+# E22-S01 (CR-TE-06): release.yml re-runs every gate at the tagged commit, and
+# scripts/check_workflows.py must fail rather than pass silently if it stops doing so.
+class ReleaseGateDriftTests(unittest.TestCase):
+    def test_precommit_gate_commands_covers_the_full_checker_set(self) -> None:
+        commands = check_workflows.precommit_gate_commands()
+        # Every check AGENTS.md's "Current Python checks" list names as a repository-owned
+        # gate is a local pre-commit hook with a matching `entry:`.
+        self.assertEqual(commands["release-consistency"], "python3 scripts/release.py check")
+        self.assertEqual(commands["rust-python-parity-gate"], "python3 scripts/rust_python_parity.py check")
+        self.assertEqual(commands["mutation-boundary-check"], "python3 scripts/check_mutation_boundary.py check")
+        self.assertEqual(
+            commands["provider-compatibility-check"],
+            "python3 scripts/check_provider_compatibility.py check",
+        )
+        # Staged only at commit-msg: lints the commit message text, not repository state.
+        self.assertNotIn("conventional-commit", commands)
+
+    def test_release_workflow_currently_carries_every_gate(self) -> None:
+        self.assertEqual(check_workflows.release_gate_drift_errors(), [])
+
+    def test_a_removed_precommit_gate_in_release_yml_is_caught(self) -> None:
+        # Reproduces CR-TE-06 mechanically: release.yml missing a gate main enforces must
+        # fail this check, not report success the way v1.8.0 did.
+        release_yml = (
+            "jobs:\n"
+            "  verify:\n"
+            "    steps:\n"
+            "      - run: python3 -m pytest tests -v\n"
+            "      - run: python3 scripts/project_os.py check\n"
+            "  verify-rust:\n"
+            "    steps:\n"
+            "      - run: cargo fmt --check\n"
+            "      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings\n"
+            "      - run: cargo test --workspace\n"
+            "      - run: cargo deny check\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "release.yml"
+            path.write_text(release_yml, encoding="utf-8")
+            with mock.patch.object(check_workflows, "RELEASE_WORKFLOW", path):
+                errors = check_workflows.release_gate_drift_errors()
+        joined = "\n".join(errors)
+        self.assertIn("release-consistency", joined)
+        self.assertIn("python3 scripts/release.py check", joined)
+
+    def test_a_removed_rust_quality_gate_in_release_yml_is_caught(self) -> None:
+        # Reproduces the specific v1.8.0 incident: release.yml runs no Rust check at all
+        # while rust.yml's `quality` job requires fmt/clippy/test/deny.
+        precommit_commands = check_workflows.precommit_gate_commands()
+        release_yml_lines = ["jobs:", "  verify:", "    steps:"]
+        release_yml_lines += [f"      - run: {command}" for command in precommit_commands.values()]
+        release_yml_lines += ["  verify-rust:", "    steps:", "      - run: cargo fmt --check"]
+        release_yml = "\n".join(release_yml_lines) + "\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "release.yml"
+            path.write_text(release_yml, encoding="utf-8")
+            with mock.patch.object(check_workflows, "RELEASE_WORKFLOW", path):
+                errors = check_workflows.release_gate_drift_errors()
+        joined = "\n".join(errors)
+        self.assertIn("cargo clippy", joined)
+        self.assertIn("cargo test --workspace", joined)
+        self.assertIn("cargo deny check", joined)
 
 
 if __name__ == "__main__":

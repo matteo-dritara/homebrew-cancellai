@@ -20,6 +20,20 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 USES_RE = re.compile(r"^\s*-?\s*uses:\s*([^\s#]+)", re.MULTILINE)
 FULL_SHA = re.compile(r"^[0-9a-fA-F]{40}$")
 
+# E22-S01 (CR-TE-06): the tagged commit must face the same gate set as main, so release.yml's
+# `verify`/`verify-rust` jobs are checked against their two sources of truth instead of a list
+# hand-copied here, which is exactly what let them drift silently before (v1.8.0 reported
+# success while `rust / quality (windows-latest)` failed on the same commit - no Rust check
+# ran in release.yml at all).
+PRECOMMIT_CONFIG = ROOT / ".pre-commit-config.yaml"
+RELEASE_WORKFLOW = WORKFLOWS / "release.yml"
+RUST_WORKFLOW = WORKFLOWS / "rust.yml"
+HOOK_ID_RE = re.compile(r"^      - id:\s*(\S+)\s*$", re.MULTILINE)
+ENTRY_RE = re.compile(r"^\s*entry:\s*(.+?)\s*$", re.MULTILINE)
+STAGES_RE = re.compile(r"^\s*stages:\s*\[(.+?)\]\s*$", re.MULTILINE)
+RUN_RE = re.compile(r"^\s*-?\s*run:\s*(.+?)\s*$", re.MULTILINE)
+BLOCK_SCALAR_HEADERS = {"|", ">", "|-", ">-", "|+", ">+"}
+
 # Branch protection lives in GitHub settings and names checks as strings. A required check
 # whose name does not match any job blocks every pull request forever and reports nothing,
 # which is indistinguishable from a check that is simply slow. The desired configuration is
@@ -121,6 +135,83 @@ def docker_only_action_errors() -> list[str]:
     return errors
 
 
+def job_run_commands(text: str, job_id: str) -> set[str]:
+    """The literal `run:` command of every single-line step in one job.
+
+    Block-scalar steps (`run: |`) are excluded: those are shell scripts embedded in the
+    workflow (the tag/evidence assertions in release.yml's `verify` job), not pointers to a
+    named repository gate, so they have nothing to compare against a pre-commit hook entry or
+    a Rust quality command.
+    """
+    for candidate_id, body in _job_blocks(text):
+        if candidate_id != job_id:
+            continue
+        return {m.group(1) for m in RUN_RE.finditer(body) if m.group(1) not in BLOCK_SCALAR_HEADERS}
+    return set()
+
+
+def precommit_gate_commands() -> dict[str, str]:
+    """Every local pre-commit hook's `entry` command, keyed by hook id.
+
+    Hooks staged only at `commit-msg` are excluded: they lint the commit message text, which
+    has no meaning re-run against an already-tagged commit.
+    """
+    if not PRECOMMIT_CONFIG.exists():
+        return {}
+    text = PRECOMMIT_CONFIG.read_text(encoding="utf-8")
+    ids = list(HOOK_ID_RE.finditer(text))
+    commands: dict[str, str] = {}
+    for index, match in enumerate(ids):
+        end = ids[index + 1].start() if index + 1 < len(ids) else len(text)
+        block = text[match.end() : end]
+        stages_match = STAGES_RE.search(block)
+        if stages_match and "commit-msg" in stages_match.group(1):
+            continue
+        entry_match = ENTRY_RE.search(block)
+        if entry_match:
+            commands[match.group(1)] = entry_match.group(1)
+    return commands
+
+
+def release_gate_drift_errors() -> list[str]:
+    """release.yml must re-run every pre-commit gate and every Rust quality gate.
+
+    This is what makes AC3 of E22-S01 real: it derives the required gate set from the two
+    files that already define it (`.pre-commit-config.yaml`, `rust.yml`'s `quality` job)
+    instead of a copy hand-maintained inside this checker, so a gate added to either one and
+    not mirrored into release.yml fails here rather than silently shipping a weaker release
+    workflow again.
+    """
+    errors: list[str] = []
+    if not RELEASE_WORKFLOW.exists():
+        return ["release.yml is missing; it must re-run every gate at the tagged commit"]
+    release_text = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+    release_verify_commands = job_run_commands(release_text, "verify")
+
+    for hook_id, entry in precommit_gate_commands().items():
+        if entry not in release_verify_commands:
+            errors.append(
+                f".github/workflows/release.yml: job 'verify' is missing pre-commit gate "
+                f"{hook_id!r} ({entry!r}); the release workflow must re-run every gate "
+                f"pre-commit enforces on main"
+            )
+
+    if not RUST_WORKFLOW.exists():
+        errors.append("rust.yml is missing; release.yml has no Rust quality gate to compare against")
+        return errors
+    rust_text = RUST_WORKFLOW.read_text(encoding="utf-8")
+    quality_commands = job_run_commands(rust_text, "quality")
+    release_rust_commands = job_run_commands(release_text, "verify-rust")
+    for command in sorted(quality_commands):
+        if command.startswith("cargo install "):
+            continue  # toolchain setup, not itself a gate
+        if command not in release_rust_commands:
+            errors.append(
+                f".github/workflows/release.yml: job 'verify-rust' is missing Rust quality gate {command!r} from rust.yml's 'quality' job"
+            )
+    return errors
+
+
 def required_check_names() -> list[str]:
     if not GOVERNANCE_DOC.exists():
         return []
@@ -153,6 +244,7 @@ def validate_workflows() -> None:
                 line = text.count("\n", 0, match.start()) + 1
                 errors.append(f"{rel}:{line}: action must be pinned to a full 40-hex commit SHA: {spec}")
     errors.extend(docker_only_action_errors())
+    errors.extend(release_gate_drift_errors())
     required = required_check_names()
     if not required:
         errors.append("docs/development/REPOSITORY_GOVERNANCE.md must list required checks in a required-checks block")

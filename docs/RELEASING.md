@@ -39,10 +39,19 @@ Step 2 writes `project/evidence/RELEASE-vX.Y.Z.md` from the epic's contract: sto
 Safety Verdict links, gate results, compatibility, residual risks and rollback.
 
 Pushing the tag triggers `.github/workflows/release.yml`, which re-runs every gate **at the
-tagged commit**, verifies that the tag matches `VERSION` and that the evidence packet exists,
-then publishes the GitHub release from that packet with the archive checksum appended. A
-release verified against whatever `main` looked like afterwards is not evidence about the
-artifact users install.
+tagged commit** - the full Python checker set AGENTS.md lists (`verify` job) and the Rust
+quality set (`fmt --check`, `clippy -D warnings`, `cargo test`, `cargo deny check`, on all
+three tier-1 platforms, `verify-rust` job) - verifies that the tag matches `VERSION` and that
+the evidence packet exists, then publishes the GitHub release from that packet with the
+archive checksum appended. A release verified against whatever `main` looked like afterwards
+is not evidence about the artifact users install.
+
+`scripts/check_workflows.py` keeps this from drifting: it derives the required Python gate set
+from `.pre-commit-config.yaml`'s local hooks and the required Rust gate set from `rust.yml`'s
+`quality` job, and fails if `release.yml` stops re-running one of them (E22-S01, closing
+`CR-TE-06` - at v1.8.0 `release.yml` ran no Rust check at all and reported success while `rust
+/ quality (windows-latest)` failed on the same tagged commit; see
+`project/evidence/RELEASE-v1.8.0.md`).
 
 `finalize` refuses to leave the repository inconsistent: it re-runs `release.py check` and
 fails if the source, the packaging metadata and the formula disagree.
