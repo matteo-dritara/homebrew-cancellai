@@ -16,9 +16,12 @@ class ProcessConventionTests(unittest.TestCase):
         errors: list[str] = []
         warnings: list[str] = []
         check_process.check_review_rounds(errors, warnings)
-        # E00 is the recorded exception: it ran three rounds and is why the rule exists.
+        # E00 and E07 are the recorded exceptions (E22-S06): both exceed the ceiling only
+        # once story-scoped review records are counted against their epic, and both predate
+        # the counting fix / ADR-0014.
         self.assertEqual(errors, [])
         self.assertTrue(any("E00" in w for w in warnings))
+        self.assertTrue(any("E07" in w for w in warnings))
         self.assertEqual(check_process.MAX_REVIEW_ROUNDS, 2)
 
     def test_an_unexcepted_epic_cannot_exceed_the_review_ceiling(self) -> None:
@@ -32,6 +35,27 @@ class ProcessConventionTests(unittest.TestCase):
                 check_process.check_review_rounds(errors, warnings)
             self.assertTrue(errors)
             self.assertEqual(warnings, [])
+
+    def test_a_story_scoped_review_record_counts_against_its_epics_ceiling(self) -> None:
+        # E22-S06 (CR-TE companion): before this story, a filename like
+        # `E12-S01-VERIFIER-REVIEW.md` matched no pattern this check looked for at all, so an
+        # epic could carry an unbounded number of story-scoped review rounds - exactly the
+        # gap that made E07 read as one round here while four were actually run.
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            (base / "E12-VERIFIER-REVIEW.md").write_text("x", encoding="utf-8")
+            (base / "E12-VERIFIER-REVIEW-ROUND2.md").write_text("x", encoding="utf-8")
+            (base / "E12-S01-VERIFIER-REVIEW.md").write_text("x", encoding="utf-8")
+            errors: list[str] = []
+            warnings: list[str] = []
+            with mock.patch.object(check_process, "EVIDENCE", base):
+                check_process.check_review_rounds(errors, warnings)
+            self.assertTrue(errors, "a third round, even a story-scoped one, must fail an epic with no exception")
+            self.assertEqual(warnings, [])
+            # AC3: the failure message names which records were counted.
+            self.assertIn("E12-S01-VERIFIER-REVIEW.md", errors[0])
+            self.assertIn("E12-VERIFIER-REVIEW.md", errors[0])
+            self.assertIn("E12-VERIFIER-REVIEW-ROUND2.md", errors[0])
 
     def test_reference_freeze_marker_present_in_the_real_repo(self) -> None:
         errors: list[str] = []

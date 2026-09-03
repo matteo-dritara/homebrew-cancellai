@@ -53,8 +53,30 @@ SAFETY_INVARIANT_RE = re.compile(r"\bSI-\d{3}\b")
 # backlog work items instead. E00 predates the rule and ran three rounds - it is the reason
 # the rule exists, so it is recorded as an explicit exception rather than quietly exempted.
 MAX_REVIEW_ROUNDS = 2
-REVIEW_ROUND_EXCEPTIONS = {"E00": "ran three rounds before ADR-0014 bounded them"}
-VERIFIER_REVIEW_RE = re.compile(r"^(E\d{2})-VERIFIER-REVIEW.*\.md$")
+REVIEW_ROUND_EXCEPTIONS = {
+    # Originally recorded as "ran three rounds before ADR-0014 bounded them" - E22-S06's own
+    # fix surfaced a fourth, previously-uncounted record (`E00-S03-VERIFIER-REVIEW.md`, a
+    # story-scoped round the old epic-only regex missed the same way it missed E07's). All
+    # four predate ADR-0014, which is why this stays an exception rather than an error.
+    "E00": "4 records once story-scoped reviews are counted (E00-S03, plus the three "
+    "epic-level rounds) - all four predate ADR-0014 bounding review to two rounds",
+    # E22-S06: this story's own fix - counting story-scoped records against their epic for
+    # the first time - surfaces three pre-existing E07 records this check previously missed
+    # (E07-S07 round 1, E07-S07 round 2, E07-S09 round 1), on top of the epic-level round
+    # that closed E07. All three predate the fix and the epic's own closure; the owner-
+    # authorized combined verify+fix+close round (E07-VERIFIER-REVIEW.md's "Process
+    # exception" note) superseded them rather than being a fourth round chosen deliberately.
+    "E07": "4 records once story-scoped reviews are counted (E07-S07 round 1, E07-S07 round "
+    "2, E07-S09 round 1, plus the epic-level closing round) - the first three predate the "
+    "epic-level round that owner-authorized combined verify+fix+close and superseded them; "
+    "see E07-VERIFIER-REVIEW.md's Process exception note",
+}
+# Matches both an epic-scoped record (`E07-VERIFIER-REVIEW.md`) and a story-scoped one
+# (`E07-S07-VERIFIER-REVIEW.md`), counting both against the *epic's* ceiling (captured
+# group 1). Before E22-S06 this only matched the epic-scoped form, so a story-scoped review
+# never counted at all: E07 read as one round in this check while four were actually run
+# (`E07-VERIFIER-REVIEW.md` plus three `E07-S0N-VERIFIER-REVIEW*.md` records).
+VERIFIER_REVIEW_RE = re.compile(r"^(E\d{2})(?:-S\d{2})?-VERIFIER-REVIEW.*\.md$")
 GENERATED_FILES = (
     "docs/DECISION_REGISTER.md",
     "docs/ROADMAP.md",

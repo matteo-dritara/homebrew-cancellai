@@ -44,7 +44,13 @@ A maximum of **two** review rounds per epic:
 
 Findings that survive round 2 do not trigger a third round. They become **new work items** in the backlog, recorded in the epic's closure packet as accepted residual risk with the story id that will carry them. An unbounded loop hides the same defects behind a status that never changes; a bounded loop converts them into visible, scheduled work.
 
-`scripts/check_process.py` enforces the ceiling by counting committed verifier review records per epic.
+`scripts/check_process.py` enforces the ceiling by counting committed verifier review records
+per epic, including a story-scoped record (`E##-S##-VERIFIER-REVIEW*.md` - used for a
+standalone CR4 carry-forward review that cannot wait for the whole epic) against that story's
+epic, not only an epic-scoped one. E22-S06 closed a gap where the counter recognized only the
+epic-scoped filename shape, so a story-scoped round never counted at all: E07 read as one
+round in this check while four independent rounds (one epic-scoped, three story-scoped) were
+actually run.
 
 ## Consequences
 

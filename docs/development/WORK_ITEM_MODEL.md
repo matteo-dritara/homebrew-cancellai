@@ -90,8 +90,13 @@ story id that will carry them. An unbounded loop hides defects behind a status t
 changes; a bounded one converts them into visible, scheduled work.
 
 `scripts/check_process.py` counts committed verifier review records per epic and fails above
-the ceiling. E00 predates this rule and ran three rounds; it is the reason the rule exists,
-and it is recorded as an explicit exception rather than quietly exempted.
+the ceiling, counting a **story-scoped** record (`E##-S##-VERIFIER-REVIEW*.md`, used for a
+standalone CR4 carry-forward review during an epic that has not yet closed) against its
+epic's ceiling exactly like an epic-scoped one (`E##-VERIFIER-REVIEW*.md`) - before E22-S06
+the check only recognized the epic-scoped filename shape, so a story-scoped round never
+counted at all and E07 read as one round here while four were actually run. E00 (four rounds
+once its own story-scoped record is counted) and E07 predate this fix and ADR-0014 itself;
+both are recorded as explicit exceptions with a reason rather than quietly exempted.
 
 ## Closing an epic cuts a release
 

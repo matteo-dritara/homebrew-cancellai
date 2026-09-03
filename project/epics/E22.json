@@ -141,7 +141,7 @@
     {
       "id": "E22-S06",
       "title": "The review-round ceiling counts every review round",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Make the bound ADR-0014 defines actually apply, including to review records named after a story rather than an epic.",
       "change_risk": "CR1",
       "dependencies": [],

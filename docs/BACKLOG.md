@@ -2320,7 +2320,7 @@ Close the gaps between what the engineering system claims to enforce and what it
 
 ### E22-S06 - The review-round ceiling counts every review round
 
-**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** Make the bound ADR-0014 defines actually apply, including to review records named after a story rather than an epic.
 
