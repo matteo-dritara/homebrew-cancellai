@@ -33,6 +33,16 @@ Providers may independently expose:
 
 Absence of a capability is not an error and must never be inferred from the provider name.
 
+`NATIVE_DELETE` is a capability-*detection* claim, not a guarantee that the engine's mutation
+path actually uses it. The target-engine Rust CLI's Codex adapter probes and reports
+`NATIVE_DELETE`/`native_delete_capability` accurately (see the generated matrix below - all
+four `NativeDeleteSupport` outcomes stay distinct, TM-09), but `cancellai-cli clean` does not
+yet route deletion through it: every deletion is filesystem-level today, regardless of what
+this capability reports. That is a disclosed, permanent divergence from the Python reference
+(which prefers the vendor's own `codex delete --force` when available) rather than a silent
+gap - see `docs/CLI_RUST.md`'s "Known gaps" (`CR-TE-10`, E22-S05) for why closing it is kernel
+mutation-boundary work (SI-019/C-07), not a capability-detection fix.
+
 ## Tested compatibility matrix
 
 Generated from the two reference adapters' own `ProviderCapabilities` output

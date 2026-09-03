@@ -112,7 +112,7 @@
     {
       "id": "E22-S05",
       "title": "Codex native delete backend is wired or explicitly refused",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Resolve a behavioural divergence on user data: the reference prefers the provider's own delete command to keep its bookkeeping consistent, and the target engine always deletes at the filesystem level without saying so.",
       "change_risk": "CR3",
       "dependencies": [

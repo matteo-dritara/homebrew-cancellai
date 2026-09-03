@@ -110,14 +110,40 @@ always normalizes to `status` - the read-only default - and the *only* token tha
 command dispatch regardless of which crate parses the tokens (ADR-0019): `clap` decides what
 a valid `status`/`plan`/`clean`/... invocation's flags mean, but never which subcommand an
 ambiguous or empty invocation resolves to.
-- **The detected Codex native delete backend is not wired to `clean`.**
+- **The Codex native delete backend is detected but deliberately not wired to `clean` -
+  a permanent, disclosed divergence, not a missing flag (`CR-TE-10`, E22-S05).**
   `cancellai-provider-codex` implements `codex_delete_supported`/`NativeDeleteSupport` with
-  four distinct outcomes, and nothing calls them from the command surface: this CLI always
-  deletes at the filesystem level, while `cancellai.py` prefers `codex delete --force` when the
-  installed CLI supports it, specifically so Codex's own subagent/thread bookkeeping stays
-  consistent. That is a behavioural divergence on user data, not only a missing flag. There is
-  also no `--codex-backend` selector. `E22-S05` resolves it, by wiring it or by stating the
-  divergence permanently (`CR-TE-10`).
+  four distinct outcomes, and `CodexProvider::capability(NativeDeleteCapability)` already
+  reports them accurately (`docs/PROVIDERS.md`'s generated matrix) - detection is real and
+  correct. Nothing calls it from `clean`, though: this CLI always deletes at the filesystem
+  level, while `cancellai.py` prefers `codex delete --force` when the installed CLI supports
+  it, so Codex's own subagent/thread bookkeeping stays consistent.
+
+  E22-S05 evaluated wiring it and chose not to, because in the Python reference the native
+  path is not a bookkeeping step alongside filesystem deletion - `perform_delete` calls
+  `delete_codex_via_cli` **instead of** `safe_remove` when `codex-cli` is the chosen strategy;
+  the vendor command *is* the mutation. Reproducing that in the Rust engine while keeping
+  SI-019/C-07 ("all filesystem/vendor mutations route through the one safety executor," the
+  authority the raw `unlink` already goes through) intact means the kernel's mutation boundary
+  itself (`cancellai-safety::mutation_executor`, `cancellai-platform::mutation`) needs a second
+  primitive - authorizing and then invoking an external, PATH-resolved binary under the same
+  root/process/authority checks the filesystem path uses today, not a call `cancellai-cli`
+  can make on the kernel's behalf. `scripts/check_mutation_boundary.py`'s existing guarantee
+  (only `cancellai-platform::mutation.rs` deletes anything, only it and the mutation executor
+  reference that capability) would need to grow to admit a second production mutation
+  mechanism - the exact class of change ADR-0017 (the `libc`/`unsafe` kernel exception) and
+  E21-S07 (removing the two unconfirmed `MutationOperation` variants rather than leaving them
+  armed) both treat as requiring its own dedicated, reviewed story, not a CR3 side effect of
+  fixing a documentation gap. TM-09 ("native vendor delete semantics change - a provider
+  command starts deleting broader data or changes cascade behavior") is exactly the risk that
+  review would need to close. There is no `--codex-backend` selector for the same reason: it
+  would advertise a choice this build cannot yet honor safely.
+
+  Consequence, disclosed rather than silent: a Codex CLI installed alongside cancellAI keeps
+  its own internal bookkeeping (if any) unaware of deletions this engine performs. Every
+  deletion still succeeds - the artifact is removed either way - and every safety property
+  (root/process/authority checks, protected-name barrier, SI-008/SI-009 completeness gating)
+  applies identically regardless of backend, because there is only the one backend today.
 - **`--aggressive` remains unimplemented** - see the entry below; the two completeness gaps
   that used to be listed here (a scope reported complete despite an unreadable directory, and
   an `error_count` that was never a count) were repaired by `E21-S03` and are now covered by

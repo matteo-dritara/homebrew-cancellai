@@ -11,8 +11,8 @@ Epics: **23** | Stories: **108**
 - `blocked`: 1
 - `cancelled`: 1
 - `done`: 48
-- `planned`: 53
-- `ready_for_review`: 5
+- `planned`: 52
+- `ready_for_review`: 6
 
 ## Change risk distribution
 
@@ -32,4 +32,5 @@ Epics: **23** | Stories: **108**
 - **E22-S02** - Rust supply chain has updates and static analysis (CR1)
 - **E22-S03** - Dependency rings, and a real command-line surface (CR2)
 - **E22-S04** - Direct coverage for the retention resolver (CR2)
+- **E22-S05** - Codex native delete backend is wired or explicitly refused (CR3)
 - **E22-S06** - The review-round ceiling counts every review round (CR1)

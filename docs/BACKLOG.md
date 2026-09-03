@@ -2297,7 +2297,7 @@ Close the gaps between what the engineering system claims to enforce and what it
 
 ### E22-S05 - Codex native delete backend is wired or explicitly refused
 
-**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E22-S03 | **Safety obligations:** SI-004, SI-019, SI-021
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E22-S03 | **Safety obligations:** SI-004, SI-019, SI-021
 
 **Outcome.** Resolve a behavioural divergence on user data: the reference prefers the provider's own delete command to keep its bookkeeping consistent, and the target engine always deletes at the filesystem level without saying so.
 

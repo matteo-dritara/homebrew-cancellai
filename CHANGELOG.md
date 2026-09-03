@@ -20,6 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `clean --claude-retention`) with exit code 2, instead of silently accepting and ignoring it
   as every command's flags did before this release.
 
+### Documentation
+
+- Recorded that `cancellai-cli clean` deletes Codex sessions at the filesystem level only,
+  even when the installed `codex` CLI advertises its own `--force`-capable delete: this is now
+  a stated, permanent divergence from `cancellai.py` (which prefers the vendor command) rather
+  than an unstated gap (E22-S05, `CR-TE-10`). See `docs/CLI_RUST.md`'s "Known gaps" for why -
+  wiring it would add a second mutation primitive to the safety kernel and is deferred to a
+  dedicated future story, not a side effect of this one.
+
 ## [1.8.0] - 2026-09-03
 
 ### Fixed
