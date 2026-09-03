@@ -88,7 +88,7 @@
     {
       "id": "E22-S04",
       "title": "Direct coverage for the retention resolver",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Test the hand-translated policy rules directly, instead of delegating their entire verification to a differential gate fed by a small corpus.",
       "change_risk": "CR2",
       "dependencies": [],

@@ -2276,7 +2276,7 @@ Close the gaps between what the engineering system claims to enforce and what it
 
 ### E22-S04 - Direct coverage for the retention resolver
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** SI-005, SI-012
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** SI-005, SI-012
 
 **Outcome.** Test the hand-translated policy rules directly, instead of delegating their entire verification to a differential gate fed by a small corpus.
 

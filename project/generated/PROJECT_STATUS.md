@@ -11,8 +11,8 @@ Epics: **23** | Stories: **108**
 - `blocked`: 1
 - `cancelled`: 1
 - `done`: 48
-- `planned`: 56
-- `ready_for_review`: 2
+- `planned`: 55
+- `ready_for_review`: 3
 
 ## Change risk distribution
 
@@ -30,3 +30,4 @@ Epics: **23** | Stories: **108**
 
 - **E22-S01** - The release workflow re-runs every gate it claims to (CR1)
 - **E22-S02** - Rust supply chain has updates and static analysis (CR1)
+- **E22-S04** - Direct coverage for the retention resolver (CR2)

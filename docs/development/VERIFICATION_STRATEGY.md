@@ -160,3 +160,29 @@ Two rules follow, both enforced rather than intended:
   engine before the repair lands. A fixture that passes on the unrepaired engine is not
   exercising the defect, whatever its name says. E21-S02's evidence packet records the failing
   run for both new fixtures, taken before E21-S03 existed.
+
+## Direct coverage for a hand-translated resolver (E22-S04)
+
+A rule ported from `cancellai.py` into Rust and verified only through the differential gate is
+verified by the *corpus*, per the section above - a rule no fixture happens to exercise can
+regress silently even with the gate green. `cancellai-policy/src/retention.rs`'s resolver
+(the age cutoff, keep-latest applied per subagent tree rather than per file, the interaction
+between pinning and protection, process liveness, tool scoping) now carries direct unit tests
+in addition to the fixture corpus, each named after the specific reference behaviour it pins
+(`cancellai.py::choose_old_sessions`/`choose_codex_old_sessions`) so a future divergence reads
+as a named, specific failure rather than an opaque differential mismatch.
+
+Two rules make this more than documentation intent:
+
+- boundary cases are named explicitly rather than left to whatever the fixture corpus happens
+  to cover: `keep_latest=0`, `keep_latest` above the session count, an unobservable mtime, and
+  a subagent tree whose members disagree in age;
+- a test's claim to pin a rule is checked, not assumed - inverting the age-cutoff comparison
+  (`<` to `<=`) and dropping the tree grouping (each session becomes its own singleton "tree")
+  were both run locally against the test suite before this story closed, and each broke exactly
+  one named test, not only the differential gate (`project/evidence/E22-S04/EVIDENCE.md`).
+
+`cargo llvm-cov -p cancellai-policy --lib` reported 95.58% line coverage of `retention.rs` at
+the time this story closed - the figure reached, not a target this or a future story is bound
+to hold exactly; new resolver logic should carry its own direct tests rather than chase a
+percentage.

@@ -1119,4 +1119,330 @@ mod tests {
 
         std::fs::remove_dir_all(&dir).ok();
     }
+
+    // E22-S04: direct unit coverage for retention.rs's own rules, named after the reference
+    // behaviour each one pins, instead of relying only on the differential gate's small
+    // fixture corpus to notice a divergence.
+
+    fn write_claude_session(dir: &Path, project: &str, id: &str, mtime_secs: u64) -> PathBuf {
+        let path = dir.join(format!("projects/{project}/{id}.jsonl"));
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "{}").unwrap();
+        filetime_set(&path, mtime_secs);
+        path
+    }
+
+    /// `cancellai.py::choose_old_sessions`: `for action in ordered: if protected_count >=
+    /// max(keep_latest, 0): break` - with `keep_latest=0` the loop breaks immediately and
+    /// nothing is protected. Guards `.take(policy.keep_latest as usize)` against an off-by-one
+    /// that would protect one session at `keep_latest=0`.
+    #[test]
+    fn keep_latest_zero_protects_no_sessions_from_deletion() {
+        let dir = tree(Path::new(""), "keep-latest-zero");
+        write_claude_session(&dir, "proj-a", "77777777-7777-4777-8777-777777777777", 0);
+        write_claude_session(&dir, "proj-a", "88888888-8888-4888-8888-888888888888", 1);
+
+        let policy = RetentionPolicy {
+            days: 7,
+            keep_latest: 0,
+            tool: ToolScope::Claude,
+            allow_running: false,
+        };
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
+        let clock = frozen_now();
+        let trust = crate::trust::builtin_provider_trust();
+
+        let resolution = resolve_claude(&dir, clear, &policy, &process, &clock, trust);
+        let actions = build_actions(std::slice::from_ref(&resolution.planning_view()));
+        let deletes = actions
+            .iter()
+            .filter(|a| a.action_class == ActionClass::Delete)
+            .count();
+        assert_eq!(
+            deletes, 2,
+            "keep_latest=0 must protect nothing: {actions:?}"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// `cancellai.py::choose_old_sessions`'s protection loop naturally exhausts `ordered`
+    /// before `protected_count` reaches a `keep_latest` larger than the session count - it
+    /// never errors or wraps. Boundary case explicitly named in E22-S04's acceptance criteria.
+    #[test]
+    fn keep_latest_above_session_count_protects_every_session() {
+        let dir = tree(Path::new(""), "keep-latest-above-count");
+        write_claude_session(&dir, "proj-a", "99999999-9999-4999-8999-999999999999", 0);
+        write_claude_session(&dir, "proj-a", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", 1);
+
+        let policy = RetentionPolicy {
+            days: 7,
+            keep_latest: 5, // more than the 2 sessions that exist
+            tool: ToolScope::Claude,
+            allow_running: false,
+        };
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
+        let clock = frozen_now();
+        let trust = crate::trust::builtin_provider_trust();
+
+        let resolution = resolve_claude(&dir, clear, &policy, &process, &clock, trust);
+        let actions = build_actions(std::slice::from_ref(&resolution.planning_view()));
+        assert!(
+            actions
+                .iter()
+                .all(|a| a.action_class == ActionClass::Observe),
+            "keep_latest above the session count must protect every session: {actions:?}"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Interaction between pinning and protection: `classify` checks `is_protected` before
+    /// `is_pinned` (`if is_protected { .. } else if is_pinned { .. }`), so a session that is
+    /// both a protected-name match *and* inside the `keep_latest` window must still report
+    /// `ProtectionState::Protected`, not `Pinned` - the stronger, defense-in-depth fact must
+    /// not be shadowed by the weaker one just because both are true (SI-006).
+    #[test]
+    fn a_protected_name_match_still_reports_protected_even_when_also_pinned() {
+        let dir = tree(Path::new(""), "protected-and-pinned");
+        write_claude_session(&dir, "proj-a", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", 0);
+
+        let policy = RetentionPolicy {
+            days: 7,
+            keep_latest: 1, // the only session, so it is also pinned by keep-latest
+            tool: ToolScope::Claude,
+            allow_running: false,
+        };
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
+        let clock = frozen_now();
+        let trust = crate::trust::builtin_provider_trust();
+
+        let resolution = resolve_claude(
+            &dir,
+            |_| ProtectionOutcome::Protected {
+                matched_name: "settings.json".to_string(),
+            },
+            &policy,
+            &process,
+            &clock,
+            trust,
+        );
+        assert_eq!(
+            resolution.observed()[0].artifact.protection_state,
+            ProtectionState::Protected,
+            "a protected-name match must win over keep-latest pinning in the reported state"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// `cancellai.py::choose_old_sessions`: `if action.mtime >= cutoff: continue` - a session
+    /// exactly at the cutoff is kept (not old); only strictly older ones are selected. Pins the
+    /// `<` (not `<=`) in `retention.rs`'s own `t.0 < cutoff_secs => ActivityState::Stale` against
+    /// an inverted-comparison mutation.
+    #[test]
+    fn age_cutoff_is_a_strict_less_than_matching_the_python_reference() {
+        let dir = tree(Path::new(""), "cutoff-boundary");
+        // frozen_now() = 10 days; days=7 => cutoff = 3 days exactly.
+        let cutoff_secs = 3 * 86_400;
+        write_claude_session(
+            &dir,
+            "proj-a",
+            "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+            cutoff_secs,
+        );
+        write_claude_session(
+            &dir,
+            "proj-a",
+            "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+            cutoff_secs - 1,
+        );
+
+        let policy = RetentionPolicy {
+            days: 7,
+            keep_latest: 0,
+            tool: ToolScope::Claude,
+            allow_running: false,
+        };
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
+        let clock = frozen_now();
+        let trust = crate::trust::builtin_provider_trust();
+
+        let resolution = resolve_claude(&dir, clear, &policy, &process, &clock, trust);
+        let by_activity: std::collections::HashMap<_, _> = resolution
+            .observed()
+            .iter()
+            .map(|c| (c.artifact.identity_token.clone(), c.artifact.activity_state))
+            .collect();
+        assert_eq!(
+            by_activity["claude:projects/proj-a/cccccccc-cccc-4ccc-8ccc-cccccccccccc.jsonl"],
+            ActivityState::Idle,
+            "mtime exactly at cutoff must not be stale"
+        );
+        assert_eq!(
+            by_activity["claude:projects/proj-a/dddddddd-dddd-4ddd-8ddd-dddddddddddd.jsonl"],
+            ActivityState::Stale,
+            "mtime one second before cutoff must be stale"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A tree whose members disagree in age (E22-S04's own boundary case): pinning
+    /// (`keep_latest`) is per-tree, but staleness is evaluated per-member. With `keep_latest=0`
+    /// so the tree is not pinned at all, the old root must still be an individual delete
+    /// candidate while its recently-touched child is not - grouping decides protection, not
+    /// deletion eligibility.
+    #[test]
+    fn codex_tree_members_that_disagree_in_age_are_deleted_individually_when_the_tree_is_not_kept()
+    {
+        let dir = tree(Path::new(""), "codex-disagreeing-ages");
+        let root_path = dir.join("sessions/rollout-44444444-4444-4444-8444-444444444444.jsonl");
+        let child_path = dir.join("sessions/rollout-44444444-4444-4444-8444-444444444445.jsonl");
+        std::fs::create_dir_all(root_path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &root_path,
+            format!(
+                "{}\n",
+                serde_json::json!({
+                    "type": "session_meta",
+                    "payload": {"meta": {"id": "44444444-4444-4444-8444-444444444444"}}
+                })
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            &child_path,
+            format!(
+                "{}\n",
+                serde_json::json!({
+                    "type": "session_meta",
+                    "payload": {"meta": {
+                        "id": "44444444-4444-4444-8444-444444444445",
+                        "parent_thread_id": "44444444-4444-4444-8444-444444444444"
+                    }}
+                })
+            ),
+        )
+        .unwrap();
+        filetime_set(&root_path, 0); // stale
+        filetime_set(&child_path, 9 * 86_400); // recent, well inside the window
+
+        let policy = RetentionPolicy {
+            days: 7,
+            keep_latest: 0, // the tree itself is not kept-latest-protected
+            tool: ToolScope::Codex,
+            allow_running: false,
+        };
+        let fs = SystemFsObserver;
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
+        let clock = frozen_now();
+        let trust = crate::trust::builtin_provider_trust();
+
+        let resolution = resolve_codex(&dir, clear, &policy, &fs, &process, &clock, trust);
+        let actions = build_actions(std::slice::from_ref(&resolution.planning_view()));
+        let deletes: Vec<_> = actions
+            .iter()
+            .filter(|a| a.action_class == ActionClass::Delete)
+            .collect();
+        assert_eq!(
+            deletes.len(),
+            1,
+            "exactly the old member must be an individual delete candidate: {actions:?}"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// SI-008/SI-009's fail-closed rule at the individual-artifact level: `classify` must never
+    /// treat an unobservable mtime as either provably old (eligible) or provably recent
+    /// (implicitly safe) - it collapses to `IntegrityState::Unknown`/`ActivityState::Unknown`,
+    /// which `cancellai_safety::effective_authority`'s `lifecycle_ceiling` caps at `Recommend`,
+    /// below `Delete`'s `Govern` minimum. Tested directly against `classify` rather than through
+    /// a real unreadable file, because the only way to make `SystemFsObserver::observe` return
+    /// `Unreadable` for one already-discovered path without also breaking discovery's own
+    /// completeness accounting is exactly the scope-level scenario the existing
+    /// `a_degraded_companion_withholds_every_action...` test already covers.
+    #[test]
+    fn an_unobservable_mtime_is_neither_treated_as_old_nor_as_recently_active() {
+        let trust = crate::trust::builtin_provider_trust();
+        let delete_minimum = minimum_authority_for(ActionClass::Delete);
+
+        let classified = classify(
+            "codex-cli",
+            Path::new("/synthetic/rollout.jsonl"),
+            0,
+            None, // unobservable mtime
+            "codex:sessions/unknown.jsonl",
+            "group",
+            false,
+            false,
+            false,
+            false,
+            3 * 86_400,
+            trust,
+        );
+
+        assert_eq!(classified.artifact.integrity_state, IntegrityState::Unknown);
+        assert_eq!(classified.artifact.activity_state, ActivityState::Unknown);
+        assert!(
+            classified.reachable_authority < delete_minimum,
+            "an unobservable mtime must not be able to reach delete authority: {:?} (binding: {:?})",
+            classified.reachable_authority,
+            classified.binding_constraints
+        );
+    }
+
+    /// Tool scoping (`cancellai.py`'s `--tool {all,codex,claude}`): a run scoped to one
+    /// provider must not merely omit the other provider's sessions from the result, it must
+    /// never touch its root at all - `resolve_codex`/`resolve_claude` return their `empty()`
+    /// scope before any discovery call when `policy.tool` excludes them.
+    #[test]
+    fn tool_scope_excludes_the_other_providers_sessions_entirely() {
+        let dir = tree(Path::new(""), "tool-scope");
+        // Real sessions for *both* providers exist on disk; only the in-scope one may appear.
+        write_claude_session(&dir, "proj-a", "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", 0);
+        let codex_root = dir.join("sessions/rollout-ffffffff-ffff-4fff-8fff-ffffffffffff.jsonl");
+        std::fs::create_dir_all(codex_root.parent().unwrap()).unwrap();
+        std::fs::write(
+            &codex_root,
+            format!(
+                "{}\n",
+                serde_json::json!({
+                    "type": "session_meta",
+                    "payload": {"meta": {"id": "ffffffff-ffff-4fff-8fff-ffffffffffff"}}
+                })
+            ),
+        )
+        .unwrap();
+        filetime_set(&codex_root, 0);
+
+        let claude_only = RetentionPolicy {
+            days: 7,
+            keep_latest: 0,
+            tool: ToolScope::Claude,
+            allow_running: false,
+        };
+        let codex_only = RetentionPolicy {
+            days: 7,
+            keep_latest: 0,
+            tool: ToolScope::Codex,
+            allow_running: false,
+        };
+        let fs = SystemFsObserver;
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
+        let clock = frozen_now();
+        let trust = crate::trust::builtin_provider_trust();
+
+        let codex_out_of_scope =
+            resolve_codex(&dir, clear, &claude_only, &fs, &process, &clock, trust);
+        assert!(codex_out_of_scope.scan_complete());
+        assert!(codex_out_of_scope.observed().is_empty());
+
+        let claude_out_of_scope = resolve_claude(&dir, clear, &codex_only, &process, &clock, trust);
+        assert!(claude_out_of_scope.scan_complete());
+        assert!(claude_out_of_scope.observed().is_empty());
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }
