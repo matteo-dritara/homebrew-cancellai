@@ -384,7 +384,7 @@ next section records, neither was actually the cause of the failure still being 
 point. That correction was only confirmed wrong by pushing it and watching it fail identically
 on real CI again.
 
-### The actual root cause: a `FILE_RENAME_INFO` buffer-length mismatch, not `nt_open_child` at all (2026-09-04)
+### A real, necessary-but-not-sufficient fix: a `FILE_RENAME_INFO` buffer-length mismatch (2026-09-04)
 
 The `FILE_OPEN_FOR_BACKUP_INTENT` fix was also re-run on real Windows CI (run 33901257787) and
 the identical `STATUS_INVALID_PARAMETER` persisted on the identical test, byte-for-byte the
@@ -410,7 +410,47 @@ because `SetFileInformationByHandle` never reaches an access check for a length-
 call at all.
 
 Fixed by not NUL-terminating `new_wide` in the first place - `buffer`'s length now equals
-`header_len + FileNameLength` exactly, with no discrepancy.
+`header_len + FileNameLength` exactly, with no discrepancy. This was a genuine bug and a real
+fix, kept as-is going forward - but, as the next section records, it was not the *only* defect
+on this call, and real Windows CI confirmed that the hard way: the identical
+`STATUS_INVALID_PARAMETER` persisted through this fix too.
+
+### The actual root cause: `SetFileInformationByHandle` doesn't honor a non-null `RootDirectory` (2026-09-04)
+
+The buffer-length fix above was pushed and re-run on real Windows CI (run 33902370090) and the
+identical failure persisted a fourth time. At this point the pattern itself - four consecutive,
+individually well-reasoned fixes to the same general area, none changing the observable
+outcome at all - was strong enough evidence that continuing to reason about the same function
+was the wrong move. A permanent instrumentation change (adding a `contextualize` helper that
+prefixes each fallible step's error with which step it came from, committed separately) was
+pushed *before* attempting a fifth guess, specifically to stop guessing and start knowing. The
+next run's error changed from a bare `os error 87` to `SetFileInformationByHandle
+(FileRenameInfo): The parameter is incorrect. (os error 87)` - proof, for the first time in
+this investigation, of exactly which call raises it: not `nt_open_child`'s create step (already
+ruled out - it never appears in the context prefix), but `SetFileInformationByHandle` itself,
+with an otherwise byte-correct `FILE_RENAME_INFO` buffer.
+
+This is a known, documented gap: `SetFileInformationByHandle`'s Win32-level implementation does
+not reliably honor a non-null `RootDirectory` field for `FileRenameInfo`-class handle-relative
+rename, regardless of how correctly the rest of the buffer is constructed - the same category
+of "no real Win32 equivalent" gap this whole module's own docs already state as the reason
+`NtCreateFile` (not `CreateFileW`) is used for the establishment walk. The native
+`NtSetInformationFile` (`ntdll.dll`) does not share this limitation. Fixed by calling
+`NtSetInformationFile`/`FileRenameInformation` (the `Wdk` module's native counterpart of the
+Win32 `FileRenameInfo` class) directly instead of `SetFileInformationByHandle` - the
+`FILE_RENAME_INFORMATION` struct `windows-sys` generates for it has the identical field layout
+to `FILE_RENAME_INFO`, so the buffer-construction code (including the length-mismatch fix from
+the section above, which remains necessary and correct) is otherwise unchanged.
+
+**Process note, recorded because it is the more durable lesson than the bug itself**: three of
+this investigation's five total fixes (the two `nt_open_child` flag corrections plus the
+buffer-length fix) were each independently reasonable and are each kept as genuine
+improvements, but none was the actual cause of this specific failure. What actually converged
+on the real bug was not sharper reasoning about the same function - it was (a) noticing that
+repeated fixes were producing an *identical*, unchanged failure, which is itself informative
+(it rules out everything already changed), and (b) adding error-message context *before*
+guessing again, which turned the fifth attempt from another guess into a targeted fix backed
+by direct evidence of which exact API call was failing.
 
 **Lesson recorded plainly**: the two `nt_open_child` fixes were reasonable given the evidence
 available at each point (a real, correct bug existed in that function, twice), but their

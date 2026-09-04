@@ -13,7 +13,7 @@
 
 Implementation complete against all four acceptance criteria. Local verification (native
 macOS unit tests for the Unix/shared surface; Windows cross-compilation check/clippy for the
-new `cfg(windows)` code) is green. Real Windows CI found five real issues, across four
+new `cfg(windows)` code) is green. Real Windows CI found six real issues, across five
 iterative pushes, that this session's own cross-compilation-only local checks could not: a
 stale integration-test assumption (`configure` used to refuse outright on Windows; E20-S05
 makes it succeed - fixed by updating the test); a genuine over-broad Windows access-rights bug
@@ -22,19 +22,25 @@ in `nt_open_child` on the *read* path (`FILE_LIST_DIRECTORY` requested where onl
 runner's own workspace-ancestor directory ACL - fixed, and confirmed to actually fix the read
 path, since the read-only integration test passed on every subsequent run); and, once that fix
 let real CI reach the *write* path for the first time, a `STATUS_INVALID_PARAMETER` that took
-three rounds to actually resolve. Two `nt_open_child` create-options corrections
+four further rounds to actually resolve. Two `nt_open_child` create-options corrections
 (`FILE_OPEN_REPARSE_POINT` paired with `FILE_CREATE`; `FILE_OPEN_FOR_BACKUP_INTENT` applied to
-file opens) were each individually well-reasoned and are each kept as genuine least-privilege
-improvements, but neither was the actual cause - the identical failure persisted through both,
-unchanged, which was itself the signal to look outside `nt_open_child` entirely. The real
-defect was in `rename_child` (`write_new_child_atomically`'s final step, never touched by
-either `nt_open_child` fix): a `FILE_RENAME_INFO` buffer sized to include a NUL terminator
-while `FileNameLength` reported the shorter, NUL-excluding length - a `BufferLength` mismatch
-`SetFileInformationByHandle` rejects outright. See ADR-0020's four dated sections under "Real
-Windows CI found..." for the complete, honest account of all four rounds, including the two
-that turned out not to be the fix. All five issues are fixed in this commit range; **the
-current fix has not yet been confirmed on real Windows CI** - this session's own established
-pattern (E20-S01's round-1/round-2 history, now repeated four times more here) is that
+file opens) and a `FILE_RENAME_INFO` buffer-length fix (a NUL terminator counted in the buffer
+but not in `FileNameLength`) were each individually well-reasoned, are each kept as genuine
+correctness/least-privilege improvements, and none was the actual cause - the identical failure
+persisted through all three, unchanged. A permanent error-context instrumentation commit,
+pushed specifically to stop guessing and get direct evidence, then showed the failure was
+`SetFileInformationByHandle(FileRenameInfo)` itself: a known, documented gap where the Win32
+wrapper does not reliably honor a non-null `RootDirectory` for handle-relative rename,
+regardless of buffer correctness. Fixed by switching to the native `NtSetInformationFile`/
+`FileRenameInformation` (`ntdll.dll`, already this module's own pattern for `NtCreateFile`)
+instead of the Win32 wrapper. See ADR-0020's five dated sections under "Real Windows CI
+found..."/"...fix alone was insufficient"/"...actual root cause" for the complete, honest
+account of every round, including the three that turned out not to be the fix - kept
+deliberately rather than condensed into a single retrospective paragraph, because the process
+of ruling out plausible-but-wrong fixes via repeated real-CI evidence is itself part of this
+story's record. All six issues are fixed in this commit range; **the current fix has not yet
+been confirmed on real Windows CI** - this session's own established pattern (E20-S01's
+round-1/round-2 history, now repeated five times more here) is that
 cross-compilation catches compile errors but not runtime/ACL/parameter-validation logic bugs,
 so `project/platforms.json`'s `windows.capabilities.mutation.state` is deliberately left at
 `unsupported` in this commit and will only move to `verified` once a real, `gh`-confirmed

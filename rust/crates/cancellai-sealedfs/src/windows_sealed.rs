@@ -504,11 +504,25 @@ impl SealedRoot {
 }
 
 /// Renames `old_name` to `new_name`, both direct children of `dir` - relative to the held
-/// handle, via `FILE_RENAME_INFO`/`SetFileInformationByHandle`, the handle-based analogue of
-/// Unix's `renameat`. Opens `old_name` itself (not `dir`) because `FILE_RENAME_INFO` is applied
-/// to the object being renamed, with the *new* name's parent given via `RootDirectory`.
+/// handle, via the native `NtSetInformationFile`/`FILE_RENAME_INFORMATION` (`ntdll.dll`), the
+/// handle-based analogue of Unix's `renameat`. Opens `old_name` itself (not `dir`) because
+/// `FILE_RENAME_INFORMATION` is applied to the object being renamed, with the *new* name's
+/// parent given via `RootDirectory`.
+///
+/// Deliberately the native call, not the Win32 `SetFileInformationByHandle` wrapper: real
+/// Windows CI found `SetFileInformationByHandle(FileRenameInfo, ...)` with a non-null
+/// `RootDirectory` fails with `STATUS_INVALID_PARAMETER` even with an otherwise byte-correct
+/// `FILE_RENAME_INFO` buffer - a known, documented gap in the Win32-level wrapper's own support
+/// for handle-relative rename (the exact same shape of "no Win32 equivalent exists" gap that
+/// already justified `NtCreateFile` for this whole module's establishment walk, per its own
+/// module docs). `NtSetInformationFile` is `ntdll.dll`'s native entry point and fully supports
+/// `RootDirectory`; `FILE_RENAME_INFORMATION` (the `Wdk` module's native counterpart of the
+/// Win32 `FILE_RENAME_INFO`) has the identical field layout, so the buffer-construction code
+/// below is otherwise unchanged.
 fn rename_child(dir: &File, old_name: &str, new_name: &str) -> Result<(), SealError> {
-    use windows_sys::Win32::Storage::FileSystem::{FILE_RENAME_INFO, FileRenameInfo};
+    use windows_sys::Wdk::Storage::FileSystem::{
+        FILE_RENAME_INFORMATION, FileRenameInformation, NtSetInformationFile,
+    };
 
     let old_wide = validate_child_name(old_name)?;
     let target = nt_open_child(
@@ -520,52 +534,50 @@ fn rename_child(dir: &File, old_name: &str, new_name: &str) -> Result<(), SealEr
     )
     .map_err(|e| contextualize(e, "opening temp file for rename"))?;
 
-    // Deliberately *not* NUL-terminated: `FILE_RENAME_INFO::FileName` is documented as exactly
-    // `FileNameLength` bytes of raw UTF-16, no trailing NUL, and `SetFileInformationByHandle`'s
-    // own `BufferLength` parameter must equal `header_len + FileNameLength` precisely - a
-    // buffer even one `u16` longer than that (this crate's own first version pushed a NUL
-    // terminator and sized `buffer` to include it, while still reporting the shorter,
-    // NUL-excluding length in `FileNameLength`) is a length mismatch NT rejects outright with
-    // `STATUS_INVALID_PARAMETER`. Found on real Windows CI: two earlier, unrelated
-    // `nt_open_child` access-flag fixes did not change this call at all, and the identical
-    // failure persisted through both - proof the real defect was always here, not there.
+    // Deliberately *not* NUL-terminated: `FILE_RENAME_INFORMATION::FileName` is documented as
+    // exactly `FileNameLength` bytes of raw UTF-16, no trailing NUL, and the buffer length
+    // passed to `NtSetInformationFile` must equal `header_len + FileNameLength` precisely.
     let new_wide: Vec<u16> = OsStr::new(new_name).encode_wide().collect();
     let name_byte_len = (new_wide.len() * 2) as u32;
 
-    // `FILE_RENAME_INFO` is a variable-length struct (a fixed header followed by the
+    // `FILE_RENAME_INFORMATION` is a variable-length struct (a fixed header followed by the
     // destination name's own UTF-16 bytes) - built as raw bytes rather than a fixed-size Rust
     // struct, since `windows-sys`'s own generated type already models it as a 1-element
     // `FileName: [u16; 1]` trailing array for exactly this reason.
-    let header_len = std::mem::offset_of!(FILE_RENAME_INFO, FileName);
+    let header_len = std::mem::offset_of!(FILE_RENAME_INFORMATION, FileName);
     let mut buffer = vec![0u8; header_len + new_wide.len() * 2];
     // SAFETY: `buffer` is at least `header_len` bytes (allocated above), so this points inside
-    // it; `FILE_RENAME_INFO`'s layout has no padding/alignment requirement beyond `u32`/`HANDLE`
-    // that a byte-aligned `Vec<u8>` cannot satisfy in practice on this target, and every field
-    // is written before being read.
+    // it; every field is written before being read.
     unsafe {
-        let info = buffer.as_mut_ptr() as *mut FILE_RENAME_INFO;
+        let info = buffer.as_mut_ptr() as *mut FILE_RENAME_INFORMATION;
         (*info).Anonymous.ReplaceIfExists = true;
         (*info).RootDirectory = dir.as_raw_handle();
         (*info).FileNameLength = name_byte_len;
     }
     buffer[header_len..].copy_from_slice(&bytemuck_u16_to_u8(&new_wide));
 
+    let mut iosb: IO_STATUS_BLOCK = unsafe { std::mem::zeroed() };
     // SAFETY: `target` is a valid, currently-open HANDLE for the duration of this call, opened
     // with `DELETE` access (required for a rename). `buffer` is a correctly-sized, fully
-    // initialized `FILE_RENAME_INFO` followed immediately by its destination name, matching the
-    // variable-length layout `SetFileInformationByHandle` documents for `FileRenameInfo`.
-    let ok = unsafe {
-        SetFileInformationByHandle(
+    // initialized `FILE_RENAME_INFORMATION` followed immediately by its destination name,
+    // matching the variable-length layout `NtSetInformationFile` documents for
+    // `FileRenameInformation`. `iosb` is a valid, stack-allocated out-parameter.
+    let status = unsafe {
+        NtSetInformationFile(
             target.as_raw_handle(),
-            FileRenameInfo,
+            &mut iosb,
             buffer.as_ptr() as *const core::ffi::c_void,
             buffer.len() as u32,
+            FileRenameInformation,
         )
     };
-    if ok == 0 {
+    if status != STATUS_SUCCESS {
+        // SAFETY: `status` is the exact `NTSTATUS` `NtSetInformationFile` just returned above;
+        // this call performs a pure, allocation-free translation and has no other precondition.
+        let win32_error = unsafe { RtlNtStatusToDosError(status) };
         return Err(contextualize(
-            SealError::Io(io::Error::last_os_error()),
-            "SetFileInformationByHandle(FileRenameInfo)",
+            SealError::Io(io::Error::from_raw_os_error(win32_error as i32)),
+            "NtSetInformationFile(FileRenameInformation)",
         ));
     }
     Ok(())
