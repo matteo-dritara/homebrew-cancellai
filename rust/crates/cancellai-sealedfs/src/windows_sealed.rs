@@ -37,8 +37,9 @@ use std::path::{Component, Path, PathBuf, Prefix};
 
 use windows_sys::Wdk::Foundation::OBJECT_ATTRIBUTES;
 use windows_sys::Wdk::Storage::FileSystem::{
-    FILE_DIRECTORY_FILE, FILE_NON_DIRECTORY_FILE, FILE_OPEN, FILE_OPEN_FOR_BACKUP_INTENT,
-    FILE_OPEN_IF, FILE_OPEN_REPARSE_POINT, FILE_SYNCHRONOUS_IO_NONALERT, NtCreateFile,
+    FILE_CREATE, FILE_DIRECTORY_FILE, FILE_NON_DIRECTORY_FILE, FILE_OPEN,
+    FILE_OPEN_FOR_BACKUP_INTENT, FILE_OPEN_IF, FILE_OPEN_REPARSE_POINT,
+    FILE_SYNCHRONOUS_IO_NONALERT, NtCreateFile,
 };
 use windows_sys::Win32::Foundation::{
     HANDLE, OBJ_CASE_INSENSITIVE, RtlNtStatusToDosError, STATUS_SUCCESS, UNICODE_STRING,
@@ -168,13 +169,27 @@ fn nt_open_child(
     };
     let mut handle: HANDLE = std::ptr::null_mut();
     let mut iosb: IO_STATUS_BLOCK = unsafe { std::mem::zeroed() };
+    // `FILE_OPEN_REPARSE_POINT` (open the reparse point itself rather than following it) is
+    // meaningless - and NT rejects it outright with `STATUS_INVALID_PARAMETER` - when
+    // `disposition` is `FILE_CREATE`: nothing can already exist at `name` for `FILE_CREATE` to
+    // succeed at all (it fails with `STATUS_OBJECT_NAME_COLLISION` the instant anything does,
+    // reparse point or not), so there is no existing object to make a follow-or-not decision
+    // about. `write_new_child_atomically`'s own refusal of a pre-planted reparse point at the
+    // temp name (E20-S05's adversarial fixture) comes entirely from that `FILE_CREATE`
+    // exclusivity, not from this flag - dropping it here changes no safety property. Found on
+    // real Windows CI: this crate's own pre-CI unit tests never combined `FILE_CREATE` with a
+    // non-directory open until a real machine exercised `configure`'s actual write path.
     let create_options = if directory {
         FILE_DIRECTORY_FILE
     } else {
         FILE_NON_DIRECTORY_FILE
     } | FILE_SYNCHRONOUS_IO_NONALERT
         | FILE_OPEN_FOR_BACKUP_INTENT
-        | FILE_OPEN_REPARSE_POINT;
+        | if disposition == FILE_CREATE {
+            0
+        } else {
+            FILE_OPEN_REPARSE_POINT
+        };
 
     // SAFETY: `object_attributes.RootDirectory` is `parent`'s handle, valid and open for the
     // duration of this call (borrowed from `parent`, which outlives it); `ObjectName` points at

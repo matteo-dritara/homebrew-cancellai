@@ -326,3 +326,36 @@ switched from the same numeric bit spelled `FILE_LIST_DIRECTORY` (0x1, aliased w
 identical, but no longer reads as "list directory" on a file open. This is a least-privilege
 correction as well as a bug fix: nothing in this crate ever needed directory-enumeration
 rights, on any object, at any point.
+
+### Real Windows CI found a second, independent bug on the write path (2026-09-04)
+
+The access-rights fix above was itself pushed and re-run on real `windows-latest` CI (run
+33900213433) before this ADR section was written - discipline this session held to throughout
+E20-S05 rather than assuming a fix is correct because it is well-reasoned. That run made
+further real progress (the read-only `configure` integration test now passes; only the one
+that also writes still failed), and surfaced a second, independent, real bug: `[INTERNAL_FAULT]
+The parameter is incorrect. (os error 87)` - `STATUS_INVALID_PARAMETER` - the first time real
+Windows CI ever exercised `write_new_child_atomically` (`configure`'s actual settings-write
+path), which none of `windows_sealed.rs`'s own pre-CI unit tests or the first CI round reached
+before the access-rights bug was fixed.
+
+Root cause: `nt_open_child`'s `create_options` unconditionally included
+`FILE_OPEN_REPARSE_POINT` regardless of `disposition`. That flag means "if a reparse point
+already exists at this name, open the reparse point itself rather than following it" - a
+question that presupposes something might already exist. `FILE_CREATE` disposition
+(`write_new_child_atomically`'s own O_CREAT|O_EXCL-equivalent exclusivity guarantee) already
+requires nothing exist at that name at all, succeeding only if the name is free - so pairing
+`FILE_OPEN_REPARSE_POINT` with `FILE_CREATE` asks NT to resolve a question that cannot apply,
+which `NtCreateFile` rejects outright with `STATUS_INVALID_PARAMETER` rather than silently
+ignoring. Fixed by omitting `FILE_OPEN_REPARSE_POINT` from `create_options` exactly when
+`disposition == FILE_CREATE` - `write_new_child_atomically`'s own adversarial fixture
+(`write_new_child_atomically_refuses_a_pre_planted_reparse_point_at_the_temp_name`) keeps
+passing unmodified, because the refusal it tests comes entirely from `FILE_CREATE`'s own
+exclusivity (`STATUS_OBJECT_NAME_COLLISION` the instant anything - reparse point or not -
+already occupies the name), never from this flag.
+
+This second finding is the reason this ADR records both rounds separately rather than folding
+them into one retrospective paragraph: each was a genuinely distinct bug, found only by an
+actual Windows machine actually reaching that specific code path, in that specific order (read
+path first, write path second) - exactly the incremental-discovery pattern real infrastructure
+produces and a single local review pass would not.
