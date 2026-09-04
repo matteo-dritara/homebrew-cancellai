@@ -44,10 +44,10 @@ use windows_sys::Win32::Foundation::{
     HANDLE, OBJ_CASE_INSENSITIVE, RtlNtStatusToDosError, STATUS_SUCCESS, UNICODE_STRING,
 };
 use windows_sys::Win32::Storage::FileSystem::{
-    DELETE, FILE_DISPOSITION_INFO, FILE_FLAG_BACKUP_SEMANTICS, FILE_LIST_DIRECTORY,
-    FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_STANDARD_INFO, FILE_TRAVERSE,
-    FileDispositionInfo, FileStandardInfo, GetFileInformationByHandleEx, SYNCHRONIZE,
-    SetFileInformationByHandle,
+    DELETE, FILE_DISPOSITION_INFO, FILE_FLAG_BACKUP_SEMANTICS, FILE_READ_ATTRIBUTES,
+    FILE_READ_DATA, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_STANDARD_INFO,
+    FILE_TRAVERSE, FileDispositionInfo, FileStandardInfo, GetFileInformationByHandleEx,
+    SYNCHRONIZE, SetFileInformationByHandle,
 };
 use windows_sys::Win32::System::IO::IO_STATUS_BLOCK;
 
@@ -126,6 +126,24 @@ fn open_anchor(anchor: &Path) -> Result<File, SealError> {
 /// (must already exist) or `FILE_OPEN_IF` (open-or-create, `SealedRoot::establish`'s leaf
 /// only) - `NtCreateFile` supports "open or create" as one atomic disposition, unlike Unix's
 /// separate `openat`-then-`mkdirat`-then-reopen dance.
+///
+/// Desired access is deliberately narrow: `FILE_READ_ATTRIBUTES` (every caller immediately
+/// runs `observe_identity_of_handle`'s `GetFileInformationByHandle` on the result) plus
+/// `FILE_TRAVERSE` (so the returned handle can itself serve as the next hop's `RootDirectory`)
+/// and `SYNCHRONIZE` (required by `FILE_SYNCHRONOUS_IO_NONALERT`). This module's first real-
+/// Windows-CI run (E20-S05) requested `FILE_LIST_DIRECTORY` here too - a "list this
+/// directory's contents" right this crate never actually exercises (it only ever opens one
+/// *named* child at a time, never enumerates) - and every intermediate hop through a directory
+/// this process does not own (e.g. a CI runner's own workspace ancestor directories, not
+/// created by this crate's own test fixtures) failed with `ERROR_ACCESS_DENIED`: unlike
+/// `FILE_TRAVERSE` (bypassed for virtually every real-world token via the default-granted
+/// "bypass traverse checking" privilege), `FILE_LIST_DIRECTORY` is a real, non-bypassed ACL
+/// check against the object being opened, and ordinary path-based resolution (`std::fs`,
+/// which this bug's own regression tests rely on to set up their fixtures) never requests it
+/// on intermediate components at all - only this crate's own per-component walk did, because
+/// nothing in this module actually needed it. Real Windows CI (not local cross-compilation)
+/// is what caught this; `windows_sealed.rs`'s own unit tests happened to only ever walk
+/// directories this same process created and therefore owns, masking the gap.
 fn nt_open_child(
     parent: &File,
     name: &[u16],
@@ -169,7 +187,7 @@ fn nt_open_child(
     let status = unsafe {
         NtCreateFile(
             &mut handle,
-            FILE_LIST_DIRECTORY | FILE_TRAVERSE | SYNCHRONIZE | extra_access,
+            FILE_READ_ATTRIBUTES | FILE_TRAVERSE | SYNCHRONIZE | extra_access,
             &object_attributes,
             &mut iosb,
             std::ptr::null(),
@@ -399,7 +417,7 @@ impl SealedRoot {
         let status = unsafe {
             NtCreateFile(
                 &mut handle,
-                FILE_LIST_DIRECTORY | SYNCHRONIZE,
+                FILE_READ_DATA | SYNCHRONIZE,
                 &object_attributes,
                 &mut iosb,
                 std::ptr::null(),

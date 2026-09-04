@@ -290,3 +290,39 @@ repair already established) exercises the walk's reparse-point refusal;
 `project/platforms.json`'s `windows.capabilities.mutation.state`/`verified_commit` remain the
 enforced source of truth for whether this has been confirmed on real Windows CI, updated once
 that run is green.
+
+### Real Windows CI found a genuine over-broad access-rights bug (2026-09-04)
+
+The first real `windows-latest` execution of this extension's own `cargo test --workspace`
+(run 33899508063) failed two `cancellai-cli` integration tests with `[INTERNAL_FAULT] Access
+is denied. (os error 5)` - not a stale-test assumption this time (the first push's failures,
+fixed in the prior commit, *were* stale assumptions; this was a second, independent, real bug
+local cross-compilation and this crate's own unit tests never exercised).
+
+Root cause: `nt_open_child`'s desired access requested `FILE_LIST_DIRECTORY` on every
+component of the handle-relative walk, including intermediate directories this process does
+not own (a GitHub Actions runner's own workspace-ancestor directories - `D:\a`, in the
+integration test's real path - never created by this crate's own test fixtures). Windows
+distinguishes two different rights here that are easy to conflate: `FILE_TRAVERSE` ("pass
+through this directory to reach something inside it") is bypassed for virtually every
+real-world token via the default-granted "bypass traverse checking" privilege
+(`SeChangeNotifyPrivilege`), which is exactly why ordinary path-based resolution (`std::fs`,
+used by every test fixture's own setup, and by this crate's own `open_anchor`) never hits this
+wall regardless of who owns an intermediate directory. `FILE_LIST_DIRECTORY` ("enumerate this
+directory's contents") is a real, non-bypassed ACL check with no such exemption - and this
+crate never actually enumerates a directory's contents; it only ever opens one *named* child
+at a time via `NtCreateFile`. The access right was requested out of habit ("opening a
+directory, so ask for directory-reading rights"), not because anything in this module needed
+it, and every one of `windows_sealed.rs`'s own pre-CI unit tests happened to only ever walk
+directories the same test process created (and therefore owns), which is precisely why this
+had never failed before reaching real, foreign-owned directories on real infrastructure.
+
+Fixed by requesting exactly what this module needs per hop: `FILE_READ_ATTRIBUTES` (every
+caller immediately runs `GetFileInformationByHandle` for the reparse-point/directory check)
+and `FILE_TRAVERSE` (so the handle can serve as the next hop's `RootDirectory`) instead of
+`FILE_LIST_DIRECTORY`. `read_child_to_string`'s separate, file-opening `NtCreateFile` call
+switched from the same numeric bit spelled `FILE_LIST_DIRECTORY` (0x1, aliased with
+`FILE_READ_DATA` for a non-directory object) to `FILE_READ_DATA` directly - functionally
+identical, but no longer reads as "list directory" on a file open. This is a least-privilege
+correction as well as a bug fix: nothing in this crate ever needed directory-enumeration
+rights, on any object, at any point.

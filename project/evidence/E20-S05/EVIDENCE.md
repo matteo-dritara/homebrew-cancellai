@@ -13,11 +13,18 @@
 
 Implementation complete against all four acceptance criteria. Local verification (native
 macOS unit tests for the Unix/shared surface; Windows cross-compilation check/clippy for the
-new `cfg(windows)` code) is green. **Real Windows CI (`windows-latest`) has not yet run against
-the commit this packet accompanies** - this session's own established pattern (E20-S01's
-round-1/round-2 history) is that cross-compilation catches compile errors but not runtime
-logic bugs, so `project/platforms.json`'s `windows.capabilities.mutation.state` is deliberately
-left at `unsupported` in this commit and will only move to `verified` once a real, `gh`-
+new `cfg(windows)` code) is green. Real Windows CI found two real bugs this session's own
+cross-compilation-only local checks could not: a stale integration-test assumption (`configure`
+used to refuse outright on Windows; E20-S05 makes it succeed - fixed by updating the test), and
+a genuine over-broad Windows access-rights bug in `nt_open_child` (`FILE_LIST_DIRECTORY`
+requested where only `FILE_READ_ATTRIBUTES`/`FILE_TRAVERSE` were actually needed, denied by a
+GitHub Actions runner's own workspace-ancestor directory ACL - see ADR-0020's own "Real Windows
+CI found a genuine over-broad access-rights bug" section for the full analysis). Both are fixed
+in this commit range; **the fix itself has not yet been confirmed on real Windows CI** - this
+session's own established pattern (E20-S01's round-1/round-2 history, now repeated here) is
+that cross-compilation catches compile errors but not runtime/ACL logic bugs, so `project/
+platforms.json`'s `windows.capabilities.mutation.state` is deliberately left at `unsupported`
+in this commit and will only move to `verified` once a real, `gh`-
 confirmed successful `rust.yml` run exists for a commit in this range (`scripts/
 check_platforms.py`'s own enforced bar, not this packet's word).
 
