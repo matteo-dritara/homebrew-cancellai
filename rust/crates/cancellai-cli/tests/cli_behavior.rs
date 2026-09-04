@@ -328,13 +328,12 @@ fn clean_json_without_yes_or_dry_run_is_refused_before_touching_anything() {
     assert!(session.exists());
 }
 
-// `configure`'s write path (`cancellai-sealedfs::SealedRoot`) has no verified handle-relative
-// implementation on non-Unix platforms and fails closed there by design (`docs/CLI_RUST.md`'s
-// own "Known gaps") - this success-path test is Unix-only for that reason; the Windows
-// counterpart below asserts the disclosed refusal instead. Missing this gate is exactly the
-// gap real Windows CI surfaced here (E07-S09 verification session, 2026-09-02) - not caught
-// locally since this workspace's own executor environment is macOS.
-#[cfg(unix)]
+// `configure`'s write path (`cancellai-sealedfs::SealedRoot`) now has a verified handle-relative
+// implementation on both Unix and Windows (E20-S05 gave Windows its own `NtCreateFile`-based
+// walk, `windows_sealed.rs`) - this test is cross-platform for that reason. It used to be
+// Unix-only, with a separate Windows counterpart asserting the (then-correct) disclosed refusal;
+// that gap is exactly what real Windows CI surfaced originally (E07-S09 verification session,
+// 2026-09-02) - not caught locally since this workspace's own executor environment is macOS.
 #[test]
 fn configure_writes_the_native_claude_retention_setting_and_preserves_other_keys() {
     let home = TempHome::new("configure");
@@ -347,39 +346,17 @@ fn configure_writes_the_native_claude_retention_setting_and_preserves_other_keys
     .unwrap();
 
     let output = run(&home, &["configure", "--claude-retention", "30"]);
-    assert!(output.status.success(), "{}", stdout(&output));
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        stdout(&output),
+        stderr(&output)
+    );
 
     let written = std::fs::read_to_string(claude_dir.join("settings.json")).unwrap();
     let value: serde_json::Value = serde_json::from_str(&written).unwrap();
     assert_eq!(value["cleanupPeriodDays"], 30);
     assert_eq!(value["someOtherKey"], true);
-}
-
-#[cfg(windows)]
-#[test]
-fn configure_refuses_outright_with_no_verified_windows_sealed_root_capability() {
-    let home = TempHome::new("configure-windows-unsupported");
-    let claude_dir = home.path().join(".claude");
-    std::fs::create_dir_all(&claude_dir).unwrap();
-    std::fs::write(
-        claude_dir.join("settings.json"),
-        serde_json::json!({"someOtherKey": true}).to_string(),
-    )
-    .unwrap();
-
-    let output = run(&home, &["configure", "--claude-retention", "30"]);
-    assert_eq!(output.status.code(), Some(4), "{}", stdout(&output));
-
-    let written = std::fs::read_to_string(claude_dir.join("settings.json")).unwrap();
-    let value: serde_json::Value = serde_json::from_str(&written).unwrap();
-    assert_eq!(
-        value["someOtherKey"], true,
-        "settings.json must be left untouched when SealedRoot has no verified Windows capability"
-    );
-    assert!(
-        value.get("cleanupPeriodDays").is_none(),
-        "cleanupPeriodDays must never be set without a verified handle-relative write: {written}"
-    );
 }
 
 #[test]
@@ -515,7 +492,13 @@ fn configure_refuses_malformed_settings_json_instead_of_silently_replacing_it() 
 
     let output = run(&home, &["configure", "--claude-retention", "30"]);
 
-    assert_eq!(output.status.code(), Some(4), "{}", stdout(&output));
+    assert_eq!(
+        output.status.code(),
+        Some(4),
+        "stdout: {}\nstderr: {}",
+        stdout(&output),
+        stderr(&output)
+    );
     let unchanged = std::fs::read_to_string(claude_dir.join("settings.json")).unwrap();
     assert_eq!(
         unchanged, "{not valid json",
