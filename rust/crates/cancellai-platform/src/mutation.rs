@@ -62,6 +62,10 @@
 use std::path::Path;
 
 use crate::identity::IdentityToken;
+#[cfg(any(test, unix))]
+use crate::wsl::RuntimeEnvironment;
+#[cfg(unix)]
+use crate::wsl::{EnvironmentObserver, SystemEnvironmentObserver};
 
 /// One class of real mutation this seam can perform.
 ///
@@ -118,8 +122,32 @@ impl MutationExecutor for SystemMutationExecutor {
     }
 }
 
+/// Refuses a WSL2 guest, independent of the platform-specific check below. A WSL2 guest runs a
+/// real Linux kernel, so the Unix confirmed-delete path in `confirmed_delete_file_inner` would
+/// very likely work correctly there - but "very likely" is an inference, not this codebase's
+/// own evidence (E20-S02/E20-S03 round-1 independent verifier review: neither this crate's WSL
+/// detection nor its `/mnt` filesystem-context classification was ever consulted on the
+/// deletion path, so a WSL2 guest silently took the identical, unverified-there Unix delete
+/// route as native Linux - contradicting `docs/PLATFORMS.md`'s own claim that a non-tier-1
+/// environment remains inspect-only). Pure and environment-independent so it is directly
+/// unit-testable with a fabricated [`RuntimeEnvironment`] on any host, matching this crate's
+/// `wsl` module's own split between real OS observation and testable pure logic.
+#[cfg(any(test, unix))]
+fn refuse_unverified_wsl2_mutation(env: RuntimeEnvironment) -> Result<(), MutationError> {
+    if env == RuntimeEnvironment::Wsl2 {
+        return Err(MutationError(
+            "confirmed deletion is refused on a WSL2 guest: this codebase's own Unix mutation \
+             path has not been independently verified there yet (E20-S02/E20-S03 residual, \
+             SI-017/SI-018) - authority is reduced rather than inferred from generic Linux"
+                .to_string(),
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(unix)]
 fn confirmed_delete_file(target: &Path, expected: &IdentityToken) -> Result<(), MutationError> {
+    refuse_unverified_wsl2_mutation(SystemEnvironmentObserver.detect())?;
     confirmed_delete_file_inner(target, expected, || {})
 }
 
@@ -296,6 +324,19 @@ impl MutationExecutor for SyntheticMutationExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn refuse_unverified_wsl2_mutation_refuses_on_wsl2() {
+        let err = refuse_unverified_wsl2_mutation(RuntimeEnvironment::Wsl2)
+            .expect_err("a WSL2 environment must refuse confirmed deletion");
+        assert!(err.0.contains("WSL2"));
+    }
+
+    #[test]
+    fn refuse_unverified_wsl2_mutation_allows_native() {
+        refuse_unverified_wsl2_mutation(RuntimeEnvironment::Native)
+            .expect("a native (non-WSL2) environment must not be refused by this gate");
+    }
 
     #[cfg(unix)]
     struct TempDir(std::path::PathBuf);

@@ -11,14 +11,21 @@
 //! "this is still the object I planned against."
 //!
 //! Real Windows volume/file-index/reparse identity is implemented (E20-S01, ADR-0020), via
-//! `cancellai-sealedfs::observe_identity` (`GetFileInformationByHandle`, verified on real
-//! Windows CI - `windows-latest` in `rust.yml`, not cross-compilation). Only a genuinely
-//! exotic non-Unix, non-Windows target still reports [`IdentityObservation::Unsupported`],
-//! for the same reason E03-S01 originally chose it for Windows too: a plausible-but-unverified
-//! implementation of a safety-critical equality check is a worse outcome than an honest
-//! "cannot establish identity strength here" (SI-017, C-12 cross-platform truthfulness).
-//! `docs/architecture/PLATFORM_MODEL.md`'s own escape hatch - "if the platform cannot produce
-//! an identity strong enough ... authority is reduced" - remains exactly this state there.
+//! `cancellai-sealedfs::observe_identity` (`GetFileInformationByHandle`). E20-S01 round-1
+//! independent verifier review found this module's own docs, and several others, had claimed
+//! this was "verified on real Windows CI" before the branch introducing it had ever actually
+//! been pushed and run there - compile/lint-clean cross-target and passing adversarial fixture
+//! *code* is not the same evidence as a real `windows-latest` CI run, and this repository does
+//! not conflate the two after that finding. `project/platforms.json`'s `windows` entry is the
+//! one source of truth for whether that verification has actually happened
+//! (`scripts/check_platforms.py check`) - consult it rather than this comment for current
+//! status. Only a genuinely exotic non-Unix, non-Windows target still reports
+//! [`IdentityObservation::Unsupported`], for the same reason E03-S01 originally chose it for
+//! Windows too: a plausible-but-unverified implementation of a safety-critical equality check
+//! is a worse outcome than an honest "cannot establish identity strength here" (SI-017, C-12
+//! cross-platform truthfulness). `docs/architecture/PLATFORM_MODEL.md`'s own escape hatch - "if
+//! the platform cannot produce an identity strong enough ... authority is reduced" - remains
+//! exactly this state there.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -198,18 +205,31 @@ fn observe_system_identity(path: &Path) -> IdentityObservation {
     }
 }
 
-#[cfg(windows)]
-fn observe_system_identity(path: &Path) -> IdentityObservation {
-    // Windows `FILETIME` is 100-nanosecond ticks since 1601-01-01, not Unix-epoch seconds;
-    // this workspace's `Timestamp` is Unix-epoch seconds (E02-S04). `WINDOWS_EPOCH_OFFSET_
-    // SECONDS` is the fixed, well-known offset between the two epochs, used only to populate
-    // `Timestamp`'s whole-second field for display/retention purposes elsewhere -
-    // `modified_ticks` (the raw FILETIME remainder) is what identity comparison actually
-    // relies on, exactly as `Unix::modified_nanos` supplements rather than replaces
-    // `Unix::modified`.
+/// Windows `FILETIME` is 100-nanosecond ticks since 1601-01-01, not Unix-epoch seconds; this
+/// workspace's `Timestamp` is Unix-epoch seconds (E02-S04). `WINDOWS_EPOCH_OFFSET_SECONDS` is
+/// the fixed, well-known offset between the two epochs, used only to populate `Timestamp`'s
+/// whole-second field for display/retention purposes elsewhere - `modified_ticks` (the raw
+/// `FILETIME` remainder, returned separately) is what identity comparison actually relies on,
+/// exactly as `Unix::modified_nanos` supplements rather than replaces `Unix::modified`.
+///
+/// Returns `None` for a real pre-1970 `FILETIME` (valid back to 1601) rather than silently
+/// clamping it to `Timestamp(0)` (E20-S01 round-1 independent verifier review's residual
+/// finding: the original `saturating_sub` misrepresented the object's real modification date as
+/// 1970-01-01 - a wrong fact, not a rounding artifact). Pure and platform-independent, so it is
+/// directly unit-testable with fabricated `FILETIME` values on any host, matching this crate's
+/// `wsl` module's own split between real OS observation and testable pure logic.
+#[cfg(any(test, windows))]
+fn windows_filetime_to_unix_timestamp(ticks: u64) -> Option<(Timestamp, u32)> {
     const WINDOWS_EPOCH_OFFSET_SECONDS: u64 = 11_644_473_600;
     const TICKS_PER_SECOND: u64 = 10_000_000;
 
+    let whole_seconds = ticks / TICKS_PER_SECOND;
+    let seconds = whole_seconds.checked_sub(WINDOWS_EPOCH_OFFSET_SECONDS)?;
+    Some((Timestamp(seconds), (ticks % TICKS_PER_SECOND) as u32))
+}
+
+#[cfg(windows)]
+fn observe_system_identity(path: &Path) -> IdentityObservation {
     match cancellai_sealedfs::observe_identity(path) {
         Ok(facts) => {
             let kind = if facts.is_reparse_point {
@@ -219,14 +239,23 @@ fn observe_system_identity(path: &Path) -> IdentityObservation {
             } else {
                 FileKind::File
             };
-            let whole_seconds = facts.last_write_time_ticks / TICKS_PER_SECOND;
-            let modified = Timestamp(whole_seconds.saturating_sub(WINDOWS_EPOCH_OFFSET_SECONDS));
+            let Some((modified, modified_ticks)) =
+                windows_filetime_to_unix_timestamp(facts.last_write_time_ticks)
+            else {
+                return IdentityObservation::Unreadable {
+                    reason: format!(
+                        "modification time predates the Unix epoch (raw FILETIME {} is before \
+                         1970-01-01); not reported as Timestamp(0)",
+                        facts.last_write_time_ticks
+                    ),
+                };
+            };
             IdentityObservation::Identity(IdentityToken::Windows {
                 volume_serial_number: facts.volume_serial_number,
                 file_index: facts.file_index,
                 kind,
                 modified,
-                modified_ticks: facts.last_write_time_ticks % TICKS_PER_SECOND,
+                modified_ticks: modified_ticks.into(),
             })
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => IdentityObservation::Absent,
@@ -279,6 +308,44 @@ impl IdentityObserver for SyntheticIdentityObserver {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn windows_filetime_epoch_converts_to_timestamp_zero() {
+        // 11_644_473_600 seconds * 10_000_000 ticks/sec is exactly the Unix epoch itself.
+        let (modified, modified_ticks) =
+            windows_filetime_to_unix_timestamp(11_644_473_600 * 10_000_000)
+                .expect("the Unix epoch itself must convert, not refuse");
+        assert_eq!(modified, Timestamp(0));
+        assert_eq!(modified_ticks, 0);
+    }
+
+    #[test]
+    fn windows_filetime_after_the_epoch_converts_correctly() {
+        // One day (86_400 seconds) after the Unix epoch, plus a nonzero sub-second remainder.
+        let ticks = (11_644_473_600 + 86_400) * 10_000_000 + 1_234_567;
+        let (modified, modified_ticks) = windows_filetime_to_unix_timestamp(ticks)
+            .expect("a real post-epoch FILETIME must convert");
+        assert_eq!(modified, Timestamp(86_400));
+        assert_eq!(modified_ticks, 1_234_567);
+    }
+
+    #[test]
+    fn windows_filetime_before_the_unix_epoch_is_refused_not_clamped() {
+        // E20-S01 round-1 independent verifier review: a pre-1970 FILETIME (valid back to
+        // 1601) must not be silently saturated to Timestamp(0) - that would misrepresent the
+        // real modification date. One tick before the epoch.
+        assert_eq!(
+            windows_filetime_to_unix_timestamp(11_644_473_600 * 10_000_000 - 1),
+            None
+        );
+    }
+
+    #[test]
+    fn windows_filetime_zero_is_refused() {
+        // FILETIME 0 is 1601-01-01, far before the Unix epoch - must not become Timestamp(0)
+        // (which would misleadingly read as 1970-01-01, not 1601-01-01).
+        assert_eq!(windows_filetime_to_unix_timestamp(0), None);
+    }
 
     #[cfg(unix)]
     struct TempDir(PathBuf);

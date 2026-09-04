@@ -4,7 +4,7 @@
 
 Current phase: **P1**
 
-Epics: **23** | Stories: **108**
+Epics: **23** | Stories: **109**
 
 ## Story status
 
@@ -12,7 +12,7 @@ Epics: **23** | Stories: **108**
 - `cancelled`: 1
 - `done`: 54
 - `in_progress`: 1
-- `planned`: 49
+- `planned`: 50
 
 ## Change risk distribution
 
@@ -20,7 +20,7 @@ Epics: **23** | Stories: **108**
 - `CR1`: 23
 - `CR2`: 37
 - `CR3`: 21
-- `CR4`: 25
+- `CR4`: 26
 
 ## Explicitly ready work
 

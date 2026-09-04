@@ -52,19 +52,31 @@ impl EnvironmentObserver for SystemEnvironmentObserver {
     }
 }
 
-/// WSL1 and WSL2 both report a kernel release string (`uname -r`, mirrored at
-/// `/proc/sys/kernel/osrelease`) containing "microsoft" - WSL2's default kernel reports
-/// `<version>-microsoft-standard-WSL2`, WSL1's reports `<version>-Microsoft`. This is the
-/// standard, widely-used heuristic for WSL detection and the only positive signal available
-/// without an elevated/administrative check; no other Linux distribution's stock kernel
-/// carries this marker.
+/// WSL2's own kernel (Microsoft's WSL2 kernel repository, built specifically for it) reports a
+/// release string containing `microsoft-standard-wsl2` (e.g.
+/// `5.15.153.1-microsoft-standard-WSL2`) - a marker unique to that specific kernel build.
+///
+/// WSL1 is architecturally not this crate's `Wsl2` variant at all: it has no real Linux kernel
+/// underneath it, only a syscall-translation layer running directly on the Windows NT kernel
+/// (`docs/architecture/PLATFORM_MODEL.md`'s "WSL" section describes specifically a Linux
+/// *guest*, which WSL1 does not have) - `IdentityObserver`/`AllocationObserver`'s Unix code
+/// paths that work correctly on a genuine Linux kernel are not known to behave the same way
+/// there. E20-S02 round-1 independent verifier review found the original, looser
+/// `contains("microsoft")` match folded WSL1 into `Wsl2` on the strength of an older,
+/// differently-shaped kernel string some WSL1 builds report (`<version>-Microsoft`, no `wsl`
+/// token at all) - conflating two architecturally different environments this codebase's own
+/// documentation already distinguishes. Matching specifically on `wsl2`/`microsoft-standard`
+/// excludes that string while still matching every real WSL2 kernel release documented by
+/// Microsoft; a WSL1 host (or any other environment lacking this precise marker) reports
+/// `Native` instead - not a wrong-but-plausible guess, an honest "not positively WSL2" (C-03).
 // Reachable in production only on Linux (`detect_runtime_environment`'s cfg(linux) branch
 // below), but kept available under `cfg(test)` on every host too so its unit tests - the only
 // verification this executor can give it without a real WSL2 guest - run everywhere, not only
 // on Linux CI.
 #[cfg(any(test, target_os = "linux"))]
 fn classify_osrelease(osrelease: &str) -> RuntimeEnvironment {
-    if osrelease.to_lowercase().contains("microsoft") {
+    let lowered = osrelease.to_lowercase();
+    if lowered.contains("wsl2") || lowered.contains("microsoft-standard") {
         RuntimeEnvironment::Wsl2
     } else {
         RuntimeEnvironment::Native
@@ -171,6 +183,40 @@ fn classify_fstype(fstype: &str) -> FilesystemContext {
     }
 }
 
+/// `/proc/mounts` (and `/proc/self/mountinfo`, `/etc/mtab`) escape space, tab, newline, and a
+/// literal backslash in the device/mountpoint fields as octal `\NNN` sequences - the Linux
+/// kernel's own `mangle()` convention (`fs/seq_file.c`), needed because those fields are
+/// whitespace-separated: an unescaped space in a mountpoint name would be indistinguishable
+/// from a field separator. E20-S02 round-1 independent verifier review found
+/// `longest_matching_mount_fstype` compared the still-*escaped* field directly against a real
+/// (unescaped) `Path` - a mountpoint containing any of those four characters (a real, common
+/// case: `/mnt/My Drive` for a Windows drive with a space in its label) then silently failed
+/// to match, and a shorter, less-specific, *wrong* mount won instead - the exact
+/// misclassification SI-018/AC2 exist to prevent, not a cosmetic parsing gap. Every escape the
+/// kernel actually produces decodes to a single ASCII byte (32/9/10/92), always valid as a
+/// `char` on its own, so this never needs to reason about UTF-8 continuation bytes.
+#[cfg(any(test, target_os = "linux"))]
+fn unescape_proc_mounts_field(field: &str) -> String {
+    let chars: Vec<char> = field.chars().collect();
+    let mut out = String::with_capacity(field.len());
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '\\' && i + 3 < chars.len() {
+            let octal: String = chars[i + 1..i + 4].iter().collect();
+            if octal.bytes().all(|b| (b'0'..=b'7').contains(&b)) {
+                if let Ok(value) = u8::from_str_radix(&octal, 8) {
+                    out.push(value as char);
+                    i += 4;
+                    continue;
+                }
+            }
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    out
+}
+
 /// Parses `/proc/mounts`-formatted content (whitespace-separated `device mountpoint fstype
 /// options freq passno`, one mount per line) and returns the `fstype` of the mount whose
 /// mountpoint is the longest matching prefix of `path` - the same "most specific mount wins"
@@ -181,14 +227,15 @@ fn classify_fstype(fstype: &str) -> FilesystemContext {
 #[cfg(any(test, target_os = "linux"))]
 fn longest_matching_mount_fstype<'a>(mounts: &'a str, path: &Path) -> Option<&'a str> {
     let path_str = path.to_str()?;
-    let mut best: Option<(&str, &str)> = None; // (mountpoint, fstype)
+    let mut best: Option<(String, &str)> = None; // (unescaped mountpoint, fstype)
     for line in mounts.lines() {
         let mut fields = line.split_whitespace();
-        let (Some(_device), Some(mountpoint), Some(fstype)) =
+        let (Some(_device), Some(raw_mountpoint), Some(fstype)) =
             (fields.next(), fields.next(), fields.next())
         else {
             continue;
         };
+        let mountpoint = unescape_proc_mounts_field(raw_mountpoint);
         let matches = mountpoint == "/"
             || path_str == mountpoint
             || path_str.starts_with(&format!("{mountpoint}/"));
@@ -200,7 +247,10 @@ fn longest_matching_mount_fstype<'a>(mounts: &'a str, path: &Path) -> Option<&'a
         // entry and the real `overlay` mount at `/`) - the *later* line is the one currently
         // in effect (mount stacking shadows chronologically, most recent on top), matching
         // how the kernel itself resolves an overmounted point.
-        if best.is_none_or(|(best_mountpoint, _)| mountpoint.len() >= best_mountpoint.len()) {
+        if best
+            .as_ref()
+            .is_none_or(|(best_mountpoint, _)| mountpoint.len() >= best_mountpoint.len())
+        {
             best = Some((mountpoint, fstype));
         }
     }
@@ -285,11 +335,23 @@ mod tests {
     }
 
     #[test]
-    fn wsl1_kernel_osrelease_is_also_classified_as_wsl2() {
-        // WSL1's own marker capitalizes differently ("...-Microsoft") - the match must not be
-        // case-sensitive, or a real WSL1 guest would misclassify as Native.
+    fn wsl1_kernel_osrelease_is_classified_as_native_not_wsl2() {
+        // E20-S02 round-1 independent verifier review: WSL1 has no real Linux kernel/guest
+        // underneath it (a syscall-translation layer on the Windows NT kernel instead), so
+        // folding it into `Wsl2` on the strength of a shared "microsoft" substring was a real
+        // misclassification, not a harmless generalization - this must be `Native`.
         assert_eq!(
             classify_osrelease("4.4.0-19041-Microsoft\n"),
+            RuntimeEnvironment::Native
+        );
+    }
+
+    #[test]
+    fn a_case_variant_wsl2_marker_is_still_classified_as_wsl2() {
+        // The match must not be case-sensitive - a differently-cased real kernel string must
+        // not misclassify as Native.
+        assert_eq!(
+            classify_osrelease("5.15.153.1-MICROSOFT-STANDARD-wsl2\n"),
             RuntimeEnvironment::Wsl2
         );
     }
@@ -381,6 +443,30 @@ none /mnt/wsl tmpfs rw,relatime 0 0
             FilesystemContext::Other {
                 fstype: "9p".to_string()
             }
+        );
+    }
+
+    #[test]
+    fn unescape_proc_mounts_field_decodes_the_kernels_octal_escapes() {
+        // The four characters the kernel's own `mangle()` actually escapes (space, tab,
+        // newline, backslash), plus a plain string with nothing to decode.
+        assert_eq!(unescape_proc_mounts_field(r"My\040Drive"), "My Drive");
+        assert_eq!(unescape_proc_mounts_field(r"a\011b"), "a\tb");
+        assert_eq!(unescape_proc_mounts_field(r"a\012b"), "a\nb");
+        assert_eq!(unescape_proc_mounts_field(r"C:\134"), "C:\\");
+        assert_eq!(unescape_proc_mounts_field("plain"), "plain");
+    }
+
+    #[test]
+    fn a_mountpoint_containing_an_escaped_space_still_matches_its_real_path() {
+        // E20-S02 round-1 independent verifier review's exact reproduction: a Windows drive
+        // mounted at a name containing a space (`/mnt/My Drive`, escaped as `/mnt/My\040Drive`
+        // in the raw file) must still resolve to `drvfs`, not silently fall through to a
+        // shorter, wrong match (the root `overlay`) because the comparison never decoded it.
+        let mounts = "none / overlay rw 0 0\nC:\\\\ /mnt/My\\040Drive drvfs rw 0 0\n";
+        assert_eq!(
+            longest_matching_mount_fstype(mounts, Path::new("/mnt/My Drive/file")),
+            Some("drvfs")
         );
     }
 

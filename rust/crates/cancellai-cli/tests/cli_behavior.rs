@@ -884,6 +884,49 @@ fn an_unreadable_claude_projects_root_is_reported_incomplete_with_a_real_count()
     );
 }
 
+/// E20-S02/E20-S03 round-1 independent verifier review: `RuntimeEnvironment`/
+/// `FilesystemContextObserver` existed but had no production caller anywhere in this
+/// workspace - unit-tested in isolation, never proven to reach the real CLI binary's actual
+/// output. This spawns the real built binary (not a unit test of `documents.rs` alone) and
+/// asserts both new fields are genuinely present in its `--json` output.
+#[test]
+fn inspect_json_surfaces_runtime_environment_and_filesystem_context() {
+    let home = TempHome::new("wsl-facts-surfaced");
+    std::fs::create_dir_all(home.path().join(".claude")).unwrap();
+
+    let output = run(
+        &home,
+        &["inspect", "--json", "--allow-running", "--tool", "claude"],
+    );
+    let doc: serde_json::Value =
+        serde_json::from_str(&stdout(&output)).expect("inspect emits JSON");
+
+    let runtime_environment = doc["runtime_environment"]
+        .as_str()
+        .expect("runtime_environment must be a string");
+    assert!(
+        matches!(runtime_environment, "wsl2" | "native"),
+        "got {runtime_environment:?}"
+    );
+
+    let claude_root_doc = doc["provider_roots"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["provider_id"] == "claude-code")
+        .expect("claude-code root entry");
+    let filesystem_context = claude_root_doc["filesystem_context"]
+        .as_str()
+        .expect("filesystem_context must be a string");
+    assert!(
+        filesystem_context == "linux"
+            || filesystem_context == "windows_mounted"
+            || filesystem_context.starts_with("other:")
+            || filesystem_context.starts_with("unsupported:"),
+        "got {filesystem_context:?}"
+    );
+}
+
 /// The counterexample that keeps the two tests above from being satisfied by "always withhold":
 /// a Claude home with no `projects/` at all is a structurally empty install, and must stay
 /// non-destructive *and* non-withholding.

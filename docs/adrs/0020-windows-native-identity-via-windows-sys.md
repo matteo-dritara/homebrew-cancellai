@@ -97,9 +97,14 @@ unused, duplicate accessor; the comment is updated in the same change.)
 
 ## What this does and does not close
 
-- **Closed**: `IdentityObservation`/`IdentityToken` now carry real, verified Windows identity
-  strong enough to detect a TOCTOU replacement (SI-013) and a volume-boundary crossing
-  (SI-018), on real Windows CI, not a plausible-but-unverified guess. `cancellai-inventory`'s
+- **Closed, pending real Windows CI confirmation** (round-1 independent verifier review found
+  this ADR originally overstated this as already verified - see "Round-1 independent verifier
+  review" below): `IdentityObservation`/`IdentityToken` now carry Windows identity designed to
+  be strong enough to detect a TOCTOU replacement (SI-013) and a volume-boundary crossing
+  (SI-018), not a plausible-but-unverified guess in the sense E03-S01 originally refused to
+  ship - but "designed to be" and "confirmed by a real Windows test run" are different claims,
+  and only the generator/checker in `project/platforms.json`/`scripts/check_platforms.py`, not
+  this prose, is the source of truth for which one currently holds. `cancellai-inventory`'s
   scanner (`scan::walk_directory`) can now descend below a scope root on Windows, since its own
   "an unconfirmed identity never earns a descend" gate (SI-017) is no longer permanently true
   there - the accepted limitation `docs/architecture/PLATFORM_MODEL.md` and E20-S04 recorded is
@@ -112,7 +117,7 @@ unused, duplicate accessor; the comment is updated in the same change.)
   gives Windows a way to *observe* identity/reparse status for a single path, not a
   no-follow, per-component walk from a trusted anchor to a leaf, which is a materially larger
   and differently-shaped capability (Windows has no direct `openat`-equivalent in the
-  documented Win32 surface) left for a dedicated future story. `clean`'s default-root
+  documented Win32 surface) left for E20-S05. `clean`'s default-root
   establishment on Windows therefore continues to refuse via that still-`Unsupported` walk,
   unaffected by this change. Native process observation and atomic move semantics (also named
   in E20-S01's outcome text) are likewise out of this change's scope; its acceptance criteria
@@ -156,7 +161,9 @@ keeps the audit surface in one place, exactly as ADR-0017's own follow-up note a
 
 ### Positive
 
-- Windows file/volume identity is real and CI-verified rather than a permanent, disclosed gap.
+- Windows file/volume identity is real code with real adversarial test coverage rather than a
+  permanent, disclosed `Unsupported` gap - "CI-verified" specifically becomes true only once
+  `project/platforms.json` records it, per the round-1 finding below.
 - `cancellai-inventory`'s Windows traversal depth limitation (E20-S04) is resolved as a direct,
   anticipated consequence, not incidental scope creep - `docs/architecture/PLATFORM_MODEL.md`
   already named this as what E20-S01 would produce.
@@ -191,7 +198,44 @@ keeps the audit surface in one place, exactly as ADR-0017's own follow-up note a
 
 ## Supersession
 
-If a future story extends `cancellai-sealedfs`'s Windows surface to the no-follow walk itself
+If E20-S05 extends `cancellai-sealedfs`'s Windows surface to the no-follow walk itself
 (closing the residual this ADR leaves open), record that extension here or in a superseding
 ADR rather than silently expanding scope, mirroring how ADR-0017 records its own E21-S07
 extension.
+
+## Round-1 independent verifier review (2026-09-04)
+
+Codex's round-1 review of this story's commit range (`project/evidence/E20-VERIFIER-REVIEW.md`,
+`project/evidence/E20-S01/SAFETY_VERDICT.md`, verdict `FAIL`) found the original text of this
+ADR, `docs/architecture/PLATFORM_MODEL.md`, `docs/security/SAFETY_INVARIANTS.md`, and this
+crate's own module docs all stated Windows identity was "verified on real Windows CI" - false
+for the commit range actually reviewed: the branch introducing this ADR had never been pushed,
+so `git ls-remote origin refs/heads/main` showed `origin/main` still at the range base, and
+`gh run list --commit <range head>` returned no runs at all. Every such claim in this ADR is
+corrected in place above rather than left standing next to this note. The review also found two
+concrete adversarial-fixture gaps this ADR's own "Decision" section did not disclose: no real
+NTFS junction (`IO_REPARSE_TAG_MOUNT_POINT`) fixture existed (only a directory symlink,
+`IO_REPARSE_TAG_SYMLINK`), and no test constructed an `IdentityToken::Windows` pair to exercise
+`ApprovedRoot::bind`'s SI-018 boundary comparison (the existing cross-device test used Unix
+tokens only).
+
+Repaired in the same executor round: a real junction fixture
+(`cancellai-sealedfs::windows_identity::tests::
+observe_identity_reports_is_reparse_point_for_a_real_junction_without_following_it`), created
+via the OS's own `mklink /J` rather than a hand-rolled `DeviceIoControl(FSCTL_SET_REPARSE_POINT)`
+call - consistent with this ADR's own "prefer the audited primitive over a hand-transcribed one"
+reasoning, applied to test fixtures as well as production code; a synthetic Windows-token
+cross-volume boundary test pair in `cancellai-safety::root_capability`
+(`bind_rejects_a_candidate_on_a_different_windows_volume_via_synthetic_identity` and its
+same-volume positive counterpart); a best-effort real multi-volume test that probes actual
+drive letters at runtime and disclosed-skips rather than assuming a specific one exists (GitHub's
+own Windows runner `D:` drive has been added, undocumented, and removed across image versions);
+and a `Timestamp::checked_sub` fix for a `FILETIME` pre-1970 saturation bug the verifier's Safety
+Verdict separately flagged as a residual risk.
+
+Structurally, `project/platforms.json`/`scripts/check_platforms.py` (E20-S03, hardened by this
+same review round) is now the enforced source of truth for whether Windows identity is actually
+CI-verified - it requires a `verified_commit` that is both a real git ancestor of `HEAD` and,
+where `gh` can reach GitHub, a commit with a real successful `rust.yml` run, before
+`identity.state` may say `"verified"`. This ADR's own prose is deliberately not that source of
+truth any more, precisely because prose was what went stale here.

@@ -63,10 +63,21 @@ completeness state each entry's classification depends on.
 ```text
 schema_version, document_type="inventory", generated_at, generator   (common envelope)
 inventory_id
-provider_roots: [ ProviderRoot projection, ... ]   (id, provider_id, origin, confidence, mutation_eligible)
+runtime_environment: "wsl2" | "native"
+provider_roots: [ ProviderRoot projection, ... ]   (id, provider_id, origin, confidence, mutation_eligible, filesystem_context)
 scan_completeness: [ { scope, complete: bool, error_count: integer }, ... ]  (see note below)
 artifacts: [ AgentArtifact projection, ... ]
 ```
+
+`runtime_environment` and each root's `filesystem_context` (E20-S02/E20-S03) surface
+`cancellai_platform::{RuntimeEnvironment, FilesystemContext}` (`docs/architecture/
+PLATFORM_MODEL.md`'s "WSL" section): whether this process is running inside a WSL2 guest, and
+whether a given provider root's own storage is the guest's native filesystem
+(`filesystem_context: "linux"`), a mounted Windows drive (`"windows_mounted"`), an
+unrecognized mount (`"other:<fstype>"`), or not classifiable at all (`"unsupported:<reason>"` -
+always the case on non-Linux hosts). Purely descriptive: neither field grants or withholds
+mutation authority by itself - `mutation_eligible` (root-origin authority, SI-002/ADR-0013) and
+the safety kernel's own device-identity boundary check (SI-018) are unaffected by either value.
 
 `scan_completeness[].error_count` is the number of distinct paths the scope could not
 observe, and `complete` is `false` whenever that number is non-zero. It was previously derived
@@ -101,11 +112,15 @@ document cannot express higher confidence than the scan that produced it actuall
 schema_version, document_type="plan", generated_at, generator   (common envelope)
 plan_id
 inventory_snapshot_id
+runtime_environment: "wsl2" | "native"
 provider_roots: [ ProviderRoot projection, ... ]
 actions: [ Action, ... ]
 notes: [ string, ... ]
 safety_invariant_refs: [ "SI-###", ... ]
 ```
+
+`runtime_environment` and `provider_roots[].filesystem_context` are the same fields the
+inventory document carries - see its own section above.
 
 Each `Action` is the safety-critical envelope this document exists to carry. Every entry -
 **including `OBSERVE`-class entries** - requires:

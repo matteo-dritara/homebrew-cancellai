@@ -203,7 +203,7 @@ orderings).
   reparse observation (`cancellai-sealedfs::observe_identity`), but a per-component,
   handle-relative walk from a trusted anchor is a materially different, larger capability
   (Windows has no direct `openat`-equivalent in the documented Win32 surface) and remains a
-  future story's scope. This is a real, disclosed capability reduction versus the previous
+  E20-S05's scope. This is a real, disclosed capability reduction versus the previous
   behavior of attempting the (unprotected) raw path write whenever `$HOME` happened to resolve
   on such a platform, not an oversight.
 - On Unix, `SealedRoot::establish` (E07-S09) refuses a root reached through an intermediate
@@ -217,5 +217,5 @@ orderings).
   a component swapped in the interval between the no-follow walk and canonicalization (found
   during the owner-authorized combined verifier/executor closure review). Windows/reparse-point
   intermediate-*component* handling (the handle-relative walk itself, distinct from the
-  single-path identity observation E20-S01 implemented) remains a future story's scope for both
+  single-path identity observation E20-S01 implemented) remains E20-S05's scope for both
   callers.

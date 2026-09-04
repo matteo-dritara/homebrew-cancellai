@@ -68,7 +68,7 @@ handle-relative, no-follow *root-establishment* walk (`establish`/`verify_no_int
 used by `configure` and `clean`'s default-root re-check) still fails closed on Windows - this is
 a materially different, larger capability (a per-component walk from a trusted anchor, which
 has no direct `openat`-equivalent in the documented Win32 surface) than observing one path's
-identity, and is left for a dedicated future story (ADR-0020's own "Neutral/follow-up"). Native
+identity, and is left for E20-S05 (ADR-0020's own "Neutral/follow-up"). Native
 process observation and atomic move semantics are likewise not part of this change.
 
 #### Resolved: the inventory scanner can now descend below the scope root on Windows

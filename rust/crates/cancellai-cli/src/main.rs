@@ -29,7 +29,8 @@ use cancellai_model::{
     Reversibility, RootFingerprint,
 };
 use cancellai_platform::{
-    Clock, SystemClock, SystemIdentityObserver, SystemPathResolver, SystemProcessObserver,
+    Clock, EnvironmentObserver, FilesystemContextObserver, SystemClock, SystemIdentityObserver,
+    SystemPathResolver, SystemProcessObserver,
 };
 use cancellai_policy::{
     ClassifiedArtifact, ProviderPlanningView, ProviderResolution, RetentionPolicy, ToolScope,
@@ -196,21 +197,38 @@ fn resolve_all(flags: &CommonFlags) -> Result<Resolved, String> {
     })
 }
 
+/// The `filesystem_context` classification for one provider root, computed fresh here rather
+/// than cached on `Resolved` - E20-S02/E20-S03 round-1 independent verifier review's "no
+/// production caller" finding: this is the one production call site that actually consults
+/// `FilesystemContextObserver` (previously exercised only by its own unit tests).
 fn provider_root_docs(resolved: &Resolved) -> Vec<ProviderRootDoc> {
+    let fs_context = cancellai_platform::SystemFilesystemContextObserver;
     vec![
         ProviderRootDoc::new(
             "root-claude-code".to_string(),
             "claude-code".to_string(),
             resolved.claude_fingerprint.origin,
             resolved.claude_fingerprint.confidence,
+            fs_context.classify(&resolved.claude_root),
         ),
         ProviderRootDoc::new(
             "root-codex-cli".to_string(),
             "codex-cli".to_string(),
             resolved.codex_fingerprint.origin,
             resolved.codex_fingerprint.confidence,
+            fs_context.classify(&resolved.codex_root),
         ),
     ]
+}
+
+/// `"wsl2"` / `"native"`, mirroring `cancellai_platform::RuntimeEnvironment` - the one
+/// production call site for `EnvironmentObserver` (see `provider_root_docs`'s docs for the
+/// same story behind `FilesystemContextObserver`).
+fn runtime_environment_str() -> &'static str {
+    match cancellai_platform::SystemEnvironmentObserver.detect() {
+        cancellai_platform::RuntimeEnvironment::Wsl2 => "wsl2",
+        cancellai_platform::RuntimeEnvironment::Native => "native",
+    }
 }
 
 /// The provider id (matching `cancellai_model::AgentArtifact::provider_id`) that owns a given
@@ -333,6 +351,7 @@ fn cmd_read_only(flags: CommonFlags, mode: RunMode) -> i32 {
                 let doc = documents::inventory_document(
                     "inventory-1".to_string(),
                     now,
+                    runtime_environment_str(),
                     provider_root_docs(&resolved),
                     scan_completeness_docs(&resolved),
                     artifacts,
@@ -358,6 +377,7 @@ fn cmd_read_only(flags: CommonFlags, mode: RunMode) -> i32 {
                     "plan-1".to_string(),
                     "inventory-1".to_string(),
                     now,
+                    runtime_environment_str(),
                     provider_root_docs(&resolved),
                     actions,
                     Vec::new(),

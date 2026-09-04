@@ -4,7 +4,7 @@
 //! common envelope and the `provider_roots`/`scan_completeness`/`summary` framing around them.
 
 use cancellai_model::{Action, AgentArtifact};
-use cancellai_platform::Timestamp;
+use cancellai_platform::{FilesystemContext, FilesystemContextObservation, Timestamp};
 use cancellai_provider_api::{RootConfidence, RootOrigin};
 use serde::Serialize;
 
@@ -26,6 +26,15 @@ pub struct ProviderRootDoc {
     pub origin: &'static str,
     pub confidence: &'static str,
     pub mutation_eligible: bool,
+    /// This root's storage relative to a WSL2 guest's own filesystem (E20-S02/E20-S03 round-1
+    /// independent verifier review: `FilesystemContext`/`FilesystemContextObserver` existed
+    /// but had no production caller anywhere in this workspace, so `docs/architecture/
+    /// PLATFORM_MODEL.md`'s "surfaced rather than abstracted away" promise for a `/mnt`-mounted
+    /// Windows drive was not actually kept by any shipped command). `"linux"` /
+    /// `"windows_mounted"` / `"other:<fstype>"` mirror `FilesystemContext`'s own variants;
+    /// `"unsupported:<reason>"` covers a platform/path this classifier cannot resolve
+    /// (including every non-Linux host, where this is simply always `"unsupported:..."`).
+    pub filesystem_context: String,
 }
 
 impl ProviderRootDoc {
@@ -34,6 +43,7 @@ impl ProviderRootDoc {
         provider_id: String,
         origin: RootOrigin,
         confidence: RootConfidence,
+        filesystem_context: FilesystemContextObservation,
     ) -> Self {
         Self {
             id,
@@ -48,6 +58,22 @@ impl ProviderRootDoc {
             // `RootConfidence::High`, contradicting the destructive-authority gate this exact
             // field is supposed to describe).
             mutation_eligible: matches!(origin, RootOrigin::Default),
+            filesystem_context: filesystem_context_str(filesystem_context),
+        }
+    }
+}
+
+fn filesystem_context_str(observation: FilesystemContextObservation) -> String {
+    match observation {
+        FilesystemContextObservation::Classified(FilesystemContext::Linux) => "linux".to_string(),
+        FilesystemContextObservation::Classified(FilesystemContext::WindowsMounted) => {
+            "windows_mounted".to_string()
+        }
+        FilesystemContextObservation::Classified(FilesystemContext::Other { fstype }) => {
+            format!("other:{fstype}")
+        }
+        FilesystemContextObservation::Unsupported { reason } => {
+            format!("unsupported:{reason}")
         }
     }
 }
@@ -106,6 +132,10 @@ fn envelope<T: Serialize>(
 #[derive(Serialize)]
 struct InventoryBody {
     inventory_id: String,
+    /// This process's own runtime environment (E20-S02/E20-S03 round-1 independent verifier
+    /// review's "no production caller" finding) - `"wsl2"` or `"native"`, mirroring
+    /// `cancellai_platform::RuntimeEnvironment`.
+    runtime_environment: &'static str,
     provider_roots: Vec<ProviderRootDoc>,
     scan_completeness: Vec<ScanCompletenessDoc>,
     artifacts: Vec<AgentArtifact>,
@@ -114,6 +144,7 @@ struct InventoryBody {
 pub fn inventory_document(
     inventory_id: String,
     now: Timestamp,
+    runtime_environment: &'static str,
     provider_roots: Vec<ProviderRootDoc>,
     scan_completeness: Vec<ScanCompletenessDoc>,
     artifacts: Vec<AgentArtifact>,
@@ -123,6 +154,7 @@ pub fn inventory_document(
         now,
         &InventoryBody {
             inventory_id,
+            runtime_environment,
             provider_roots,
             scan_completeness,
             artifacts,
@@ -134,6 +166,7 @@ pub fn inventory_document(
 struct PlanBody {
     plan_id: String,
     inventory_snapshot_id: String,
+    runtime_environment: &'static str,
     provider_roots: Vec<ProviderRootDoc>,
     actions: Vec<Action>,
     notes: Vec<String>,
@@ -144,6 +177,7 @@ pub fn plan_document(
     plan_id: String,
     inventory_snapshot_id: String,
     now: Timestamp,
+    runtime_environment: &'static str,
     provider_roots: Vec<ProviderRootDoc>,
     actions: Vec<Action>,
     notes: Vec<String>,
@@ -154,6 +188,7 @@ pub fn plan_document(
         &PlanBody {
             plan_id,
             inventory_snapshot_id,
+            runtime_environment,
             provider_roots,
             actions,
             notes,

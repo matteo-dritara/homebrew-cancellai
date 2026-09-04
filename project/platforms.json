@@ -1,6 +1,6 @@
 {
-  "schema_version": 1,
-  "notes": "Source of truth for docs/PLATFORMS.md's generated capability matrix (E20-S03). Edit this file, then run `python3 scripts/check_platforms.py generate`. `scripts/check_platforms.py check` cross-validates every claim here against .github/workflows/rust.yml's real CI matrix and against named test functions actually present in rust/crates - a platform cannot be declared tier 1 by editing prose alone.",
+  "schema_version": 2,
+  "notes": "Source of truth for docs/PLATFORMS.md's generated capability matrix (E20-S03, hardened after round-1 independent verifier review). Edit this file, then run `python3 scripts/check_platforms.py generate`. `scripts/check_platforms.py check` cross-validates every claim here: CI presence against .github/workflows/rust.yml's real matrix, each capability's evidence against real #[test] functions found at the exact cited file, and (offline-checkable) that verified_commit is a real ancestor of HEAD - a platform cannot be declared tier 1, or a capability 'verified', by editing prose alone.",
   "platforms": [
     {
       "id": "macos",
@@ -9,15 +9,32 @@
       "ci_check_job": true,
       "ci_quality_job": true,
       "ci_os_labels": ["macos-latest"],
+      "verified_commit": "54b8f3567b958db767376fefde1eb1f8d9c75963",
       "capabilities": {
-        "identity": "verified",
-        "mutation": "verified"
+        "identity": {
+          "state": "verified",
+          "evidence": [
+            {
+              "name": "toctou_file_deleted_and_recreated_with_identical_content_still_changes_identity",
+              "file": "rust/crates/cancellai-platform/src/identity.rs"
+            }
+          ]
+        },
+        "mutation": {
+          "state": "verified",
+          "evidence": [
+            {
+              "name": "system_executor_deletes_a_real_file_confirmed_by_identity",
+              "file": "rust/crates/cancellai-platform/src/mutation.rs"
+            },
+            {
+              "name": "execute_deletes_when_identity_still_matches",
+              "file": "rust/crates/cancellai-safety/src/mutation_executor.rs"
+            }
+          ]
+        }
       },
-      "evidence_tests": [
-        "toctou_file_deleted_and_recreated_with_identical_content_still_changes_identity",
-        "establish_rejects_a_root_swapped_to_a_symlink_after_final_validation_but_before_the_bind"
-      ],
-      "notes": "Full CI (check + quality: fmt/clippy/test/cargo-deny) on macos-latest. Real identity (device/inode, E03-S01) and real, adversarially-tested deletion (E03-S05/E21-S07) are both verified on this platform's own CI."
+      "notes": "Full CI (check + quality: fmt/clippy/test/cargo-deny) on macos-latest, confirmed via a real successful GitHub Actions run for verified_commit. Real identity (device/inode, E03-S01) and real, adversarially-tested deletion (E03-S05/E21-S07) are both verified on this platform's own CI - predates and is unaffected by E20's Windows/WSL work."
     },
     {
       "id": "linux",
@@ -26,14 +43,31 @@
       "ci_check_job": true,
       "ci_quality_job": true,
       "ci_os_labels": ["ubuntu-latest"],
+      "verified_commit": "54b8f3567b958db767376fefde1eb1f8d9c75963",
       "capabilities": {
-        "identity": "verified",
-        "mutation": "verified"
+        "identity": {
+          "state": "verified",
+          "evidence": [
+            {
+              "name": "toctou_file_deleted_and_recreated_with_identical_content_still_changes_identity",
+              "file": "rust/crates/cancellai-platform/src/identity.rs"
+            }
+          ]
+        },
+        "mutation": {
+          "state": "verified",
+          "evidence": [
+            {
+              "name": "system_executor_deletes_a_real_file_confirmed_by_identity",
+              "file": "rust/crates/cancellai-platform/src/mutation.rs"
+            },
+            {
+              "name": "execute_deletes_when_identity_still_matches",
+              "file": "rust/crates/cancellai-safety/src/mutation_executor.rs"
+            }
+          ]
+        }
       },
-      "evidence_tests": [
-        "toctou_file_deleted_and_recreated_with_identical_content_still_changes_identity",
-        "establish_rejects_a_root_swapped_to_a_symlink_after_final_validation_but_before_the_bind"
-      ],
       "notes": "Same Unix code path and same tests as macOS, run on its own ubuntu-latest CI - not assumed identical from macOS's result alone. E07-S05 found and fixed a real Linux-specific timing divergence (inode reuse on same-second delete-recreate) that macOS CI alone had never surfaced, which is why this platform is verified independently rather than inferred from macOS."
     },
     {
@@ -43,15 +77,31 @@
       "ci_check_job": true,
       "ci_quality_job": true,
       "ci_os_labels": ["windows-latest"],
+      "verified_commit": null,
       "capabilities": {
-        "identity": "verified",
-        "mutation": "unsupported"
+        "identity": {
+          "state": "unverified",
+          "evidence": [
+            {
+              "name": "observe_identity_reports_is_reparse_point_for_a_real_junction_without_following_it",
+              "file": "rust/crates/cancellai-sealedfs/src/windows_identity.rs"
+            },
+            {
+              "name": "observe_identity_two_hardlinks_to_the_same_file_share_a_file_index",
+              "file": "rust/crates/cancellai-sealedfs/src/windows_identity.rs"
+            },
+            {
+              "name": "bind_rejects_a_candidate_on_a_different_windows_volume_via_synthetic_identity",
+              "file": "rust/crates/cancellai-safety/src/root_capability.rs"
+            }
+          ]
+        },
+        "mutation": {
+          "state": "unsupported",
+          "evidence": []
+        }
       },
-      "evidence_tests": [
-        "observe_identity_reports_is_reparse_point_for_a_real_symlink_without_following_it",
-        "observe_identity_two_hardlinks_to_the_same_file_share_a_file_index"
-      ],
-      "notes": "Full CI exists and real file/volume identity + reparse-point classification is implemented and verified there (E20-S01, ADR-0020). Real deletion is not: `cancellai-platform::mutation::confirmed_delete_file`'s cfg(not(unix)) arm and `cancellai-sealedfs::SealedRoot`'s no-follow root-establishment walk both refuse unconditionally on Windows today, so `clean` is inspect-only there. Tier 1 requires this repository's own bar for what this product does (safe, verified deletion), not merely CI presence - remains tier 2 until a future story implements and verifies it."
+      "notes": "E20-S01/ADR-0020 implemented real Windows file/volume identity and added real adversarial fixtures (a genuine NTFS junction via mklink /J, a real directory symlink, real hard-links, and a synthetic cross-volume boundary test) - listed here as evidence that the *code and tests exist and are believed correct*, not yet as 'verified': E20-S01 round-1 independent verifier review found this exact commit range had never actually run on GitHub's real windows-latest/ubuntu-latest CI (the branch had not been pushed). `identity.state` stays 'unverified' until a `verified_commit` here has a real, `gh`-confirmed successful rust.yml run. Real deletion remains unimplemented on Windows (`confirmed_delete_file`'s cfg(not(unix)) arm and `cancellai-sealedfs::SealedRoot`'s no-follow walk both refuse unconditionally), so `clean` is inspect-only there regardless of identity verification status."
     },
     {
       "id": "wsl2",
@@ -60,12 +110,23 @@
       "ci_check_job": false,
       "ci_quality_job": false,
       "ci_os_labels": [],
+      "verified_commit": null,
       "capabilities": {
-        "identity": "unverified",
-        "mutation": "unverified"
+        "identity": {
+          "state": "unverified",
+          "evidence": []
+        },
+        "mutation": {
+          "state": "unsupported",
+          "evidence": [
+            {
+              "name": "refuse_unverified_wsl2_mutation_refuses_on_wsl2",
+              "file": "rust/crates/cancellai-platform/src/mutation.rs"
+            }
+          ]
+        }
       },
-      "evidence_tests": [],
-      "notes": "No dedicated CI runner exists for WSL2 in this repository (GitHub Actions has no WSL2 runner image). A WSL2 guest is a real Linux kernel, so the same Unix identity/mutation code path that is verified on Linux would very likely work there too - but that is an inference, not this repository's own evidence, so it is disclosed as unverified rather than silently inherited from Linux's tier. E20-S02 added explicit WSL2/`/mnt` detection (RuntimeEnvironment, FilesystemContext), itself also unverified against a real WSL2 guest for the same reason."
+      "notes": "No dedicated CI runner exists for WSL2 in this repository (GitHub Actions has no WSL2 runner image). E20-S03 round-1 independent verifier review found this repository's own claim ('non-tier-1 platforms remain inspect-only or refused') was not actually true for WSL2: the generic Unix mutation path took no notice of it at all. Repaired: `cancellai-platform::mutation::confirmed_delete_file` now calls `refuse_unverified_wsl2_mutation` and refuses unconditionally on a detected WSL2 guest until this platform earns its own verified_commit - mutation.state is 'unsupported' by enforced code, not merely by unverified inference from Linux's tier. identity.state stays 'unverified' for the same reason as before: a WSL2 guest is a real Linux kernel, so the Unix identity path would very likely work, but that is an inference this repository has not verified directly."
     }
   ]
 }

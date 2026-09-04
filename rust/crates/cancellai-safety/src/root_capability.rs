@@ -337,6 +337,76 @@ mod tests {
         assert_eq!(err, BoundaryError::CrossesFilesystemBoundary);
     }
 
+    fn synthetic_windows_token(volume_serial_number: u32, file_index: u64) -> IdentityToken {
+        IdentityToken::Windows {
+            volume_serial_number,
+            file_index,
+            kind: FileKind::Directory,
+            modified: Timestamp(0),
+            modified_ticks: 0,
+        }
+    }
+
+    #[test]
+    fn bind_rejects_a_candidate_on_a_different_windows_volume_via_synthetic_identity() {
+        // E20-S01 round-1 independent verifier review: the only cross-device boundary test
+        // constructed Unix tokens, leaving SI-018's Windows arm
+        // (`IdentityToken::device()`'s `Windows { volume_serial_number, .. }` case) completely
+        // unexercised. This mirrors `bind_rejects_a_candidate_on_a_different_device_via_
+        // synthetic_identity` above, but with Windows identity tokens on two different volume
+        // serial numbers - the same synthetic-observer technique, since a real multi-volume
+        // Windows machine is not available to this executor either.
+        let dir = TempDir::new("cross-windows-volume");
+        let child = dir.path("child");
+        std::fs::create_dir(&child).expect("create child dir");
+        let root_canonical = std::fs::canonicalize(&dir.0).unwrap();
+        let child_canonical = std::fs::canonicalize(&child).unwrap();
+
+        let mut observer = SyntheticIdentityObserver::new();
+        observer.set(
+            &root_canonical,
+            IdentityObservation::Identity(synthetic_windows_token(0x1111_2222, 1)),
+        );
+        observer.set(
+            &child_canonical,
+            // A different volume serial number: a Windows drive-letter/volume boundary.
+            IdentityObservation::Identity(synthetic_windows_token(0x3333_4444, 2)),
+        );
+
+        let resolver = SystemPathResolver;
+        let root = ApprovedRoot::establish(&dir.0, &resolver, &observer).expect("establish root");
+        let err = root
+            .bind(&child, &resolver, &observer)
+            .expect_err("a different Windows volume must be rejected as a boundary crossing");
+        assert_eq!(err, BoundaryError::CrossesFilesystemBoundary);
+    }
+
+    #[test]
+    fn bind_accepts_a_candidate_on_the_same_windows_volume_via_synthetic_identity() {
+        // The positive counterpart: two different Windows objects (different `file_index`) on
+        // the *same* volume must not be rejected as a boundary crossing.
+        let dir = TempDir::new("same-windows-volume");
+        let child = dir.path("child");
+        std::fs::create_dir(&child).expect("create child dir");
+        let root_canonical = std::fs::canonicalize(&dir.0).unwrap();
+        let child_canonical = std::fs::canonicalize(&child).unwrap();
+
+        let mut observer = SyntheticIdentityObserver::new();
+        observer.set(
+            &root_canonical,
+            IdentityObservation::Identity(synthetic_windows_token(0x1111_2222, 1)),
+        );
+        observer.set(
+            &child_canonical,
+            IdentityObservation::Identity(synthetic_windows_token(0x1111_2222, 2)),
+        );
+
+        let resolver = SystemPathResolver;
+        let root = ApprovedRoot::establish(&dir.0, &resolver, &observer).expect("establish root");
+        root.bind(&child, &resolver, &observer)
+            .expect("the same Windows volume must not be rejected as a boundary crossing");
+    }
+
     #[test]
     fn bind_fails_closed_when_candidate_identity_is_unsupported() {
         let dir = TempDir::new("unsupported-candidate");

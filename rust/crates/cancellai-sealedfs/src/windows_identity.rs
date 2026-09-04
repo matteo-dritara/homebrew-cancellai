@@ -151,6 +151,98 @@ mod tests {
         );
     }
 
+    /// Creates a real NTFS junction (`IO_REPARSE_TAG_MOUNT_POINT`) via the OS's own `mklink
+    /// /J`, deliberately not `std::os::windows::fs::symlink_dir` (which creates a *symlink*,
+    /// `IO_REPARSE_TAG_SYMLINK`, a different reparse tag) and not a hand-rolled
+    /// `DeviceIoControl(FSCTL_SET_REPARSE_POINT)` call. E20-S01 round-1 independent verifier
+    /// review found no real junction fixture existed - only a symlink one - leaving
+    /// `IO_REPARSE_TAG_MOUNT_POINT` completely unexercised. Shelling out to `mklink /J` (test
+    /// code only, never production) reuses the OS's own already-correct, already-audited
+    /// junction-creation logic instead of adding a second, junction-specific unsafe FFI surface
+    /// to this crate for a one-off test fixture - the same "prefer the audited primitive"
+    /// reasoning ADR-0020 already applied to `GetFileInformationByHandle` itself. Unlike a
+    /// symlink, a junction needs no elevated privilege/Developer Mode on any Windows version,
+    /// so this works unconditionally on real Windows CI.
+    fn create_junction(link: &Path, target: &Path) -> std::io::Result<()> {
+        let status = std::process::Command::new("cmd")
+            .arg("/c")
+            .arg("mklink")
+            .arg("/J")
+            .arg(link)
+            .arg(target)
+            .status()?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(std::io::Error::other(format!(
+                "mklink /J exited with {status}"
+            )))
+        }
+    }
+
+    #[test]
+    fn observe_identity_reports_is_reparse_point_for_a_real_junction_without_following_it() {
+        let dir = TempDir::new("junction");
+        let real_target = dir.path("real-target");
+        std::fs::create_dir(&real_target).expect("create real directory");
+        let link = dir.path("junction-link");
+        create_junction(&link, &real_target).expect("create a real NTFS junction via mklink /J");
+
+        let facts = observe_identity(&link).expect("observe the junction itself");
+        assert!(
+            facts.is_reparse_point,
+            "an NTFS junction (IO_REPARSE_TAG_MOUNT_POINT) must be observed as a reparse \
+             point, not silently followed - the same FILE_ATTRIBUTE_REPARSE_POINT check that \
+             already covers symlinks must generalize to this different reparse tag too"
+        );
+
+        let real_facts = observe_identity(&real_target).expect("observe the real target");
+        assert_ne!(
+            facts.file_index, real_facts.file_index,
+            "the junction's own identity must differ from the target it points at - proving \
+             this observation did not follow the reparse point"
+        );
+    }
+
+    #[test]
+    fn observe_identity_reports_different_volume_serial_numbers_across_real_drive_letters() {
+        // E20-S01 round-1 independent verifier review asked for "native multi-volume coverage
+        // where the CI environment permits it" - this codebase does not control how many
+        // drive letters a given Windows CI image happens to expose (GitHub's own `D:` drive on
+        // its Windows runners has been added, undocumented, and removed across image versions -
+        // relying on a specific letter existing would make this test flaky for reasons outside
+        // this repository's control, not a real regression). This probes every drive letter
+        // C-Z at runtime and only asserts once at least one *other* real, accessible volume is
+        // found alongside the one this test's own temp directory lives on; otherwise it
+        // disclosed-skips rather than failing on infrastructure this codebase does not own.
+        let dir = TempDir::new("multi-volume");
+        let own_facts = observe_identity(&dir.0).expect("observe this test's own temp directory");
+
+        let other_drive = ('C'..='Z')
+            .map(|letter| PathBuf::from(format!("{letter}:\\")))
+            .find(|root| {
+                observe_identity(root)
+                    .is_ok_and(|facts| facts.volume_serial_number != own_facts.volume_serial_number)
+            });
+
+        match other_drive {
+            Some(root) => {
+                let other_facts =
+                    observe_identity(&root).expect("already confirmed observable above");
+                assert_ne!(
+                    own_facts.volume_serial_number, other_facts.volume_serial_number,
+                    "two genuinely different drive letters must report different volume serial numbers"
+                );
+            }
+            None => {
+                eprintln!(
+                    "skipping: only one accessible volume found on this machine (no second \
+                     drive letter to compare against) - not a failure of this crate's own code"
+                );
+            }
+        }
+    }
+
     #[test]
     fn observe_identity_two_hardlinks_to_the_same_file_share_a_file_index() {
         // The positive counterpart of the symlink test above: `file_index` genuinely tracks

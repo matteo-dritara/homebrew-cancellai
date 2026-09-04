@@ -1950,7 +1950,7 @@ Make Windows native and WSL2 first-class platform targets, once a real Windows/W
 
 **Status:** `in_progress` | **Change Risk:** `CR4` | **Dependencies:** E07-S01 | **Safety obligations:** SI-017, SI-018
 
-**Outcome.** Implement Windows path, volume/file identity, reparse point, process, allocated-size, and atomic move semantics.
+**Outcome.** Implement Windows path/volume/file identity and reparse-point classification (ADR-0020), scoped exactly to this story's own acceptance criteria. E20-S01 round-1 independent verifier review (project/evidence/E20-VERIFIER-REVIEW.md) found the original, broader outcome text implied Windows process observation, allocated-size, atomic-move, and full mutation/quarantine capability too, and required this scope be narrowed through the story contract rather than left as unreviewed evidence-packet prose - owner-authorized narrowing recorded here; the deferred capabilities are E20-S05.
 
 **Acceptance criteria**
 
@@ -2022,6 +2022,31 @@ Make Windows native and WSL2 first-class platform targets, once a real Windows/W
 **Documentation impact**
 
 - `docs/architecture/PLATFORM_MODEL.md`
+
+### E20-S05 - Windows process observation, allocated-size, atomic move, and mutation authority
+
+**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E20-S01 | **Safety obligations:** SI-013, SI-017, SI-018, SI-019
+
+**Outcome.** Implement the Windows capabilities named by E20-S01's original outcome text but ruled out of that story's scope by round-1 independent verifier review: native process/activity observation, allocated-size reporting (GetCompressedFileSizeW), atomic rename/move semantics, and - the largest piece - a verified no-follow, handle-relative root-establishment walk in cancellai-sealedfs (extending ADR-0020) so cancellai-safety::mutation_executor can grant real deletion authority on Windows, matching the scrutiny SI-019/E21-S07 already applies on Unix.
+
+**Acceptance criteria**
+
+- Windows process/activity observation reports real running-process facts, not an unconditional Unsupported/incomplete result.
+- Allocated-size observation is implemented and distinct from logical size on Windows, matching AllocationObserver's existing Absent/Unreadable/Unsupported contract.
+- A verified no-follow, handle-relative directory-establishment capability exists for Windows (extending or replacing cancellai-sealedfs's Unsupported fallback there), closing the same TOCTOU class ADR-0017/E07-S09/E21-S07 close on Unix.
+- Real Windows file deletion is implemented, identity-confirmed, and passes adversarial fixtures (symlink swap, junction, TOCTOU) on real Windows CI before docs/PLATFORMS.md may record Windows mutation as verified.
+
+**Verification**
+
+- Windows CI (windows-latest) green across repeated runs, including adversarial TOCTOU/symlink/junction fixtures for the new mutation path.
+- Generated platform matrix check (scripts/check_platforms.py) - Windows mutation.state may only become verified once this story's own evidence tests exist and pass on a verified_commit.
+
+**Documentation impact**
+
+- `docs/architecture/PLATFORM_MODEL.md`
+- `docs/CLI_RUST.md`
+- `docs/PLATFORMS.md`
+- `project/platforms.json`
 
 ## E21 - Target Engine Trust Remediation
 
