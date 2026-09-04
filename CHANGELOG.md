@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Windows process observation, and atomic move semantics remain unimplemented on Windows and
   are unaffected by this change - `clean`'s default-root establishment on Windows still refuses
   via that separate, still-open residual.
+- `cancellai-platform` now detects a WSL2 runtime environment explicitly (rather than treating
+  it as generic Linux) and classifies a path's filesystem context as native Linux, a
+  Windows-drive mount (`drvfs`, e.g. `/mnt/c`), or an unrecognized `Other` mount (E20-S02).
+  Library-level only for now - no CLI surface yet, and no change to mutation/quarantine
+  authority (the existing Unix device-identity boundary check already refuses crossing into a
+  `/mnt/c`-style mount, since it is genuinely a different device).
 
 ## [1.9.0] - 2026-09-04
 

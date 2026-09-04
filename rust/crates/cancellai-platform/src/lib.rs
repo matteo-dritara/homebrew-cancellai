@@ -39,6 +39,14 @@
 //! checks entirely). Withholding the convenience re-export is defense in depth on top of
 //! that check, not a substitute for it - Rust visibility cannot express "public to exactly
 //! one sibling crate," so the check is the real boundary.
+//!
+//! E20-S02 adds an eighth and ninth seam, [`wsl::EnvironmentObserver`] and
+//! [`wsl::FilesystemContextObserver`]: WSL2 is a distinct environment, not an alias for
+//! generic Linux (`docs/architecture/PLATFORM_MODEL.md`'s "WSL" section, C-12) - explicit
+//! detection, and explicit classification of a path reached through a mounted Windows drive
+//! (`/mnt/c` via `drvfs`) versus the guest's own native filesystem, are facts every other
+//! seam in this crate already observes correctly (a WSL2 guest is a real Linux kernel) but
+//! does not itself surface as WSL-specific.
 
 pub mod allocation;
 pub mod clock;
@@ -48,6 +56,7 @@ pub mod mutation;
 pub mod path_resolver;
 pub mod process;
 pub mod snapshot;
+pub mod wsl;
 
 pub use allocation::{
     AllocationObservation, AllocationObserver, SyntheticAllocationObserver,
@@ -64,3 +73,8 @@ pub use process::{
     ProcessObservation, ProcessObserver, SyntheticProcessObserver, SystemProcessObserver,
 };
 pub use snapshot::{Snapshot, build_snapshot};
+pub use wsl::{
+    EnvironmentObserver, FilesystemContext, FilesystemContextObservation,
+    FilesystemContextObserver, RuntimeEnvironment, SyntheticEnvironmentObserver,
+    SyntheticFilesystemContextObserver, SystemEnvironmentObserver, SystemFilesystemContextObserver,
+};

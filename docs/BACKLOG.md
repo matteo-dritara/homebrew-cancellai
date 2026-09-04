@@ -1967,7 +1967,7 @@ Make Windows native and WSL2 first-class platform targets, once a real Windows/W
 
 ### E20-S02 - WSL environment model
 
-**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E20-S01 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E20-S01 | **Safety obligations:** none
 
 **Outcome.** Treat WSL as Windows host plus Linux guest/filesystem context rather than generic Linux.
 

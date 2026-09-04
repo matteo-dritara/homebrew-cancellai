@@ -285,6 +285,49 @@ filesystem_context: linux | windows-mounted | other
 
 Operations across `/mnt/c` or similar mounts may have different identity, performance, permission, and atomicity semantics. These differences are surfaced rather than abstracted away.
 
+E20-S02 implements the first two lines of that representation as explicit, typed facts in
+`rust/crates/cancellai-platform/src/wsl.rs`:
+
+- **`environment` (`RuntimeEnvironment::{Wsl2, Native}`)**: a WSL2 guest is a real Linux
+  kernel, so every existing Unix seam in this crate (`IdentityObserver`, `AllocationObserver`,
+  ...) already works correctly there without special-casing - what needed its own capability
+  was knowing the process is running inside one at all. `SystemEnvironmentObserver` reads
+  `/proc/sys/kernel/osrelease` on `cfg(target_os = "linux")` and checks for the "microsoft"
+  marker both WSL1's (`...-Microsoft`) and WSL2's (`...-microsoft-standard-WSL2`) kernel
+  release strings carry - the standard, widely-used heuristic, and the only positive signal
+  available without an elevated check. Absence of the marker, including any read error, is
+  `Native`, never a guessed `Wsl2` (C-03). `host_os`/`guest_os` are not carried as separate
+  fields: both are implied constants of the `Wsl2` variant (`windows`/`linux` respectively)
+  rather than state that could drift from it independently.
+- **`filesystem_context` (`FilesystemContext::{Linux, WindowsMounted, Other}`)**:
+  `SystemFilesystemContextObserver` parses `/proc/mounts` and finds the mount whose mountpoint
+  is the longest matching prefix of the given (absolute) path - the same "most specific mount
+  wins" resolution the kernel itself uses. A `drvfs` filesystem type (the WSL2 default for a
+  mounted Windows drive, conventionally `/mnt/c`) classifies as `WindowsMounted`; a recognized
+  native-Linux type (`ext4`, `overlay`, `tmpfs`, ...) classifies as `Linux`; anything else
+  (e.g. a `9p`/network mount) is disclosed as `Other { fstype }` rather than silently folded
+  into `Linux`. Classification is by real observed filesystem type, not a `/mnt/*` path-prefix
+  guess - a mount could in principle sit anywhere. A relative path, or any platform without
+  `/proc/mounts` (macOS, native Windows), is `Unsupported`, not a default.
+
+Both are library-level capabilities (`cancellai-platform` seams with `Synthetic*` test doubles,
+following this crate's existing pattern) without a CLI-facing surface yet - wiring
+`RuntimeEnvironment`/`FilesystemContext` into `status`/`inspect` output, and using
+`filesystem_context` to attach a performance/atomicity caveat to a scanned path, are left for a
+future story; this story's documentation impact and acceptance criteria are scoped to explicit
+detection/classification, not product surface. No safety-boundary decision (SI-018's device-
+based volume-boundary check, `ApprovedRoot::bind`) depends on either capability: a `/mnt/c`
+Windows-drive mount genuinely is a different device number from the WSL2 guest's own root
+filesystem, so the existing Unix device-identity check (E20-S01/ADR-0020) already refuses
+recursive mutation crossing that boundary without needing WSL-specific code - `filesystem_context`
+is a descriptive/explanatory fact layered on top, not a second gate.
+
+This executor has no real WSL2 guest to run against in this environment; both detectors split
+their real observation (a single file read, `cfg(target_os = "linux")`-gated) from a pure
+classification function exhaustively unit-tested with fabricated WSL2-shaped
+`/proc/sys/kernel/osrelease`/`/proc/mounts` content, runnable and verified on any host - this is
+what this story's "simulated path fixtures" verification contract means in practice.
+
 ## Handle-relative mutation (E21-S07)
 
 The mutation seam's confirmed file deletion issues its unlink through

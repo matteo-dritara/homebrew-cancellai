@@ -36,7 +36,7 @@
     {
       "id": "E20-S02",
       "title": "WSL environment model",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Treat WSL as Windows host plus Linux guest/filesystem context rather than generic Linux.",
       "change_risk": "CR3",
       "dependencies": [
