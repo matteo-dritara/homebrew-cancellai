@@ -516,9 +516,17 @@ fn rename_child(dir: &File, old_name: &str, new_name: &str) -> Result<(), SealEr
         DELETE | windows_sys::Win32::Storage::FileSystem::FILE_GENERIC_WRITE,
     )?;
 
-    let mut new_wide: Vec<u16> = OsStr::new(new_name).encode_wide().collect();
-    new_wide.push(0);
-    let name_byte_len = ((new_wide.len() - 1) * 2) as u32;
+    // Deliberately *not* NUL-terminated: `FILE_RENAME_INFO::FileName` is documented as exactly
+    // `FileNameLength` bytes of raw UTF-16, no trailing NUL, and `SetFileInformationByHandle`'s
+    // own `BufferLength` parameter must equal `header_len + FileNameLength` precisely - a
+    // buffer even one `u16` longer than that (this crate's own first version pushed a NUL
+    // terminator and sized `buffer` to include it, while still reporting the shorter,
+    // NUL-excluding length in `FileNameLength`) is a length mismatch NT rejects outright with
+    // `STATUS_INVALID_PARAMETER`. Found on real Windows CI: two earlier, unrelated
+    // `nt_open_child` access-flag fixes did not change this call at all, and the identical
+    // failure persisted through both - proof the real defect was always here, not there.
+    let new_wide: Vec<u16> = OsStr::new(new_name).encode_wide().collect();
+    let name_byte_len = (new_wide.len() * 2) as u32;
 
     // `FILE_RENAME_INFO` is a variable-length struct (a fixed header followed by the
     // destination name's own UTF-16 bytes) - built as raw bytes rather than a fixed-size Rust

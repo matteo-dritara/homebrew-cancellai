@@ -378,6 +378,44 @@ directory opens only, matching what `read_child_to_string`'s independently-writt
 code had already (correctly, if not by explicit reasoning at the time) omitted.
 
 Both flag corrections stand together in the fix that follows this section: `FILE_OPEN_REPARSE_
-POINT` dropped for `FILE_CREATE` (still correct, still necessary - the two are independent
-`STATUS_INVALID_PARAMETER` triggers, and only removing both together let real CI reach a
-passing state), `FILE_OPEN_FOR_BACKUP_INTENT` scoped to directories only.
+POINT` dropped for `FILE_CREATE`, `FILE_OPEN_FOR_BACKUP_INTENT` scoped to directories only. Both
+are correct, least-privilege improvements to `nt_open_child` in their own right - but, as the
+next section records, neither was actually the cause of the failure still being chased at this
+point. That correction was only confirmed wrong by pushing it and watching it fail identically
+on real CI again.
+
+### The actual root cause: a `FILE_RENAME_INFO` buffer-length mismatch, not `nt_open_child` at all (2026-09-04)
+
+The `FILE_OPEN_FOR_BACKUP_INTENT` fix was also re-run on real Windows CI (run 33901257787) and
+the identical `STATUS_INVALID_PARAMETER` persisted on the identical test, byte-for-byte the
+same failure text as every prior round. That repetition was the actual signal: two
+independent, plausible, individually-correct `nt_open_child` fixes in a row changed nothing
+observable, which means the defect was never in `nt_open_child` - it was somewhere else in the
+same call chain that neither fix touched.
+
+Re-reading `rename_child` (called by `write_new_child_atomically` immediately after the create
+succeeds, and never touched by either of the two `nt_open_child` fixes) found the real bug:
+`FILE_RENAME_INFO`'s `FileName` field is documented as exactly `FileNameLength` bytes of raw
+UTF-16, with no trailing NUL terminator, and `SetFileInformationByHandle`'s own `BufferLength`
+parameter must equal `header_len + FileNameLength` precisely. This code pushed a NUL
+terminator onto `new_wide` before measuring it, sized the byte `buffer` to include that NUL
+(`new_wide.len() * 2`, NUL included), but set `FileNameLength` to the *shorter*, NUL-excluding
+length - so the buffer passed to `SetFileInformationByHandle` was always exactly one `u16` (2
+bytes) longer than what `FileNameLength` declared. That length mismatch is precisely the shape
+of defect `STATUS_INVALID_PARAMETER` exists to report, and it explains every observation: it is
+independent of, and untouched by, both `nt_open_child` access-flag fixes (which is why neither
+changed the outcome), it only manifests on the write path (the only caller of `rename_child`),
+and it would have failed identically regardless of which `nt_open_child` flags were set,
+because `SetFileInformationByHandle` never reaches an access check for a length-mismatched
+call at all.
+
+Fixed by not NUL-terminating `new_wide` in the first place - `buffer`'s length now equals
+`header_len + FileNameLength` exactly, with no discrepancy.
+
+**Lesson recorded plainly**: the two `nt_open_child` fixes were reasonable given the evidence
+available at each point (a real, correct bug existed in that function, twice), but their
+persistence past both should have prompted looking *outside* the function being repeatedly
+patched sooner. Real Windows CI, re-run after every single change rather than assumed correct,
+is what actually surfaced this - a local reasoning process fixated on `nt_open_child` could
+have kept "fixing" that same function indefinitely without ever finding the real defect one
+call further down the same code path.
