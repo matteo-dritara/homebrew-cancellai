@@ -62,12 +62,26 @@ fn observe_system_allocation(path: &Path) -> AllocationObservation {
     }
 }
 
-#[cfg(not(unix))]
+/// `GetFileInformationByHandleEx(FileStandardInfo)` (E20-S05, extending ADR-0020) - handle-based
+/// so it reuses `cancellai-sealedfs`'s existing no-follow open, matching identity observation's
+/// own no-follow contract rather than the path-based (reparse-point-following)
+/// `GetCompressedFileSizeW`.
+#[cfg(windows)]
+fn observe_system_allocation(path: &Path) -> AllocationObservation {
+    match cancellai_sealedfs::observe_allocated_size(path) {
+        Ok(bytes) => AllocationObservation::Allocated(bytes),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => AllocationObservation::Absent,
+        Err(e) => AllocationObservation::Unreadable {
+            reason: e.to_string(),
+        },
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
 fn observe_system_allocation(_path: &Path) -> AllocationObservation {
     AllocationObservation::Unsupported {
-        reason: "allocated-size observation is not yet implemented on this platform \
-                 (E04-S01 residual risk); logical size remains available and is never \
-                 substituted here"
+        reason: "allocated-size observation is not implemented on this platform; logical \
+                 size remains available and is never substituted here"
             .to_string(),
     }
 }
@@ -176,13 +190,19 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
-    #[cfg(not(unix))]
+    // E20-S05 implemented real Windows allocated-size observation. Learning directly from
+    // E20-S01's own round-1 repair (a stale `#[cfg(not(unix))]` "expected Unsupported" test
+    // broke real Windows CI the moment identity stopped being genuinely unsupported there),
+    // this test is written as a real Windows assertion from the start rather than left as a
+    // now-false `Unsupported` expectation. The genuinely-exotic non-Unix-non-Windows fallback
+    // has no real target this workspace runs CI on, so it stays untested here.
+    #[cfg(windows)]
     #[test]
-    fn system_observer_reports_unsupported_off_unix() {
+    fn system_observer_reports_a_real_allocation_on_windows() {
         let observer = SystemAllocationObserver;
         match observer.observe(Path::new(".")) {
-            AllocationObservation::Unsupported { .. } => {}
-            other => panic!("expected Unsupported off Unix, got {other:?}"),
+            AllocationObservation::Allocated(_) => {}
+            other => panic!("expected a real Allocated size on Windows, got {other:?}"),
         }
     }
 }

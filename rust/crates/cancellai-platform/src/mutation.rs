@@ -165,12 +165,11 @@ fn confirmed_delete_file_inner(
     use std::os::unix::fs::MetadataExt;
 
     // This Unix-only deletion path has no verified interpretation of a `Windows` identity
-    // token (E20-S01 implemented Windows *observation*, not a Windows confirmed-delete
-    // implementation - `cfg(not(unix))`'s own `confirmed_delete_file` below already refuses
-    // unconditionally there). A caller passing one anyway - only possible via a synthetically
-    // constructed `IdentityToken` in a test, never a real `SystemIdentityObserver` result on a
-    // Unix host - gets a typed refusal, not a panic, matching this codebase's fail-closed
-    // posture for an unexpected identity shape (SI-017).
+    // token (Windows has its own `confirmed_delete_file_inner` below, E20-S05). A caller
+    // passing one anyway - only possible via a synthetically constructed `IdentityToken` in a
+    // test, never a real `SystemIdentityObserver` result on a Unix host - gets a typed
+    // refusal, not a panic, matching this codebase's fail-closed posture for an unexpected
+    // identity shape (SI-017).
     let IdentityToken::Unix {
         device: expected_device,
         inode: expected_inode,
@@ -278,7 +277,118 @@ fn confirmed_delete_file_inner(
     Ok(())
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+fn confirmed_delete_file(target: &Path, expected: &IdentityToken) -> Result<(), MutationError> {
+    confirmed_delete_file_inner(target, expected, || {})
+}
+
+/// The Windows counterpart of the Unix `confirmed_delete_file_inner` above (E20-S05,
+/// ADR-0020's own residual: "the deletion path is narrow rather than open" - this closes that
+/// gap for Windows the same way E21-S07 closed it for Unix). Same three-check shape: an
+/// open-time identity confirmation against a retained handle, a fresh path-based re-check
+/// immediately before the actual delete call, and a post-delete corroboration against the
+/// *same* retained handle rather than a fresh reopen. `cancellai_sealedfs::SealedRoot`'s
+/// `NtCreateFile`-based, handle-relative child open (see that crate's `windows_sealed` module)
+/// plays the same role `openat`/`O_NOFOLLOW` plays on Unix: the actual delete call cannot be
+/// redirected by a rename/reparse-point swap of any path component, because no path is
+/// resolved for it at all.
+#[cfg(windows)]
+fn confirmed_delete_file_inner(
+    target: &Path,
+    expected: &IdentityToken,
+    between_open_and_unlink: impl FnOnce(),
+) -> Result<(), MutationError> {
+    // This Windows-only deletion path has no verified interpretation of a `Unix` identity
+    // token - see the identical reasoning in the Unix implementation above, mirrored here for
+    // the same fail-closed reason (SI-017).
+    let IdentityToken::Windows {
+        volume_serial_number: expected_volume,
+        file_index: expected_file_index,
+        modified_ticks: expected_modified_ticks,
+        ..
+    } = expected
+    else {
+        return Err(MutationError(
+            "confirmed file deletion on this platform requires a Windows identity token"
+                .to_string(),
+        ));
+    };
+
+    let (file, before) = cancellai_sealedfs::open_and_observe_identity(target)
+        .map_err(|e| MutationError(format!("could not open target for confirmed deletion: {e}")))?;
+    if before.volume_serial_number != *expected_volume
+        || before.file_index != *expected_file_index
+        || before.last_write_time_ticks != *expected_modified_ticks
+    {
+        return Err(MutationError(
+            "target identity changed between revalidation and deletion (open-time check)"
+                .to_string(),
+        ));
+    }
+
+    between_open_and_unlink();
+
+    // A second, independent, fresh path lookup immediately before the actual delete call -
+    // the same reasoning as the Unix path's `just_before` re-check: this is what catches a
+    // swap that happened after the open-time check above, before `remove_file`/its Windows
+    // equivalent has any chance to act on the wrong object.
+    let just_before = cancellai_sealedfs::observe_identity(target).map_err(|e| {
+        MutationError(format!(
+            "could not re-observe target immediately before deletion: {e}"
+        ))
+    })?;
+    if just_before.volume_serial_number != *expected_volume
+        || just_before.file_index != *expected_file_index
+        || just_before.last_write_time_ticks != *expected_modified_ticks
+    {
+        return Err(MutationError(
+            "target identity changed immediately before deletion (path re-check failed); \
+             refusing to delete a different object"
+                .to_string(),
+        ));
+    }
+
+    let parent = target.parent().ok_or_else(|| {
+        MutationError("target has no parent directory; refusing to delete".to_string())
+    })?;
+    let file_name = target.file_name().and_then(|n| n.to_str()).ok_or_else(|| {
+        MutationError(
+            "target's file name is not representable as UTF-8; refusing to delete a name \
+                 this seam cannot bind handle-relatively"
+                .to_string(),
+        )
+    })?;
+    let sealed = cancellai_sealedfs::SealedRoot::bind_existing(parent).map_err(|e| {
+        MutationError(format!(
+            "could not bind the target's parent directory without following a link: {e}"
+        ))
+    })?;
+    sealed
+        .unlink_child_matching_windows_identity(file_name, *expected_volume, *expected_file_index)
+        .map_err(|e| MutationError(format!("delete failed: {e}")))?;
+
+    // Final corroboration via the handle opened at the very start - queried *before* it is
+    // dropped, since a closed handle cannot itself be queried. `unlink_child_matching_windows_
+    // identity` only marks the object for deletion (it does not itself hold the last handle);
+    // actual removal happens once every handle to it closes, which this function's own `file`
+    // still is at this point.
+    let pending = cancellai_sealedfs::SealedRoot::is_delete_pending(&file).map_err(|e| {
+        MutationError(format!(
+            "could not confirm deletion via the held handle: {e}"
+        ))
+    })?;
+    drop(file);
+    if !pending {
+        return Err(MutationError(
+            "deletion did not mark the confirmed handle for removal (post-deletion check \
+             failed); the intended target may still exist"
+                .to_string(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(any(unix, windows)))]
 fn confirmed_delete_file(_target: &Path, _expected: &IdentityToken) -> Result<(), MutationError> {
     Err(MutationError(
         "confirmed file deletion is not implemented on this platform".to_string(),
@@ -582,6 +692,153 @@ mod tests {
         let file = dir.path("target.txt");
         std::fs::write(&file, b"original").expect("create original");
         let expected = identity_of(&file);
+
+        let result = confirmed_delete_file_inner(&file, &expected, || {
+            std::fs::remove_file(&file).expect("simulate concurrent removal");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            std::fs::write(&file, b"replacement").expect("simulate concurrent replacement");
+        });
+
+        assert!(result.is_err(), "a swapped entry must never be deleted");
+        assert_eq!(
+            std::fs::read_to_string(&file).expect("replacement must be intact"),
+            "replacement"
+        );
+    }
+
+    #[cfg(windows)]
+    struct WindowsTempDir(std::path::PathBuf);
+
+    #[cfg(windows)]
+    impl WindowsTempDir {
+        fn new(label: &str) -> Self {
+            static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let unique = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let dir = std::env::temp_dir().join(format!(
+                "cancellai-mutation-windows-test-{label}-{}-{unique}",
+                std::process::id()
+            ));
+            std::fs::create_dir_all(&dir).expect("create temp dir");
+            Self(dir)
+        }
+
+        fn path(&self, name: &str) -> std::path::PathBuf {
+            self.0.join(name)
+        }
+    }
+
+    #[cfg(windows)]
+    impl Drop for WindowsTempDir {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.0).ok();
+        }
+    }
+
+    #[cfg(windows)]
+    fn windows_identity_of(path: &Path) -> IdentityToken {
+        let facts =
+            cancellai_sealedfs::observe_identity(path).expect("observe path for test identity");
+        IdentityToken::Windows {
+            volume_serial_number: facts.volume_serial_number,
+            file_index: facts.file_index,
+            kind: crate::identity::FileKind::File,
+            modified: crate::clock::Timestamp(0),
+            modified_ticks: facts.last_write_time_ticks,
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_system_executor_deletes_a_real_file_confirmed_by_identity() {
+        let dir = WindowsTempDir::new("delete-confirmed");
+        let file = dir.path("target.txt");
+        std::fs::write(&file, b"hello").expect("create file");
+        let expected = windows_identity_of(&file);
+
+        let executor = SystemMutationExecutor;
+        executor
+            .mutate(&file, &expected, MutationOperation::DeleteFile)
+            .expect("delete should succeed");
+        assert!(!file.exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_system_executor_reports_the_os_error_for_a_missing_target() {
+        let dir = WindowsTempDir::new("missing-target");
+        let missing = dir.path("does-not-exist");
+        let expected = IdentityToken::Windows {
+            volume_serial_number: 0,
+            file_index: 0,
+            kind: crate::identity::FileKind::File,
+            modified: crate::clock::Timestamp(0),
+            modified_ticks: 0,
+        };
+        let executor = SystemMutationExecutor;
+        let err = executor
+            .mutate(&missing, &expected, MutationOperation::DeleteFile)
+            .expect_err("deleting a missing file must fail, not silently succeed");
+        assert!(!err.0.is_empty());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_confirmed_delete_rejects_a_target_already_swapped_before_open() {
+        let dir = WindowsTempDir::new("swapped-before-open");
+        let file = dir.path("target.txt");
+        std::fs::write(&file, b"original").expect("create original");
+        let expected = windows_identity_of(&file); // captured identity of the ORIGINAL
+
+        std::fs::remove_file(&file).expect("remove original");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        std::fs::write(&file, b"replacement").expect("create replacement");
+
+        let executor = SystemMutationExecutor;
+        let err = executor
+            .mutate(&file, &expected, MutationOperation::DeleteFile)
+            .expect_err("a target swapped before open must be rejected, not deleted");
+        assert!(err.0.contains("open-time check"), "reason was: {}", err.0);
+        assert!(
+            file.exists(),
+            "the replacement must survive - it was never the intended target"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_confirmed_delete_detects_a_target_swapped_between_open_and_unlink() {
+        let dir = WindowsTempDir::new("swapped-mid-flight");
+        let file = dir.path("target.txt");
+        std::fs::write(&file, b"original").expect("create original");
+        let expected = windows_identity_of(&file);
+
+        let result = confirmed_delete_file_inner(&file, &expected, || {
+            std::fs::remove_file(&file).expect("simulate concurrent removal of the original");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            std::fs::write(&file, b"replacement").expect("simulate concurrent replacement");
+        });
+
+        assert!(
+            result.is_err(),
+            "a mid-flight swap must never be reported as a successful, correct deletion"
+        );
+        assert!(
+            file.exists(),
+            "the replacement must survive - only the confirmed original may ever be deleted"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&file).expect("replacement content must be intact"),
+            "replacement"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_the_unlink_refuses_a_name_that_no_longer_holds_the_confirmed_identity() {
+        let dir = WindowsTempDir::new("entry-swapped");
+        let file = dir.path("target.txt");
+        std::fs::write(&file, b"original").expect("create original");
+        let expected = windows_identity_of(&file);
 
         let result = confirmed_delete_file_inner(&file, &expected, || {
             std::fs::remove_file(&file).expect("simulate concurrent removal");

@@ -18,11 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `cancellai-safety` filesystem/volume-boundary check (SI-018) now enforces a genuine Windows
   volume boundary instead of refusing unconditionally. As a direct consequence,
   `cancellai-inventory`'s scanner can now descend below a scope root on Windows (previously an
-  accepted limitation, E20-S04). `AllocationObserver`, `cancellai-sealedfs::SealedRoot`'s
-  no-follow root-establishment walk (used by `configure` and `clean`'s default-root check),
-  Windows process observation, and atomic move semantics remain unimplemented on Windows and
-  are unaffected by this change - `clean`'s default-root establishment on Windows still refuses
-  via that separate, still-open residual.
+  accepted limitation, E20-S04). Allocated-size reporting, `cancellai-sealedfs::SealedRoot`'s
+  no-follow root-establishment walk, Windows process observation, and real Windows file
+  deletion were deliberately out of this story's scope and remained unimplemented at the time
+  (see the E20-S05 entry below, which closes them).
 - `cancellai-platform` now detects a WSL2 runtime environment explicitly (rather than treating
   it as generic Linux) and classifies a path's filesystem context as native Linux, a
   Windows-drive mount (`drvfs`, e.g. `/mnt/c`), or an unrecognized `Other` mount (E20-S02).
@@ -36,6 +35,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   without CI and verified destructive-mutation evidence (E20-S03). Per that real bar, macOS and
   Linux are tier 1 today; Windows (identity verified, mutation unimplemented) and WSL2 (no
   dedicated CI runner) are tier 2.
+- `cancellai-cli`'s target-engine Rust core now implements the remaining Windows capabilities
+  E20-S01 scoped out (E20-S05): real running-process observation
+  (`CreateToolhelp32Snapshot`, replacing an unconditional "incomplete" result), real
+  allocated-size reporting (`GetFileInformationByHandleEx(FileStandardInfo)`, distinct from
+  logical size), a verified no-follow, handle-relative root-establishment walk in
+  `cancellai-sealedfs` for Windows (`NtCreateFile` via `OBJECT_ATTRIBUTES.RootDirectory`, the
+  Windows analogue of `openat`, used by `configure` and by `clean`'s default-root
+  re-verification), and real, identity-confirmed Windows file deletion
+  (`FILE_DISPOSITION_INFO`/`SetFileInformationByHandle`, following the same open/re-check/
+  handle-relative-delete/post-delete-corroboration shape ADR-0017/E21-S07 established on Unix).
+  `docs/PLATFORMS.md`'s Windows mutation state moves from `unsupported` only once this is
+  confirmed on real Windows CI, per `scripts/check_platforms.py`'s evidence requirement.
 
 ## [1.9.0] - 2026-09-04
 

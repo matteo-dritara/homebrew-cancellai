@@ -11,7 +11,8 @@ Epics: **23** | Stories: **109**
 - `blocked`: 1
 - `cancelled`: 1
 - `done`: 57
-- `planned`: 50
+- `planned`: 49
+- `ready_for_review`: 1
 
 ## Change risk distribution
 
@@ -27,4 +28,4 @@ Epics: **23** | Stories: **109**
 
 ## Awaiting independent review
 
-- none
+- **E20-S05** - Windows process observation, allocated-size, atomic move, and mutation authority (CR4)

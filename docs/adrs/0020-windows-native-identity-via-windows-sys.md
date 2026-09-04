@@ -259,3 +259,34 @@ a follow-up commit (`8622405118127c723f559d5ccdffdd0b3d7e0568`), whose own real 
 (https://github.com/matteo-dritara/homebrew-cancellai/actions/runs/33886584899) passed every
 job on all three platforms, both MSRV and stable. `project/platforms.json` cites this second
 commit as `windows.verified_commit`, with `identity.state` now genuinely `"verified"`.
+
+## E20-S05 extension: the Windows no-follow walk, allocation, process, and mutation
+
+Per this ADR's own "Supersession" section above, E20-S05 extended `cancellai-sealedfs`'s
+`windows-sys` surface (still the same pinned `0.61` dependency, no new crate) rather than
+adding a second one:
+
+- `windows_sealed.rs` implements `SealedRoot`'s handle-relative, no-follow root-establishment
+  walk for Windows via the NT native API (`NtCreateFile`, `Wdk::Storage::FileSystem`, reached
+  through `windows-sys`'s `Wdk` feature module), using `OBJECT_ATTRIBUTES.RootDirectory` as the
+  handle-relative anchor - the Windows analogue of `openat`'s directory-fd parameter, which
+  ordinary Win32 (`CreateFileW`) has no equivalent for. Deletion uses
+  `FILE_DISPOSITION_INFO`/`SetFileInformationByHandle(FileDispositionInfo)`; atomic rename
+  (needed internally by `write_new_child_atomically`) uses `FILE_RENAME_INFO`/
+  `SetFileInformationByHandle(FileRenameInfo)`.
+- `windows_allocation.rs` implements allocated-size reporting via
+  `GetFileInformationByHandleEx(FileStandardInfo)`.
+- `windows_process.rs` implements real running-process enumeration via
+  `CreateToolhelp32Snapshot`/`Process32FirstW`/`Process32NextW`.
+- `cancellai-platform::mutation::confirmed_delete_file_inner`'s `cfg(windows)` arm mirrors the
+  Unix path's three-check TOCTOU shape (open-time identity confirmation, a fresh re-check
+  immediately before the delete call, post-delete corroboration via the same retained handle)
+  using `SealedRoot::unlink_child_matching_windows_identity` and
+  `SealedRoot::is_delete_pending` (`FILE_STANDARD_INFO.DeletePending`, the Windows analogue of
+  Unix's post-unlink link-count check).
+
+A real NTFS junction fixture (`mklink /J`, the same test-fixture technique this ADR's round-1
+repair already established) exercises the walk's reparse-point refusal;
+`project/platforms.json`'s `windows.capabilities.mutation.state`/`verified_commit` remain the
+enforced source of truth for whether this has been confirmed on real Windows CI, updated once
+that run is green.

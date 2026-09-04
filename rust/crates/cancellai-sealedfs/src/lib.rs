@@ -165,23 +165,47 @@ pub use unix_impl::SealedRoot;
 #[cfg(unix)]
 pub use unix_impl::VerifiedPath;
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+pub use windows_sealed::SealedRoot;
+
+#[cfg(windows)]
+pub use windows_sealed::VerifiedPath;
+
+#[cfg(not(any(unix, windows)))]
 pub use fallback_impl::SealedRoot;
 
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 pub use fallback_impl::VerifiedPath;
 
 #[cfg(unix)]
 pub use unix_impl::verify_no_intermediate_links;
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+pub use windows_sealed::verify_no_intermediate_links;
+
+#[cfg(not(any(unix, windows)))]
 pub use fallback_impl::verify_no_intermediate_links;
 
 #[cfg(windows)]
 mod windows_identity;
 
 #[cfg(windows)]
-pub use windows_identity::{WindowsFileFacts, observe_identity};
+pub use windows_identity::{WindowsFileFacts, observe_identity, open_and_observe_identity};
+
+#[cfg(windows)]
+mod windows_allocation;
+
+#[cfg(windows)]
+pub use windows_allocation::observe_allocated_size;
+
+#[cfg(windows)]
+mod windows_process;
+
+#[cfg(windows)]
+pub use windows_process::list_running_process_names;
+
+#[cfg(windows)]
+mod windows_sealed;
 
 #[cfg(unix)]
 mod unix_impl {
@@ -910,7 +934,7 @@ mod unix_impl {
     }
 }
 
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 mod fallback_impl {
     use super::SealError;
     use std::path::Path;

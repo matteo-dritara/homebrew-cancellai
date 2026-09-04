@@ -178,13 +178,16 @@ orderings).
   a safety gap).
 - `status --paths`/`--coverage`/`--top` and `clean --keep-claude-history`/`--verbose` have no
   Rust equivalent yet.
-- Windows process-liveness is not implemented (`cancellai-platform`'s `SystemProcessObserver`
-  reports an honest "incomplete" result on non-Unix platforms today, per
-  `docs/architecture/PLATFORM_MODEL.md`'s own escape hatch - never a false "not running").
-  Windows file/volume identity **is** implemented (E20-S01, ADR-0020,
-  `SystemIdentityObserver` calling `cancellai-sealedfs::observe_identity`, verified on real
-  Windows CI) - a genuinely unsupported non-Unix, non-Windows target still reports
-  `IdentityObservation::Unsupported`.
+- Windows process-liveness is implemented (E20-S05, `cancellai-platform`'s
+  `SystemProcessObserver` calling `cancellai-sealedfs::list_running_process_names`
+  (`CreateToolhelp32Snapshot`) rather than shelling out to `ps`); only a genuinely exotic
+  non-Unix, non-Windows target still reports an honest "incomplete" result. Windows file/volume
+  identity **is** implemented (E20-S01, ADR-0020, `SystemIdentityObserver` calling
+  `cancellai-sealedfs::observe_identity`, verified on real Windows CI) - a genuinely
+  unsupported non-Unix, non-Windows target still reports `IdentityObservation::Unsupported`.
+  Windows allocated-size reporting is implemented (E20-S05,
+  `cancellai-sealedfs::observe_allocated_size`,
+  `GetFileInformationByHandleEx(FileStandardInfo)`).
 - A default-named root (`$HOME/.claude`/`$HOME/.codex`, no override) that is itself a link is
   refused as non-default on every platform (E07-S07, `rust/crates/cancellai-cli/src/roots.rs`'s
   `is_symlink`) - proven with real fixtures for a Unix symlink and, since `std` exposes no
@@ -196,16 +199,13 @@ orderings).
   `FileType::is_symlink()` reports `true` for that reparse tag too (it is the same check this
   gate calls), so the same refusal is expected to apply, but this is a disclosed residual, not
   an empirically closed case.
-- `configure`'s underlying write capability (`cancellai-sealedfs::SealedRoot`, ADR-0017) has no
-  verified no-follow/handle-relative *root-establishment walk* implementation on non-Unix
-  platforms yet - `configure` refuses outright there (`SealError::Unsupported`), not only when
-  the root happens to be a link. E20-S01/ADR-0020 gave Windows a real *single-path* identity/
-  reparse observation (`cancellai-sealedfs::observe_identity`), but a per-component,
-  handle-relative walk from a trusted anchor is a materially different, larger capability
-  (Windows has no direct `openat`-equivalent in the documented Win32 surface) and remains a
-  E20-S05's scope. This is a real, disclosed capability reduction versus the previous
-  behavior of attempting the (unprotected) raw path write whenever `$HOME` happened to resolve
-  on such a platform, not an oversight.
+- `configure`'s underlying write capability (`cancellai-sealedfs::SealedRoot`, ADR-0017) now has
+  a verified no-follow/handle-relative *root-establishment walk* implementation on Windows too
+  (E20-S05, `rust/crates/cancellai-sealedfs/src/windows_sealed.rs`): each path component is
+  opened relative to the descriptor already held for its parent via the NT native API
+  (`NtCreateFile`'s `OBJECT_ATTRIBUTES.RootDirectory` - Windows has no ordinary Win32
+  `openat`-equivalent), refusing the moment any component is a reparse point. Only a genuinely
+  exotic non-Unix, non-Windows target still refuses outright (`SealError::Unsupported`).
 - On Unix, `SealedRoot::establish` (E07-S09) refuses a root reached through an intermediate
   symlink component (e.g. `$HOME` itself being a link), not only a symlinked leaf - closing the
   gap E07-S07 round-2 independent verifier review found in round-1's leaf-only `O_NOFOLLOW`
@@ -217,5 +217,6 @@ orderings).
   a component swapped in the interval between the no-follow walk and canonicalization (found
   during the owner-authorized combined verifier/executor closure review). Windows/reparse-point
   intermediate-*component* handling (the handle-relative walk itself, distinct from the
-  single-path identity observation E20-S01 implemented) remains E20-S05's scope for both
-  callers.
+  single-path identity observation E20-S01 implemented) is implemented for both callers too
+  (E20-S05) - `windows_sealed::verify_no_intermediate_links` mirrors the Unix version's
+  per-component, no-follow walk.

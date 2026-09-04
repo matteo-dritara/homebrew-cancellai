@@ -24,8 +24,24 @@ libc = "0.2"
 # file-index pair. Microsoft's own code-generated raw bindings, not hand-transcribed; no
 # default features, no transitive dependencies. Scoped to Windows only, mirroring `libc`'s
 # `cfg(unix)` scoping above.
+#
+# E20-S05 adds four more feature groups to the same dependency, extending rather than adding a
+# second Windows FFI crate: `Win32_System_Diagnostics_ToolHelp` (process enumeration) and
+# `Win32_System_IO`/`Wdk_Foundation`/`Wdk_Storage_FileSystem` (`NtCreateFile` and the structs it
+# takes - `OBJECT_ATTRIBUTES`, `IO_STATUS_BLOCK` - for the handle-relative, no-follow directory
+# walk `windows_sealed.rs` implements; `Win32_Security` is required transitively by
+# `OBJECT_ATTRIBUTES` itself, which embeds a `SECURITY_DESCRIPTOR`/`SECURITY_QUALITY_OF_SERVICE`
+# pointer pair even though this crate never populates either). `NtCreateFile` is `ntdll.dll`'s
+# native-NT-API entry point, not a Win32 wrapper - `windows-sys`'s `Wdk` module is Microsoft's
+# own generated binding for it, from the same metadata pipeline as the rest of this dependency,
+# not a separate trust decision.
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
+    "Win32_Security",
     "Win32_Storage_FileSystem",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_IO",
+    "Wdk_Foundation",
+    "Wdk_Storage_FileSystem",
 ] }

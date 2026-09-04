@@ -19,16 +19,28 @@
 //! directory at all). Only the single `GetFileInformationByHandle` call needs `unsafe`, against
 //! a handle whose lifecycle `std::fs::File`'s own `Drop` already manages safely.
 
-use std::fs::OpenOptions;
+use std::fs::{File, OpenOptions};
 use std::io;
 use std::os::windows::fs::OpenOptionsExt;
-use std::os::windows::io::AsRawHandle;
+use std::os::windows::io::{AsRawHandle, RawHandle};
 use std::path::Path;
 
 use windows_sys::Win32::Storage::FileSystem::{
     BY_HANDLE_FILE_INFORMATION, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT,
     FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, GetFileInformationByHandle,
 };
+
+/// Opens `path` without following a reparse point at the final path component - the shared
+/// primitive every observer in this module builds on (`custom_flags`/`OpenOptionsExt` is
+/// stable `std`, no `unsafe` needed for the open itself). `FILE_FLAG_BACKUP_SEMANTICS` is
+/// required by `CreateFileW` to open a directory at all; `FILE_FLAG_OPEN_REPARSE_POINT` is the
+/// Windows equivalent of `symlink_metadata`'s no-follow behavior.
+pub(crate) fn open_no_follow(path: &Path) -> io::Result<File> {
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)
+}
 
 /// Real, `GetFileInformationByHandle`-backed identity facts for one Windows filesystem
 /// object, observed without following a reparse point at the final path component.
@@ -48,21 +60,37 @@ pub struct WindowsFileFacts {
 /// matches `symlink_metadata`'s no-follow contract, which every other identity/allocation
 /// observer in this workspace relies on.
 pub fn observe_identity(path: &Path) -> io::Result<WindowsFileFacts> {
-    let file = OpenOptions::new()
-        .read(true)
-        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
-        .open(path)?;
+    let file = open_no_follow(path)?;
+    observe_identity_of_handle(file.as_raw_handle())
+}
 
+/// Like [`observe_identity`], but also returns the open handle itself (as a `File`, so its
+/// lifecycle stays managed) rather than closing it once the facts are read. `cancellai-platform`'s
+/// confirmed-delete path (E20-S05) needs this: `SealedRoot::is_delete_pending`'s post-delete
+/// corroboration must be checked against the exact handle opened before deletion, not a fresh
+/// path-based reopen after it (a path lookup performed *after* the delete call is itself an
+/// unprotected, redirectable step - the same class of gap this whole capability exists to
+/// close).
+pub fn open_and_observe_identity(path: &Path) -> io::Result<(File, WindowsFileFacts)> {
+    let file = open_no_follow(path)?;
+    let facts = observe_identity_of_handle(file.as_raw_handle())?;
+    Ok((file, facts))
+}
+
+/// The same facts as [`observe_identity`], but against a handle the caller already holds -
+/// shared with [`crate::windows_sealed`]'s `NtCreateFile`-based walk, which opens each
+/// component itself (via `RootDirectory`, not a path `open_no_follow` could take) and needs
+/// this same `GetFileInformationByHandle` query against the handle it already has, not a
+/// second, path-based reopen that would defeat the whole point of a handle-relative walk.
+pub(crate) fn observe_identity_of_handle(handle: RawHandle) -> io::Result<WindowsFileFacts> {
     let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
-    // SAFETY: `file` is a valid, currently-open HANDLE for the entire duration of this call -
-    // it is not dropped until this function returns, and its handle was obtained through
-    // `std::fs::OpenOptions`, never constructed by this crate itself. `info` is a
-    // stack-allocated, correctly-sized `BY_HANDLE_FILE_INFORMATION` (the struct `windows-sys`
-    // generates directly from the same Win32 metadata that documents this call), passed as a
-    // valid, uniquely-owned out-pointer. `GetFileInformationByHandle` only writes into `info`
-    // and returns nonzero on success; it retains no pointer past the call and performs no
-    // allocation.
-    let ok = unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut info) };
+    // SAFETY: the caller guarantees `handle` is a valid, currently-open HANDLE for the
+    // duration of this call. `info` is a stack-allocated, correctly-sized
+    // `BY_HANDLE_FILE_INFORMATION` (the struct `windows-sys` generates directly from the same
+    // Win32 metadata that documents this call), passed as a valid, uniquely-owned out-pointer.
+    // `GetFileInformationByHandle` only writes into `info` and returns nonzero on success; it
+    // retains no pointer past the call and performs no allocation.
+    let ok = unsafe { GetFileInformationByHandle(handle, &mut info) };
     if ok == 0 {
         return Err(io::Error::last_os_error());
     }

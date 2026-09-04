@@ -9,7 +9,9 @@
 //! seam exists to prevent (`cancellai.py`'s own comment: "Unknown activity is not absence of
 //! activity").
 
+#[cfg(unix)]
 use std::process::Command;
+#[cfg(unix)]
 use std::time::Duration;
 
 /// The result of one liveness probe for a set of provider process names.
@@ -53,41 +55,87 @@ pub struct SystemProcessObserver;
 
 impl ProcessObserver for SystemProcessObserver {
     fn observe(&self, names: &[&str]) -> ProcessObservation {
-        let unknown = || ProcessObservation {
-            complete: false,
-            running_names: Vec::new(),
-        };
-        let ps_bin = which_ps().unwrap_or_else(|| "/bin/ps".to_string());
-        let Ok(child) = Command::new(&ps_bin)
-            .args(["-axo", "pid=,comm="])
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-        else {
-            return unknown();
-        };
-        let Some(output) = run_with_timeout(child, Duration::from_secs(5)) else {
-            return unknown();
-        };
-        if !output.status.success() {
-            return unknown();
-        }
-        let text = String::from_utf8_lossy(&output.stdout);
-        let mut running_names = Vec::new();
-        for line in text.lines() {
-            let comm = line.trim().rsplit(' ').next().unwrap_or("").trim();
-            let base = comm.rsplit('/').next().unwrap_or(comm);
-            if names.contains(&base) && !running_names.iter().any(|n: &String| n == base) {
-                running_names.push(base.to_string());
-            }
-        }
-        ProcessObservation {
-            complete: true,
-            running_names,
-        }
+        observe_system_processes(names)
     }
 }
 
+#[cfg(unix)]
+fn observe_system_processes(names: &[&str]) -> ProcessObservation {
+    let unknown = || ProcessObservation {
+        complete: false,
+        running_names: Vec::new(),
+    };
+    let ps_bin = which_ps().unwrap_or_else(|| "/bin/ps".to_string());
+    let Ok(child) = Command::new(&ps_bin)
+        .args(["-axo", "pid=,comm="])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    else {
+        return unknown();
+    };
+    let Some(output) = run_with_timeout(child, Duration::from_secs(5)) else {
+        return unknown();
+    };
+    if !output.status.success() {
+        return unknown();
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let mut running_names = Vec::new();
+    for line in text.lines() {
+        let comm = line.trim().rsplit(' ').next().unwrap_or("").trim();
+        let base = comm.rsplit('/').next().unwrap_or(comm);
+        if names.contains(&base) && !running_names.iter().any(|n: &String| n == base) {
+            running_names.push(base.to_string());
+        }
+    }
+    ProcessObservation {
+        complete: true,
+        running_names,
+    }
+}
+
+/// `cancellai-sealedfs::list_running_process_names` (E20-S05, `CreateToolhelp32Snapshot`) -
+/// real process enumeration, replacing the always-`complete: false` result the Unix-only `ps`
+/// shell-out above produces on Windows (no `ps` binary exists there). Windows reports process
+/// names with a `.exe` suffix and resolves filenames case-insensitively by convention; matching
+/// strips the suffix and compares case-insensitively so a caller's bare provider name (`"claude"`,
+/// matching this crate's own Unix `comm` convention) still matches `"claude.exe"`.
+#[cfg(windows)]
+fn observe_system_processes(names: &[&str]) -> ProcessObservation {
+    let Ok(running) = cancellai_sealedfs::list_running_process_names() else {
+        return ProcessObservation {
+            complete: false,
+            running_names: Vec::new(),
+        };
+    };
+    let mut running_names = Vec::new();
+    for exe_name in running {
+        let base = exe_name
+            .strip_suffix(".exe")
+            .or_else(|| exe_name.strip_suffix(".EXE"))
+            .unwrap_or(&exe_name);
+        if let Some(&matched) = names.iter().find(|n| n.eq_ignore_ascii_case(base)) {
+            if !running_names.iter().any(|n: &String| n == matched) {
+                running_names.push(matched.to_string());
+            }
+        }
+    }
+    ProcessObservation {
+        complete: true,
+        running_names,
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
+fn observe_system_processes(_names: &[&str]) -> ProcessObservation {
+    ProcessObservation {
+        complete: false,
+        running_names: Vec::new(),
+    }
+}
+
+#[cfg(unix)]
 fn which_ps() -> Option<String> {
     let path = std::env::var_os("PATH")?;
     for dir in std::env::split_paths(&path) {
@@ -102,6 +150,7 @@ fn which_ps() -> Option<String> {
 /// Runs `child` to completion, or kills it and returns `None` if it does not exit within
 /// `timeout` - a hand-rolled bound since this workspace has no async runtime/process-timeout
 /// dependency to reach for instead, mirroring `cancellai.py`'s `subprocess.run(..., timeout=5)`.
+#[cfg(unix)]
 fn run_with_timeout(
     mut child: std::process::Child,
     timeout: Duration,

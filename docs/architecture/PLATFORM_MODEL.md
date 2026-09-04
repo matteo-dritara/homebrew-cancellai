@@ -66,14 +66,30 @@ the Windows volume serial number widened to `u64` for the `Windows` variant, so 
 existing device-comparison boundary check works unmodified on Windows once identity is real,
 with no platform branching at that call site.
 
-**Residual, deliberately out of E20-S01's scope**: `AllocationObserver` remains `Unsupported`
-on Windows (`GetCompressedFileSizeW`, a different Win32 call); `cancellai-sealedfs::SealedRoot`'s
-handle-relative, no-follow *root-establishment* walk (`establish`/`verify_no_intermediate_links`,
-used by `configure` and `clean`'s default-root re-check) still fails closed on Windows - this is
-a materially different, larger capability (a per-component walk from a trusted anchor, which
-has no direct `openat`-equivalent in the documented Win32 surface) than observing one path's
-identity, and is left for E20-S05 (ADR-0020's own "Neutral/follow-up"). Native
-process observation and atomic move semantics are likewise not part of this change.
+**Resolved by E20-S05**: `AllocationObserver` now reports real allocated size on Windows
+(`GetFileInformationByHandleEx(FileStandardInfo)`, `cancellai-sealedfs::observe_allocated_size`
+- `rust/crates/cancellai-platform/src/allocation.rs`'s `cfg(windows)` arm). `cancellai-
+sealedfs::SealedRoot`'s handle-relative, no-follow root-establishment walk
+(`establish`/`bind_existing`/`verify_no_intermediate_links`) now has a real Windows
+implementation too (`rust/crates/cancellai-sealedfs/src/windows_sealed.rs`): each path
+component is opened relative to the descriptor already held for its parent via the NT native
+API (`NtCreateFile`, `Wdk::Storage::FileSystem`, using `OBJECT_ATTRIBUTES.RootDirectory` -
+Windows has no ordinary Win32 `openat` equivalent; `NtCreateFile`'s `RootDirectory` field plays
+that role), refusing the moment any component is a reparse point - the same containment
+property ADR-0017/E07-S09/E21-S07 give the Unix walk. Real process observation is implemented
+too (`CreateToolhelp32Snapshot`, `cancellai-sealedfs::list_running_process_names`,
+`rust/crates/cancellai-platform/src/process.rs`'s `cfg(windows)` arm), so
+`SystemProcessObserver` reports real running-process facts on Windows rather than an
+unconditional `complete: false`. Real, identity-confirmed Windows file deletion is implemented
+(`rust/crates/cancellai-platform/src/mutation.rs`'s `cfg(windows)` `confirmed_delete_file_inner`
+- the same open/re-check/handle-relative-delete/post-delete-corroboration shape as the Unix
+path, using `FILE_DISPOSITION_INFO`/`SetFileInformationByHandle` for the delete itself and
+`FILE_STANDARD_INFO.DeletePending`, queried through the still-open pre-delete handle, for
+corroboration); `project/platforms.json`'s `windows.capabilities.mutation.state` is the
+enforced source of truth for whether this has been confirmed on real Windows CI, not this
+paragraph. Atomic rename, needed internally by `SealedRoot::write_new_child_atomically`, is
+implemented via `FILE_RENAME_INFO`/`SetFileInformationByHandle(FileRenameInfo)` (the
+handle-based analogue of Unix's `renameat`).
 
 #### Resolved: the inventory scanner can now descend below the scope root on Windows
 
@@ -101,9 +117,10 @@ smaller than the disk blocks it actually occupies. E04-S01 implements this as it
 folding an allocated-size field into `FsObserver` itself, so a platform/filesystem that
 cannot report it distinctly is a typed fact, never a silent copy of the logical size or a
 fabricated zero. `SystemAllocationObserver` uses Unix `st_blocks * 512` (the same
-POSIX-standard convention `du` relies on); it reports `Unsupported` on non-Unix targets today,
-the same fail-closed posture `IdentityObserver` uses for Windows identity until a verified
-implementation exists.
+POSIX-standard convention `du` relies on) on Unix, and `GetFileInformationByHandleEx
+(FileStandardInfo)`'s `AllocationSize` (E20-S05, `cancellai-sealedfs::observe_allocated_size`)
+on Windows; it reports `Unsupported` only on a genuinely exotic non-Unix, non-Windows target -
+the same fail-closed posture as `IdentityObserver` for such a target.
 
 ## Boundary rules
 
@@ -130,9 +147,10 @@ volume identity (the volume serial number, via `IdentityToken::device()`'s `Wind
 than refusing unconditionally through `Unsupported` - the same code path as Unix, no platform
 branching added at this layer. This closes the *comparison* half of "explicit per platform";
 `cancellai-sealedfs::SealedRoot`'s separate no-follow *root-establishment* walk (used by
-`configure` and `clean`'s default-root re-check, see below) remains `Unsupported` on Windows,
-so `clean`'s default-root establishment still refuses there as a whole, via that still-open
-residual rather than via this boundary check. A later symlink/mount swap *after* a successful
+`configure` and `clean`'s default-root re-check, see below) now has a real, NT-native-API-backed
+Windows implementation too (E20-S05, see above), so `clean`'s default-root establishment on
+Windows follows the same construction-time containment Unix has, not a residual refusal. A
+later symlink/mount swap *after* a successful
 `bind` is SI-013's job (E03-S02's `revalidate`, wired in immediately before mutation by
 E03-S05), not this capability's.
 
@@ -169,13 +187,14 @@ by `clean`) and `cmd_configure` both re-run `is_symlink` fresh, immediately befo
 the root or writing configuration, independent of the cached classification. `configure` in
 particular does not go through `ApprovedRoot`/`IdentityObserver` at all (it is a vendor
 settings-file write, not an artifact deletion), so on Windows, `is_symlink`'s own correctness
-is the *only* thing standing between a symlinked default-named root and a write through it -
-`cancellai-sealedfs::SealedRoot::establish` (which `configure` uses instead) still fails closed
-there on its own account (its no-follow walk residual, not identity). `clean`'s deletion path
-gets a second, independent backstop from `establish_verified_root`'s
-`verify_no_intermediate_links` call failing closed on that same still-`Unsupported` walk (E20-S01
-made `ApprovedRoot::establish`'s own identity check real on Windows - see above - so this second
-backstop is no longer "identity `Unsupported`" but remains a genuine, independent refusal).
+was, before E20-S05, the *only* thing standing between a symlinked default-named root and a
+write through it; `cancellai-sealedfs::SealedRoot::establish` (which `configure` uses instead)
+now performs its own real, handle-relative no-follow walk there too (E20-S05), so this is
+defense in depth rather than the sole backstop. `clean`'s deletion path gets a second,
+independent backstop from `establish_verified_root`'s `verify_no_intermediate_links` call,
+likewise now backed by the same real Windows walk (E20-S01 made `ApprovedRoot::establish`'s own
+identity check real on Windows - see above; E20-S05 did the same for this walk) rather than a
+residual `Unsupported` refusal.
 
 `is_symlink` uses `std`'s cross-platform `FileType::is_symlink()`, not a Unix-only syscall -
 verified fixtures exist for a real Unix symlink and a real Windows directory symlink

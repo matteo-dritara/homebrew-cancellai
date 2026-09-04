@@ -560,30 +560,54 @@ fn establish_verified_root(
             ))
         })?;
         let established = ApprovedRoot::establish(path, resolver, observer)?;
-        // `verified` (from `verify_no_intermediate_links` above) only ever succeeds on Unix
-        // today - its Windows fallback returns `Err(SealError::Unsupported(..))` unconditionally
-        // (E20-S01 implemented Windows identity *observation*, not `SealedRoot`'s handle-relative
-        // walk), so this `Windows` arm is unreachable in current behavior. It still returns a
-        // typed refusal rather than relying on that fact silently, so a future change to either
-        // side of this comparison fails closed by default instead of by omission (SI-002/SI-003).
-        let (device, inode) = match established.identity() {
-            cancellai_platform::IdentityToken::Unix { device, inode, .. } => (*device, *inode),
-            cancellai_platform::IdentityToken::Windows { .. } => {
+        // E20-S05 implemented `SealedRoot`'s Windows handle-relative walk (`windows_sealed.rs`,
+        // extending ADR-0020), so `verified` can now genuinely succeed on Windows too, not only
+        // Unix - `matches_windows_identity` compares against it exactly as `matches_unix_
+        // identity` already did there. `cancellai_sealedfs::VerifiedPath` is a different
+        // concrete type per platform (only one is ever compiled in), so which comparison method
+        // exists is itself platform-gated, not merely which `IdentityToken` variant is expected.
+        #[cfg(unix)]
+        let matches = {
+            let cancellai_platform::IdentityToken::Unix { device, inode, .. } =
+                established.identity()
+            else {
                 return Err(cancellai_safety::BoundaryError::RootIdentityUnavailable(
                     format!(
-                        "{} has no verified no-follow handle-relative walk to compare against on \
-                     this platform yet (SI-002/SI-003, E20-S01 residual)",
+                        "{} has no verified no-follow handle-relative walk to compare against \
+                         on this platform (unexpected non-Unix identity on a Unix build)",
                         path.display()
                     ),
                 ));
-            }
+            };
+            verified.matches_unix_identity(*device, *inode)
         };
-        if !verified.matches_unix_identity(device, inode).map_err(|e| {
+        #[cfg(windows)]
+        let matches = {
+            let cancellai_platform::IdentityToken::Windows {
+                volume_serial_number,
+                file_index,
+                ..
+            } = established.identity()
+            else {
+                return Err(cancellai_safety::BoundaryError::RootIdentityUnavailable(
+                    format!(
+                        "{} has no verified no-follow handle-relative walk to compare against \
+                         on this platform (unexpected non-Windows identity on a Windows build)",
+                        path.display()
+                    ),
+                ));
+            };
+            verified.matches_windows_identity(*volume_serial_number, *file_index)
+        };
+        #[cfg(not(any(unix, windows)))]
+        let matches: Result<bool, cancellai_sealedfs::SealError> = Ok(false);
+        let matches = matches.map_err(|e| {
             cancellai_safety::BoundaryError::RootIdentityUnavailable(format!(
                 "could not compare the held no-follow root identity for {}: {e}",
                 path.display()
             ))
-        })? {
+        })?;
+        if !matches {
             return Err(cancellai_safety::BoundaryError::RootIdentityUnavailable(
                 format!(
                     "{} changed identity between the no-follow walk and root establishment; \

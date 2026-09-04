@@ -2025,7 +2025,7 @@ Make Windows native and WSL2 first-class platform targets, once a real Windows/W
 
 ### E20-S05 - Windows process observation, allocated-size, atomic move, and mutation authority
 
-**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E20-S01 | **Safety obligations:** SI-013, SI-017, SI-018, SI-019
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E20-S01 | **Safety obligations:** SI-013, SI-017, SI-018, SI-019
 
 **Outcome.** Implement the Windows capabilities named by E20-S01's original outcome text but ruled out of that story's scope by round-1 independent verifier review: native process/activity observation, allocated-size reporting (GetCompressedFileSizeW), atomic rename/move semantics, and - the largest piece - a verified no-follow, handle-relative root-establishment walk in cancellai-sealedfs (extending ADR-0020) so cancellai-safety::mutation_executor can grant real deletion authority on Windows, matching the scrutiny SI-019/E21-S07 already applies on Unix.
 
