@@ -78,11 +78,17 @@ it sooner than the fifth.
 See ADR-0020's seven dated sections under "Real Windows CI found..." for the complete, honest
 account of the whole investigation, across six iterative pushes and eight real Windows CI runs.
 
-`project/platforms.json`'s `windows.capabilities.mutation.state` will be updated to `verified`
-in a follow-up commit citing this session's new Windows test names and the confirmed-green
-commit, once that update itself passes real CI (`scripts/check_platforms.py`'s own enforced
-bar - a `gh`-confirmed successful `rust.yml` run for the exact `verified_commit` cited, not
-this packet's own word).
+**Final confirmation**: the reparse-point safety fix (commit `995fa94583b5ffa663d196d521408b8ad5e0c4c5`)
+was pushed and its real `rust.yml` run
+(https://github.com/matteo-dritara/homebrew-cancellai/actions/runs/33904582262) passed
+completely - every job, every platform, both MSRV and stable. `project/platforms.json`'s
+`windows.capabilities.mutation.state` is now `verified`, citing six real `#[test]` functions
+across `cancellai-sealedfs::windows_sealed` and `cancellai-platform::mutation`, with
+`verified_commit` set to this confirmed-green commit; `scripts/check_platforms.py check`
+independently confirmed the commit is a real git ancestor of `HEAD` and that `gh` reports a
+real successful run for it before accepting the claim. Windows now meets this generator's own
+tier-1 bar (both capabilities verified, both CI jobs present, a confirmed `verified_commit`)
+and `docs/PLATFORMS.md` records it as tier 1, alongside macOS and Linux.
 
 ## What changed
 

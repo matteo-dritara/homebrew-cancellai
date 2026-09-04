@@ -32,9 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `project/platforms.json`) rather than hand-authored aspiration: each platform's tier is
   cross-validated against `.github/workflows/rust.yml`'s real CI matrix and against named test
   functions this script confirms actually exist, so a platform cannot be declared tier 1
-  without CI and verified destructive-mutation evidence (E20-S03). Per that real bar, macOS and
-  Linux are tier 1 today; Windows (identity verified, mutation unimplemented) and WSL2 (no
-  dedicated CI runner) are tier 2.
+  without CI and verified destructive-mutation evidence (E20-S03). Per that real bar, macOS,
+  Linux, and (since E20-S05) Windows are tier 1; WSL2 (no dedicated CI runner) is tier 2.
 - `cancellai-cli`'s target-engine Rust core now implements the remaining Windows capabilities
   E20-S01 scoped out (E20-S05): real running-process observation
   (`CreateToolhelp32Snapshot`, replacing an unconditional "incomplete" result), real
@@ -44,9 +43,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Windows analogue of `openat`, used by `configure` and by `clean`'s default-root
   re-verification), and real, identity-confirmed Windows file deletion
   (`FILE_DISPOSITION_INFO`/`SetFileInformationByHandle`, following the same open/re-check/
-  handle-relative-delete/post-delete-corroboration shape ADR-0017/E21-S07 established on Unix).
-  `docs/PLATFORMS.md`'s Windows mutation state moves from `unsupported` only once this is
-  confirmed on real Windows CI, per `scripts/check_platforms.py`'s evidence requirement.
+  handle-relative-delete/post-delete-corroboration shape ADR-0017/E21-S07 established on Unix,
+  with the atomic-rename step using the native `NtSetInformationFile` rather than the Win32
+  `SetFileInformationByHandle` wrapper - the latter does not reliably honor a non-null
+  `RootDirectory` for handle-relative rename). Confirmed on real Windows CI (ADR-0020's own
+  dated investigation record); `docs/PLATFORMS.md` now records Windows mutation as `verified`
+  and the platform as tier 1, alongside macOS and Linux.
 
 ## [1.9.0] - 2026-09-04
 

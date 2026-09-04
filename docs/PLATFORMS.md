@@ -8,7 +8,7 @@ This is the target-engine (Rust) platform capability matrix - what this reposito
 | --- | --- | --- | --- | --- | --- |
 | macOS (Apple Silicon and Intel) | 1 | yes | yes | verified | verified |
 | Linux (x86_64, glibc) | 1 | yes | yes | verified | verified |
-| Windows native (x86_64) | 2 | yes | yes | verified | unsupported |
+| Windows native (x86_64) | 1 | yes | yes | verified | verified |
 | WSL2 (Windows host, Linux guest) | 2 | no | no | unverified | unsupported |
 
 ## macOS (Apple Silicon and Intel)
@@ -51,9 +51,9 @@ Evidence (real `#[test]` functions, verified present at these exact files):
 
 ## Windows native (x86_64)
 
-E20-S01/ADR-0020 implemented real Windows file/volume identity with real adversarial fixtures (a genuine NTFS junction via mklink /J, a real directory symlink, real hard-links, a synthetic cross-volume boundary test, and a best-effort real multi-volume test). E20-S01 round-1 independent verifier review found the commit range first submitted for review had never actually run on GitHub's real windows-latest CI (the branch had not been pushed) - identity.state was held at 'unverified' until that was fixed. verified_commit now cites a real, gh-confirmed successful rust.yml run (https://github.com/matteo-dritara/homebrew-cancellai/actions/runs/33886584899) for the repaired commit, which also caught one genuine bug a real Windows machine could find and cross-compilation could not: a stale pre-E20-S01 test still asserting the old Unsupported-on-Windows behavior (fixed in the same run's follow-up commit, itself also confirmed green: run 33886584899). Real deletion remains unimplemented on Windows (`confirmed_delete_file`'s cfg(not(unix)) arm and `cancellai-sealedfs::SealedRoot`'s no-follow walk both refuse unconditionally) - E20-S05's scope - so `clean` is inspect-only there and tier stays 2 despite identity now being verified.
+E20-S01/ADR-0020 implemented real Windows file/volume identity with real adversarial fixtures (a genuine NTFS junction via mklink /J, a real directory symlink, real hard-links, a synthetic cross-volume boundary test, and a best-effort real multi-volume test). E20-S05 closed the remaining gaps: real process observation, real allocated-size reporting, a verified no-follow handle-relative root-establishment walk (NtCreateFile via OBJECT_ATTRIBUTES.RootDirectory), and real, identity-confirmed file deletion (FILE_DISPOSITION_INFO/SetFileInformationByHandle, with FILE_STANDARD_INFO.DeletePending post-delete corroboration through a retained handle). The E20-S05 investigation itself is recorded in full in ADR-0020 (seven dated sections under 'Real Windows CI found...'): six real issues across six iterative pushes and eight real Windows CI runs, including a safety-relevant regression found and corrected before ever shipping (an intermediate fix that mishandled FILE_OPEN_REPARSE_POINT for FILE_CREATE would have let a pre-planted reparse point at a temp name be silently followed rather than refused; caught by this crate's own adversarial fixture the first time real Windows CI execution order reached it, and fixed before the commit this evidence cites). verified_commit cites the final, fully-green run (https://github.com/matteo-dritara/homebrew-cancellai/actions/runs/33904582262) for commit 995fa94583b5ffa663d196d521408b8ad5e0c4c5. Both identity and mutation are now verified with real evidence and real CI on both jobs, meeting this generator's own tier-1 bar.
 
-Last verified at commit `8622405118127c723f559d5ccdffdd0b3d7e0568`.
+Last verified at commit `995fa94583b5ffa663d196d521408b8ad5e0c4c5`.
 
 **identity**: verified
 
@@ -63,9 +63,16 @@ Evidence (real `#[test]` functions, verified present at these exact files):
 - `observe_identity_two_hardlinks_to_the_same_file_share_a_file_index` (`rust/crates/cancellai-sealedfs/src/windows_identity.rs`)
 - `bind_rejects_a_candidate_on_a_different_windows_volume_via_synthetic_identity` (`rust/crates/cancellai-safety/src/root_capability.rs`)
 
-**mutation**: unsupported
+**mutation**: verified
 
-Evidence: none - disclosed, not silently assumed from another platform/capability.
+Evidence (real `#[test]` functions, verified present at these exact files):
+
+- `unlink_child_matching_windows_identity_deletes_only_on_a_real_identity_match` (`rust/crates/cancellai-sealedfs/src/windows_sealed.rs`)
+- `unlink_child_matching_windows_identity_refuses_a_reparse_point_at_the_name` (`rust/crates/cancellai-sealedfs/src/windows_sealed.rs`)
+- `write_new_child_atomically_refuses_a_pre_planted_reparse_point_at_the_temp_name` (`rust/crates/cancellai-sealedfs/src/windows_sealed.rs`)
+- `windows_system_executor_deletes_a_real_file_confirmed_by_identity` (`rust/crates/cancellai-platform/src/mutation.rs`)
+- `windows_confirmed_delete_rejects_a_target_already_swapped_before_open` (`rust/crates/cancellai-platform/src/mutation.rs`)
+- `windows_confirmed_delete_detects_a_target_swapped_between_open_and_unlink` (`rust/crates/cancellai-platform/src/mutation.rs`)
 
 ## WSL2 (Windows host, Linux guest)
 
