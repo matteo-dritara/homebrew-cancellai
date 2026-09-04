@@ -459,3 +459,24 @@ patched sooner. Real Windows CI, re-run after every single change rather than as
 is what actually surfaced this - a local reasoning process fixated on `nt_open_child` could
 have kept "fixing" that same function indefinitely without ever finding the real defect one
 call further down the same code path.
+
+### The `NtSetInformationFile` fix confirmed on real Windows CI, and a sixth, unrelated stale test found (2026-09-04)
+
+The `NtSetInformationFile` fix was pushed and re-run on real Windows CI (run 33903352661).
+`cancellai-cli`'s own full test suite - including, for the first time, the write-path
+integration test this entire investigation exists to fix - passed completely (26/26). The
+handle-relative write path (`configure`'s actual settings update) is confirmed correct on real
+Windows hardware.
+
+The same run surfaced one further, unrelated stale test: `cancellai-inventory::completeness::
+tests::ac1_a_fully_readable_tree_is_partial_on_windows_pending_allocated_size` (an E20-S04
+fixture) still asserted `Partial` with an `allocated_size`-unsupported reason - correct when
+E20-S01 had implemented Windows identity but not allocated-size, now stale since E20-S05
+implemented real Windows allocated-size (`GetFileInformationByHandleEx(FileStandardInfo)`) too.
+With both capabilities real, a fully-readable tree is genuinely `Complete` on Windows, the same
+as Unix - confirmed directly by this same CI run's own captured output. Fixed by retiring the
+Windows-specific variant and unifying it with the pre-existing Unix test
+(`ac1_a_fully_readable_tree_is_complete`), which now runs unconditionally on every platform
+rather than being `#[cfg(unix)]`-gated - matching this session's own established pattern for
+exactly this class of finding (E20-S01's `system_observer_reports_unsupported_off_unix` had the
+identical shape: a platform-conditional test whose assumption a later capability made stale).

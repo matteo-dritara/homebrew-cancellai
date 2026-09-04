@@ -38,14 +38,24 @@ found..."/"...fix alone was insufficient"/"...actual root cause" for the complet
 account of every round, including the three that turned out not to be the fix - kept
 deliberately rather than condensed into a single retrospective paragraph, because the process
 of ruling out plausible-but-wrong fixes via repeated real-CI evidence is itself part of this
-story's record. All six issues are fixed in this commit range; **the current fix has not yet
-been confirmed on real Windows CI** - this session's own established pattern (E20-S01's
-round-1/round-2 history, now repeated five times more here) is that
-cross-compilation catches compile errors but not runtime/ACL/parameter-validation logic bugs,
-so `project/platforms.json`'s `windows.capabilities.mutation.state` is deliberately left at
-`unsupported` in this commit and will only move to `verified` once a real, `gh`-confirmed
-successful `rust.yml` run exists for a commit in this range (`scripts/check_platforms.py`'s
-own enforced bar, not this packet's word).
+story's record.
+
+**The `NtSetInformationFile` fix was confirmed on real Windows CI (run 33903352661,
+`cargo test --workspace` on `windows-latest`): `cancellai-cli`'s full test suite passed
+completely, including the write-path integration test this whole investigation targeted.** The
+same run found one further, unrelated stale test (`cancellai-inventory::completeness`'s
+Windows-specific "allocated-size still unsupported" variant, stale since E20-S05's own
+allocated-size implementation made a fully-readable Windows tree genuinely `Complete`) - fixed
+by unifying it with the pre-existing Unix test rather than keeping a platform split the real
+capability no longer requires. See ADR-0020's six dated sections under "Real Windows CI
+found..." for the complete, honest account of the whole investigation, across five iterative
+pushes and seven real Windows CI runs.
+
+`project/platforms.json`'s `windows.capabilities.mutation.state` will be updated to `verified`
+in a follow-up commit citing this session's new Windows test names and the confirmed-green
+commit, once that update itself passes real CI (`scripts/check_platforms.py`'s own enforced
+bar - a `gh`-confirmed successful `rust.yml` run for the exact `verified_commit` cited, not
+this packet's own word).
 
 ## What changed
 
