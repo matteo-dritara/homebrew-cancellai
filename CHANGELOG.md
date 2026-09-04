@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `cancellai-cli`'s target-engine Rust core now observes real Windows file/volume identity
+  (`GetFileInformationByHandle`, via a new `windows-sys`-backed capability in
+  `cancellai-sealedfs`) instead of reporting every Windows path as identity-`Unsupported`
+  (E20-S01, [ADR-0020](docs/adrs/0020-windows-native-identity-via-windows-sys.md)). A
+  Windows reparse point (symlink, junction, or any other reparse tag) is classified from its
+  own attributes and never treated as, or compared using, Unix symlink semantics; the
+  `cancellai-safety` filesystem/volume-boundary check (SI-018) now enforces a genuine Windows
+  volume boundary instead of refusing unconditionally. As a direct consequence,
+  `cancellai-inventory`'s scanner can now descend below a scope root on Windows (previously an
+  accepted limitation, E20-S04). `AllocationObserver`, `cancellai-sealedfs::SealedRoot`'s
+  no-follow root-establishment walk (used by `configure` and `clean`'s default-root check),
+  Windows process observation, and atomic move semantics remain unimplemented on Windows and
+  are unaffected by this change - `clean`'s default-root establishment on Windows still refuses
+  via that separate, still-open residual.
+
 ## [1.9.0] - 2026-09-04
 
 ### Note on how E22 was verified

@@ -364,12 +364,12 @@ mod tests {
         )
     }
 
-    // Windows has no verified native identity yet (E03-S01's own disclosed residual:
-    // `SystemIdentityObserver` reports `Unsupported` unconditionally there), so a scope's root
-    // and every entry in it always carry an `UnsupportedFilesystemFeature` reason there - a
-    // "fully readable tree" can never actually be `Complete` on Windows today, no matter how
-    // readable it is. This is E20-S04 scope (formerly E07-S06): the Windows counterpart below
-    // documents the accepted limitation rather than weakening this test's Unix assertion.
+    // Windows still cannot reach `Complete` today, but no longer for an identity reason:
+    // E20-S01 (ADR-0020) implemented real Windows file/volume identity, closing the gap
+    // E03-S01 originally disclosed here. `AllocationObserver` remains `Unsupported` on
+    // Windows (a separate, out-of-scope Win32 call), so a "fully readable tree" is still
+    // `Partial` there - the Windows counterpart below documents that narrower remaining gap
+    // rather than weakening this test's Unix assertion.
     #[cfg(unix)]
     #[test]
     fn ac1_a_fully_readable_tree_is_complete() {
@@ -381,9 +381,14 @@ mod tests {
         assert_eq!(derive_completeness(&snapshot), ScopeCompleteness::Complete);
     }
 
+    // E20-S01 (ADR-0020) implemented real Windows file/volume identity, resolving the
+    // "identity" gap the previous version of this test documented. `AllocationObserver`
+    // remains `Unsupported` on Windows (a different Win32 call, out of E20-S01's scope) - a
+    // "fully readable tree" is therefore still `Partial` on Windows, but now solely for that
+    // reason, never "identity".
     #[cfg(windows)]
     #[test]
-    fn ac1_a_fully_readable_tree_is_partial_on_windows_pending_native_identity() {
+    fn ac1_a_fully_readable_tree_is_partial_on_windows_pending_allocated_size() {
         let tree = TempTree::new("complete-windows");
         std::fs::create_dir_all(tree.path("a/b")).unwrap();
         std::fs::write(tree.path("a/f.txt"), b"data").unwrap();
@@ -395,16 +400,19 @@ mod tests {
                     reasons.iter().all(|r| matches!(
                         r,
                         CompletenessReason::UnsupportedFilesystemFeature { feature, .. }
-                            if feature == "identity" || feature == "allocated_size"
+                            if feature == "allocated_size"
                     )),
-                    "every reason must be the disclosed identity/allocated_size gap, got {reasons:?}"
+                    "every reason must be the disclosed allocated_size gap now that identity is \
+                     implemented on Windows (E20-S01), got {reasons:?}"
                 );
                 assert!(
                     !reasons.is_empty(),
-                    "the root's own unsupported identity must produce at least one reason"
+                    "allocated-size being unsupported must still produce at least one reason"
                 );
             }
-            other => panic!("expected Partial (no verified Windows identity yet), got {other:?}"),
+            other => panic!(
+                "expected Partial (allocated_size still unsupported on Windows), got {other:?}"
+            ),
         }
     }
 

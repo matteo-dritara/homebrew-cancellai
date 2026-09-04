@@ -11,7 +11,8 @@ Epics: **23** | Stories: **108**
 - `blocked`: 1
 - `cancelled`: 1
 - `done`: 54
-- `planned`: 52
+- `planned`: 51
+- `ready_for_review`: 1
 
 ## Change risk distribution
 
@@ -27,4 +28,4 @@ Epics: **23** | Stories: **108**
 
 ## Awaiting independent review
 
-- none
+- **E20-S01** - Windows native backend (CR4)

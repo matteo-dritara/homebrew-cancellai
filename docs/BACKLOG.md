@@ -1948,7 +1948,7 @@ Make Windows native and WSL2 first-class platform targets, once a real Windows/W
 
 ### E20-S01 - Windows native backend
 
-**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E07-S01 | **Safety obligations:** SI-017, SI-018
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E07-S01 | **Safety obligations:** SI-017, SI-018
 
 **Outcome.** Implement Windows path, volume/file identity, reparse point, process, allocated-size, and atomic move semantics.
 

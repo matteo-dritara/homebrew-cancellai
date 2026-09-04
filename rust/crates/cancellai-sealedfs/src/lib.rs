@@ -177,6 +177,12 @@ pub use unix_impl::verify_no_intermediate_links;
 #[cfg(not(unix))]
 pub use fallback_impl::verify_no_intermediate_links;
 
+#[cfg(windows)]
+mod windows_identity;
+
+#[cfg(windows)]
+pub use windows_identity::{WindowsFileFacts, observe_identity};
+
 #[cfg(unix)]
 mod unix_impl {
     use super::{SealError, validate_child_name};

@@ -41,37 +41,51 @@ Use native file/volume identity and reparse metadata. Do not assume Unix inode/s
 
 If the platform cannot produce an identity strong enough for a requested irreversible action, authority is reduced.
 
-E03-S01 deliberately does not implement native Windows volume/file-index/reparse identity yet:
-`SystemIdentityObserver::observe` reports `IdentityObservation::Unsupported` unconditionally
-on any non-Unix target. This is the "authority is reduced" outcome this section already
-describes, not a placeholder standing in for it - a plausible-but-unverified implementation of
-a safety-critical equality check (built and reviewed with no access to a real Windows runtime)
-was judged a worse outcome than an honest `Unsupported` (SI-017, C-12 cross-platform
-truthfulness). A follow-up story implements and verifies real Windows identity once it can be
-exercised on Windows CI; until then, no artifact whose identity depends on Windows-native
-evidence can receive destructive authority through this seam.
+E20-S01 (ADR-0020) implements native Windows volume/file-index identity:
+`SystemIdentityObserver::observe` on `cfg(windows)` calls
+`cancellai-sealedfs::observe_identity` (`GetFileInformationByHandle`, verified on real Windows
+CI - `windows-latest` in `rust.yml`, not cross-compilation), populating a distinct
+`IdentityToken::Windows` variant (`volume_serial_number`, `file_index`, `kind`, `modified`,
+`modified_ticks`) rather than reusing or extending the `Unix` variant's fields - a reparse
+point is detected from `FILE_ATTRIBUTE_REPARSE_POINT` alone (stable `std`,
+`file_attributes()`), never inferred from or compared against Unix symlink semantics. The
+object is opened with `FILE_FLAG_OPEN_REPARSE_POINT`, so a reparse point at the final path
+component is observed as itself, never silently followed - matching `symlink_metadata`'s
+no-follow contract used throughout this workspace's other observers. Only a genuinely exotic
+non-Unix, non-Windows target still reports `IdentityObservation::Unsupported`, for the reason
+E03-S01 originally chose it for Windows too: a plausible-but-unverified implementation of a
+safety-critical equality check is a worse outcome than an honest refusal (SI-017, C-12
+cross-platform truthfulness).
 
-#### Accepted limitation: the inventory scanner cannot descend below the scope root on Windows
+`IdentityToken::device()` (SI-018 boundary checks, `cancellai-safety::root_capability`) returns
+the Windows volume serial number widened to `u64` for the `Windows` variant, so `ApprovedRoot`'s
+existing device-comparison boundary check works unmodified on Windows once identity is real,
+with no platform branching at that call site.
 
-E20-S04 (formerly E07-S06) found this residual has a consequence beyond mutation authority:
-`cancellai-inventory::scan::walk_directory` only recurses into a child whose identity is
-*confirmed* (`IdentityObservation::Identity`, never `Unsupported`) and that does not cross the
-scope's device boundary (SI-017 - "an unconfirmed identity never earns a descend by default").
-Since `SystemIdentityObserver` reports `Unsupported` unconditionally on Windows today, that
-condition is never true there, so a real Windows scan visits only the scope root itself -
-verified directly on Windows CI: a four-level nested fixture (`root/a/b/c`) produced
-`directories_visited == 1`, not `4`, and a fully-readable tree's completeness is `Partial`
-(`UnsupportedFilesystemFeature` for `identity`/`allocated_size`) rather than `Complete`.
+**Residual, deliberately out of E20-S01's scope**: `AllocationObserver` remains `Unsupported`
+on Windows (`GetCompressedFileSizeW`, a different Win32 call); `cancellai-sealedfs::SealedRoot`'s
+handle-relative, no-follow *root-establishment* walk (`establish`/`verify_no_intermediate_links`,
+used by `configure` and `clean`'s default-root re-check) still fails closed on Windows - this is
+a materially different, larger capability (a per-component walk from a trusted anchor, which
+has no direct `openat`-equivalent in the documented Win32 surface) than observing one path's
+identity, and is left for a dedicated future story (ADR-0020's own "Neutral/follow-up"). Native
+process observation and atomic move semantics are likewise not part of this change.
 
-This is the safety gate working exactly as designed, not a traversal bug: weakening the
-identity-confirmed check to let the walk descend without real evidence would be the wrong fix,
-trading a correct fail-closed posture for a plausible-but-unverified one - precisely what this
-section's own Windows posture already refuses to do for mutation. Both outcomes are covered by
-Windows-specific tests (`completeness::tests::
-ac1_a_fully_readable_tree_is_partial_on_windows_pending_native_identity`, `scan::tests::
-ac1_traversal_stops_at_the_root_on_windows_pending_native_identity`) rather than left to fail
-silently. Real Windows traversal depth requires E20-S01's native identity implementation, not a
-scan-logic change.
+#### Resolved: the inventory scanner can now descend below the scope root on Windows
+
+E20-S04 (formerly E07-S06) found `cancellai-inventory::scan::walk_directory` only recurses into
+a child whose identity is *confirmed* (`IdentityObservation::Identity`, never `Unsupported`)
+and that does not cross the scope's device boundary (SI-017 - "an unconfirmed identity never
+earns a descend by default"). Since `SystemIdentityObserver` reported `Unsupported`
+unconditionally on Windows at the time, that condition was never true there, so a real Windows
+scan visited only the scope root itself - a four-level nested fixture (`root/a/b/c`) produced
+`directories_visited == 1`, not `4`. E20-S01's real Windows identity resolves this as a direct,
+anticipated consequence (this document already named it as what E20-S01 would produce): the
+shared traversal test (`scan::tests::ac1_one_traversal_visits_every_directory_exactly_once`) now
+runs on every platform, Windows included. A "fully readable tree" is still `Partial` rather than
+`Complete` on Windows, but now solely because `AllocationObserver` remains `Unsupported`, never
+because of `identity` (`completeness::tests::
+ac1_a_fully_readable_tree_is_partial_on_windows_pending_allocated_size`).
 
 ## Allocated-size observation
 
@@ -106,13 +120,17 @@ as its own seam alongside `IdentityObserver`) - resolving symlinks, so a candida
 already escapes the root through a symlink component is rejected at bind time, not silently
 followed - then refuses a candidate equal to the root itself, a candidate outside the root's
 canonical prefix, and a candidate whose observed device differs from the root's (the explicit
-Unix mount-boundary check, SI-018). Real Windows volume/reparse boundary semantics inherit
-E03-S01's `Unsupported` posture: since `IdentityObserver` reports `Unsupported` off-Unix
-today, `bind`/`establish` refuse there too, rather than guessing a boundary they cannot
-verify - "explicit per platform" resolving today to an explicit refusal on non-Unix targets,
-not silent success. A later symlink/mount swap *after* a successful `bind` is SI-013's job
-(E03-S02's `revalidate`, wired in immediately before mutation by E03-S05), not this
-capability's.
+Unix mount-boundary check, SI-018). E20-S01 (ADR-0020) gave `IdentityObserver` a real Windows
+volume identity (the volume serial number, via `IdentityToken::device()`'s `Windows` arm), so
+`bind`/`establish`'s device comparison now enforces a genuine Windows volume boundary rather
+than refusing unconditionally through `Unsupported` - the same code path as Unix, no platform
+branching added at this layer. This closes the *comparison* half of "explicit per platform";
+`cancellai-sealedfs::SealedRoot`'s separate no-follow *root-establishment* walk (used by
+`configure` and `clean`'s default-root re-check, see below) remains `Unsupported` on Windows,
+so `clean`'s default-root establishment still refuses there as a whole, via that still-open
+residual rather than via this boundary check. A later symlink/mount swap *after* a successful
+`bind` is SI-013's job (E03-S02's `revalidate`, wired in immediately before mutation by
+E03-S05), not this capability's.
 
 E03 verifier review round 1 found `BoundedPath` alone did not fully close AC1 ("no mutation
 API accepts an unconstrained raw path"): `cancellai-platform`'s real mutation capability
@@ -146,11 +164,14 @@ symlink during the interactive confirmation pause, so `main.rs::establish_verifi
 by `clean`) and `cmd_configure` both re-run `is_symlink` fresh, immediately before establishing
 the root or writing configuration, independent of the cached classification. `configure` in
 particular does not go through `ApprovedRoot`/`IdentityObserver` at all (it is a vendor
-settings-file write, not an artifact deletion), so on a platform where `IdentityObserver` is
-`Unsupported` (Windows, today - see above), `is_symlink`'s own correctness is the *only* thing
-standing between a symlinked default-named root and a write through it; `clean`'s deletion path
-gets a second, independent backstop from `ApprovedRoot::establish` failing closed on
-`Unsupported` identity.
+settings-file write, not an artifact deletion), so on Windows, `is_symlink`'s own correctness
+is the *only* thing standing between a symlinked default-named root and a write through it -
+`cancellai-sealedfs::SealedRoot::establish` (which `configure` uses instead) still fails closed
+there on its own account (its no-follow walk residual, not identity). `clean`'s deletion path
+gets a second, independent backstop from `establish_verified_root`'s
+`verify_no_intermediate_links` call failing closed on that same still-`Unsupported` walk (E20-S01
+made `ApprovedRoot::establish`'s own identity check real on Windows - see above - so this second
+backstop is no longer "identity `Unsupported`" but remains a genuine, independent refusal).
 
 `is_symlink` uses `std`'s cross-platform `FileType::is_symlink()`, not a Unix-only syscall -
 verified fixtures exist for a real Unix symlink and a real Windows directory symlink

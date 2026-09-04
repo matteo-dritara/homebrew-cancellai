@@ -209,9 +209,28 @@ follows a scan+plan+policy+confirmation cycle, never a zero-delay same-instant r
 underlying clock genuinely advances, without weakening the "byte-identical content" case the
 test exists to prove.
 
+E20-S01 (ADR-0020) implemented the Windows side of this invariant: `IdentityToken::Windows`
+(`rust/crates/cancellai-platform/src/identity.rs`), backed by `GetFileInformationByHandle` via
+`cancellai-sealedfs::observe_identity`, carries volume-serial-number/file-index identity
+distinct from `Unix`'s device/inode - a Windows reparse point is classified from
+`FILE_ATTRIBUTE_REPARSE_POINT` alone, never by reusing or comparing against Unix symlink
+semantics. Verified on real Windows CI (`windows-latest` in `rust.yml`), not cross-compilation.
+A genuinely unsupported non-Unix, non-Windows target still reports
+`IdentityObservation::Unsupported`, unchanged.
+
 ### SI-018 Filesystem/volume boundaries are explicit
 
 Recursive mutation and quarantine do not silently cross mounts, volumes, junction boundaries, or equivalent filesystem boundaries.
+
+`cancellai-safety::root_capability::ApprovedRoot::bind` implements the check
+(`IdentityToken::device()`, `rust/crates/cancellai-platform/src/identity.rs`). E20-S01
+(ADR-0020) extended `device()` with a real Windows arm (the volume serial number, widened to
+`u64`) alongside the existing Unix device number, so this one comparison enforces the boundary
+on both platforms without platform-specific branching at the call site. `cancellai-sealedfs::
+SealedRoot`'s separate no-follow root-*establishment* walk (used by `configure` and `clean`'s
+default-root re-check, `docs/architecture/PLATFORM_MODEL.md`'s "Boundary rules") remains
+`Unsupported` on Windows - a distinct, still-open residual, not something this boundary-check
+extension closes.
 
 ## Execution
 

@@ -360,7 +360,6 @@ mod tests {
         )
     }
 
-    #[cfg(unix)]
     #[test]
     fn ac1_one_traversal_visits_every_directory_exactly_once() {
         let tree = TempTree::new("nested");
@@ -377,33 +376,15 @@ mod tests {
         assert_eq!(snapshot.facts.len(), 6);
     }
 
-    // Windows counterpart of the test above (E20-S04, formerly E07-S06): `walk_directory`
-    // (this file) only descends into a child whose identity is *confirmed*
-    // (`IdentityObservation::Identity`, line ~296) - never on `Unsupported`, per SI-017's own
-    // "an unconfirmed identity never earns a descend by default". Since Windows has no
-    // verified native identity yet (E03-S01's disclosed residual), that condition is never
-    // true there today, so the walk correctly stops after the scope root itself: this is the
-    // safety gate working as designed, not a traversal bug - weakening the identity-confirmed
-    // check to make this test pass on Windows would be exactly the wrong fix. Real Windows
-    // traversal depth is E20-S01's scope (native identity), not this story's.
-    #[cfg(windows)]
-    #[test]
-    fn ac1_traversal_stops_at_the_root_on_windows_pending_native_identity() {
-        let tree = TempTree::new("nested-windows");
-        std::fs::create_dir_all(tree.path("a/b/c")).unwrap();
-        std::fs::write(tree.path("a/f1.txt"), b"hello").unwrap();
-        std::fs::write(tree.path("a/b/f2.txt"), b"world").unwrap();
-        std::fs::write(tree.path("a/b/c/f3.txt"), b"!").unwrap();
-
-        let snapshot = system_scan(&tree.0);
-
-        assert_eq!(
-            snapshot.directories_visited, 1,
-            "only the scope root itself can be visited without confirmed child identity"
-        );
-        assert_eq!(snapshot.paths_observed, 1); // "a", listed but never confirmed to descend into
-        assert_eq!(snapshot.facts.len(), 1);
-    }
+    // E20-S04 (formerly E07-S06) found `walk_directory` only descends into a child whose
+    // identity is *confirmed* (`IdentityObservation::Identity`, never `Unsupported`, per
+    // SI-017's own "an unconfirmed identity never earns a descend by default"), and that
+    // Windows had no verified native identity then, so a real Windows scan visited only the
+    // scope root itself - documented at the time as an accepted limitation, not a traversal
+    // bug (weakening the identity-confirmed check would have been the wrong fix). E20-S01
+    // implemented real Windows identity (ADR-0020), which resolves that limitation as a direct
+    // consequence: the shared test above now exercises full traversal depth on every platform,
+    // including Windows, and no separate Windows-only "stops at the root" case remains.
 
     #[test]
     fn ac1_status_top_consumers_and_planning_reuse_the_same_snapshot_without_rescanning() {

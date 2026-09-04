@@ -136,13 +136,25 @@ fn confirmed_delete_file_inner(
 ) -> Result<(), MutationError> {
     use std::os::unix::fs::MetadataExt;
 
+    // This Unix-only deletion path has no verified interpretation of a `Windows` identity
+    // token (E20-S01 implemented Windows *observation*, not a Windows confirmed-delete
+    // implementation - `cfg(not(unix))`'s own `confirmed_delete_file` below already refuses
+    // unconditionally there). A caller passing one anyway - only possible via a synthetically
+    // constructed `IdentityToken` in a test, never a real `SystemIdentityObserver` result on a
+    // Unix host - gets a typed refusal, not a panic, matching this codebase's fail-closed
+    // posture for an unexpected identity shape (SI-017).
     let IdentityToken::Unix {
         device: expected_device,
         inode: expected_inode,
         modified: expected_modified,
         modified_nanos: expected_modified_nanos,
         ..
-    } = expected;
+    } = expected
+    else {
+        return Err(MutationError(
+            "confirmed file deletion on this platform requires a Unix identity token".to_string(),
+        ));
+    };
 
     let file = std::fs::File::open(target)
         .map_err(|e| MutationError(format!("could not open target for confirmed deletion: {e}")))?;

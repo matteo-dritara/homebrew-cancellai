@@ -162,10 +162,17 @@ pub fn execute(
 /// technique does not generalize the same way to a symlink, which `File::open` would follow
 /// rather than operate on itself, or to a recursive directory tree).
 fn delete_operation_for(identity: &IdentityToken) -> Option<MutationOperation> {
-    let IdentityToken::Unix { kind, .. } = identity;
-    match kind {
-        FileKind::File => Some(MutationOperation::DeleteFile),
-        FileKind::Directory | FileKind::Symlink | FileKind::Other => None,
+    match identity {
+        IdentityToken::Unix { kind, .. } => match kind {
+            FileKind::File => Some(MutationOperation::DeleteFile),
+            FileKind::Directory | FileKind::Symlink | FileKind::Other => None,
+        },
+        // `cancellai-platform::mutation::confirmed_delete_file` has no verified Windows
+        // implementation yet (E20-S01 implemented Windows identity *observation*, not a
+        // confirmed-delete primitive) - refuse here too, as a second, independent backstop
+        // alongside that function's own `cfg(not(unix))` refusal, rather than relying on
+        // exactly one layer to fail closed (SI-017, SI-019).
+        IdentityToken::Windows { .. } => None,
     }
 }
 

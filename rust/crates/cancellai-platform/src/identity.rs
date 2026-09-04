@@ -10,15 +10,15 @@
 //! mutation is how the safety kernel (E03-S02/E03-S05) turns "the path still looks right" into
 //! "this is still the object I planned against."
 //!
-//! Real, verified Windows volume/file-index/reparse identity is deliberately not implemented
-//! here yet (see [`IdentityObservation::Unsupported`] below) - this machine has no Windows
-//! target to exercise it against, and a plausible-but-unverified implementation of a
-//! safety-critical equality check is a worse outcome than an honest "cannot establish identity
-//! strength here" (SI-017, C-12 cross-platform truthfulness). `SystemIdentityObserver` reports
-//! `Unsupported` on any non-Unix platform for now; `docs/architecture/PLATFORM_MODEL.md`'s own
-//! escape hatch - "if the platform cannot produce an identity strong enough ... authority is
-//! reduced" - is exactly this state, not a workaround for it. A follow-up story lands the real
-//! Windows implementation once it can be tested on Windows CI.
+//! Real Windows volume/file-index/reparse identity is implemented (E20-S01, ADR-0020), via
+//! `cancellai-sealedfs::observe_identity` (`GetFileInformationByHandle`, verified on real
+//! Windows CI - `windows-latest` in `rust.yml`, not cross-compilation). Only a genuinely
+//! exotic non-Unix, non-Windows target still reports [`IdentityObservation::Unsupported`],
+//! for the same reason E03-S01 originally chose it for Windows too: a plausible-but-unverified
+//! implementation of a safety-critical equality check is a worse outcome than an honest
+//! "cannot establish identity strength here" (SI-017, C-12 cross-platform truthfulness).
+//! `docs/architecture/PLATFORM_MODEL.md`'s own escape hatch - "if the platform cannot produce
+//! an identity strong enough ... authority is reduced" - remains exactly this state there.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -69,24 +69,50 @@ pub enum IdentityToken {
         modified: Timestamp,
         modified_nanos: u32,
     },
+    /// `GetFileInformationByHandle`'s volume serial number and file index uniquely identify
+    /// an object on a given Windows volume for as long as it exists, the same role
+    /// device+inode play for `Unix` (E20-S01, ADR-0020). `modified_ticks` is the raw
+    /// 100-nanosecond `FILETIME` remainder of the last-write time - the Windows analogue of
+    /// `Unix::modified_nanos`, needed for the identical same-second delete-recreate
+    /// disambiguation E07-S05 found necessary there. Observed without following a reparse
+    /// point at the final path component (`FILE_FLAG_OPEN_REPARSE_POINT`), matching
+    /// `symlink_metadata`'s no-follow contract - a reparse point (symlink, junction, or any
+    /// other Windows reparse tag) is never treated as, or compared using, Unix symlink
+    /// semantics: `kind` is set from `FILE_ATTRIBUTE_REPARSE_POINT` alone, independent of the
+    /// `Unix` variant entirely.
+    Windows {
+        volume_serial_number: u32,
+        file_index: u64,
+        kind: FileKind,
+        modified: Timestamp,
+        modified_ticks: u64,
+    },
 }
 
 impl IdentityToken {
     /// The coarse filesystem-object shape this token describes. A plain accessor rather than
-    /// requiring every caller to match on the (currently single) variant directly, so a
-    /// future non-Unix variant is a one-place change instead of every call site.
+    /// requiring every caller to match on the variant directly, so a future platform variant
+    /// is a one-place change instead of every call site.
     pub fn kind(&self) -> FileKind {
         match self {
             IdentityToken::Unix { kind, .. } => *kind,
+            IdentityToken::Windows { kind, .. } => *kind,
         }
     }
 
-    /// The filesystem/volume this token's object lives on (E04-S01, SI-018 boundary checks).
-    /// Unix-only today, matching this enum's only variant; a future Windows variant adds its
-    /// own volume identity rather than reusing this accessor's meaning.
+    /// The filesystem/volume this token's object lives on (E04-S01, SI-018 boundary checks):
+    /// the Unix device number, or the Windows volume serial number widened to `u64`. A single
+    /// cross-platform accessor rather than a parallel Windows-specific one, so
+    /// `cancellai-safety::root_capability`'s boundary check needs no platform branching of its
+    /// own (E20-S01 reconsidered E03-S01's original doc comment here, which speculated a
+    /// separate accessor - reusing this one turned out simpler once a second variant existed).
     pub fn device(&self) -> u64 {
         match self {
             IdentityToken::Unix { device, .. } => *device,
+            IdentityToken::Windows {
+                volume_serial_number,
+                ..
+            } => *volume_serial_number as u64,
         }
     }
 }
@@ -172,11 +198,49 @@ fn observe_system_identity(path: &Path) -> IdentityObservation {
     }
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+fn observe_system_identity(path: &Path) -> IdentityObservation {
+    // Windows `FILETIME` is 100-nanosecond ticks since 1601-01-01, not Unix-epoch seconds;
+    // this workspace's `Timestamp` is Unix-epoch seconds (E02-S04). `WINDOWS_EPOCH_OFFSET_
+    // SECONDS` is the fixed, well-known offset between the two epochs, used only to populate
+    // `Timestamp`'s whole-second field for display/retention purposes elsewhere -
+    // `modified_ticks` (the raw FILETIME remainder) is what identity comparison actually
+    // relies on, exactly as `Unix::modified_nanos` supplements rather than replaces
+    // `Unix::modified`.
+    const WINDOWS_EPOCH_OFFSET_SECONDS: u64 = 11_644_473_600;
+    const TICKS_PER_SECOND: u64 = 10_000_000;
+
+    match cancellai_sealedfs::observe_identity(path) {
+        Ok(facts) => {
+            let kind = if facts.is_reparse_point {
+                FileKind::Symlink
+            } else if facts.is_directory {
+                FileKind::Directory
+            } else {
+                FileKind::File
+            };
+            let whole_seconds = facts.last_write_time_ticks / TICKS_PER_SECOND;
+            let modified = Timestamp(whole_seconds.saturating_sub(WINDOWS_EPOCH_OFFSET_SECONDS));
+            IdentityObservation::Identity(IdentityToken::Windows {
+                volume_serial_number: facts.volume_serial_number,
+                file_index: facts.file_index,
+                kind,
+                modified,
+                modified_ticks: facts.last_write_time_ticks % TICKS_PER_SECOND,
+            })
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => IdentityObservation::Absent,
+        Err(e) => IdentityObservation::Unreadable {
+            reason: e.to_string(),
+        },
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
 fn observe_system_identity(_path: &Path) -> IdentityObservation {
     IdentityObservation::Unsupported {
-        reason: "native volume/file-index/reparse identity is not yet implemented on this \
-                 platform (E03-S01 residual risk); authority is reduced rather than guessed"
+        reason: "native volume/file-index/reparse identity is not implemented on this \
+                 platform; authority is reduced rather than guessed"
             .to_string(),
     }
 }
@@ -271,7 +335,9 @@ mod tests {
             planned, revalidated,
             "file-to-directory replacement must change identity"
         );
-        let IdentityToken::Unix { kind, .. } = revalidated;
+        let IdentityToken::Unix { kind, .. } = revalidated else {
+            panic!("SystemIdentityObserver must report Unix on a cfg(unix) test target");
+        };
         assert_eq!(kind, FileKind::Directory);
     }
 
@@ -292,7 +358,9 @@ mod tests {
             planned, revalidated,
             "directory-to-symlink replacement must change identity"
         );
-        let IdentityToken::Unix { kind, .. } = revalidated;
+        let IdentityToken::Unix { kind, .. } = revalidated else {
+            panic!("SystemIdentityObserver must report Unix on a cfg(unix) test target");
+        };
         assert_eq!(kind, FileKind::Symlink);
     }
 
@@ -313,7 +381,9 @@ mod tests {
             planned, revalidated,
             "symlink-to-file replacement must change identity"
         );
-        let IdentityToken::Unix { kind, .. } = revalidated;
+        let IdentityToken::Unix { kind, .. } = revalidated else {
+            panic!("SystemIdentityObserver must report Unix on a cfg(unix) test target");
+        };
         assert_eq!(kind, FileKind::File);
     }
 

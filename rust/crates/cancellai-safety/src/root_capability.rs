@@ -24,11 +24,6 @@ use std::path::{Path, PathBuf};
 
 use cancellai_platform::{IdentityObservation, IdentityObserver, IdentityToken, PathResolver};
 
-fn device_of(token: &IdentityToken) -> u64 {
-    let IdentityToken::Unix { device, .. } = token;
-    *device
-}
-
 /// Why a candidate path was refused a [`BoundedPath`], or why a root could not be
 /// [`ApprovedRoot::establish`]ed. Every variant is a refusal - there is no success case in
 /// this type.
@@ -121,7 +116,7 @@ impl ApprovedRoot {
 
         match observer.observe(&canonical) {
             IdentityObservation::Identity(identity) => {
-                if device_of(&identity) != device_of(&self.identity) {
+                if identity.device() != self.identity.device() {
                     return Err(BoundaryError::CrossesFilesystemBoundary);
                 }
                 Ok(BoundedPath {

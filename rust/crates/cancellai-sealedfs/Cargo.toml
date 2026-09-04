@@ -18,3 +18,14 @@ unsafe_code = "allow"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+# ADR-0020: `GetFileInformationByHandle`/`BY_HANDLE_FILE_INFORMATION` for real Windows
+# file/volume identity (E20-S01) - `std` has no safe/stable API for the volume-serial-number/
+# file-index pair. Microsoft's own code-generated raw bindings, not hand-transcribed; no
+# default features, no transitive dependencies. Scoped to Windows only, mirroring `libc`'s
+# `cfg(unix)` scoping above.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+] }

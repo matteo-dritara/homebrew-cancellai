@@ -540,16 +540,30 @@ fn establish_verified_root(
             ))
         })?;
         let established = ApprovedRoot::establish(path, resolver, observer)?;
-        let cancellai_platform::IdentityToken::Unix { device, inode, .. } = established.identity();
-        if !verified
-            .matches_unix_identity(*device, *inode)
-            .map_err(|e| {
-                cancellai_safety::BoundaryError::RootIdentityUnavailable(format!(
-                    "could not compare the held no-follow root identity for {}: {e}",
-                    path.display()
-                ))
-            })?
-        {
+        // `verified` (from `verify_no_intermediate_links` above) only ever succeeds on Unix
+        // today - its Windows fallback returns `Err(SealError::Unsupported(..))` unconditionally
+        // (E20-S01 implemented Windows identity *observation*, not `SealedRoot`'s handle-relative
+        // walk), so this `Windows` arm is unreachable in current behavior. It still returns a
+        // typed refusal rather than relying on that fact silently, so a future change to either
+        // side of this comparison fails closed by default instead of by omission (SI-002/SI-003).
+        let (device, inode) = match established.identity() {
+            cancellai_platform::IdentityToken::Unix { device, inode, .. } => (*device, *inode),
+            cancellai_platform::IdentityToken::Windows { .. } => {
+                return Err(cancellai_safety::BoundaryError::RootIdentityUnavailable(
+                    format!(
+                        "{} has no verified no-follow handle-relative walk to compare against on \
+                     this platform yet (SI-002/SI-003, E20-S01 residual)",
+                        path.display()
+                    ),
+                ));
+            }
+        };
+        if !verified.matches_unix_identity(device, inode).map_err(|e| {
+            cancellai_safety::BoundaryError::RootIdentityUnavailable(format!(
+                "could not compare the held no-follow root identity for {}: {e}",
+                path.display()
+            ))
+        })? {
             return Err(cancellai_safety::BoundaryError::RootIdentityUnavailable(
                 format!(
                     "{} changed identity between the no-follow walk and root establishment; \

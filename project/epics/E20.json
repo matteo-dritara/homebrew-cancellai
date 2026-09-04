@@ -12,7 +12,7 @@
     {
       "id": "E20-S01",
       "title": "Windows native backend",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Implement Windows path, volume/file identity, reparse point, process, allocated-size, and atomic move semantics.",
       "change_risk": "CR4",
       "dependencies": [
