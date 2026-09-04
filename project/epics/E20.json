@@ -57,7 +57,7 @@
     {
       "id": "E20-S03",
       "title": "Tiered platform support contract",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Publish Tier 1/Tier 2 platform capability matrix and support policy.",
       "change_risk": "CR1",
       "dependencies": [

@@ -11,8 +11,8 @@ Epics: **23** | Stories: **108**
 - `blocked`: 1
 - `cancelled`: 1
 - `done`: 54
-- `planned`: 50
-- `ready_for_review`: 2
+- `planned`: 49
+- `ready_for_review`: 3
 
 ## Change risk distribution
 
@@ -30,3 +30,4 @@ Epics: **23** | Stories: **108**
 
 - **E20-S01** - Windows native backend (CR4)
 - **E20-S02** - WSL environment model (CR3)
+- **E20-S03** - Tiered platform support contract (CR1)

@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "notes": "Source of truth for docs/PLATFORMS.md's generated capability matrix (E20-S03). Edit this file, then run `python3 scripts/check_platforms.py generate`. `scripts/check_platforms.py check` cross-validates every claim here against .github/workflows/rust.yml's real CI matrix and against named test functions actually present in rust/crates - a platform cannot be declared tier 1 by editing prose alone.",
+  "platforms": [
+    {
+      "id": "macos",
+      "title": "macOS (Apple Silicon and Intel)",
+      "tier": 1,
+      "ci_check_job": true,
+      "ci_quality_job": true,
+      "ci_os_labels": ["macos-latest"],
+      "capabilities": {
+        "identity": "verified",
+        "mutation": "verified"
+      },
+      "evidence_tests": [
+        "toctou_file_deleted_and_recreated_with_identical_content_still_changes_identity",
+        "establish_rejects_a_root_swapped_to_a_symlink_after_final_validation_but_before_the_bind"
+      ],
+      "notes": "Full CI (check + quality: fmt/clippy/test/cargo-deny) on macos-latest. Real identity (device/inode, E03-S01) and real, adversarially-tested deletion (E03-S05/E21-S07) are both verified on this platform's own CI."
+    },
+    {
+      "id": "linux",
+      "title": "Linux (x86_64, glibc)",
+      "tier": 1,
+      "ci_check_job": true,
+      "ci_quality_job": true,
+      "ci_os_labels": ["ubuntu-latest"],
+      "capabilities": {
+        "identity": "verified",
+        "mutation": "verified"
+      },
+      "evidence_tests": [
+        "toctou_file_deleted_and_recreated_with_identical_content_still_changes_identity",
+        "establish_rejects_a_root_swapped_to_a_symlink_after_final_validation_but_before_the_bind"
+      ],
+      "notes": "Same Unix code path and same tests as macOS, run on its own ubuntu-latest CI - not assumed identical from macOS's result alone. E07-S05 found and fixed a real Linux-specific timing divergence (inode reuse on same-second delete-recreate) that macOS CI alone had never surfaced, which is why this platform is verified independently rather than inferred from macOS."
+    },
+    {
+      "id": "windows",
+      "title": "Windows native (x86_64)",
+      "tier": 2,
+      "ci_check_job": true,
+      "ci_quality_job": true,
+      "ci_os_labels": ["windows-latest"],
+      "capabilities": {
+        "identity": "verified",
+        "mutation": "unsupported"
+      },
+      "evidence_tests": [
+        "observe_identity_reports_is_reparse_point_for_a_real_symlink_without_following_it",
+        "observe_identity_two_hardlinks_to_the_same_file_share_a_file_index"
+      ],
+      "notes": "Full CI exists and real file/volume identity + reparse-point classification is implemented and verified there (E20-S01, ADR-0020). Real deletion is not: `cancellai-platform::mutation::confirmed_delete_file`'s cfg(not(unix)) arm and `cancellai-sealedfs::SealedRoot`'s no-follow root-establishment walk both refuse unconditionally on Windows today, so `clean` is inspect-only there. Tier 1 requires this repository's own bar for what this product does (safe, verified deletion), not merely CI presence - remains tier 2 until a future story implements and verifies it."
+    },
+    {
+      "id": "wsl2",
+      "title": "WSL2 (Windows host, Linux guest)",
+      "tier": 2,
+      "ci_check_job": false,
+      "ci_quality_job": false,
+      "ci_os_labels": [],
+      "capabilities": {
+        "identity": "unverified",
+        "mutation": "unverified"
+      },
+      "evidence_tests": [],
+      "notes": "No dedicated CI runner exists for WSL2 in this repository (GitHub Actions has no WSL2 runner image). A WSL2 guest is a real Linux kernel, so the same Unix identity/mutation code path that is verified on Linux would very likely work there too - but that is an inference, not this repository's own evidence, so it is disclosed as unverified rather than silently inherited from Linux's tier. E20-S02 added explicit WSL2/`/mnt` detection (RuntimeEnvironment, FilesystemContext), itself also unverified against a real WSL2 guest for the same reason."
+    }
+  ]
+}

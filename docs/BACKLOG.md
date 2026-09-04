@@ -1986,7 +1986,7 @@ Make Windows native and WSL2 first-class platform targets, once a real Windows/W
 
 ### E20-S03 - Tiered platform support contract
 
-**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E07-S01, E20-S01, E20-S02 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E07-S01, E20-S01, E20-S02 | **Safety obligations:** none
 
 **Outcome.** Publish Tier 1/Tier 2 platform capability matrix and support policy.
 

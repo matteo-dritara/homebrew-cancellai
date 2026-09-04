@@ -82,6 +82,7 @@ GENERATED_FILES = (
     "docs/ROADMAP.md",
     "docs/BACKLOG.md",
     "docs/CLI.md",
+    "docs/PLATFORMS.md",
     "project/generated/PROJECT_STATUS.md",
 )
 

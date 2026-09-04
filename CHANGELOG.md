@@ -29,6 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Library-level only for now - no CLI surface yet, and no change to mutation/quarantine
   authority (the existing Unix device-identity boundary check already refuses crossing into a
   `/mnt/c`-style mount, since it is genuinely a different device).
+- `docs/PLATFORMS.md` is now generated (`scripts/check_platforms.py`, from
+  `project/platforms.json`) rather than hand-authored aspiration: each platform's tier is
+  cross-validated against `.github/workflows/rust.yml`'s real CI matrix and against named test
+  functions this script confirms actually exist, so a platform cannot be declared tier 1
+  without CI and verified destructive-mutation evidence (E20-S03). Per that real bar, macOS and
+  Linux are tier 1 today; Windows (identity verified, mutation unimplemented) and WSL2 (no
+  dedicated CI runner) are tier 2.
 
 ## [1.9.0] - 2026-09-04
 

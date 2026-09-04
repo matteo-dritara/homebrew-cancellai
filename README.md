@@ -13,6 +13,8 @@ Codex and Claude Code accumulate transcripts, caches and auxiliary files under `
 
 macOS only for this release. The tool has not been tested on Linux. Cross-platform support belongs to the target architecture and is not claimed by the Python v1 release.
 
+The target-engine (Rust) capability matrix - what is CI-verified today across macOS, Linux, Windows, and WSL2 - is generated at [docs/PLATFORMS.md](docs/PLATFORMS.md).
+
 ## Install
 
 ```sh
