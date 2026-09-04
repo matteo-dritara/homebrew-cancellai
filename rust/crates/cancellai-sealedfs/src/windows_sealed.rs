@@ -176,15 +176,24 @@ fn nt_open_child(
     // reparse point or not), so there is no existing object to make a follow-or-not decision
     // about. `write_new_child_atomically`'s own refusal of a pre-planted reparse point at the
     // temp name (E20-S05's adversarial fixture) comes entirely from that `FILE_CREATE`
-    // exclusivity, not from this flag - dropping it here changes no safety property. Found on
-    // real Windows CI: this crate's own pre-CI unit tests never combined `FILE_CREATE` with a
-    // non-directory open until a real machine exercised `configure`'s actual write path.
+    // exclusivity, not from this flag - dropping it here changes no safety property.
+    //
+    // `FILE_OPEN_FOR_BACKUP_INTENT` is likewise directory-only here: it exists to let backup
+    // software open *directories* (the same role `FILE_FLAG_BACKUP_SEMANTICS` plays for
+    // `CreateFileW` in `windows_identity.rs::open_no_follow`, required there "to open a
+    // directory at all" per that module's own doc comment) - `read_child_to_string`'s own,
+    // separate `NtCreateFile` call for reading a file never included it and works fine.
+    // Combined with `FILE_NON_DIRECTORY_FILE` and `FILE_CREATE` specifically, NT rejects it
+    // with the same `STATUS_INVALID_PARAMETER`. Both flags found on real Windows CI, in two
+    // separate rounds: this crate's own pre-CI unit tests never combined `FILE_CREATE` with a
+    // non-directory open until a real machine exercised `configure`'s actual write path, and
+    // the first of these two fixes alone was not sufficient - real CI caught the second flag
+    // only once the first no longer masked it.
     let create_options = if directory {
-        FILE_DIRECTORY_FILE
+        FILE_DIRECTORY_FILE | FILE_OPEN_FOR_BACKUP_INTENT
     } else {
         FILE_NON_DIRECTORY_FILE
     } | FILE_SYNCHRONOUS_IO_NONALERT
-        | FILE_OPEN_FOR_BACKUP_INTENT
         | if disposition == FILE_CREATE {
             0
         } else {

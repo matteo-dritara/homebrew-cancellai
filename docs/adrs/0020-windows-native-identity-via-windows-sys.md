@@ -359,3 +359,25 @@ them into one retrospective paragraph: each was a genuinely distinct bug, found 
 actual Windows machine actually reaching that specific code path, in that specific order (read
 path first, write path second) - exactly the incremental-discovery pattern real infrastructure
 produces and a single local review pass would not.
+
+### The `FILE_OPEN_REPARSE_POINT` fix alone was insufficient (2026-09-04)
+
+The fix above was itself re-run on real Windows CI (run 33900644210) and the *exact same*
+`STATUS_INVALID_PARAMETER` persisted on the same test - proof the `FILE_OPEN_REPARSE_POINT`
+theory, while correct and worth keeping (see below), was not the complete explanation. Isolated
+by comparing `write_new_child_atomically`'s still-failing `FILE_CREATE` open against
+`read_child_to_string`'s own, separately-coded, already-proven-working `NtCreateFile` call for
+an existing file: the only `create_options` flag present in the former and absent from the
+latter was `FILE_OPEN_FOR_BACKUP_INTENT`. That flag exists to let backup software open
+*directories* without the usual traverse-checking friction (the same role
+`FILE_FLAG_BACKUP_SEMANTICS` plays for `CreateFileW` in `windows_identity.rs::open_no_follow`,
+required there "to open a directory at all" per that module's own doc comment) - `nt_open_child`
+applied it unconditionally to every open, directory or not, and NT rejects it combined with
+`FILE_NON_DIRECTORY_FILE` and `FILE_CREATE`. Fixed by scoping `FILE_OPEN_FOR_BACKUP_INTENT` to
+directory opens only, matching what `read_child_to_string`'s independently-written file-open
+code had already (correctly, if not by explicit reasoning at the time) omitted.
+
+Both flag corrections stand together in the fix that follows this section: `FILE_OPEN_REPARSE_
+POINT` dropped for `FILE_CREATE` (still correct, still necessary - the two are independent
+`STATUS_INVALID_PARAMETER` triggers, and only removing both together let real CI reach a
+passing state), `FILE_OPEN_FOR_BACKUP_INTENT` scoped to directories only.
