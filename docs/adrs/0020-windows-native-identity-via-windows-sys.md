@@ -480,3 +480,49 @@ Windows-specific variant and unifying it with the pre-existing Unix test
 rather than being `#[cfg(unix)]`-gated - matching this session's own established pattern for
 exactly this class of finding (E20-S01's `system_observer_reports_unsupported_off_unix` had the
 identical shape: a platform-conditional test whose assumption a later capability made stale).
+
+### Safety-critical correction: the `FILE_OPEN_REPARSE_POINT`/`FILE_CREATE` fix was itself wrong (2026-09-04)
+
+The very next push (adding only the stale-completeness-test fix above, no `windows_sealed.rs`
+change) reached `cancellai-sealedfs`'s own unit tests on real Windows CI for the first time in
+this entire investigation - `cargo test`'s per-crate ordering had never gotten past
+`cancellai-cli` before this point, so none of this crate's own adversarial fixtures had ever
+actually run on real hardware yet, only cross-compiled. One of them failed:
+`windows_sealed::tests::write_new_child_atomically_refuses_a_pre_planted_reparse_point_at_the_
+temp_name` - the exact fixture proving a symlink pre-planted at the temp name is refused, not
+written through - reported success where it must report refusal.
+
+This traces directly back to the *first* of this investigation's `nt_open_child` fixes (the
+section above titled "Real Windows CI found a second, independent bug on the write path"),
+which had dropped `FILE_OPEN_REPARSE_POINT` for `FILE_CREATE` on the reasoning that `FILE_
+CREATE`'s own exclusivity makes "follow or don't follow an existing reparse point" a question
+that cannot apply. **That reasoning was wrong, and the error was not caught until this run**:
+without `FILE_OPEN_REPARSE_POINT`, `NtCreateFile` does not treat an existing reparse point at
+`name` as a plain name collision - it *follows* the reparse point as part of ordinary name
+resolution before `FILE_CREATE`'s own exclusivity check is ever reached, so a pre-planted
+symlink silently redirected the create to the symlink's target (potentially a location entirely
+outside the sealed directory) and reported success rather than refusing. This is precisely the
+attack class SI-002/SI-003/E07-S07's own O_CREAT|O_EXCL-equivalent protection exists to close -
+a genuine, if narrowly-scoped and never-shipped, safety regression, not a cosmetic test failure.
+It reached this point only because `windows_sealed.rs`'s own adversarial fixtures had not yet
+run on real hardware even once across five prior pushes in this investigation, each of which
+verified only via cross-compilation (which cannot detect this: the flag change compiles and
+type-checks identically either way) and via `cancellai-cli`'s integration tests (which never
+happen to plant a reparse point at a temp name, so never exercised this path).
+
+Fixed by restoring `FILE_OPEN_REPARSE_POINT` unconditionally, including for `FILE_CREATE` -
+this does not reintroduce the `STATUS_INVALID_PARAMETER` the earlier fix believed it was
+solving, because that failure's actual, confirmed cause (the "actual root cause" section above)
+was always `SetFileInformationByHandle`'s Win32-level `RootDirectory` limitation in
+`rename_child`, fixed independently by switching to `NtSetInformationFile`, and entirely
+unrelated to this flag.
+
+**This finding changes the process lesson from the sections above, not just the outcome**: this
+investigation's own real-Windows-CI discipline - re-running every single change rather than
+trusting reasoning about NT semantics - is what caught this regression before it could ship,
+but only once execution order happened to finally reach the crate whose own tests would have
+caught it *first*, every time, had cargo's default test-binary ordering reached it sooner. The
+`unlink_child_matching_windows_identity_refuses_a_reparse_point_at_the_name` and other
+`windows_sealed.rs` adversarial fixtures passed on this same run, confirming the rest of this
+module's reparse-point handling was never affected - the regression was scoped exactly to the
+one flag change this section corrects.

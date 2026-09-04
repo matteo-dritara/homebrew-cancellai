@@ -37,9 +37,8 @@ use std::path::{Component, Path, PathBuf, Prefix};
 
 use windows_sys::Wdk::Foundation::OBJECT_ATTRIBUTES;
 use windows_sys::Wdk::Storage::FileSystem::{
-    FILE_CREATE, FILE_DIRECTORY_FILE, FILE_NON_DIRECTORY_FILE, FILE_OPEN,
-    FILE_OPEN_FOR_BACKUP_INTENT, FILE_OPEN_IF, FILE_OPEN_REPARSE_POINT,
-    FILE_SYNCHRONOUS_IO_NONALERT, NtCreateFile,
+    FILE_DIRECTORY_FILE, FILE_NON_DIRECTORY_FILE, FILE_OPEN, FILE_OPEN_FOR_BACKUP_INTENT,
+    FILE_OPEN_IF, FILE_OPEN_REPARSE_POINT, FILE_SYNCHRONOUS_IO_NONALERT, NtCreateFile,
 };
 use windows_sys::Win32::Foundation::{
     HANDLE, OBJ_CASE_INSENSITIVE, RtlNtStatusToDosError, STATUS_SUCCESS, UNICODE_STRING,
@@ -169,36 +168,40 @@ fn nt_open_child(
     };
     let mut handle: HANDLE = std::ptr::null_mut();
     let mut iosb: IO_STATUS_BLOCK = unsafe { std::mem::zeroed() };
-    // `FILE_OPEN_REPARSE_POINT` (open the reparse point itself rather than following it) is
-    // meaningless - and NT rejects it outright with `STATUS_INVALID_PARAMETER` - when
-    // `disposition` is `FILE_CREATE`: nothing can already exist at `name` for `FILE_CREATE` to
-    // succeed at all (it fails with `STATUS_OBJECT_NAME_COLLISION` the instant anything does,
-    // reparse point or not), so there is no existing object to make a follow-or-not decision
-    // about. `write_new_child_atomically`'s own refusal of a pre-planted reparse point at the
-    // temp name (E20-S05's adversarial fixture) comes entirely from that `FILE_CREATE`
-    // exclusivity, not from this flag - dropping it here changes no safety property.
+    // `FILE_OPEN_REPARSE_POINT` is unconditional, including for `FILE_CREATE`, and this is
+    // safety-load-bearing, not incidental: an earlier version of this function omitted it for
+    // `FILE_CREATE` on the theory that "nothing can already exist for `FILE_CREATE` to succeed,
+    // so there is nothing to follow-or-not" - real Windows CI proved that theory wrong in the
+    // most consequential way possible. Without the flag, `NtCreateFile` does not treat an
+    // existing reparse point at `name` as a plain name collision; it *follows* the reparse
+    // point as part of ordinary name resolution before evaluating `FILE_CREATE`, so a
+    // pre-planted symlink at the temp name silently redirected the create to the symlink's
+    // target (potentially outside the sealed directory entirely) and returned success, rather
+    // than refusing - the exact class of attack `write_new_child_atomically`'s own adversarial
+    // fixture (`write_new_child_atomically_refuses_a_pre_planted_reparse_point_at_the_temp_name`)
+    // exists to catch, and did catch, on real Windows CI, the moment cross-compilation-only
+    // checks stopped being the only thing exercising this path. `FILE_OPEN_REPARSE_POINT`
+    // being present is what turns the reparse point at `name` into `STATUS_OBJECT_NAME_
+    // COLLISION` (refused, matching Unix `O_CREAT | O_EXCL`) instead of a followed redirect.
+    // The real `STATUS_INVALID_PARAMETER` this flag was mistakenly blamed for was a completely
+    // unrelated defect in `rename_child`'s use of the Win32 `SetFileInformationByHandle`
+    // wrapper (see this crate's own `ADR-0020` for the full account) - fixed independently,
+    // without ever needing to touch this flag.
     //
-    // `FILE_OPEN_FOR_BACKUP_INTENT` is likewise directory-only here: it exists to let backup
-    // software open *directories* (the same role `FILE_FLAG_BACKUP_SEMANTICS` plays for
-    // `CreateFileW` in `windows_identity.rs::open_no_follow`, required there "to open a
-    // directory at all" per that module's own doc comment) - `read_child_to_string`'s own,
-    // separate `NtCreateFile` call for reading a file never included it and works fine.
-    // Combined with `FILE_NON_DIRECTORY_FILE` and `FILE_CREATE` specifically, NT rejects it
-    // with the same `STATUS_INVALID_PARAMETER`. Both flags found on real Windows CI, in two
-    // separate rounds: this crate's own pre-CI unit tests never combined `FILE_CREATE` with a
-    // non-directory open until a real machine exercised `configure`'s actual write path, and
-    // the first of these two fixes alone was not sufficient - real CI caught the second flag
-    // only once the first no longer masked it.
+    // `FILE_OPEN_FOR_BACKUP_INTENT` is directory-only here: it exists to let backup software
+    // open *directories* (the same role `FILE_FLAG_BACKUP_SEMANTICS` plays for `CreateFileW` in
+    // `windows_identity.rs::open_no_follow`, required there "to open a directory at all" per
+    // that module's own doc comment) - `read_child_to_string`'s own, separate `NtCreateFile`
+    // call for reading a file never included it and works fine, and combined with
+    // `FILE_NON_DIRECTORY_FILE` and `FILE_CREATE` specifically, NT rejects it with
+    // `STATUS_INVALID_PARAMETER` (found on real Windows CI; this scoping remains correct and is
+    // unrelated to the reparse-point regression above).
     let create_options = if directory {
         FILE_DIRECTORY_FILE | FILE_OPEN_FOR_BACKUP_INTENT
     } else {
         FILE_NON_DIRECTORY_FILE
     } | FILE_SYNCHRONOUS_IO_NONALERT
-        | if disposition == FILE_CREATE {
-            0
-        } else {
-            FILE_OPEN_REPARSE_POINT
-        };
+        | FILE_OPEN_REPARSE_POINT;
 
     // SAFETY: `object_attributes.RootDirectory` is `parent`'s handle, valid and open for the
     // duration of this call (borrowed from `parent`, which outlives it); `ObjectName` points at

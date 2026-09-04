@@ -25,9 +25,11 @@ let real CI reach the *write* path for the first time, a `STATUS_INVALID_PARAMET
 four further rounds to actually resolve. Two `nt_open_child` create-options corrections
 (`FILE_OPEN_REPARSE_POINT` paired with `FILE_CREATE`; `FILE_OPEN_FOR_BACKUP_INTENT` applied to
 file opens) and a `FILE_RENAME_INFO` buffer-length fix (a NUL terminator counted in the buffer
-but not in `FileNameLength`) were each individually well-reasoned, are each kept as genuine
-correctness/least-privilege improvements, and none was the actual cause - the identical failure
-persisted through all three, unchanged. A permanent error-context instrumentation commit,
+but not in `FileNameLength`) were each individually well-reasoned, and none was the actual
+cause - the identical failure persisted through all three, unchanged. **One of the three was
+later found to be actively wrong, not merely insufficient** (see the dedicated correction
+below); the buffer-length fix remains correct and necessary. A permanent error-context
+instrumentation commit,
 pushed specifically to stop guessing and get direct evidence, then showed the failure was
 `SetFileInformationByHandle(FileRenameInfo)` itself: a known, documented gap where the Win32
 wrapper does not reliably honor a non-null `RootDirectory` for handle-relative rename,
@@ -47,9 +49,34 @@ same run found one further, unrelated stale test (`cancellai-inventory::complete
 Windows-specific "allocated-size still unsupported" variant, stale since E20-S05's own
 allocated-size implementation made a fully-readable Windows tree genuinely `Complete`) - fixed
 by unifying it with the pre-existing Unix test rather than keeping a platform split the real
-capability no longer requires. See ADR-0020's six dated sections under "Real Windows CI
-found..." for the complete, honest account of the whole investigation, across five iterative
-pushes and seven real Windows CI runs.
+capability no longer requires.
+
+**A safety-relevant correction, found on the very next push (run 33903918202)**: with that
+stale-test fix in place, `cargo test`'s per-crate execution order finally reached
+`cancellai-sealedfs`'s own unit tests on real Windows CI for the first time in this entire
+investigation (five prior pushes had all failed inside `cancellai-cli`, before execution ever
+reached this crate). One of `windows_sealed.rs`'s own adversarial fixtures failed:
+`write_new_child_atomically_refuses_a_pre_planted_reparse_point_at_the_temp_name` reported
+success where it must refuse. Root cause: the earlier `FILE_OPEN_REPARSE_POINT`-dropped-for-
+`FILE_CREATE` fix (recorded above as one of the "individually well-reasoned" corrections) was
+not merely insufficient, as first believed - it was **actively wrong, and a genuine safety
+regression**. Without that flag, `NtCreateFile` follows an existing reparse point at the target
+name as part of ordinary resolution *before* `FILE_CREATE`'s own exclusivity check runs, so a
+pre-planted symlink at the temp name silently redirected the create through it (potentially
+outside the sealed directory) and reported success instead of refusing - precisely the
+SI-002/SI-003 attack class this fixture exists to catch. Fixed by restoring
+`FILE_OPEN_REPARSE_POINT` unconditionally; this does not reintroduce the original
+`STATUS_INVALID_PARAMETER`, whose real, confirmed cause was always the unrelated
+`SetFileInformationByHandle`/`RootDirectory` defect in `rename_child`, independently fixed by
+the `NtSetInformationFile` switch. This regression never shipped (it was caught before any
+story closure or platform-verified claim), but it is recorded here in full because it is the
+more durable lesson of this investigation: real-CI discipline caught it, but only once
+execution order happened to finally reach the one crate whose own adversarial fixtures would
+have caught it immediately, on the very first push, had cargo's default test ordering reached
+it sooner than the fifth.
+
+See ADR-0020's seven dated sections under "Real Windows CI found..." for the complete, honest
+account of the whole investigation, across six iterative pushes and eight real Windows CI runs.
 
 `project/platforms.json`'s `windows.capabilities.mutation.state` will be updated to `verified`
 in a follow-up commit citing this session's new Windows test names and the confirmed-green
