@@ -582,13 +582,21 @@ mod tests {
         );
     }
 
-    #[cfg(not(unix))]
+    // E20-S01's round-1 independent verifier repair found this test itself stale on real
+    // Windows CI: it predates E20-S01/ADR-0020 and asserted the *old*, pre-native-identity
+    // behavior (`Unsupported` on every non-Unix target) - since superseded by real Windows
+    // identity, so it started failing for real (not a false alarm) the moment this crate's own
+    // code stopped being wrong. Windows now gets its own positive assertion below; the
+    // genuinely-exotic non-Unix-non-Windows fallback (`observe_system_identity`'s third `cfg`
+    // arm) has no real target this workspace runs CI on to exercise it against, so it remains
+    // untested here rather than asserted from a host that cannot actually reach that branch.
+    #[cfg(windows)]
     #[test]
-    fn system_observer_reports_unsupported_off_unix() {
+    fn system_observer_reports_a_real_identity_on_windows() {
         let observer = SystemIdentityObserver;
         match observer.observe(Path::new(".")) {
-            IdentityObservation::Unsupported { .. } => {}
-            other => panic!("expected Unsupported off Unix, got {other:?}"),
+            IdentityObservation::Identity(IdentityToken::Windows { .. }) => {}
+            other => panic!("expected a real Windows Identity, got {other:?}"),
         }
     }
 }

@@ -103,6 +103,24 @@ cargo clippy --workspace --all-targets --all-features --target x86_64-unknown-li
 cargo deny check
 ```
 
+**Real Windows CI result (first push, run
+[33885998630](https://github.com/matteo-dritara/homebrew-cancellai/actions/runs/33885998630),
+commit `aaca5a0407d8731d837553e9bd7361cac63732b4`)**: every `check` job (all three OSes, both
+MSRV 1.85.0 and stable) and `quality (ubuntu-latest)`/`quality (macos-latest)` passed. Real
+Windows CI found one genuine failure this executor's cross-compile-only local verification could
+not have caught: `identity::tests::system_observer_reports_unsupported_off_unix`, a test that
+predates E20-S01 and still asserted the *old* pre-native-identity behavior
+(`IdentityObservation::Unsupported` on every non-Unix target), left unremoved when this story
+replaced that behavior for Windows specifically. The real failure output is itself independent
+confirmation the new implementation works correctly on real hardware - `GetFileInformationByHandle`
+returned sane, real values (`volume_serial_number: 4009161782, file_index: 281474976711284,
+modified: Timestamp(1788533409), modified_ticks: 6553669`), which is exactly why the stale
+assertion failed. Fixed: the old test is replaced with `system_observer_reports_a_real_identity_
+on_windows` (`#[cfg(windows)]`, asserts `IdentityObservation::Identity(IdentityToken::Windows {
+.. })`); the genuinely-exotic non-Unix-non-Windows fallback has no real target this workspace
+runs CI on, so it is not asserted from a host that cannot reach that branch. Pushed as a second
+commit; see this story's evidence for the final confirmed run once it completes.
+
 All green on this executor's macOS host (native + both cross-targets, compile/lint only for the
 cross-targets - this executor still has no real Windows/Linux machine). Unlike round 1, this
 repair's commit is pushed to a real branch and a PR is opened so `rust.yml`'s real
