@@ -491,10 +491,13 @@ impl SealedRoot {
             false,
             windows_sys::Wdk::Storage::FileSystem::FILE_CREATE,
             windows_sys::Win32::Storage::FileSystem::FILE_GENERIC_WRITE,
-        )?;
+        )
+        .map_err(|e| contextualize(e, "creating temp file"))?;
         let write_result = file.write_all(contents).and_then(|()| file.sync_all());
         drop(file);
-        write_result.map_err(SealError::Io)?;
+        write_result
+            .map_err(SealError::Io)
+            .map_err(|e| contextualize(e, "writing temp file contents"))?;
 
         rename_child(&self.dir, tmp_name, final_name)
     }
@@ -514,7 +517,8 @@ fn rename_child(dir: &File, old_name: &str, new_name: &str) -> Result<(), SealEr
         false,
         FILE_OPEN,
         DELETE | windows_sys::Win32::Storage::FileSystem::FILE_GENERIC_WRITE,
-    )?;
+    )
+    .map_err(|e| contextualize(e, "opening temp file for rename"))?;
 
     // Deliberately *not* NUL-terminated: `FILE_RENAME_INFO::FileName` is documented as exactly
     // `FileNameLength` bytes of raw UTF-16, no trailing NUL, and `SetFileInformationByHandle`'s
@@ -559,9 +563,28 @@ fn rename_child(dir: &File, old_name: &str, new_name: &str) -> Result<(), SealEr
         )
     };
     if ok == 0 {
-        return Err(SealError::Io(io::Error::last_os_error()));
+        return Err(contextualize(
+            SealError::Io(io::Error::last_os_error()),
+            "SetFileInformationByHandle(FileRenameInfo)",
+        ));
     }
     Ok(())
+}
+
+/// Prefixes an `SealError::Io`'s message with `context`, identifying which of several
+/// fallible steps in a multi-call sequence (`write_new_child_atomically`/`rename_child`)
+/// actually failed - added after real Windows CI reported the same bare `os error 87` across
+/// several different, individually-plausible fixes in a row with no way to tell from the
+/// message alone which call the error actually came from. Leaves non-`Io` variants (which
+/// already carry their own specific meaning) untouched.
+fn contextualize(e: SealError, context: &str) -> SealError {
+    match e {
+        SealError::Io(io_err) => SealError::Io(io::Error::new(
+            io_err.kind(),
+            format!("{context}: {io_err}"),
+        )),
+        other => other,
+    }
 }
 
 /// `[u16]` reinterpreted as its own little-endian byte representation - `FILE_RENAME_INFO`'s
