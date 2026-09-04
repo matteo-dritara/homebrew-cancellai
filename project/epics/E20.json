@@ -12,7 +12,7 @@
     {
       "id": "E20-S01",
       "title": "Windows native backend",
-      "status": "ready_for_review",
+      "status": "in_progress",
       "outcome": "Implement Windows path, volume/file identity, reparse point, process, allocated-size, and atomic move semantics.",
       "change_risk": "CR4",
       "dependencies": [
@@ -36,7 +36,7 @@
     {
       "id": "E20-S02",
       "title": "WSL environment model",
-      "status": "ready_for_review",
+      "status": "blocked",
       "outcome": "Treat WSL as Windows host plus Linux guest/filesystem context rather than generic Linux.",
       "change_risk": "CR3",
       "dependencies": [
@@ -57,7 +57,7 @@
     {
       "id": "E20-S03",
       "title": "Tiered platform support contract",
-      "status": "ready_for_review",
+      "status": "blocked",
       "outcome": "Publish Tier 1/Tier 2 platform capability matrix and support policy.",
       "change_risk": "CR1",
       "dependencies": [

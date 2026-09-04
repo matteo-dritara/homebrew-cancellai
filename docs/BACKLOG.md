@@ -1948,7 +1948,7 @@ Make Windows native and WSL2 first-class platform targets, once a real Windows/W
 
 ### E20-S01 - Windows native backend
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E07-S01 | **Safety obligations:** SI-017, SI-018
+**Status:** `in_progress` | **Change Risk:** `CR4` | **Dependencies:** E07-S01 | **Safety obligations:** SI-017, SI-018
 
 **Outcome.** Implement Windows path, volume/file identity, reparse point, process, allocated-size, and atomic move semantics.
 
@@ -1967,7 +1967,7 @@ Make Windows native and WSL2 first-class platform targets, once a real Windows/W
 
 ### E20-S02 - WSL environment model
 
-**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E20-S01 | **Safety obligations:** none
+**Status:** `blocked` | **Change Risk:** `CR3` | **Dependencies:** E20-S01 | **Safety obligations:** none
 
 **Outcome.** Treat WSL as Windows host plus Linux guest/filesystem context rather than generic Linux.
 
@@ -1986,7 +1986,7 @@ Make Windows native and WSL2 first-class platform targets, once a real Windows/W
 
 ### E20-S03 - Tiered platform support contract
 
-**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E07-S01, E20-S01, E20-S02 | **Safety obligations:** none
+**Status:** `blocked` | **Change Risk:** `CR1` | **Dependencies:** E07-S01, E20-S01, E20-S02 | **Safety obligations:** none
 
 **Outcome.** Publish Tier 1/Tier 2 platform capability matrix and support policy.
 

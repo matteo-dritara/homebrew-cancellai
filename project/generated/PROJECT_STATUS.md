@@ -8,11 +8,11 @@ Epics: **23** | Stories: **108**
 
 ## Story status
 
-- `blocked`: 1
+- `blocked`: 3
 - `cancelled`: 1
 - `done`: 54
+- `in_progress`: 1
 - `planned`: 49
-- `ready_for_review`: 3
 
 ## Change risk distribution
 
@@ -28,6 +28,4 @@ Epics: **23** | Stories: **108**
 
 ## Awaiting independent review
 
-- **E20-S01** - Windows native backend (CR4)
-- **E20-S02** - WSL environment model (CR3)
-- **E20-S03** - Tiered platform support contract (CR1)
+- none
