@@ -8,11 +8,11 @@ Epics: **23** | Stories: **108**
 
 ## Story status
 
-- `blocked`: 1
+- `blocked`: 3
 - `cancelled`: 1
-- `done`: 48
+- `done`: 49
+- `in_progress`: 3
 - `planned`: 52
-- `ready_for_review`: 6
 
 ## Change risk distribution
 
@@ -28,9 +28,4 @@ Epics: **23** | Stories: **108**
 
 ## Awaiting independent review
 
-- **E22-S01** - The release workflow re-runs every gate it claims to (CR1)
-- **E22-S02** - Rust supply chain has updates and static analysis (CR1)
-- **E22-S03** - Dependency rings, and a real command-line surface (CR2)
-- **E22-S04** - Direct coverage for the retention resolver (CR2)
-- **E22-S05** - Codex native delete backend is wired or explicitly refused (CR3)
-- **E22-S06** - The review-round ceiling counts every review round (CR1)
+- none
