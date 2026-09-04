@@ -1,0 +1,7 @@
+Configure Claude Code's built-in retention
+
+Usage: cancellai-cli configure --claude-retention <DAYS>
+
+Options:
+      --claude-retention <DAYS>  Claude Code's cleanupPeriodDays value to set - must be at least 1
+  -h, --help                     Print help

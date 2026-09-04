@@ -2258,7 +2258,7 @@ Close the gaps between what the engineering system claims to enforce and what it
 
 - ADR-0019 defines the kernel ring - model, safety, platform, sealedfs - as dependency-free except by dedicated ADR, exactly as today, and an outer ring governed by a reviewed allow-list.
 - cancellai-cli supports --help, -h, --version and per-command help, matching the reference CLI's own surface, with argument parsing no longer hand-rolled in main.rs.
-- Flags irrelevant to a command are rejected rather than silently accepted, and no parsing change weakens SI-007: no flag and no missing subcommand may resolve toward clean.
+- Flags irrelevant to a command are rejected rather than silently accepted, and no parsing change weakens SI-007: no flag and no missing subcommand may resolve toward clean. Exception, stated explicitly rather than left implicit (E22 verifier review round 1): --help/-h/--version, wherever they appear in the argument list, still short-circuit remaining validation and exit before dispatch - matching clap's own precedence and common CLI convention (git, cargo) - because no code path from them can reach an Invocation at all, so this can never resolve toward clean either.
 - Every added dependency's licence is already inside rust/deny.toml's allow-list, or the allow-list change is its own reviewed decision.
 
 **Verification**

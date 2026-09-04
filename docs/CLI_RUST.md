@@ -110,8 +110,33 @@ always normalizes to `status` - the read-only default - and the *only* token tha
 command dispatch regardless of which crate parses the tokens (ADR-0019): `clap` decides what
 a valid `status`/`plan`/`clean`/... invocation's flags mean, but never which subcommand an
 ambiguous or empty invocation resolves to.
+
+`--help`/`-h`/`--version`, wherever either appears in the argument list, make `clap` print
+help/version text and exit `0` immediately - the same precedence `git`, `cargo`, and most
+`clap`-based CLIs already follow (`git commit --help --bogus-flag` shows help too), and the
+reason `cancellai-cli status --help --dry-run` exits `0` rather than refusing `--dry-run`
+(E22-S03 verifier review round 1). This is deliberately *not* treated as a violation of "a
+flag irrelevant to the chosen command is refused": that AC describes ordinary argument
+validation, and this precedence is safe by construction rather than merely by convention -
+`cli::parse` only returns an `Invocation` when `clap` neither printed help/version nor
+errored, so no code path from `--help`/`-h`/`--version` can reach `main.rs`'s dispatch, in
+particular never `Invocation::Clean` (SI-007). An irrelevant flag that appears *before*
+`--help` in the same invocation is still refused with exit `2`, because `clap` parses left to
+right and only short-circuits once it actually reaches the help/version action -
+`cancellai-cli status --dry-run --help` is a usage error, not help text
+(`rust/crates/cancellai-cli/tests/cli_behavior.rs`'s `help_short_circuits_remaining_
+argument_validation_by_design` and `an_irrelevant_flag_before_help_is_still_refused` pin both
+orderings).
+
+## Known gaps versus the Python reference (tracked, not silent)
+
 - **The Codex native delete backend is detected but deliberately not wired to `clean` -
-  a permanent, disclosed divergence, not a missing flag (`CR-TE-10`, E22-S05).**
+  a permanent, disclosed divergence, not a missing flag (`CR-TE-10`, E22-S05).** "Permanent"
+  means this build does not close the gap and will not close it as a side effect of an
+  unrelated story - not that closing it is out of scope forever. Wiring it remains real,
+  wanted future work; it stays open only behind its own dedicated, reviewed CR4 story (see
+  the mutation-boundary reasoning below), the same distinction
+  `project/evidence/E22-S05/EVIDENCE.md`'s "Residual risks" section draws.
   `cancellai-provider-codex` implements `codex_delete_supported`/`NativeDeleteSupport` with
   four distinct outcomes, and `CodexProvider::capability(NativeDeleteCapability)` already
   reports them accurately (`docs/PROVIDERS.md`'s generated matrix) - detection is real and

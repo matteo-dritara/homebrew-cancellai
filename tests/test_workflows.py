@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -91,6 +92,89 @@ class ReleaseGateDriftTests(unittest.TestCase):
         self.assertIn("cargo clippy", joined)
         self.assertIn("cargo test --workspace", joined)
         self.assertIn("cargo deny check", joined)
+
+    def test_agents_md_lists_the_full_python_gate_set(self) -> None:
+        commands = check_workflows.agents_md_python_gate_commands()
+        self.assertIn("python3 -m pytest tests -v", commands)
+        self.assertIn("python3 -m ruff check .", commands)
+        self.assertIn("python3 -m ruff format --check .", commands)
+        self.assertTrue(any(c.startswith("python3 -m mypy ") for c in commands))
+        self.assertNotIn("python3 -m pip install -r requirements-dev.txt", commands)
+
+    def _release_and_rust_text(self) -> tuple[str, str]:
+        return (
+            check_workflows.RELEASE_WORKFLOW.read_text(encoding="utf-8"),
+            check_workflows.RUST_WORKFLOW.read_text(encoding="utf-8"),
+        )
+
+    def _errors_with(self, release_text: str | None = None, rust_text: str | None = None) -> list[str]:
+        base_release, base_rust = self._release_and_rust_text()
+        with tempfile.TemporaryDirectory() as tmp:
+            release_path = Path(tmp) / "release.yml"
+            rust_path = Path(tmp) / "rust.yml"
+            release_path.write_text(release_text if release_text is not None else base_release, encoding="utf-8")
+            rust_path.write_text(rust_text if rust_text is not None else base_rust, encoding="utf-8")
+            with (
+                mock.patch.object(check_workflows, "RELEASE_WORKFLOW", release_path),
+                mock.patch.object(check_workflows, "RUST_WORKFLOW", rust_path),
+            ):
+                return check_workflows.release_gate_drift_errors()
+
+    # E22 verifier review round 1: each of these six independent regressions against the real
+    # release.yml previously returned an empty error list. Every one must now be non-empty.
+    def test_removing_pytest_from_release_yml_is_caught(self) -> None:
+        release_text, _ = self._release_and_rust_text()
+        errors = self._errors_with(release_text=release_text.replace("      - run: python3 -m pytest tests -v\n", ""))
+        self.assertTrue(errors)
+        self.assertIn("pytest", "\n".join(errors))
+
+    def test_removing_ruff_check_from_release_yml_is_caught(self) -> None:
+        release_text, _ = self._release_and_rust_text()
+        errors = self._errors_with(release_text=release_text.replace("      - run: python3 -m ruff check .\n", ""))
+        self.assertTrue(errors)
+
+    def test_removing_mypy_from_release_yml_is_caught(self) -> None:
+        release_text, _ = self._release_and_rust_text()
+        stripped = re.sub(r"      - run: python3 -m mypy.*\n", "", release_text)
+        errors = self._errors_with(release_text=stripped)
+        self.assertTrue(errors)
+
+    def test_removing_windows_from_either_matrix_is_caught(self) -> None:
+        release_text, _ = self._release_and_rust_text()
+        errors = self._errors_with(
+            release_text=release_text.replace(
+                "os: [macos-latest, ubuntu-latest, windows-latest]",
+                "os: [macos-latest, ubuntu-latest]",
+            )
+        )
+        self.assertTrue(errors)
+        self.assertIn("verify-rust", "\n".join(errors))
+
+    def test_disabling_verify_rust_with_an_if_condition_is_caught(self) -> None:
+        release_text, _ = self._release_and_rust_text()
+        errors = self._errors_with(
+            release_text=release_text.replace("  verify-rust:\n    runs-on:", "  verify-rust:\n    if: false\n    runs-on:")
+        )
+        self.assertTrue(errors)
+        self.assertIn("conditional", "\n".join(errors))
+
+    def test_nonblocking_clippy_via_continue_on_error_is_caught(self) -> None:
+        release_text, _ = self._release_and_rust_text()
+        errors = self._errors_with(
+            release_text=release_text.replace(
+                "      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings\n        working-directory: rust\n",
+                "      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings\n"
+                "        working-directory: rust\n        continue-on-error: true\n",
+            )
+        )
+        self.assertTrue(errors)
+        self.assertIn("continue-on-error", "\n".join(errors))
+
+    def test_dropping_verify_rust_from_publish_needs_is_caught(self) -> None:
+        release_text, _ = self._release_and_rust_text()
+        errors = self._errors_with(release_text=release_text.replace("needs: [verify, verify-rust]", "needs: [verify]"))
+        self.assertTrue(errors)
+        self.assertIn("publish", "\n".join(errors))
 
 
 if __name__ == "__main__":

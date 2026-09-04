@@ -1,0 +1,16 @@
+Safely reclaim disk space from old Codex and Claude Code sessions (target-engine beta).
+
+Usage: cancellai-cli <COMMAND>
+
+Commands:
+  status     Show disk usage and cleanup candidates (default command)
+  inspect    Always print the full inventory document (no Python CLI equivalent)
+  plan       Preview the actions a real `clean` would take - never mutates
+  clean      Clean old session data - the only mutating command
+  configure  Configure Claude Code's built-in retention
+  version    Print the engine name and version
+  help       Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version

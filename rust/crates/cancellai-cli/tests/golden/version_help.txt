@@ -1,0 +1,6 @@
+Print the engine name and version
+
+Usage: cancellai-cli version
+
+Options:
+  -h, --help  Print help

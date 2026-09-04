@@ -186,3 +186,14 @@ Two rules make this more than documentation intent:
 the time this story closed - the figure reached, not a target this or a future story is bound
 to hold exactly; new resolver logic should carry its own direct tests rather than chase a
 percentage.
+
+E22 verifier review round 1 found that this story's own mixed-age boundary test pinned the
+opposite of the reference: the target engine applied the cutoff to each rollout's own mtime
+rather than to the tree's effective (max-of-members) mtime, so a stale root beside a recent
+child was still an individual `Delete` candidate, though `choose_codex_old_sessions` protects
+the whole tree the instant any member is recent. A green direct test cannot substitute for the
+differential gate pinning the *correct* behaviour, only for it pinning *a* behaviour - so the
+scenario (`codex-mixed-age-tree`) is now also in the fixture corpus itself
+(`tests/fixtures/manifest.json`, `tests/fixtures/recipes.py`), classified `NORMATIVE`, so the
+M6 differential gate (`scripts/rust_python_parity.py check`) catches a future regression here
+independently of whichever unit test happens to be looking at the same case.

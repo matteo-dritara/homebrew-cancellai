@@ -18,7 +18,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `cancellai-cli` now refuses a flag irrelevant to the chosen command (e.g. `status --dry-run`,
   `clean --claude-retention`) with exit code 2, instead of silently accepting and ignoring it
-  as every command's flags did before this release.
+  as every command's flags did before this release. `--help`/`-h`/`--version` are an explicit
+  exception: wherever they appear, they still short-circuit remaining validation and exit
+  before any command runs, matching `clap`'s own precedence and common CLI convention (`git`,
+  `cargo`) - see `docs/CLI_RUST.md`'s "Argument parsing" section.
+
+### Fixed
+
+- **A Codex subagent tree with a stale root and a recently-touched child is no longer an
+  individual delete candidate for the stale member** (E22-S04). `cancellai-policy::retention`
+  gated `--keep-latest` pinning on the tree's effective (max-of-members) mtime but evaluated
+  each member's own staleness independently, so a tree the reference protects in full - any
+  recent member protects the whole tree, not just the pinning rail - could still surface the
+  old-looking member as a `Delete` action in the target engine. `resolve_codex` now applies the
+  same tree-level cutoff gate `cancellai.py::choose_codex_old_sessions` does before classifying
+  any member's staleness.
 
 ### Documentation
 

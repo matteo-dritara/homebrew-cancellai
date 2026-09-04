@@ -383,6 +383,7 @@ pub fn resolve_claude(
                 degraded_companion,
                 process_active,
                 cutoff,
+                false,
                 provider_trust,
             )
         })
@@ -508,6 +509,15 @@ pub fn resolve_codex(
     for (root_id, facts, members) in &tree_facts {
         let tree_pinned = protected_roots.contains(root_id.as_str());
         let tree_integrity_unknown = facts.effective_mtime.is_none();
+        // `cancellai.py::choose_codex_old_sessions`: `if root_id in protected_roots or
+        // effective_mtime >= cutoff: continue` skips the *entire* tree the instant its
+        // effective (max-of-members) mtime is at/after the cutoff, before any per-member
+        // check ever runs - a recent child protects an old-looking parent completely, not
+        // just from `keep_latest`. E22-S04 round-1 review: this module previously used
+        // `effective_mtime` only to order/pin trees for `keep_latest` and classified each
+        // member's staleness from its own mtime alone, so a stale root beside a fresh child
+        // still became an individual delete candidate - the opposite of the reference.
+        let tree_recent = facts.effective_mtime.is_some_and(|m| m >= cutoff);
         for member in *members {
             let mtime = facts
                 .member_mtimes
@@ -532,6 +542,7 @@ pub fn resolve_codex(
                 tree_integrity_unknown && mtime.is_none(),
                 process_active,
                 cutoff,
+                tree_recent,
                 provider_trust,
             ));
         }
@@ -598,6 +609,7 @@ fn classify(
     degraded_evidence: bool,
     process_active: bool,
     cutoff_secs: u64,
+    tree_recent: bool,
     provider_trust: TrustedTier,
 ) -> ClassifiedArtifact {
     let confidence = if degraded_evidence {
@@ -616,7 +628,10 @@ fn classify(
         ActivityState::Active
     } else {
         match mtime {
-            Some(t) if t.0 < cutoff_secs => ActivityState::Stale,
+            // A tree whose effective (max-of-members) mtime is at/after the cutoff is
+            // wholly protected by the reference rule above - an individually old member
+            // inside it is never itself stale.
+            Some(t) if t.0 < cutoff_secs && !tree_recent => ActivityState::Stale,
             Some(_) => ActivityState::Idle,
             None => ActivityState::Unknown,
         }
@@ -1288,14 +1303,17 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
-    /// A tree whose members disagree in age (E22-S04's own boundary case): pinning
-    /// (`keep_latest`) is per-tree, but staleness is evaluated per-member. With `keep_latest=0`
-    /// so the tree is not pinned at all, the old root must still be an individual delete
-    /// candidate while its recently-touched child is not - grouping decides protection, not
-    /// deletion eligibility.
+    /// A tree whose members disagree in age (E22-S04's own boundary case, corrected after E22
+    /// verifier review round 1): `cancellai.py::choose_codex_old_sessions` gates the *entire*
+    /// tree on its effective (max-of-members) mtime before ever considering `keep_latest` -
+    /// `if root_id in protected_roots or effective_mtime >= cutoff: continue`. With
+    /// `keep_latest=0` the tree is not pinned by that rail, but its effective mtime is still
+    /// the child's recent timestamp, so the whole tree - including the old-looking root - stays
+    /// protected. A previous version of this module applied the cutoff per member instead of
+    /// per tree and asserted exactly one delete here; that was the semantic divergence the
+    /// review found, not the correct reference behaviour.
     #[test]
-    fn codex_tree_members_that_disagree_in_age_are_deleted_individually_when_the_tree_is_not_kept()
-    {
+    fn codex_tree_members_that_disagree_in_age_are_all_protected_by_a_recent_sibling() {
         let dir = tree(Path::new(""), "codex-disagreeing-ages");
         let root_path = dir.join("sessions/rollout-44444444-4444-4444-8444-444444444444.jsonl");
         let child_path = dir.join("sessions/rollout-44444444-4444-4444-8444-444444444445.jsonl");
@@ -1345,10 +1363,10 @@ mod tests {
             .iter()
             .filter(|a| a.action_class == ActionClass::Delete)
             .collect();
-        assert_eq!(
-            deletes.len(),
-            1,
-            "exactly the old member must be an individual delete candidate: {actions:?}"
+        assert!(
+            deletes.is_empty(),
+            "a tree with any recent member must have no delete candidates at all, including \
+             its individually old member: {actions:?}"
         );
 
         std::fs::remove_dir_all(&dir).ok();
@@ -1380,6 +1398,7 @@ mod tests {
             false,
             false,
             3 * 86_400,
+            false,
             trust,
         );
 

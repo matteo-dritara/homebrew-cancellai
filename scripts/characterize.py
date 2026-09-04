@@ -72,6 +72,13 @@ CLASSIFICATIONS: dict[str, tuple[str, str]] = {
         "The whole tree is selected together via the subagent graph - the documented, tested "
         "contract in AS_IS.md's 'Codex subagent graph' section, not incidental behavior.",
     ),
+    "codex-mixed-age-tree": (
+        "NORMATIVE",
+        "choose_codex_old_sessions gates the whole tree on its effective (max-of-members) "
+        "mtime before any per-member check runs, so a recent child protects an old-looking "
+        "root completely - the same 'Codex subagent graph' contract as codex-subagent-tree, "
+        "exercised at the boundary where members disagree in age (E22-S04).",
+    ),
     "claude-active-data": (
         "NORMATIVE",
         "A session touched moments ago stays inside any real cutoff and is never selected; freshness alone must never become eligibility.",

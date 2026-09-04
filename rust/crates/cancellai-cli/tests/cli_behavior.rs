@@ -134,6 +134,18 @@ fn stderr(output: &Output) -> String {
     String::from_utf8_lossy(&output.stderr).into_owned()
 }
 
+/// The exact, committed byte content of one golden CLI snapshot under `tests/golden/`
+/// (E22-S03 verifier review round 1: the previous version of this suite only asserted a
+/// usage-prefix substring, which a real output regression could still pass). Read from disk
+/// rather than inlined as a string literal so the reviewed fixture - not a hand-transcribed
+/// copy of it - is what every platform in the tier-1 matrix compares against.
+fn golden(name: &str) -> String {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/golden")
+        .join(name);
+    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read golden file {path:?}: {e}"))
+}
+
 #[test]
 fn no_arguments_defaults_to_read_only_status_and_never_mutates() {
     let home = TempHome::new("default-status");
@@ -978,18 +990,11 @@ fn a_home_with_no_provider_installed_is_complete_and_exits_zero() {
 // `quality` job matrix (macOS/Linux/Windows) and in `release.yml`'s `verify-rust` job.
 
 #[test]
-fn top_level_help_lists_every_command_and_exits_zero() {
+fn top_level_help_matches_the_committed_golden_snapshot() {
     let home = TempHome::new("top-level-help");
     let output = run(&home, &["--help"]);
     assert!(output.status.success(), "{}", stdout(&output));
-    let text = stdout(&output);
-    assert!(text.contains("Usage: cancellai-cli"), "{text}");
-    for command in ["status", "inspect", "plan", "clean", "configure", "version"] {
-        assert!(
-            text.contains(command),
-            "help output missing {command:?}: {text}"
-        );
-    }
+    assert_eq!(stdout(&output), golden("top_level_help.txt"));
 }
 
 #[test]
@@ -1006,27 +1011,35 @@ fn top_level_version_flag_prints_the_crate_version_and_exits_zero() {
     let home = TempHome::new("top-level-version-flag");
     let output = run(&home, &["--version"]);
     assert!(output.status.success(), "{}", stdout(&output));
-    assert!(
-        stdout(&output).contains(env!("CARGO_PKG_VERSION")),
-        "{}",
-        stdout(&output)
+    assert_eq!(
+        stdout(&output),
+        format!("cancellai-cli {}\n", env!("CARGO_PKG_VERSION")),
+        "the version line's exact shape - not merely one substring of it - is the golden \
+         contract; only the version number itself is expected to vary release to release"
     );
 }
 
 #[test]
-fn every_subcommand_has_its_own_help_text() {
+fn every_subcommand_help_matches_its_committed_golden_snapshot() {
     let home = TempHome::new("per-command-help");
-    for command in ["status", "inspect", "plan", "clean", "configure", "version"] {
+    for (command, golden_file) in [
+        ("status", "status_help.txt"),
+        ("inspect", "inspect_help.txt"),
+        ("plan", "plan_help.txt"),
+        ("clean", "clean_help.txt"),
+        ("configure", "configure_help.txt"),
+        ("version", "version_help.txt"),
+    ] {
         let output = run(&home, &[command, "--help"]);
         assert!(
             output.status.success(),
             "{command} --help should exit 0: {}",
             stdout(&output)
         );
-        assert!(
-            stdout(&output).contains(&format!("cancellai-cli {command}")),
-            "{command} --help should show its own usage line: {}",
-            stdout(&output)
+        assert_eq!(
+            stdout(&output),
+            golden(golden_file),
+            "{command} --help output drifted from the committed golden snapshot"
         );
     }
 }
@@ -1058,5 +1071,41 @@ fn a_flag_irrelevant_to_the_chosen_command_is_refused_not_silently_accepted() {
     assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
 
     let output = run(&home, &["configure", "--json"]);
+    assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
+}
+
+/// E22-S03 verifier review round 1: `status --help --dry-run` exits 0 and prints help,
+/// silently not validating `--dry-run` at all - `clap`'s help/version actions always
+/// short-circuit the remaining argument list the moment they are matched, the same
+/// convention `git`/`cargo`/most `clap`-based CLIs already follow (`git commit --help
+/// --bogus` shows help too). AC3's "flags irrelevant to a command are rejected" describes
+/// ordinary argument validation, not this precedence; docs/CLI_RUST.md's "Argument parsing"
+/// section states the exception explicitly, and it is safe by construction rather than by
+/// convention alone: `cli::parse` returns an `Invocation` only when `clap` neither printed
+/// help/version nor errored, so no code path from `--help`/`-h`/`--version` ever reaches
+/// `main.rs`'s dispatch - it always exits before an `Invocation` (in particular
+/// `Invocation::Clean`) could be constructed at all (SI-007 stays about which mutation an
+/// *executed* invocation resolves to, not about this exit).
+#[test]
+fn help_short_circuits_remaining_argument_validation_by_design() {
+    let home = TempHome::new("help-short-circuits");
+    let output = run(&home, &["status", "--help", "--dry-run"]);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "help must still win when it appears before an otherwise-irrelevant flag: {}",
+        stderr(&output)
+    );
+    assert_eq!(stdout(&output), golden("status_help.txt"));
+}
+
+/// The mirror case: an irrelevant flag *before* `--help` is still refused. `clap` parses
+/// left to right and only short-circuits once it actually reaches the help action, so
+/// ordering - not merely presence - determines which error wins; both orderings are pinned
+/// here so a future parser change cannot silently flip either one.
+#[test]
+fn an_irrelevant_flag_before_help_is_still_refused() {
+    let home = TempHome::new("irrelevant-flag-before-help");
+    let output = run(&home, &["status", "--dry-run", "--help"]);
     assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
 }

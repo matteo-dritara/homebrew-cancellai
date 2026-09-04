@@ -23,6 +23,13 @@
    "description": "A root rollout with two subagent children linked by parent_thread_id; --keep-latest must count the tree, not the files."
   },
   {
+   "id": "codex-mixed-age-tree",
+   "tool": "codex",
+   "category": "subagent_tree",
+   "layout": "default",
+   "description": "A root rollout that looks old beside one subagent child touched recently; the tree's effective mtime is the maximum across members, so a recent child protects the whole tree, including the old-looking root (E22-S04)."
+  },
+  {
    "id": "claude-active-data",
    "tool": "claude",
    "category": "active_data",

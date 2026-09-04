@@ -108,6 +108,22 @@ def build_codex_subagent_tree(root: Path) -> None:
     _codex_rollout(root, "33333333-3333-4333-8333-333333333335", "2026-05-01", age_days=120, parent=root_id)
 
 
+def build_codex_mixed_age_tree(root: Path) -> None:
+    """A root rollout that looks old, with one subagent child touched recently.
+
+    Exercises choose_codex_old_sessions's tree-level cutoff gate: `effective_mtime` is the
+    *maximum* mtime across the tree, and the whole tree - including the old-looking root -
+    stays protected the instant that maximum is inside the retention window. This is
+    distinct from build_codex_subagent_tree, where every member is old: E22-S04 verifier
+    review round 1 found a target-engine version that applied the cutoff per rollout file
+    instead of per tree, which deleted the old root here even though a sibling was recent.
+    """
+    _codex_markers(root)
+    root_id = "88888888-8888-4888-8888-888888888888"
+    _codex_rollout(root, root_id, "2026-05-01", age_days=120)
+    _codex_rollout(root, "88888888-8888-4888-8888-888888888889", "2026-08-20", age_days=8, parent=root_id)
+
+
 def build_claude_active_data(root: Path) -> None:
     """A session touched moments ago, standing in for a provider that is mid-write.
 
@@ -268,6 +284,7 @@ FIXTURES: dict[str, Callable[[Path], None]] = {
     "claude-normal-session": build_claude_normal_session,
     "codex-normal-session": build_codex_normal_session,
     "codex-subagent-tree": build_codex_subagent_tree,
+    "codex-mixed-age-tree": build_codex_mixed_age_tree,
     "claude-active-data": build_claude_active_data,
     "claude-protected-state": build_claude_protected_state,
     "codex-protected-state": build_codex_protected_state,

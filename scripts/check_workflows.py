@@ -28,11 +28,26 @@ FULL_SHA = re.compile(r"^[0-9a-fA-F]{40}$")
 PRECOMMIT_CONFIG = ROOT / ".pre-commit-config.yaml"
 RELEASE_WORKFLOW = WORKFLOWS / "release.yml"
 RUST_WORKFLOW = WORKFLOWS / "rust.yml"
+AGENTS_MD = ROOT / "AGENTS.md"
 HOOK_ID_RE = re.compile(r"^      - id:\s*(\S+)\s*$", re.MULTILINE)
 ENTRY_RE = re.compile(r"^\s*entry:\s*(.+?)\s*$", re.MULTILINE)
 STAGES_RE = re.compile(r"^\s*stages:\s*\[(.+?)\]\s*$", re.MULTILINE)
 RUN_RE = re.compile(r"^\s*-?\s*run:\s*(.+?)\s*$", re.MULTILINE)
 BLOCK_SCALAR_HEADERS = {"|", ">", "|-", ">-", "|+", ">+"}
+IF_RE = re.compile(r"^\s*if:\s*.+$", re.MULTILINE)
+CONTINUE_ON_ERROR_RE = re.compile(r"^\s*continue-on-error:\s*true\s*$", re.MULTILINE)
+NEEDS_RE = re.compile(r"^\s*needs:\s*\[(.+?)\]\s*$", re.MULTILINE)
+
+# E22-S01 (CR-TE-06 round 2): pytest and the remote ruff/mypy pre-commit hooks have no
+# repository-owned `entry:` this checker can read (pytest is not a hook at all; ruff/mypy
+# come from a third-party hook repo, not `repo: local`), so precommit_gate_commands() alone
+# never notices them being dropped from release.yml. AGENTS.md's "Current Python checks"
+# fenced command block is the actual documented contract for what main enforces - parsing it
+# here, instead of hand-copying a second list, means a command added or changed there is the
+# single source release.yml is compared against.
+AGENTS_PYTHON_CHECKS_HEADER = "## Current Python checks"
+AGENTS_NEXT_HEADER_RE = re.compile(r"^## ", re.MULTILINE)
+FENCED_SH_RE = re.compile(r"```sh\n(.*?)```", re.DOTALL)
 
 # Branch protection lives in GitHub settings and names checks as strings. A required check
 # whose name does not match any job blocks every pull request forever and reports nothing,
@@ -66,6 +81,13 @@ class WorkflowError(RuntimeError):
 
 def workflow_files() -> list[Path]:
     return sorted([*WORKFLOWS.glob("*.yml"), *WORKFLOWS.glob("*.yaml")])
+
+
+def display_path(path: Path) -> Path:
+    try:
+        return path.relative_to(ROOT)
+    except ValueError:
+        return path
 
 
 def _job_blocks(text: str) -> list[tuple[str, str]]:
@@ -173,6 +195,64 @@ def precommit_gate_commands() -> dict[str, str]:
     return commands
 
 
+def agents_md_python_gate_commands() -> list[str]:
+    """The exact `python3 ...` commands AGENTS.md's "Current Python checks" section lists.
+
+    This is the documented ground truth for what main enforces, including pytest and the
+    remote ruff/mypy hooks that have no `entry:` of their own. The dependency-install line is
+    excluded: it provisions tooling, it verifies nothing.
+    """
+    if not AGENTS_MD.exists():
+        return []
+    text = AGENTS_MD.read_text(encoding="utf-8")
+    header = text.find(AGENTS_PYTHON_CHECKS_HEADER)
+    if header == -1:
+        return []
+    section_start = header + len(AGENTS_PYTHON_CHECKS_HEADER)
+    next_header = AGENTS_NEXT_HEADER_RE.search(text, section_start)
+    section_end = next_header.start() if next_header else len(text)
+    fenced = FENCED_SH_RE.search(text, section_start, section_end)
+    if not fenced:
+        return []
+    lines = [line.strip() for line in fenced.group(1).splitlines() if line.strip()]
+    return [line for line in lines if line != "python3 -m pip install -r requirements-dev.txt"]
+
+
+def job_body(text: str, job_id: str) -> str:
+    """The raw body text of one job block, or the empty string if it does not exist."""
+    for candidate_id, body in _job_blocks(text):
+        if candidate_id == job_id:
+            return body
+    return ""
+
+
+def blocking_job_errors(rel: Path, text: str, job_id: str) -> list[str]:
+    """A required gate job must always run and every step in it must be allowed to fail the build.
+
+    `continue-on-error: true` on any step, or an `if:` condition anywhere in the job (job- or
+    step-level), lets the job report green while silently not enforcing what it claims to -
+    the "disable_verify_rust" / "nonblocking_clippy" class of regression the round-1 review
+    demonstrated against the previous version of this checker.
+    """
+    body = job_body(text, job_id)
+    if not body:
+        return [f"{rel}: job {job_id!r} is missing; it is a required release gate"]
+    errors: list[str] = []
+    if CONTINUE_ON_ERROR_RE.search(body):
+        errors.append(f"{rel}: job {job_id!r} sets continue-on-error: true, so a failing step would not fail the build")
+    if IF_RE.search(body):
+        errors.append(f"{rel}: job {job_id!r} has a conditional 'if:' that could skip a required gate")
+    return errors
+
+
+def matrix_values(text: str, job_id: str, key_re: re.Pattern[str]) -> list[str]:
+    body = job_body(text, job_id)
+    match = key_re.search(body)
+    if not match:
+        return []
+    return sorted(v.strip().strip("\"'") for v in match.group(1).split(","))
+
+
 def release_gate_drift_errors() -> list[str]:
     """release.yml must re-run every pre-commit gate and every Rust quality gate.
 
@@ -187,6 +267,7 @@ def release_gate_drift_errors() -> list[str]:
         return ["release.yml is missing; it must re-run every gate at the tagged commit"]
     release_text = RELEASE_WORKFLOW.read_text(encoding="utf-8")
     release_verify_commands = job_run_commands(release_text, "verify")
+    release_rel = display_path(RELEASE_WORKFLOW)
 
     for hook_id, entry in precommit_gate_commands().items():
         if entry not in release_verify_commands:
@@ -196,10 +277,32 @@ def release_gate_drift_errors() -> list[str]:
                 f"pre-commit enforces on main"
             )
 
+    agents_commands = agents_md_python_gate_commands()
+    if not agents_commands:
+        errors.append("AGENTS.md's 'Current Python checks' fenced command block is missing or empty")
+    for command in agents_commands:
+        if command not in release_verify_commands:
+            errors.append(
+                f".github/workflows/release.yml: job 'verify' is missing gate {command!r} "
+                f"listed in AGENTS.md's 'Current Python checks'; pytest and the remote "
+                f"ruff/mypy hooks have no pre-commit 'entry:' this check can otherwise see"
+            )
+
+    errors.extend(blocking_job_errors(release_rel, release_text, "verify"))
+    errors.extend(blocking_job_errors(release_rel, release_text, "verify-rust"))
+
+    publish_needs = matrix_values(release_text, "publish", NEEDS_RE)
+    for required_dep in ("verify", "verify-rust"):
+        if required_dep not in publish_needs:
+            errors.append(
+                f"{release_rel}: job 'publish' does not depend on {required_dep!r}; a release could be cut without that gate ever passing"
+            )
+
     if not RUST_WORKFLOW.exists():
         errors.append("rust.yml is missing; release.yml has no Rust quality gate to compare against")
         return errors
     rust_text = RUST_WORKFLOW.read_text(encoding="utf-8")
+    rust_rel = display_path(RUST_WORKFLOW)
     quality_commands = job_run_commands(rust_text, "quality")
     release_rust_commands = job_run_commands(release_text, "verify-rust")
     for command in sorted(quality_commands):
@@ -209,6 +312,16 @@ def release_gate_drift_errors() -> list[str]:
             errors.append(
                 f".github/workflows/release.yml: job 'verify-rust' is missing Rust quality gate {command!r} from rust.yml's 'quality' job"
             )
+    errors.extend(blocking_job_errors(rust_rel, rust_text, "quality"))
+
+    quality_os = matrix_values(rust_text, "quality", OS_MATRIX_RE)
+    verify_rust_os = matrix_values(release_text, "verify-rust", OS_MATRIX_RE)
+    if quality_os and quality_os != verify_rust_os:
+        errors.append(
+            f"{release_rel}: job 'verify-rust' runs on {verify_rust_os}, but rust.yml's "
+            f"'quality' job runs the same gates on {quality_os}; a platform dropped from "
+            f"either matrix must be dropped from both deliberately, not silently"
+        )
     return errors
 
 

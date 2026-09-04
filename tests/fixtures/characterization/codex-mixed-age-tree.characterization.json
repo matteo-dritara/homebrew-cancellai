@@ -1,0 +1,60 @@
+{
+  "fixture_id": "codex-mixed-age-tree",
+  "tool": "codex",
+  "classification": "NORMATIVE",
+  "classification_rationale": "choose_codex_old_sessions gates the whole tree on its effective (max-of-members) mtime before any per-member check runs, so a recent child protects an old-looking root completely - the same 'Codex subagent graph' contract as codex-subagent-tree, exercised at the boundary where members disagree in age (E22-S04).",
+  "days": 30,
+  "keep_latest": 0,
+  "aggressive": true,
+  "plan_summary": {
+    "days": 30,
+    "keep_latest": 0,
+    "estimated_bytes": 0,
+    "actions": 0,
+    "by_tool": {},
+    "by_category": {},
+    "claude_history_lines": 0,
+    "notes": [],
+    "withheld_tools": [],
+    "scan": {
+      "complete": true,
+      "incomplete_scopes": [],
+      "unreadable": []
+    },
+    "roots": {
+      "claude": {
+        "origin": "default",
+        "confidence": "default",
+        "markers": [],
+        "destructive_allowed": true
+      },
+      "codex": {
+        "origin": "default",
+        "confidence": "default",
+        "markers": [
+          "auth.json",
+          "config.toml",
+          "sessions"
+        ],
+        "destructive_allowed": true
+      }
+    }
+  },
+  "coverage": {
+    "selective": {
+      "entries": 1,
+      "bytes": 274,
+      "names": [
+        "sessions"
+      ]
+    },
+    "protected": {
+      "entries": 2,
+      "bytes": 22,
+      "names": [
+        "auth.json",
+        "config.toml"
+      ]
+    }
+  }
+}
