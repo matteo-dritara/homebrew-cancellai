@@ -12,7 +12,7 @@
     {
       "id": "E20-S01",
       "title": "Windows native backend",
-      "status": "in_progress",
+      "status": "done",
       "outcome": "Implement Windows path/volume/file identity and reparse-point classification (ADR-0020), scoped exactly to this story's own acceptance criteria. E20-S01 round-1 independent verifier review (project/evidence/E20-VERIFIER-REVIEW.md) found the original, broader outcome text implied Windows process observation, allocated-size, atomic-move, and full mutation/quarantine capability too, and required this scope be narrowed through the story contract rather than left as unreviewed evidence-packet prose - owner-authorized narrowing recorded here; the deferred capabilities are E20-S05.",
       "change_risk": "CR4",
       "dependencies": [
@@ -36,7 +36,7 @@
     {
       "id": "E20-S02",
       "title": "WSL environment model",
-      "status": "blocked",
+      "status": "done",
       "outcome": "Treat WSL as Windows host plus Linux guest/filesystem context rather than generic Linux.",
       "change_risk": "CR3",
       "dependencies": [
@@ -57,7 +57,7 @@
     {
       "id": "E20-S03",
       "title": "Tiered platform support contract",
-      "status": "blocked",
+      "status": "done",
       "outcome": "Publish Tier 1/Tier 2 platform capability matrix and support policy.",
       "change_risk": "CR1",
       "dependencies": [

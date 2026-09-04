@@ -8,7 +8,7 @@ This is the target-engine (Rust) platform capability matrix - what this reposito
 | --- | --- | --- | --- | --- | --- |
 | macOS (Apple Silicon and Intel) | 1 | yes | yes | verified | verified |
 | Linux (x86_64, glibc) | 1 | yes | yes | verified | verified |
-| Windows native (x86_64) | 2 | yes | yes | unverified | unsupported |
+| Windows native (x86_64) | 2 | yes | yes | verified | unsupported |
 | WSL2 (Windows host, Linux guest) | 2 | no | no | unverified | unsupported |
 
 ## macOS (Apple Silicon and Intel)
@@ -51,9 +51,11 @@ Evidence (real `#[test]` functions, verified present at these exact files):
 
 ## Windows native (x86_64)
 
-E20-S01/ADR-0020 implemented real Windows file/volume identity and added real adversarial fixtures (a genuine NTFS junction via mklink /J, a real directory symlink, real hard-links, and a synthetic cross-volume boundary test) - listed here as evidence that the *code and tests exist and are believed correct*, not yet as 'verified': E20-S01 round-1 independent verifier review found this exact commit range had never actually run on GitHub's real windows-latest/ubuntu-latest CI (the branch had not been pushed). `identity.state` stays 'unverified' until a `verified_commit` here has a real, `gh`-confirmed successful rust.yml run. Real deletion remains unimplemented on Windows (`confirmed_delete_file`'s cfg(not(unix)) arm and `cancellai-sealedfs::SealedRoot`'s no-follow walk both refuse unconditionally), so `clean` is inspect-only there regardless of identity verification status.
+E20-S01/ADR-0020 implemented real Windows file/volume identity with real adversarial fixtures (a genuine NTFS junction via mklink /J, a real directory symlink, real hard-links, a synthetic cross-volume boundary test, and a best-effort real multi-volume test). E20-S01 round-1 independent verifier review found the commit range first submitted for review had never actually run on GitHub's real windows-latest CI (the branch had not been pushed) - identity.state was held at 'unverified' until that was fixed. verified_commit now cites a real, gh-confirmed successful rust.yml run (https://github.com/matteo-dritara/homebrew-cancellai/actions/runs/33886584899) for the repaired commit, which also caught one genuine bug a real Windows machine could find and cross-compilation could not: a stale pre-E20-S01 test still asserting the old Unsupported-on-Windows behavior (fixed in the same run's follow-up commit, itself also confirmed green: run 33886584899). Real deletion remains unimplemented on Windows (`confirmed_delete_file`'s cfg(not(unix)) arm and `cancellai-sealedfs::SealedRoot`'s no-follow walk both refuse unconditionally) - E20-S05's scope - so `clean` is inspect-only there and tier stays 2 despite identity now being verified.
 
-**identity**: unverified
+Last verified at commit `8622405118127c723f559d5ccdffdd0b3d7e0568`.
+
+**identity**: verified
 
 Evidence (real `#[test]` functions, verified present at these exact files):
 

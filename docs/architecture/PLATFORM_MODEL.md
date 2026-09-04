@@ -43,8 +43,12 @@ If the platform cannot produce an identity strong enough for a requested irrever
 
 E20-S01 (ADR-0020) implements native Windows volume/file-index identity:
 `SystemIdentityObserver::observe` on `cfg(windows)` calls
-`cancellai-sealedfs::observe_identity` (`GetFileInformationByHandle`, verified on real Windows
-CI - `windows-latest` in `rust.yml`, not cross-compilation), populating a distinct
+`cancellai-sealedfs::observe_identity` (`GetFileInformationByHandle`, confirmed on real Windows
+CI - `windows-latest` in `rust.yml`, not cross-compilation; `project/platforms.json`'s
+`windows.capabilities.identity.state`/`verified_commit`, checked by `scripts/
+check_platforms.py`, is the enforced source of truth for this claim, not this paragraph -
+E20-S01 round-1 independent verifier review found an earlier version of this same sentence
+stated this before it was actually true), populating a distinct
 `IdentityToken::Windows` variant (`volume_serial_number`, `file_index`, `kind`, `modified`,
 `modified_ticks`) rather than reusing or extending the `Unix` variant's fields - a reparse
 point is detected from `FILE_ATTRIBUTE_REPARSE_POINT` alone (stable `std`,

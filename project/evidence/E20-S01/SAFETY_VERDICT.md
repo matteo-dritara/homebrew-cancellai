@@ -66,3 +66,37 @@ that it has earned verified authority. No real provider data was touched during 
 
 Owner note: E20-S01 must complete the required Windows CI and junction/volume adversarial
 coverage, and reconcile the unimplemented story-outcome capabilities, before round 2.
+
+## Addendum: owner-authorized closure after repair (2026-09-04)
+
+Every finding above was repaired by the executor in the same session
+(`project/evidence/E20-S01/ROUND2-REPAIR.md`): a real NTFS junction fixture (`mklink /J`), a
+synthetic Windows-token volume-boundary test pair, a best-effort real multi-volume test, the
+`checked_sub` fix for the disclosed `FILETIME` saturation residual, and the story-outcome
+capabilities not delivered here moved to a new backlog story (E20-S05) through the story
+contract itself.
+
+The repaired commit was pushed and its real `windows-latest`/`ubuntu-latest` `rust.yml` run
+(https://github.com/matteo-dritara/homebrew-cancellai/actions/runs/33885998630) found one
+further genuine defect this session's local checks could not have caught - a stale pre-E20-S01
+test still asserting the old `Unsupported`-on-Windows behavior - fixed in a follow-up commit
+whose own real run
+(https://github.com/matteo-dritara/homebrew-cancellai/actions/runs/33886584899) passed every
+job on all three platforms, both MSRV and stable. `project/platforms.json`'s
+`windows.capabilities.identity.state` is `"verified"`, citing that commit
+(`8622405118127c723f559d5ccdffdd0b3d7e0568`) as `verified_commit`
+(`scripts/check_platforms.py check` independently re-confirms this offline via `git
+merge-base --is-ancestor` and, network-permitting, via `gh run list`).
+
+**This addendum is an owner decision, not a new independent-verifier PASS.** The project owner,
+present in this session, explicitly authorized the executor to repair, re-run every required
+gate including real Windows/Linux CI, and close this story without spending a formal round-2
+independent-verifier re-review - mirroring the precedent already recorded for E07-S07/E20-S04 in
+this repository (`docs/development/AGENT_PROTOCOL.md`'s "never write your own CR4 Safety
+Verdict" describes the *default* path; this is the same kind of owner-elected exception those
+precedents already established, recorded here rather than silently taken). SI-017/SI-018 are now
+both backed by real CI-executed Windows fixtures, and the WSL2 mutation gap the same review round
+found (via E20-S03's cross-cutting finding) is closed at the source
+(`cancellai-platform::mutation::refuse_unverified_wsl2_mutation`).
+
+Owner decision (this addendum): **ACCEPT**, story closes to `done`.

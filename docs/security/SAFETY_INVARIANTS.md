@@ -214,14 +214,17 @@ E20-S01 (ADR-0020) implemented the Windows side of this invariant: `IdentityToke
 `cancellai-sealedfs::observe_identity`, carries volume-serial-number/file-index identity
 distinct from `Unix`'s device/inode - a Windows reparse point is classified from
 `FILE_ATTRIBUTE_REPARSE_POINT` alone, never by reusing or comparing against Unix symlink
-semantics. Compile/lint-verified cross-target (`x86_64-pc-windows-gnu`) and covered by real
-adversarial fixtures (a genuine NTFS junction, a directory symlink, hard-links, a synthetic
-cross-volume boundary case); E20-S01 round-1 independent verifier review found this codebase's
-own claim of real `windows-latest` CI verification was false for the commit range it actually
-reviewed (the branch had never been pushed) - `project/platforms.json`'s `windows` entry
-records `identity.state` as `"unverified"` until a `verified_commit` here has a real,
-`gh`-confirmed successful `rust.yml` run (`scripts/check_platforms.py`). A genuinely unsupported
-non-Unix, non-Windows target still reports `IdentityObservation::Unsupported`, unchanged.
+semantics. Covered by real adversarial fixtures (a genuine NTFS junction, a directory symlink,
+hard-links, a synthetic cross-volume boundary case) and confirmed on real `windows-latest` CI
+(`project/platforms.json`'s `windows.capabilities.identity.state` is `"verified"`, citing a
+real, `gh`-confirmed successful `rust.yml` run as `verified_commit` -
+`scripts/check_platforms.py` is the enforced, re-checkable source of truth for this claim, not
+this paragraph). E20-S01 round-1 independent verifier review found an earlier version of this
+same claim false for the commit range it actually reviewed (the branch had never been pushed) -
+repaired and re-confirmed in the same round; see `docs/adrs/0020-windows-native-identity-via-
+windows-sys.md`'s "Round-1 independent verifier review" section for the full account. A
+genuinely unsupported non-Unix, non-Windows target still reports
+`IdentityObservation::Unsupported`, unchanged.
 
 ### SI-018 Filesystem/volume boundaries are explicit
 

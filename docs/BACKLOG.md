@@ -1948,7 +1948,7 @@ Make Windows native and WSL2 first-class platform targets, once a real Windows/W
 
 ### E20-S01 - Windows native backend
 
-**Status:** `in_progress` | **Change Risk:** `CR4` | **Dependencies:** E07-S01 | **Safety obligations:** SI-017, SI-018
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** E07-S01 | **Safety obligations:** SI-017, SI-018
 
 **Outcome.** Implement Windows path/volume/file identity and reparse-point classification (ADR-0020), scoped exactly to this story's own acceptance criteria. E20-S01 round-1 independent verifier review (project/evidence/E20-VERIFIER-REVIEW.md) found the original, broader outcome text implied Windows process observation, allocated-size, atomic-move, and full mutation/quarantine capability too, and required this scope be narrowed through the story contract rather than left as unreviewed evidence-packet prose - owner-authorized narrowing recorded here; the deferred capabilities are E20-S05.
 
@@ -1967,7 +1967,7 @@ Make Windows native and WSL2 first-class platform targets, once a real Windows/W
 
 ### E20-S02 - WSL environment model
 
-**Status:** `blocked` | **Change Risk:** `CR3` | **Dependencies:** E20-S01 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR3` | **Dependencies:** E20-S01 | **Safety obligations:** none
 
 **Outcome.** Treat WSL as Windows host plus Linux guest/filesystem context rather than generic Linux.
 
@@ -1986,7 +1986,7 @@ Make Windows native and WSL2 first-class platform targets, once a real Windows/W
 
 ### E20-S03 - Tiered platform support contract
 
-**Status:** `blocked` | **Change Risk:** `CR1` | **Dependencies:** E07-S01, E20-S01, E20-S02 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** E07-S01, E20-S01, E20-S02 | **Safety obligations:** none
 
 **Outcome.** Publish Tier 1/Tier 2 platform capability matrix and support policy.
 

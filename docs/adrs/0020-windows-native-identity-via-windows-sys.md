@@ -97,14 +97,18 @@ unused, duplicate accessor; the comment is updated in the same change.)
 
 ## What this does and does not close
 
-- **Closed, pending real Windows CI confirmation** (round-1 independent verifier review found
-  this ADR originally overstated this as already verified - see "Round-1 independent verifier
-  review" below): `IdentityObservation`/`IdentityToken` now carry Windows identity designed to
-  be strong enough to detect a TOCTOU replacement (SI-013) and a volume-boundary crossing
-  (SI-018), not a plausible-but-unverified guess in the sense E03-S01 originally refused to
-  ship - but "designed to be" and "confirmed by a real Windows test run" are different claims,
-  and only the generator/checker in `project/platforms.json`/`scripts/check_platforms.py`, not
-  this prose, is the source of truth for which one currently holds. `cancellai-inventory`'s
+- **Closed, and now actually confirmed on real Windows CI** (round-1 independent verifier
+  review found this ADR had originally overstated this as already verified when it was not -
+  see "Round-1 independent verifier review" below - this bullet is updated again now that it
+  genuinely is): `IdentityObservation`/`IdentityToken` carry Windows identity strong enough to
+  detect a TOCTOU replacement (SI-013) and a volume-boundary crossing (SI-018), not a
+  plausible-but-unverified guess in the sense E03-S01 originally refused to ship.
+  `project/platforms.json`'s `windows.capabilities.identity.state` is `"verified"`, citing
+  `verified_commit` `8622405118127c723f559d5ccdffdd0b3d7e0568` - a real, `gh`-confirmed
+  successful `rust.yml` run
+  (https://github.com/matteo-dritara/homebrew-cancellai/actions/runs/33886584899), not this
+  prose, remains the enforced source of truth (`scripts/check_platforms.py check`) if this ever
+  needs re-confirming after a future change. `cancellai-inventory`'s
   scanner (`scan::walk_directory`) can now descend below a scope root on Windows, since its own
   "an unconfirmed identity never earns a descend" gate (SI-017) is no longer permanently true
   there - the accepted limitation `docs/architecture/PLATFORM_MODEL.md` and E20-S04 recorded is
@@ -239,3 +243,19 @@ CI-verified - it requires a `verified_commit` that is both a real git ancestor o
 where `gh` can reach GitHub, a commit with a real successful `rust.yml` run, before
 `identity.state` may say `"verified"`. This ADR's own prose is deliberately not that source of
 truth any more, precisely because prose was what went stale here.
+
+### Repair confirmed on real Windows CI (2026-09-04)
+
+The repaired commit (`aaca5a0407d8731d837553e9bd7361cac63732b4`) was pushed and its real
+`rust.yml` run (https://github.com/matteo-dritara/homebrew-cancellai/actions/runs/33885998630)
+found one genuine failure none of this session's cross-compile-only local checks could have
+caught: `identity::tests::system_observer_reports_unsupported_off_unix`, a test predating this
+story that still asserted the *old* pre-native-identity behavior. The failure's own captured
+output is itself independent confirmation the new implementation is correct on real hardware -
+`GetFileInformationByHandle` returned sane, real values
+(`volume_serial_number: 4009161782, file_index: 281474976711284, modified: Timestamp(1788533409),
+modified_ticks: 6553669`) - which is exactly why the stale assertion failed against it. Fixed in
+a follow-up commit (`8622405118127c723f559d5ccdffdd0b3d7e0568`), whose own real `rust.yml` run
+(https://github.com/matteo-dritara/homebrew-cancellai/actions/runs/33886584899) passed every
+job on all three platforms, both MSRV and stable. `project/platforms.json` cites this second
+commit as `windows.verified_commit`, with `identity.state` now genuinely `"verified"`.
