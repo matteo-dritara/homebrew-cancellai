@@ -8,10 +8,9 @@ Epics: **23** | Stories: **108**
 
 ## Story status
 
-- `blocked`: 3
+- `blocked`: 1
 - `cancelled`: 1
-- `done`: 49
-- `in_progress`: 3
+- `done`: 54
 - `planned`: 52
 
 ## Change risk distribution

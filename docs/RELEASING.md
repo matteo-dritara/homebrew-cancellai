@@ -47,10 +47,14 @@ archive checksum appended. A release verified against whatever `main` looked lik
 is not evidence about the artifact users install.
 
 `scripts/check_workflows.py` keeps this from drifting: it derives the required Python gate set
-from `.pre-commit-config.yaml`'s local hooks and the required Rust gate set from `rust.yml`'s
-`quality` job, and fails if `release.yml` stops re-running one of them (E22-S01, closing
-`CR-TE-06` - at v1.8.0 `release.yml` ran no Rust check at all and reported success while `rust
-/ quality (windows-latest)` failed on the same tagged commit; see
+from both `.pre-commit-config.yaml`'s local hooks and AGENTS.md's own "Current Python checks"
+list (pytest and the remote ruff/mypy hooks have no pre-commit `entry:` of their own, so the
+pre-commit source alone cannot see them removed) and the required Rust gate set from
+`rust.yml`'s `quality` job, and fails if `release.yml` stops re-running one of them, drops a
+platform from either Rust matrix, or defeats a gate structurally (`continue-on-error: true`,
+an `if:` guard, or detaching a job from `publish`'s `needs:`) without changing its command
+text (E22-S01, closing `CR-TE-06` - at v1.8.0 `release.yml` ran no Rust check at all and
+reported success while `rust / quality (windows-latest)` failed on the same tagged commit; see
 `project/evidence/RELEASE-v1.8.0.md`).
 
 `finalize` refuses to leave the repository inconsistent: it re-runs `release.py check` and

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-09-04
+
+### Note on how E22 was verified
+
+Round 1 of independent adversarial review (Codex) returned `FAIL` for five of the six stories
+(`project/evidence/E22-VERIFIER-REVIEW.md`): six independently reproduced `release.yml` drift
+regressions the static checker missed, a real Codex retention semantic divergence (a stale
+subagent-tree root beside a recent child was still an individual delete candidate), a golden
+CLI snapshot gap, and a docs section a prior story had silently removed. Every finding was
+repaired and re-verified, including real GitHub Actions/CodeQL/Dependabot evidence gathered
+after pushing the repair commit (`project/evidence/E22-S0{1,2,3,4,5}/ROUND2-REPAIR.md`). The
+epic was then closed by owner decision without spending the second independent review round
+ADR-0014 permits - the same pattern v1.8.0's E21 closure used - so these repairs carry no
+independent re-confirmation beyond the executor's own re-run of every gate the round-1 review
+specified; `project/evidence/RELEASE-v1.9.0.md` records the residual risk this accepts.
+
 ### Added
 
 - `cancellai-cli` (the beta target-engine CLI) now has a real `--help`/`-h`/`--version`

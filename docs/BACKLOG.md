@@ -2197,13 +2197,13 @@ Repair the target engine's scan-completeness authority so that unknown state can
 
 ## E22 - Engineering System Hardening
 
-**Phase:** `P1` | **Status:** `in_progress` | **Epic dependencies:** none
+**Phase:** `P1` | **Status:** `done` | **Epic dependencies:** none
 
 Close the gaps between what the engineering system claims to enforce and what it actually enforces, so a green gate means what the repository says it means.
 
 ### E22-S01 - The release workflow re-runs every gate it claims to
 
-**Status:** `in_progress` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** Make the tagged commit face the same gate set as main, so the released artifact is verified at the commit it was cut from - which is what the workflow already states as its own reason for existing. No longer hypothetical: at v1.8.0 the release workflow reported success while the rust workflow was failing on the same commit (quality (windows-latest)), because release.yml runs no Rust check at all. See project/evidence/RELEASE-v1.8.0.md's correction section.
 
@@ -2227,7 +2227,7 @@ Close the gaps between what the engineering system claims to enforce and what it
 
 ### E22-S02 - Rust supply chain has updates and static analysis
 
-**Status:** `in_progress` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** Extend to the Rust workspace the supply-chain posture the Python reference already has, ahead of E17's full provenance work.
 
@@ -2250,7 +2250,7 @@ Close the gaps between what the engineering system claims to enforce and what it
 
 ### E22-S03 - Dependency rings, and a real command-line surface
 
-**Status:** `blocked` | **Change Risk:** `CR2` | **Dependencies:** E22-S01, E22-S02 | **Safety obligations:** SI-007
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E22-S01, E22-S02 | **Safety obligations:** SI-007
 
 **Outcome.** Keep the safety kernel dependency-free while letting the experience and persistence crates use mature, reviewed libraries - and use that to give the Rust CLI the help surface it currently lacks entirely.
 
@@ -2276,7 +2276,7 @@ Close the gaps between what the engineering system claims to enforce and what it
 
 ### E22-S04 - Direct coverage for the retention resolver
 
-**Status:** `in_progress` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** SI-005, SI-012
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** SI-005, SI-012
 
 **Outcome.** Test the hand-translated policy rules directly, instead of delegating their entire verification to a differential gate fed by a small corpus.
 
@@ -2297,7 +2297,7 @@ Close the gaps between what the engineering system claims to enforce and what it
 
 ### E22-S05 - Codex native delete backend is wired or explicitly refused
 
-**Status:** `blocked` | **Change Risk:** `CR3` | **Dependencies:** E22-S03 | **Safety obligations:** SI-004, SI-019, SI-021
+**Status:** `done` | **Change Risk:** `CR3` | **Dependencies:** E22-S03 | **Safety obligations:** SI-004, SI-019, SI-021
 
 **Outcome.** Resolve a behavioural divergence on user data: the reference prefers the provider's own delete command to keep its bookkeeping consistent, and the target engine always deletes at the filesystem level without saying so.
 

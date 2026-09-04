@@ -196,8 +196,13 @@ checker set AGENTS.md lists, and a new `verify-rust` job runs the Rust quality s
 --check`, `clippy -D warnings`, `cargo test`, `cargo deny check`) on all three tier-1
 platforms, so the Windows-only clippy failure that slipped through at v1.8.0
 (`project/evidence/RELEASE-v1.8.0.md`) would now fail the tag. `scripts/check_workflows.py`
-derives the required gate set from `.pre-commit-config.yaml` and `rust.yml`'s `quality` job
-rather than a hand-copied list, so this cannot silently regress the way it did the first time.
+derives the required gate set from `.pre-commit-config.yaml`, AGENTS.md's own "Current Python
+checks" list, and `rust.yml`'s `quality` job rather than a hand-copied list, and also rejects
+`continue-on-error`/`if:`-guarded gates, a `verify-rust` matrix narrower than `quality`'s, and
+a `publish` job not depending on both `verify` and `verify-rust` - closing the round-1
+independent verifier finding that the original version of this check still passed against six
+independently reproduced regressions of exactly this kind - so this cannot silently regress
+the way it did the first time.
 `E06-S04` no longer carries this as a blocker.
 
 **Conclusion**: cutover is not recommended at this time, and as of 2026-09-03 the reason is no longer only packaging and platform coverage - G2 carries a reproduced authority defect. Closing E06-S04 (and E06 as a whole)

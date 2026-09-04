@@ -5,12 +5,12 @@
   "title": "Engineering System Hardening",
   "objective": "Close the gaps between what the engineering system claims to enforce and what it actually enforces, so a green gate means what the repository says it means.",
   "dependencies": [],
-  "status": "in_progress",
+  "status": "done",
   "stories": [
     {
       "id": "E22-S01",
       "title": "The release workflow re-runs every gate it claims to",
-      "status": "in_progress",
+      "status": "done",
       "outcome": "Make the tagged commit face the same gate set as main, so the released artifact is verified at the commit it was cut from - which is what the workflow already states as its own reason for existing. No longer hypothetical: at v1.8.0 the release workflow reported success while the rust workflow was failing on the same commit (quality (windows-latest)), because release.yml runs no Rust check at all. See project/evidence/RELEASE-v1.8.0.md's correction section.",
       "change_risk": "CR1",
       "dependencies": [],
@@ -34,7 +34,7 @@
     {
       "id": "E22-S02",
       "title": "Rust supply chain has updates and static analysis",
-      "status": "in_progress",
+      "status": "done",
       "outcome": "Extend to the Rust workspace the supply-chain posture the Python reference already has, ahead of E17's full provenance work.",
       "change_risk": "CR1",
       "dependencies": [],
@@ -57,7 +57,7 @@
     {
       "id": "E22-S03",
       "title": "Dependency rings, and a real command-line surface",
-      "status": "blocked",
+      "status": "done",
       "outcome": "Keep the safety kernel dependency-free while letting the experience and persistence crates use mature, reviewed libraries - and use that to give the Rust CLI the help surface it currently lacks entirely.",
       "change_risk": "CR2",
       "dependencies": [
@@ -88,7 +88,7 @@
     {
       "id": "E22-S04",
       "title": "Direct coverage for the retention resolver",
-      "status": "in_progress",
+      "status": "done",
       "outcome": "Test the hand-translated policy rules directly, instead of delegating their entire verification to a differential gate fed by a small corpus.",
       "change_risk": "CR2",
       "dependencies": [],
@@ -112,7 +112,7 @@
     {
       "id": "E22-S05",
       "title": "Codex native delete backend is wired or explicitly refused",
-      "status": "blocked",
+      "status": "done",
       "outcome": "Resolve a behavioural divergence on user data: the reference prefers the provider's own delete command to keep its bookkeeping consistent, and the target engine always deletes at the filesystem level without saying so.",
       "change_risk": "CR3",
       "dependencies": [
