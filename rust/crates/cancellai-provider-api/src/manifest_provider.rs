@@ -366,14 +366,36 @@ impl ProviderCapabilities for ManifestProvider<'_> {
             | CapabilityKind::SessionGraph
             | CapabilityKind::ActivityState
             | CapabilityKind::NativeDeleteCapability
-            | CapabilityKind::RetentionCapability
-            | CapabilityKind::Explain => CapabilityOutcome::new(
+            | CapabilityKind::RetentionCapability => CapabilityOutcome::new(
                 SupportState::Unsupported,
                 KnowledgeConfidence::LowUnknown,
                 MANIFEST_ONLY_UNSUPPORTED,
                 Vec::new(),
                 None,
             ),
+            // E16-S03: still unconditionally Unsupported (the manifest-only ceiling is
+            // unaffected), but the evidence cites the manifest's own `vendor_notes` when
+            // present - "vendor-native retention is detected/explained where relevant" is
+            // satisfied by the "explained" half: this crate cites a vendor's *documented*
+            // behavior, it never claims to have detected the tool's actual configured value.
+            CapabilityKind::Explain => match &self.manifest.vendor_notes {
+                Some(notes) => CapabilityOutcome::new(
+                    SupportState::Unsupported,
+                    KnowledgeConfidence::LowUnknown,
+                    format!(
+                        "{MANIFEST_ONLY_UNSUPPORTED}; vendor-documented behavior (not detected or configured by this adapter): {notes}"
+                    ),
+                    Vec::new(),
+                    None,
+                ),
+                None => CapabilityOutcome::new(
+                    SupportState::Unsupported,
+                    KnowledgeConfidence::LowUnknown,
+                    MANIFEST_ONLY_UNSUPPORTED,
+                    Vec::new(),
+                    None,
+                ),
+            },
         }
     }
 }

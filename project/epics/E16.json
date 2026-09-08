@@ -61,7 +61,7 @@
     {
       "id": "E16-S03",
       "title": "Gemini CLI adapter",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Add discovery/inventory first, then only capabilities supported by verified evidence.",
       "change_risk": "CR2",
       "dependencies": [
@@ -82,7 +82,7 @@
     {
       "id": "E16-S04",
       "title": "GitHub Copilot CLI adapter",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Add local session/state inventory with capability truthfulness.",
       "change_risk": "CR2",
       "dependencies": [

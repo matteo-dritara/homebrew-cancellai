@@ -90,6 +90,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   other provider - no code path here grants it anything a community-contributed manifest would
   not also have to earn through the identical trust pipeline. An unrecognized layout stays
   inspection-only.
+- Added the Gemini CLI provider manifest (E16-S03, `docs/PROVIDERS.md` "Tier 2 ecosystem
+  providers"): a second "Manifest-only" integration on the same E16-S01 engine, built from
+  `google-gemini/gemini-cli`'s real source - `oauth_creds.json`/`google_accounts.json`/
+  `settings.json`/`trustedFolders.json`/`projects.json` (protected) and `tmp/<projectIdentifier>/
+  chats/*.jsonl` (session) under `GEMINI_CLI_HOME`-or-`~/.gemini`. A new `vendor_notes` manifest
+  field cites the tool's documented built-in session retention policy in `EXPLAIN`'s evidence
+  text without upgrading `EXPLAIN` out of `UNSUPPORTED` - it makes the honest answer more
+  informative, never a claim to detect a user's actual configured value. Defaults to
+  `TrustedTier::untrusted()` like every other provider.
+- Added the GitHub Copilot CLI provider manifest (E16-S04, `docs/PROVIDERS.md` "Tier 2
+  ecosystem providers"): a third "Manifest-only" integration, built from GitHub's published
+  documentation (Copilot CLI is closed-source) - `config.json`/`settings.json` (protected) and
+  `session-state/<sessionID>/events.jsonl` (session) under a `COPILOT_HOME` full-path override
+  or `~/.copilot` default. Being manifest-only means there is no mutation path to begin with,
+  satisfying "internal state is not mutated without documented native capability" by
+  construction. The separate, platform-conditional `COPILOT_CACHE_HOME` directory is not
+  modeled as a root in this schema version. Defaults to `TrustedTier::untrusted()`.
 
 ## [1.11.0] - 2026-09-08
 

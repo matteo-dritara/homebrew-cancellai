@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "provider_id": "github-copilot-cli",
+  "display_name": "GitHub Copilot CLI",
+  "roots": [
+    {
+      "name": "home",
+      "env_var": "COPILOT_HOME",
+      "env_var_is_full_path": true,
+      "subdir": null,
+      "default_relative_to_home": ".copilot",
+      "markers": [
+        {"relative_path": "settings.json", "probe": "json_object", "identifying": true},
+        {"relative_path": "config.json", "probe": "json_object", "identifying": true},
+        {"relative_path": "session-state", "probe": "dir", "identifying": true},
+        {"relative_path": "copilot-instructions.md", "probe": "nonempty_file", "identifying": false},
+        {"relative_path": "agents", "probe": "dir", "identifying": false}
+      ]
+    }
+  ],
+  "artifacts": [
+    {"root": "home", "category": "protected", "relative_glob": "config.json"},
+    {"root": "home", "category": "protected", "relative_glob": "settings.json"},
+    {"root": "home", "category": "protected", "relative_glob": "copilot-instructions.md"},
+    {"root": "home", "category": "session", "relative_glob": "session-state/*/events.jsonl"}
+  ]
+}

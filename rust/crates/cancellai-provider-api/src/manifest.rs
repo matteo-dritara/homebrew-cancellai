@@ -88,7 +88,18 @@ pub struct Marker {
 /// onto when `false` (mirrors an XDG base-directory variable such as `XDG_DATA_HOME`, shared
 /// across many applications, where this provider's own data lives in a named subdirectory of
 /// it). When `env_var` is unset or the variable itself is not set in the process environment,
-/// the default is `$HOME/default_relative_to_home[/subdir]`.
+/// the default is `$HOME/default_relative_to_home`, with `subdir` then joined onto *that* too
+/// when present - `subdir` applies uniformly to both the override-as-base-directory case and
+/// the default case, it is never skipped just because no override was supplied.
+///
+/// `default_relative_to_home` may be the empty string - the one deliberate exception to the
+/// otherwise-universal "no path field here may be empty" rule - meaning "`$HOME` itself, no
+/// suffix". This matters for a variable that replaces the *home concept* wholesale rather than
+/// naming a provider root or an XDG base directory (Gemini CLI's `GEMINI_CLI_HOME`, which this
+/// tool's own source resolves as `path.join(homedir(), '.gemini')` with `homedir()` itself
+/// substitutable): `default_relative_to_home: ""` plus `subdir: Some(".gemini")` resolves to
+/// `$HOME/.gemini` by default and `$GEMINI_CLI_HOME/.gemini` when the override is set - the
+/// same fixed suffix applied either way, exactly matching that tool's real resolution rule.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ManifestRoot {
@@ -118,12 +129,25 @@ pub struct ArtifactPattern {
 
 /// A complete provider manifest. See the module doc for what this type deliberately cannot
 /// express.
+///
+/// `vendor_notes` (E16-S03) is the one field that is neither a root/pattern fact nor absent by
+/// the module doc's own "no capability/trust/authority field" rule: plain, inert documentation
+/// text about a vendor-*documented* behavior (for example, a tool's own built-in session
+/// retention policy) that [`crate::manifest_provider::ManifestProvider`] surfaces verbatim in
+/// its `EXPLAIN` capability's evidence, prefixed to make unmistakable that it is a citation of
+/// vendor documentation, not a claim this crate verified or a capability this manifest grants -
+/// `EXPLAIN` stays `Unsupported` regardless of whether `vendor_notes` is present (PROVIDER_MODEL.md's
+/// "Manifest-only" outcome for `RETENTION_CAPABILITY`/`EXPLAIN` is unconditional and unaffected;
+/// this field only changes the *evidence string* attached to that unconditional answer, never
+/// the answer itself).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProviderManifest {
     pub schema_version: u32,
     pub provider_id: String,
     pub display_name: String,
+    #[serde(default)]
+    pub vendor_notes: Option<String>,
     pub roots: Vec<ManifestRoot>,
     pub artifacts: Vec<ArtifactPattern>,
 }
@@ -239,7 +263,14 @@ pub fn parse_manifest(text: &str) -> Result<ProviderManifest, ManifestError> {
                 return Err(ManifestError::PathEscapesRoot(subdir.clone()));
             }
         }
-        if !is_safe_relative_path(&root.default_relative_to_home) {
+        // Empty is the one deliberate exception to is_safe_relative_path's "non-empty" rule:
+        // it means "$HOME itself, no suffix" (e.g. Gemini CLI's GEMINI_CLI_HOME, which
+        // replaces $HOME wholesale rather than naming a root directly - `subdir` then supplies
+        // the one fixed suffix (".gemini") applied uniformly whether or not the override is
+        // set, see `manifest_provider::resolve_root`'s own docs).
+        if !root.default_relative_to_home.is_empty()
+            && !is_safe_relative_path(&root.default_relative_to_home)
+        {
             return Err(ManifestError::PathEscapesRoot(
                 root.default_relative_to_home.clone(),
             ));
@@ -373,6 +404,31 @@ mod tests {
     fn a_manifest_with_no_roots_is_rejected() {
         let text = r#"{"schema_version": 1, "provider_id": "x", "display_name": "X", "roots": [], "artifacts": []}"#;
         assert_eq!(parse_manifest(text), Err(ManifestError::NoRoots));
+    }
+
+    #[test]
+    fn an_empty_default_relative_to_home_is_accepted_meaning_home_itself() {
+        // The one deliberate exception to "no path field may be empty" - see ManifestRoot's
+        // own doc comment for the Gemini-CLI-style "env var replaces $HOME wholesale" shape
+        // this exists for.
+        let text = r#"{
+            "schema_version": 1, "provider_id": "x", "display_name": "X",
+            "roots": [{"name": "data", "env_var": "SOME_HOME", "subdir": ".x", "default_relative_to_home": "", "markers": []}],
+            "artifacts": []
+        }"#;
+        assert!(parse_manifest(text).is_ok());
+    }
+
+    #[test]
+    fn a_non_empty_default_relative_to_home_still_rejects_path_traversal() {
+        let text = r#"{
+            "schema_version": 1, "provider_id": "x", "display_name": "X",
+            "roots": [{"name": "data", "env_var": null, "subdir": null, "default_relative_to_home": "../../etc", "markers": []}],
+            "artifacts": []
+        }"#;
+        let err = parse_manifest(text)
+            .expect_err("path traversal in default_relative_to_home must be rejected");
+        assert!(matches!(err, ManifestError::PathEscapesRoot(_)), "{err:?}");
     }
 
     #[test]

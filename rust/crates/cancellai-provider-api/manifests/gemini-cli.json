@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "provider_id": "gemini-cli",
+  "display_name": "Gemini CLI",
+  "vendor_notes": "Gemini CLI documents its own built-in session retention (settings.json's general.sessionRetention: enabled=true, maxAge=\"30d\" by default, also configurable via maxCount) - see docs/cli/session-management.md in google-gemini/gemini-cli.",
+  "roots": [
+    {
+      "name": "home",
+      "env_var": "GEMINI_CLI_HOME",
+      "env_var_is_full_path": false,
+      "subdir": ".gemini",
+      "default_relative_to_home": "",
+      "markers": [
+        {"relative_path": "settings.json", "probe": "json_object", "identifying": true},
+        {"relative_path": "tmp", "probe": "dir", "identifying": true},
+        {"relative_path": "oauth_creds.json", "probe": "json_object", "identifying": true},
+        {"relative_path": "google_accounts.json", "probe": "json_object", "identifying": false},
+        {"relative_path": "trustedFolders.json", "probe": "json_object", "identifying": false},
+        {"relative_path": "commands", "probe": "dir", "identifying": false}
+      ]
+    }
+  ],
+  "artifacts": [
+    {"root": "home", "category": "protected", "relative_glob": "oauth_creds.json"},
+    {"root": "home", "category": "protected", "relative_glob": "google_accounts.json"},
+    {"root": "home", "category": "protected", "relative_glob": "settings.json"},
+    {"root": "home", "category": "protected", "relative_glob": "trustedFolders.json"},
+    {"root": "home", "category": "protected", "relative_glob": "projects.json"},
+    {"root": "home", "category": "session", "relative_glob": "tmp/*/chats/*.jsonl"},
+    {"root": "home", "category": "session", "relative_glob": "tmp/*/chats/*/*.jsonl"}
+  ]
+}

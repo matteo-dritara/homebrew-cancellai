@@ -142,6 +142,68 @@ generic `XDG_CONFIG_HOME` the tool's own default also respects, since this schem
 there specific enough to fingerprint with real confidence, and an undeclared root is a more
 honest gap than a root with an empty marker table that could never reach usable confidence.
 
+#### Gemini CLI (manifest-only, E16-S03)
+
+A second "Manifest-only" integration, built on the same schema/engine E16-S01 defined and
+E16-S05 first proved out - not a new adapter code path.
+`rust/crates/cancellai-provider-api/manifests/gemini-cli.json` records the layout confirmed
+directly against `google-gemini/gemini-cli`'s real source:
+
+- **home** (`GEMINI_CLI_HOME` override, default `~/.gemini`): the override replaces the *home*
+  concept wholesale rather than naming this provider's root directly - `packages/core/src/
+  utils/paths.ts` resolves it as `homedir()` (substitutable via the override) then joins
+  `.gemini` on regardless, so this root's `default_relative_to_home` is the empty string with
+  `subdir: ".gemini"` supplying the one fixed suffix applied uniformly either way. Under it:
+  `oauth_creds.json`, `google_accounts.json`, `settings.json`, `trustedFolders.json`,
+  `projects.json` (credentials/config - `PROTECTED`), and `tmp/<projectIdentifier>/chats/*.jsonl`
+  (`SESSION` - confirmed against `chatRecordingService.ts`'s real filename construction).
+
+Only `DETECT`/`FINGERPRINT_ROOT`/`INVENTORY_MAP` are ever reported as anything but
+`UNSUPPORTED`, the same manifest-only ceiling OpenCode's entry above documents. This story's
+"vendor-native retention is detected/explained where relevant" AC is satisfied by a
+`vendor_notes` field on the manifest that cites `docs/cli/session-management.md`'s documented
+built-in retention policy (`settings.json`'s `general.sessionRetention`) in `EXPLAIN`'s evidence
+text - `EXPLAIN` still reports `UNSUPPORTED`, since this adapter does not read or act on a
+user's actual configured value; the field only makes the honest "unsupported" answer more
+informative, it never upgrades the support state. The manifest's provider defaults to
+`TrustedTier::untrusted()` like every other provider (SI-021).
+
+**Disclosed v1 gaps**: `tmp/<projectIdentifier>` naming has used both a legacy path-hash form
+and a newer slug form across tool versions; this manifest's glob matches either shape
+positionally but does not itself disambiguate which naming scheme produced a given directory.
+The tool's own `history` directory (shell/command history, not chat transcripts) is not
+declared as a root or artifact in this schema version - it carries no session-cleanup value and
+declaring it would add scanning surface with no offsetting benefit.
+
+#### GitHub Copilot CLI (manifest-only, E16-S04)
+
+A third "Manifest-only" integration on the same engine.
+`rust/crates/cancellai-provider-api/manifests/github-copilot-cli.json` records the layout
+confirmed against GitHub's own published documentation (`docs.github.com/en/copilot/reference/
+copilot-cli-reference/cli-config-dir-reference`) - Copilot CLI is closed-source, so documentation
+is the authoritative evidence source here rather than a source-code citation; the "evidence
+before action" bar is the same one applied elsewhere in this document, only the kind of evidence
+available differs:
+
+- **home** (`COPILOT_HOME` full-path override, default `~/.copilot`, mirroring
+  `CLAUDE_CONFIG_DIR`/`CODEX_HOME`'s own override shape exactly): `config.json` (auth credentials
+  and plugin metadata) and `settings.json` (user configuration) - both `PROTECTED`; `session-
+  state/<sessionID>/events.jsonl` - `SESSION`, the cleanup surface.
+
+Only `DETECT`/`FINGERPRINT_ROOT`/`INVENTORY_MAP` are ever reported as anything but
+`UNSUPPORTED`, satisfying this story's "SQLite/internal state is not mutated without documented
+native capability" AC by construction: a manifest-only provider has no mutation path at all, so
+there is nothing to mutate undocumented-ly. Session/project mapping stays evidence-based per the
+manifest's own declared `session-state` glob, with no inference beyond what that pattern
+literally matches. Defaults to `TrustedTier::untrusted()` (SI-021), same as every other
+provider.
+
+**Disclosed v1 gap**: GitHub's documentation describes a separate, platform-conditional cache
+directory (`COPILOT_CACHE_HOME`, with a different default path per operating system) that this
+schema version deliberately does not model as a root - `ManifestRoot` names one environment
+variable and one default-relative-to-home path per root, with no per-platform branching, and a
+cache root carries no session-cleanup value that would justify adding that capability now.
+
 ### Later providers
 
 Other local-state agents are considered when they have material developer usage and a storage/lifecycle surface that can be safely observed. Cursor/Roo/Windsurf or future agents are not added simply to inflate a compatibility logo wall.

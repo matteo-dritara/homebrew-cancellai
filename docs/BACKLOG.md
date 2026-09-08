@@ -1610,7 +1610,7 @@ Scale provider coverage through manifests, native adapters, signed knowledge bun
 
 ### E16-S03 - Gemini CLI adapter
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E16-S01 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E16-S01 | **Safety obligations:** none
 
 **Outcome.** Add discovery/inventory first, then only capabilities supported by verified evidence.
 
@@ -1629,7 +1629,7 @@ Scale provider coverage through manifests, native adapters, signed knowledge bun
 
 ### E16-S04 - GitHub Copilot CLI adapter
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E16-S01 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E16-S01 | **Safety obligations:** none
 
 **Outcome.** Add local session/state inventory with capability truthfulness.
 
