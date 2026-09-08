@@ -39,8 +39,7 @@
       "outcome": "Package provider/version/layout intelligence separately from the binary with signature/provenance verification.",
       "change_risk": "CR4",
       "dependencies": [
-        "E16-S01",
-        "E17-S01"
+        "E16-S01"
       ],
       "acceptance_criteria": [
         "Unsigned/invalid bundles are ignored with diagnostics.",

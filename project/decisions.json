@@ -256,6 +256,17 @@
         "Each review round is larger, covering a whole epic rather than one story.",
         "Story status ready_for_review now means waiting for the epic's review round, not requesting an individual one."
       ]
+    },
+    {
+      "id": "PD-023",
+      "title": "Cross-epic story dependencies must not form a review-closure cycle",
+      "status": "accepted",
+      "decision": "E16-S02 (\"Signed knowledge bundle format\") depended on both E16-S01 and E17-S01. Combined with PD-021 (closing an epic cuts a release, requiring every story done) and PD-022 (an epic reviews only once every story is ready_for_review), this was a hard cycle: E16-S02 could not reach ready_for_review without E17-S01 being done; E17-S01 could not be done until E17 closed; E17 could not close while E17-S07 stayed blocked on E16-S05 being done; E16-S05 could not be done until E16 closed; and E16 could not close while E16-S02 stayed unfinished. E16-S02's dependency on E17-S01 is removed, leaving only E16-S01 - the release manifest's knowledge_compatibility field (E17-S01, project/schemas/release_manifest.schema.json) already exists as a committed schema fact E16-S02 can read and design against without needing that story's own status to advance further.",
+      "rationale": "A pairwise cross-epic dependency is fine in isolation; PD-021/PD-022's all-stories-together closure rule turns a *cycle* of such dependencies (E16 to E17 and E17 back to E16) into a structural deadlock no amount of implementation work can resolve. The fix removes one edge of the cycle rather than relaxing PD-021/PD-022, since the all-together closure rule is the one earning its keep (a smaller release/review surface) and the removed edge was not load-bearing (E16-S02 needs the already-shipped schema shape, not E17-S01's story status).",
+      "implications": [
+        "Backlog authors adding a cross-epic story dependency should check whether the reverse direction already exists (directly or transitively) before committing it - PD-021/PD-022 together turn any such cycle into a deadlock, not just a scheduling inconvenience.",
+        "E17-S07's own dependency on E16-S05 (rather than E16-S02, which is what its \"trusted signed knowledge\" downgrade mechanism actually needs) is left as-is by this decision - it is a separate, non-blocking accuracy question about which E16 story E17-S07 should cite, not itself a cycle, and is not resolved here."
+      ]
     }
   ]
 }
