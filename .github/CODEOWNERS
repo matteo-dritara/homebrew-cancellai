@@ -6,4 +6,5 @@
 /docs/security/ @matteo-dritara
 /project/decisions.json @matteo-dritara
 /project/roadmap.json @matteo-dritara
+/project/provider_trust.json @matteo-dritara
 /.github/workflows/ @matteo-dritara

@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "publishers": [
+    {
+      "provider_id": "opencode",
+      "tier": "untrusted",
+      "verified_by": null,
+      "fixture_references": []
+    },
+    {
+      "provider_id": "gemini-cli",
+      "tier": "untrusted",
+      "verified_by": null,
+      "fixture_references": []
+    },
+    {
+      "provider_id": "github-copilot-cli",
+      "tier": "untrusted",
+      "verified_by": null,
+      "fixture_references": []
+    }
+  ]
+}

@@ -1667,7 +1667,7 @@ Scale provider coverage through manifests, native adapters, signed knowledge bun
 
 ### E16-S06 - Community provider verification workflow
 
-**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E16-S01 | **Safety obligations:** SI-021
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E16-S01 | **Safety obligations:** SI-021
 
 **Outcome.** Automate manifest lint, fixture tests, trust-level labeling, and maintainer promotion criteria.
 

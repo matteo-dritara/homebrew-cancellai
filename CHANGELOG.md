@@ -118,6 +118,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   update from the same publisher and supports rollback to the prior trusted bundle, re-checking
   expiry so a failed rollback never displaces the still-current bundle. Adversarially tested:
   tamper (payload, digest, signature), expiry, unknown-signer, and rollback-after-expiry cases.
+- Automated the community provider verification workflow (E16-S06, `.github/CONTRIBUTING.md`
+  "Provider contributions"): `scripts/check_provider_trust.py check` (`pre-commit` and CI) lints
+  every manifest under `rust/crates/cancellai-provider-api/manifests/*.json` against that
+  schema's own known field set - a smuggled `trust`/`capability`/`authority` field, anywhere in
+  the manifest including nested inside a root/marker/artifact, fails here independently of the
+  Rust parser's own `deny_unknown_fields` check - and validates the new
+  `project/provider_trust.json` registry recording each shipped manifest's current
+  `ProviderTrust` tier. A tier above `Untrusted` requires a non-empty `verified_by` and at least
+  one `fixture_references` entry, mirroring `cancellai-safety::trust_promotion`'s own
+  evidence-required rule; `project/provider_trust.json` is added to `CODEOWNERS` so only the
+  project owner can merge a change to it. A community PR therefore cannot mark itself Built-in
+  Verified through either a smuggled manifest field or a bare registry claim.
 
 ## [1.11.0] - 2026-09-08
 

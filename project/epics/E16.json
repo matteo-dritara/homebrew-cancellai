@@ -123,7 +123,7 @@
     {
       "id": "E16-S06",
       "title": "Community provider verification workflow",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Automate manifest lint, fixture tests, trust-level labeling, and maintainer promotion criteria.",
       "change_risk": "CR3",
       "dependencies": [

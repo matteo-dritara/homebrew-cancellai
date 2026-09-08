@@ -11,8 +11,8 @@ Epics: **24** | Stories: **110**
 - `blocked`: 2
 - `cancelled`: 1
 - `done`: 59
-- `planned`: 37
-- `ready_for_review`: 11
+- `planned`: 36
+- `ready_for_review`: 12
 
 ## Change risk distribution
 
@@ -33,6 +33,7 @@ Epics: **24** | Stories: **110**
 - **E16-S03** - Gemini CLI adapter (CR2)
 - **E16-S04** - GitHub Copilot CLI adapter (CR2)
 - **E16-S05** - OpenCode adapter (CR2)
+- **E16-S06** - Community provider verification workflow (CR3)
 - **E17-S01** - Release artifact manifest (CR2)
 - **E17-S02** - Automated multi-target build (CR2)
 - **E17-S03** - Provenance, SBOM, and signing (CR3)

@@ -107,6 +107,10 @@ Anything deterministic and repeatable should be automated:
 - project-model validation and generated documentation drift;
 - code format/lint/type/test;
 - fixture/schema validation;
+- community contribution trust/evidence validation (`scripts/check_provider_trust.py`, E16-S06:
+  a manifest cannot smuggle a trust/capability field, and a promotion above `Untrusted` cannot
+  merge without a named maintainer verifier and compatibility fixtures - see
+  `.github/CONTRIBUTING.md`'s "Provider contributions");
 - security/dependency scans;
 - differential tests;
 - compatibility matrices;

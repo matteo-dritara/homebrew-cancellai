@@ -66,6 +66,7 @@ Nothing here relies on remembering to do it. Each rule has an owner in code:
 | Story lifecycle, evidence at handoff, passing Safety Verdict before `done` | `scripts/project_os.py check` |
 | ADR numbering, status, forward links; decision supersession | `scripts/check_process.py check` |
 | Evidence names a real work item; Safety Verdicts carry their sections | `scripts/check_process.py check` |
+| Community provider manifests carry no smuggled trust/capability field; a trust promotion above Untrusted names a maintainer verifier and compatibility fixtures | `scripts/check_provider_trust.py check` |
 | Conventional Commit messages | `commit-msg` hook, `commit-convention` CI job |
 | Versions agree across source, packaging and formula | `scripts/release.py check` |
 | A closed epic has a release | `scripts/release.py check` |
@@ -98,6 +99,18 @@ Participation is covered by the [Code of Conduct](CODE_OF_CONDUCT.md).
 ## Provider contributions
 
 New providers use the capability/trust model in `docs/architecture/PROVIDER_MODEL.md`. A community contribution cannot self-assign Built-in Verified trust or irreversible capability. Synthetic fixtures and provenance are required for promoted support.
+
+This is automated, not only reviewed: `python3 scripts/check_provider_trust.py check` (`pre-commit`
+and CI, E16-S06) lints every manifest under `rust/crates/cancellai-provider-api/manifests/*.json`
+for fields outside that schema's own known shape (a smuggled `trust`/`capability`/`authority`
+key fails here even before the Rust toolchain would also reject it), and validates
+`project/provider_trust.json` - the registry recording each shipped manifest's current
+`cancellai_model::ProviderTrust` tier. A tier above `Untrusted` requires a non-empty `verified_by`
+and at least one `fixture_references` entry; a bare tier claim with no evidence fails the check
+regardless of what the rest of the PR says. `project/provider_trust.json` is also listed in
+[`CODEOWNERS`](CODEOWNERS), so only the project owner can merge a change to it at all - the
+evidence requirement and the review requirement are both required, neither alone is the
+guarantee.
 
 ## Test data privacy
 
