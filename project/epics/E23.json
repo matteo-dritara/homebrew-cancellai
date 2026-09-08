@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "id": "E23",
+  "phase": "P1",
+  "title": "Release gate history availability",
+  "objective": "Make tagged-release verification capable of evaluating history-backed provenance gates from the complete tagged repository history.",
+  "dependencies": [
+    "E22"
+  ],
+  "status": "planned",
+  "stories": [
+    {
+      "id": "E23-S01",
+      "title": "Fetch release provenance history before platform verification",
+      "status": "planned",
+      "outcome": "Repair release.yml so the tagged checkout contains the commit history required by scripts/check_platforms.py to verify each platform's cited verified_commit is an ancestor, without weakening that provenance check.",
+      "change_risk": "CR4",
+      "dependencies": [
+        "E22-S01"
+      ],
+      "acceptance_criteria": [
+        "The tagged release verify job has the complete history needed for ancestry-backed platform verification.",
+        "scripts/check_platforms.py check passes at a tag that cites historical verified commits without reducing its ancestor validation.",
+        "A regression test or workflow-policy check fails if release.yml reverts to a shallow checkout while retaining the platform provenance gate.",
+        "A replacement release tag is verified successfully before publication."
+      ],
+      "safety_obligations": [
+        "SI-019"
+      ],
+      "verification": [
+        "A real tag-triggered release workflow passes all Python and Rust platform gates.",
+        "Independent CR4 verifier review and owner-visible Safety Verdict."
+      ],
+      "documentation_impact": [
+        "docs/RELEASING.md",
+        "docs/development/RELEASE_GATES.md",
+        ".github/workflows/release.yml"
+      ]
+    }
+  ]
+}

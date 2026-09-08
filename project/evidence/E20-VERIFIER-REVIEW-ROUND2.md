@@ -40,3 +40,16 @@ shape; it does not remove E20-S05's concrete dependency on E20-S01.
 ## Overall verdict
 
 **PASS.** E20-S05 moves to `done`, and all E20 stories are now complete, so E20 closes. The required CR4 Safety Verdict is recorded at `project/evidence/E20-S05/SAFETY_VERDICT.md`. The mandatory epic-closure release follows this review record.
+
+## Accepted release residual
+
+The `v1.10.0` tag's release workflow (run 34252829459) failed at
+`scripts/check_platforms.py check`, before publication. The tag's shallow checkout did not
+contain the historical verified commits named by `project/platforms.json`, so the checker
+correctly refused to prove their ancestry. This is a release-verification defect outside
+E20-S05's Windows authority implementation; it does not alter this story's PASS verdict.
+
+It is carried forward as **E23-S01** rather than opening a prohibited third E20 review round.
+The required repair is a full-history tagged checkout plus a regression guard, followed by a
+new successfully verified release tag; weakening the ancestry check is not an acceptable
+repair.

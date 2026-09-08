@@ -2364,3 +2364,33 @@ Close the gaps between what the engineering system claims to enforce and what it
 
 - `docs/development/WORK_ITEM_MODEL.md`
 - `docs/adrs/0014-epic-closure-is-a-release-and-review-is-bounded.md`
+
+## E23 - Release gate history availability
+
+**Phase:** `P1` | **Status:** `planned` | **Epic dependencies:** E22
+
+Make tagged-release verification capable of evaluating history-backed provenance gates from the complete tagged repository history.
+
+### E23-S01 - Fetch release provenance history before platform verification
+
+**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E22-S01 | **Safety obligations:** SI-019
+
+**Outcome.** Repair release.yml so the tagged checkout contains the commit history required by scripts/check_platforms.py to verify each platform's cited verified_commit is an ancestor, without weakening that provenance check.
+
+**Acceptance criteria**
+
+- The tagged release verify job has the complete history needed for ancestry-backed platform verification.
+- scripts/check_platforms.py check passes at a tag that cites historical verified commits without reducing its ancestor validation.
+- A regression test or workflow-policy check fails if release.yml reverts to a shallow checkout while retaining the platform provenance gate.
+- A replacement release tag is verified successfully before publication.
+
+**Verification**
+
+- A real tag-triggered release workflow passes all Python and Rust platform gates.
+- Independent CR4 verifier review and owner-visible Safety Verdict.
+
+**Documentation impact**
+
+- `docs/RELEASING.md`
+- `docs/development/RELEASE_GATES.md`
+- `.github/workflows/release.yml`
