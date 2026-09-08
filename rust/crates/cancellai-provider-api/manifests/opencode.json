@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "provider_id": "opencode",
+  "display_name": "OpenCode",
+  "roots": [
+    {
+      "name": "data",
+      "env_var": "XDG_DATA_HOME",
+      "env_var_is_full_path": false,
+      "subdir": "opencode",
+      "default_relative_to_home": ".local/share",
+      "markers": [
+        {"relative_path": "auth.json", "probe": "json_object", "identifying": true},
+        {"relative_path": "storage", "probe": "dir", "identifying": true},
+        {"relative_path": "log", "probe": "dir", "identifying": false},
+        {"relative_path": "repos", "probe": "dir", "identifying": false}
+      ]
+    },
+    {
+      "name": "config",
+      "env_var": "OPENCODE_CONFIG_DIR",
+      "env_var_is_full_path": true,
+      "subdir": null,
+      "default_relative_to_home": ".config/opencode",
+      "markers": [
+        {"relative_path": "opencode.json", "probe": "json_object", "identifying": true},
+        {"relative_path": "opencode.jsonc", "probe": "nonempty_file", "identifying": true}
+      ]
+    },
+    {
+      "name": "cache",
+      "env_var": "XDG_CACHE_HOME",
+      "env_var_is_full_path": false,
+      "subdir": "opencode",
+      "default_relative_to_home": ".cache",
+      "markers": [
+        {"relative_path": "bin", "probe": "dir", "identifying": true}
+      ]
+    }
+  ],
+  "artifacts": [
+    {"root": "data", "category": "protected", "relative_glob": "auth.json"},
+    {"root": "data", "category": "session", "relative_glob": "storage/session/*/*.json"},
+    {"root": "data", "category": "session", "relative_glob": "storage/message/*/*.json"},
+    {"root": "data", "category": "session", "relative_glob": "storage/part/*/*.json"},
+    {"root": "data", "category": "session", "relative_glob": "storage/session_diff/*.json"},
+    {"root": "data", "category": "session", "relative_glob": "storage/project/*.json"}
+  ]
+}

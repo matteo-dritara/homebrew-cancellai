@@ -80,6 +80,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   manifest-driven provider's authority is computed through the identical
   `cancellai_safety::TrustedTier` gate every hand-written adapter uses and defaults to
   `TrustedTier::untrusted()`.
+- Added the OpenCode provider manifest (E16-S05, `docs/PROVIDERS.md` "Tier 2 ecosystem
+  providers"): the first real "Manifest-only" integration, built from OpenCode's real,
+  source-confirmed layout (`anomalyco/opencode`, formerly `sst/opencode`) - `auth.json`
+  (credentials, protected) and a `storage/` tree of session/message/part/session_diff/project
+  records under `$XDG_DATA_HOME/opencode`, plus declared (not yet scanned) config/cache roots.
+  Ships committed and reviewed in this repository via `rust/crates/cancellai-provider-api::
+  opencode_manifest`, but its provider still defaults to `TrustedTier::untrusted()` like every
+  other provider - no code path here grants it anything a community-contributed manifest would
+  not also have to earn through the identical trust pipeline. An unrecognized layout stays
+  inspection-only.
 
 ## [1.11.0] - 2026-09-08
 

@@ -1648,7 +1648,7 @@ Scale provider coverage through manifests, native adapters, signed knowledge bun
 
 ### E16-S05 - OpenCode adapter
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E16-S01 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E16-S01 | **Safety obligations:** none
 
 **Outcome.** Add local state inventory and cleanup capabilities incrementally.
 

@@ -103,7 +103,7 @@
     {
       "id": "E16-S05",
       "title": "OpenCode adapter",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Add local state inventory and cleanup capabilities incrementally.",
       "change_risk": "CR2",
       "dependencies": [

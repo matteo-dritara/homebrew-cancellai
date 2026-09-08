@@ -102,6 +102,46 @@ These define the first conformance corpus and differential migration contract.
 
 They enter with the truthful minimum capability set and expand only as evidence supports it.
 
+#### OpenCode (manifest-only, E16-S05)
+
+The first real "Manifest-only" integration (`docs/architecture/PROVIDER_MODEL.md`) - a
+declarative manifest, not native adapter code, matching this tier's own "truthful minimum
+capability set" mandate exactly. `rust/crates/cancellai-provider-api/manifests/opencode.json`
+records the layout confirmed directly against `anomalyco/opencode`'s (formerly `sst/opencode`)
+real source during this story:
+
+- **data** (`$XDG_DATA_HOME/opencode`, default `~/.local/share/opencode`): `auth.json`
+  (credentials - `PROTECTED`, never a cleanup target) and a `storage/` tree of
+  `session`/`message`/`part`/`session_diff`/`project` JSON records (`SESSION` - the actual
+  cleanup surface, confirmed against `packages/opencode/src/storage/storage.ts`'s current,
+  post-migration layout, not the tool's now-obsolete pre-migration per-project layout);
+- **config** (`OPENCODE_CONFIG_DIR` override, default `~/.config/opencode`):
+  `opencode.json`/`opencode.jsonc` - declared for `DISCOVERY` only, not scanned for artifacts in
+  this schema version;
+- **cache** (`$XDG_CACHE_HOME/opencode`, default `~/.cache/opencode`): declared for `DISCOVERY`
+  only, same reason.
+
+Only `DETECT`/`FINGERPRINT_ROOT`/`INVENTORY_MAP` are ever reported as anything but
+`UNSUPPORTED` - the "Manifest-only" ceiling PROVIDER_MODEL.md's own section documents, enforced
+structurally by `ManifestProvider`, not merely by this manifest's own restraint. The manifest
+ships committed and reviewed in this repository, but that is a loading-mechanism detail, not an
+authority grant: its provider still defaults to `TrustedTier::untrusted()` like every other
+provider (SI-021) - promotion to a higher trust tier requires the same maintainer-owned
+fixtures/compatibility evidence/threat review this document's "Trust levels" table always has,
+which this story does not claim to have produced. A community-contributed manifest for a
+different tool would go through the identical `parse_manifest`/`ManifestProvider`/`TrustedTier`
+pipeline - E16-S05's own AC ("community contribution path exercises same trust pipeline") is
+true because there is no separate path here to diverge from it.
+
+**Disclosed v1 gaps**, not silently assumed complete: `config`/`cache` roots are declared but
+not scanned for artifacts (their contents are lower-value/lower-confidence for a first pass);
+`config`'s resolution models `OPENCODE_CONFIG_DIR` (the app-specific override) but not the more
+generic `XDG_CONFIG_HOME` the tool's own default also respects, since this schema version's
+`ManifestRoot` supports only one environment variable per root; no `state`
+(`$XDG_STATE_HOME/opencode`) root is declared at all, because this story found no marker file
+there specific enough to fingerprint with real confidence, and an undeclared root is a more
+honest gap than a root with an empty marker table that could never reach usable confidence.
+
 ### Later providers
 
 Other local-state agents are considered when they have material developer usage and a storage/lifecycle surface that can be safely observed. Cursor/Roo/Windsurf or future agents are not added simply to inflate a compatibility logo wall.

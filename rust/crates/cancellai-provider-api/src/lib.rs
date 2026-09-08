@@ -15,7 +15,10 @@
 //! calls the "Manifest-only" integration level: declarative root/pattern/category knowledge - no
 //! code, and structurally no way to claim a capability or trust level a hand-written adapter did
 //! not also have to earn through the same `cancellai-safety::TrustedTier` gate (SI-021).
+//! `builtin` (E16-S05) adds the first real manifest instance, OpenCode - the "tier 2 ecosystem
+//! provider" `docs/PROVIDERS.md` names, entering with the truthful minimum capability set.
 
+pub mod builtin;
 pub mod capability;
 pub mod manifest;
 pub mod manifest_provider;
@@ -23,6 +26,7 @@ pub mod protection;
 pub mod root_fingerprint;
 pub mod root_probe;
 
+pub use builtin::opencode_manifest;
 pub use capability::{
     CapabilityKind, CapabilityOutcome, ProviderCapabilities, SupportState, capability_report,
 };
