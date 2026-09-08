@@ -33,6 +33,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   never names a different channel than the one detected. A bare `update` (no `--check`) is
   refused rather than silently implying a future auto-update default (SI-007); `version`'s bare
   output is unchanged - `--source` only ever appends lines.
+- Added provenance, SBOM, and signed attestation to the release build (E17-S03,
+  [ADR-0022](docs/adrs/0022-cyclonedx-sbom-via-cargo-cyclonedx.md)): `build-artifacts`
+  generates a per-target CycloneDX 1.5 SBOM (`cargo-cyclonedx`, target-accurate - reflects
+  each leg's own conditional dependencies rather than the host toolchain's) and signs a
+  build-provenance attestation and an SBOM attestation for each canonical archive
+  (`actions/attest-build-provenance`, `actions/attest` with `sbom-path` - not the deprecated
+  `actions/attest-sbom`). A new `attestation-verify` job independently re-fetches and
+  cryptographically verifies both attestations for every archive before `publish`, which now
+  depends on it: a missing or invalid attestation fails the release rather than shipping
+  silently.
 
 ## [1.11.0] - 2026-09-08
 

@@ -119,23 +119,30 @@ matrix as hand-written jobs in `.github/workflows/release.yml`, run on every `v*
   tier-1 target's own runner (`docs/PLATFORMS.md`: `aarch64-apple-darwin` and
   `x86_64-apple-darwin` on `macos-latest`, `x86_64-unknown-linux-gnu` on `ubuntu-latest`,
   `x86_64-pc-windows-msvc` on `windows-latest`), packages an archive plus a SHA-256 checksum
-  sidecar, and smoke-tests the packaged binary by unpacking it and running `cancellai-cli
-  version` on the platform that just built it, before anything is uploaded;
+  sidecar, smoke-tests the packaged binary by unpacking it and running `cancellai-cli version`
+  on the platform that just built it, generates a per-target CycloneDX SBOM
+  ([ADR-0022](adrs/0022-cyclonedx-sbom-via-cargo-cyclonedx.md)), and signs both a build-provenance
+  and an SBOM attestation for the archive (E17-S03) before anything is uploaded;
 - `release-manifest-generate` - assembles `release-manifest.json` from those real artifacts via
   `python3 scripts/release_manifest.py generate` (real checksums of real files, not typed by
   hand), then immediately round-trips it with `release_manifest.py verify-checksums`;
-- `publish` (now gated on both of the above, in addition to `verify`/`verify-rust`) re-runs that
-  same checksum round-trip against the downloaded artifacts before creating the GitHub Release,
-  and attaches the archives, their checksums, and `release-manifest.json` as release assets.
+- `attestation-verify` - independently re-fetches and cryptographically verifies every
+  provenance and SBOM attestation `build-artifacts` created (`gh attestation verify`), separate
+  from the run that created them (E17-S03's "Automated attestation verification job");
+- `publish` (now gated on all three of the above, in addition to `verify`/`verify-rust`) re-runs
+  the checksum round-trip against the downloaded artifacts before creating the GitHub Release,
+  and attaches the archives, their checksums, their SBOMs, and `release-manifest.json` as
+  release assets. A missing or invalid attestation, or a checksum mismatch, fails the release
+  rather than shipping silently.
 
 Cross-platform binaries produced this way are not yet a shipping product - `cancellai-cli`
 remains a beta, source-built artifact until E06-S04's cutover gate opens (see "Beta
 side-by-side" above); this pipeline exists so the automation is proven ahead of that cutover,
 not so users install these archives today. Native installer formats (`.pkg`/`.msi`/`.deb`) are
 deliberately out of this story's scope - ADR-0021 records that as the main reason a future
-cargo-dist adoption remains open. `docs/security/SUPPLY_CHAIN.md`'s SBOM/provenance/attestation
-requirements are E17-S03; channel identity beyond the hardcoded `stable` every `v*` tag
-currently gets is E17-S05 (no beta/nightly tag scheme exists yet).
+cargo-dist adoption remains open (see that ADR's 2026-09-08 correction for why "no network
+access" is no longer part of that reasoning). Channel identity beyond the hardcoded `stable`
+every `v*` tag currently gets is E17-S05 (no beta/nightly tag scheme exists yet).
 
 ## Versioning
 

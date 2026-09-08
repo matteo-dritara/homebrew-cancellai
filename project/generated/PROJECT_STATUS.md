@@ -11,8 +11,8 @@ Epics: **24** | Stories: **110**
 - `blocked`: 1
 - `cancelled`: 1
 - `done`: 59
-- `planned`: 46
-- `ready_for_review`: 3
+- `planned`: 45
+- `ready_for_review`: 4
 
 ## Change risk distribution
 
@@ -30,4 +30,5 @@ Epics: **24** | Stories: **110**
 
 - **E17-S01** - Release artifact manifest (CR2)
 - **E17-S02** - Automated multi-target build (CR2)
+- **E17-S03** - Provenance, SBOM, and signing (CR3)
 - **E17-S04** - Installation-source awareness (CR1)

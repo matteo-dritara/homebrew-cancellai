@@ -1732,7 +1732,7 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 ### E17-S03 - Provenance, SBOM, and signing
 
-**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E17-S02 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E17-S02 | **Safety obligations:** none
 
 **Outcome.** Generate GitHub artifact attestations/provenance, SBOM, and cryptographic verification material for canonical artifacts.
 

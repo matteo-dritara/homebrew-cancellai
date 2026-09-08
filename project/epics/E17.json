@@ -56,7 +56,7 @@
     {
       "id": "E17-S03",
       "title": "Provenance, SBOM, and signing",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Generate GitHub artifact attestations/provenance, SBOM, and cryptographic verification material for canonical artifacts.",
       "change_risk": "CR3",
       "dependencies": [

@@ -84,6 +84,21 @@ validator.
 
 GitHub artifact attestations can establish signed provenance and attach SBOM attestations. SLSA's current specification is v1.2; GitHub's documentation describes the assurance delivered by its current attestation mechanisms and reusable workflows. The project records the exact achieved level rather than copying a marketing label.
 
+E17-S03 ([ADR-0022](../adrs/0022-cyclonedx-sbom-via-cargo-cyclonedx.md)) implements this for
+real in `build-artifacts` (E17-S02's per-target job): a CycloneDX 1.5 JSON SBOM
+(`cargo-cyclonedx`, generated with `--target` so it reflects that leg's actual
+conditionally-compiled dependency graph, not an approximation from the host toolchain), a
+signed build-provenance attestation (`actions/attest-build-provenance`) naming the repository/
+workflow/commit, and a signed SBOM attestation (the generic `actions/attest` with `sbom-path` -
+`actions/attest-sbom` is deprecated by its own publisher and is not used). A dedicated
+`attestation-verify` job re-fetches and cryptographically verifies both attestations for every
+canonical archive (`gh attestation verify`, once for the default provenance predicate type and
+once for CycloneDX's `https://cyclonedx.org/bom` predicate) independently of the run that
+created them; `publish` depends on it, so a missing or invalid attestation fails the release
+rather than shipping silently (AC3). This is what "achieved level" means in practice today: SLSA
+build-provenance-shaped evidence plus an attested SBOM, per canonical archive, both
+independently re-verified before publish - not a claim to a specific numbered SLSA level.
+
 ## Release automation
 
 The target Rust release factory should evaluate `dist`/cargo-dist (or a successor with equivalent evidence) because it can generate cross-platform archives and multiple installers including shell, PowerShell, Homebrew, and MSI. Tool adoption remains an ADR because release infrastructure is security-sensitive.

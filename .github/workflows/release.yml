@@ -108,6 +108,10 @@ jobs:
   # uploaded.
   build-artifacts:
     needs: [verify, verify-rust]
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -167,12 +171,40 @@ jobs:
           open(sys.argv[1] + '.sha256', 'w').write(hashlib.sha256(data).hexdigest() + '\n')
           " "$archive"
           echo "ARCHIVE_NAME=$archive" >> "$GITHUB_ENV"
+          echo "NAME=$name" >> "$GITHUB_ENV"
+      # E17-S03: a CycloneDX SBOM for exactly what this leg compiled - built with --target so
+      # target-conditional dependencies (e.g. windows-sys, Windows-only) are reflected
+      # accurately rather than approximated from the host toolchain alone.
+      - name: generate the CycloneDX SBOM for this target
+        working-directory: rust
+        run: |
+          cargo install cargo-cyclonedx@0.5.9 --locked
+          cargo cyclonedx --manifest-path crates/cancellai-cli/Cargo.toml \
+            --describe binaries --format json --spec-version 1.5 \
+            --target ${{ matrix.target }}
+      - name: move the SBOM alongside its archive
+        shell: bash
+        run: mv rust/crates/cancellai-cli/cancellai-cli_bin.cdx.json "dist/${{ env.NAME }}.cdx.json"
+      # Provenance: signed, verifiable proof of repository/workflow/commit origin (AC1) -
+      # gh attestation verify's default predicate type is exactly this action's output.
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/${{ env.ARCHIVE_NAME }}
+      # actions/attest-sbom is deprecated in favor of the generic actions/attest with
+      # sbom-path (confirmed from actions/attest-sbom's own action.yml, which now emits
+      # "please use actions/attest instead" - checked directly via `gh api`, not assumed) -
+      # AC2: SBOM attested for this canonical build (this target's archive).
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/${{ env.ARCHIVE_NAME }}
+          sbom-path: dist/${{ env.NAME }}.cdx.json
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-artifact-${{ matrix.target }}
           path: |
             dist/${{ env.ARCHIVE_NAME }}
             dist/${{ env.ARCHIVE_NAME }}.sha256
+            dist/${{ env.NAME }}.cdx.json
           if-no-files-found: error
 
   # Assembles E17-S01's release manifest contract (project/schemas/release_manifest.schema.json)
@@ -219,8 +251,49 @@ jobs:
           path: release-manifest.json
           if-no-files-found: error
 
+  # E17-S03's own verification contract ("Automated attestation verification job"): re-fetch
+  # and cryptographically verify every provenance and SBOM attestation build-artifacts created,
+  # independent of the run that created them - a real check against GitHub's attestation API,
+  # not a re-assertion that the earlier steps claimed success. AC3: publish depends on this job,
+  # so a missing or invalid attestation fails the release rather than shipping silently.
+  attestation-verify:
+    needs: [build-artifacts]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      attestations: read
+      id-token: none
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: release-artifact-*
+          path: dist
+          merge-multiple: true
+      - name: verify build provenance for every canonical archive
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          archives=(dist/*.tar.gz dist/*.zip)
+          if [ "${#archives[@]}" -eq 0 ]; then
+            echo "no archives downloaded to verify" >&2
+            exit 1
+          fi
+          for archive in "${archives[@]}"; do
+            gh attestation verify "$archive" --repo "$GITHUB_REPOSITORY"
+          done
+      - name: verify the SBOM attestation for every canonical archive
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          archives=(dist/*.tar.gz dist/*.zip)
+          for archive in "${archives[@]}"; do
+            gh attestation verify "$archive" --repo "$GITHUB_REPOSITORY" --predicate-type https://cyclonedx.org/bom
+          done
+
   publish:
-    needs: [verify, verify-rust, build-artifacts, release-manifest-generate]
+    needs: [verify, verify-rust, build-artifacts, release-manifest-generate, attestation-verify]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -263,4 +336,4 @@ jobs:
             --title "cancellAI ${GITHUB_REF_NAME}" \
             --notes-file "$notes" \
             --verify-tag \
-            dist/*.tar.gz dist/*.zip dist/*.sha256 release-manifest.json
+            dist/*.tar.gz dist/*.zip dist/*.sha256 dist/*.cdx.json release-manifest.json

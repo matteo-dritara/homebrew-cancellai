@@ -174,8 +174,8 @@ class ReleaseGateDriftTests(unittest.TestCase):
         release_text, _ = self._release_and_rust_text()
         errors = self._errors_with(
             release_text=release_text.replace(
-                "needs: [verify, verify-rust, build-artifacts, release-manifest-generate]",
-                "needs: [verify, build-artifacts, release-manifest-generate]",
+                "needs: [verify, verify-rust, build-artifacts, release-manifest-generate, attestation-verify]",
+                "needs: [verify, build-artifacts, release-manifest-generate, attestation-verify]",
             )
         )
         self.assertTrue(errors)
