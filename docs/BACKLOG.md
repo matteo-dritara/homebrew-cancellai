@@ -1812,7 +1812,7 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 ### E17-S07 - Safety incident containment and capability downgrade
 
-**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E16-S05, E17-S03, E17-S05 | **Safety obligations:** SI-022, SI-029, SI-030
+**Status:** `blocked` | **Change Risk:** `CR4` | **Dependencies:** E16-S05, E17-S03, E17-S05 | **Safety obligations:** SI-022, SI-029, SI-030
 
 **Outcome.** Operationalize a least-authority incident path that can stop promotion and remotely distribute signed capability downgrades without introducing a remote destructive control plane.
 

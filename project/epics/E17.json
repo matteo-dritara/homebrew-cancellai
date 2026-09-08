@@ -146,7 +146,7 @@
     {
       "id": "E17-S07",
       "title": "Safety incident containment and capability downgrade",
-      "status": "planned",
+      "status": "blocked",
       "outcome": "Operationalize a least-authority incident path that can stop promotion and remotely distribute signed capability downgrades without introducing a remote destructive control plane.",
       "change_risk": "CR4",
       "dependencies": [
