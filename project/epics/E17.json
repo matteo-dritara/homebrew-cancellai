@@ -12,7 +12,7 @@
     {
       "id": "E17-S01",
       "title": "Release artifact manifest",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Define canonical artifact names, checksums, target triples, channel, source SHA, build identity, and knowledge compatibility metadata.",
       "change_risk": "CR2",
       "dependencies": [

@@ -69,6 +69,19 @@ Each canonical binary release should produce:
 - test/gate summary and Safety Verdict references for CR4 changes;
 - knowledge bundle compatibility version.
 
+E17-S01 defines the release manifest as a machine-verifiable, versioned document:
+`project/schemas/release_manifest.schema.json` is the contract, `scripts/release_manifest.py
+check` validates it against the golden corpus under
+`tests/fixtures/release_manifest/golden/`, and both run in `pre-commit` and CI (E17's
+`release.yml` `verify` job). A manifest records `version`, `channel`, `source_sha`,
+`build_identity` (repository/workflow/run_id), `knowledge_compatibility`
+(min/max provider-knowledge schema version), and an `artifacts` list where every distributed
+binary appears under a unique canonical `name` with its `target_triple` and SHA-256 checksum -
+two artifacts may share a target triple (for example an archive and an installer) but never a
+name. Generating a manifest from a real multi-platform build, and attaching SBOM/provenance
+evidence to it, is E17-S02/E17-S03 scope; this story only fixes the contract and its
+validator.
+
 GitHub artifact attestations can establish signed provenance and attach SBOM attestations. SLSA's current specification is v1.2; GitHub's documentation describes the assurance delivered by its current attestation mechanisms and reusable workflows. The project records the exact achieved level rather than copying a marketing label.
 
 ## Release automation

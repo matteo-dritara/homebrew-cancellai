@@ -1693,7 +1693,7 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 ### E17-S01 - Release artifact manifest
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E02-S02 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E02-S02 | **Safety obligations:** none
 
 **Outcome.** Define canonical artifact names, checksums, target triples, channel, source SHA, build identity, and knowledge compatibility metadata.
 

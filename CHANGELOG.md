@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Defined the canonical release artifact manifest contract (E17-S01):
+  `project/schemas/release_manifest.schema.json` is a machine-verifiable, versioned document
+  naming every distributed binary exactly once (`name`/`target_triple`/`sha256`), alongside
+  `channel`, `source_sha`, `build_identity`, and `knowledge_compatibility`.
+  `scripts/release_manifest.py check` validates it against a golden fixture corpus
+  (`tests/fixtures/release_manifest/golden/`) and runs in `pre-commit` and CI. Generating a
+  manifest from a real multi-platform build is E17-S02/E17-S03 scope.
+
 ## [1.11.0] - 2026-09-08
 
 ### Fixed

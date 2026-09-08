@@ -119,7 +119,7 @@ python3 -m pip install -r requirements-dev.txt
 python3 -m pytest tests -v
 python3 -m ruff check .
 python3 -m ruff format --check .
-python3 -m mypy cancellai.py scripts/gen_docs.py scripts/project_os.py scripts/check_docs.py scripts/check_workflows.py scripts/check_fixtures.py scripts/check_schemas.py scripts/characterize.py scripts/diff_harness.py scripts/check_rust_workspace.py scripts/check_mutation_boundary.py scripts/check_provider_compatibility.py scripts/check_platforms.py scripts/rust_python_parity.py
+python3 -m mypy cancellai.py scripts/gen_docs.py scripts/project_os.py scripts/check_docs.py scripts/check_workflows.py scripts/check_fixtures.py scripts/check_schemas.py scripts/characterize.py scripts/diff_harness.py scripts/check_rust_workspace.py scripts/check_mutation_boundary.py scripts/check_provider_compatibility.py scripts/check_platforms.py scripts/rust_python_parity.py scripts/release_manifest.py
 python3 scripts/gen_docs.py --check
 python3 scripts/project_os.py check
 python3 scripts/check_docs.py check
@@ -136,6 +136,7 @@ python3 scripts/rust_python_parity.py self-test
 python3 scripts/rust_python_parity.py check
 python3 scripts/check_process.py check
 python3 scripts/release.py check
+python3 scripts/release_manifest.py check
 ```
 
 Or `pre-commit run --all-files`, which runs the same set. Install the hooks once with

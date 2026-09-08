@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cancellai.dev/schemas/release_manifest.schema.json",
+  "title": "cancellAI release artifact manifest",
+  "description": "Canonical, machine-verifiable record of what a cancellAI release distributes: artifact identity/checksums, target triples, release channel, source commit, build provenance, and provider-knowledge compatibility range (E17-S01). Validated by scripts/release_manifest.py.",
+  "type": "object",
+  "required": ["schema_version", "document_type", "version", "channel", "source_sha", "build_identity", "knowledge_compatibility", "artifacts"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "document_type": {"const": "release_manifest"},
+    "version": {
+      "type": "string",
+      "description": "The SemVer this manifest describes (docs/RELEASING.md).",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "channel": {
+      "type": "string",
+      "description": "docs/security/SUPPLY_CHAIN.md Release channels; binds default authority (SI-030, E17-S05).",
+      "enum": ["stable", "beta", "nightly"]
+    },
+    "source_sha": {
+      "type": "string",
+      "description": "Full 40-hex git commit SHA the release was built from.",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "build_identity": {
+      "type": "object",
+      "description": "Origin a user can verify independently of this file's own claims (docs/security/SUPPLY_CHAIN.md 'Users can verify origin from repository/workflow/commit').",
+      "required": ["repository", "workflow", "run_id"],
+      "properties": {
+        "repository": {"type": "string", "minLength": 1},
+        "workflow": {"type": "string", "minLength": 1},
+        "run_id": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "knowledge_compatibility": {
+      "type": "object",
+      "description": "Provider-knowledge bundle schema range this build accepts (docs/security/SUPPLY_CHAIN.md 'Knowledge updates').",
+      "required": ["min_schema_version", "max_schema_version"],
+      "properties": {
+        "min_schema_version": {"type": "integer", "minimum": 1},
+        "max_schema_version": {"type": "integer", "minimum": 1}
+      },
+      "additionalProperties": false
+    },
+    "artifacts": {
+      "type": "array",
+      "description": "Every binary this release distributes, each represented exactly once (AC2). Two artifacts may share a target_triple (for example an archive and an installer for the same platform), but never a name - name is the canonical identity.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "target_triple", "sha256"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Canonical artifact name, unique within this manifest.",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "target_triple": {"type": "string", "minLength": 1},
+          "sha256": {
+            "type": "string",
+            "description": "Lowercase 64-hex SHA-256 of the artifact bytes.",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

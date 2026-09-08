@@ -104,6 +104,14 @@ Epic E17 replaces the manual build/package steps with canonical cross-platform r
 
 The exact release tool (for example `dist`/cargo-dist) is selected by ADR during E17 rather than being a permanent decision in this document.
 
+The release manifest's contract is fixed first (E17-S01):
+`project/schemas/release_manifest.schema.json`, validated by `python3 scripts/release_manifest.py
+check` against `tests/fixtures/release_manifest/golden/` (`pre-commit` and CI). It is a
+machine-verifiable, versioned document naming every distributed binary exactly once
+(`name`/`target_triple`/`sha256`) alongside `channel`, `source_sha`, `build_identity`, and
+`knowledge_compatibility`. See `docs/security/SUPPLY_CHAIN.md`'s "Canonical release evidence".
+Producing one from a real cross-platform build is E17-S02.
+
 ## Versioning
 
 Semantic Versioning remains the public version scheme.

@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "document_type": "release_manifest",
+  "version": "0.0.0",
+  "channel": "nightly",
+  "source_sha": "0000000000000000000000000000000000000000",
+  "build_identity": {
+    "repository": "matteo-dritara/homebrew-cancellai",
+    "workflow": "release.yml",
+    "run_id": "0000000000"
+  },
+  "knowledge_compatibility": {
+    "min_schema_version": 1,
+    "max_schema_version": 1
+  },
+  "artifacts": [
+    {
+      "name": "cancellai-aarch64-apple-darwin",
+      "target_triple": "aarch64-apple-darwin",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000001"
+    },
+    {
+      "name": "cancellai-x86_64-apple-darwin",
+      "target_triple": "x86_64-apple-darwin",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000002"
+    },
+    {
+      "name": "cancellai-x86_64-unknown-linux-gnu",
+      "target_triple": "x86_64-unknown-linux-gnu",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000003"
+    },
+    {
+      "name": "cancellai-x86_64-pc-windows-msvc",
+      "target_triple": "x86_64-pc-windows-msvc",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000004"
+    }
+  ]
+}

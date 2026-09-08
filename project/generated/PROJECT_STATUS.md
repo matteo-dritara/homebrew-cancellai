@@ -11,7 +11,8 @@ Epics: **24** | Stories: **110**
 - `blocked`: 1
 - `cancelled`: 1
 - `done`: 59
-- `planned`: 49
+- `planned`: 48
+- `ready_for_review`: 1
 
 ## Change risk distribution
 
@@ -27,4 +28,4 @@ Epics: **24** | Stories: **110**
 
 ## Awaiting independent review
 
-- none
+- **E17-S01** - Release artifact manifest (CR2)
