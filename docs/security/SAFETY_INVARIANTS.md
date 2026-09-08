@@ -342,6 +342,33 @@ Invalid, expired, replayed, or unauthorized knowledge updates are rejected or do
 
 Experimental/nightly builds do not inherit stable-level autonomous destructive defaults merely because user configuration exists from a stable install.
 
+Implemented at `rust/crates/cancellai-safety/src/authority.rs` and
+`rust/crates/cancellai-safety/src/build_channel.rs` (E17-S05, [ADR-0023](../adrs/0023-release-channel-authority-as-opt-in-function.md)):
+`effective_authority_for_channel`'s `release_channel_authority` constraint caps the
+monotonic-minimum result by channel (`Nightly` at `Recommend` - strictly below what
+`ActionClass::Quarantine` requires, let alone `Delete` - `Beta` at `Govern`, `Stable` with no
+additional cap; `docs/security/SUPPLY_CHAIN.md`'s "Release channels" table). It accepts only
+`BuildChannel` - an opaque wrapper around `cancellai_model::ReleaseChannel` with a private field
+and no `From<ReleaseChannel>` - not the bare, freely-constructible `ReleaseChannel` enum itself,
+mirroring SI-021's `TrustedTier` split for the identical reason. `BuildChannel`'s only
+production constructor, `from_compiled_env`, reads `CANCELLAI_CHANNEL` via `option_env!` at the
+moment `cancellai-safety` is compiled - baked permanently into the resulting binary, never a
+runtime value a user running that binary could set to claim a higher channel than it actually
+is; an absent or unrecognized value resolves to `Nightly`, the fail-closed floor, matching
+`BuildChannel::default()` exactly. `.github/workflows/release.yml`'s `build-artifacts` job
+(E17-S02) sets `CANCELLAI_CHANNEL=stable` for every canonical tier-1 build.
+
+`effective_authority_for_channel` is a second function alongside the pre-existing
+`effective_authority`, not a new required field on `AuthorityInputs` - ADR-0023 records why
+(the one production caller of `AuthorityInputs`, `cancellai-policy::retention::
+reachable_authority`, predates release-channel awareness and has no honest channel value to
+supply yet, since `cancellai-cli` remains a beta, source-built artifact with no packaged
+release). No caller in this workspace invokes `effective_authority_for_channel` yet - this
+constraint is implemented and adversarially tested (`cancellai-safety::authority`'s own test
+suite) but not yet enforced on any real mutation path. Wiring `cancellai-cli`'s classification
+pipeline to it is deferred to E06-S04, the cutover story that makes `cancellai-cli` the
+canonical, packaged-release engine.
+
 ### SI-031 Remote controller cannot bypass target-node safety
 
 Remote/fleet requests are intents. The target node independently authenticates, resolves policy, builds/revalidates plans, and retains final mutation authority.

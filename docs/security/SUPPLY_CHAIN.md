@@ -120,6 +120,30 @@ Provider knowledge updates are separate signed artifacts from software releases.
 - `beta` - lower default autonomous authority; used for migration/compatibility validation.
 - `nightly` - Observe/Recommend oriented by default; irreversible/autonomous behavior requires explicit development override and never piggybacks stable settings silently.
 
+E17-S05 implements the SI-030 binding this describes: `cancellai-safety::authority::
+effective_authority_for_channel` adds a `ReleaseChannelAuthority` constraint to the Effective
+Authority minimum, sourced from `cancellai-safety::BuildChannel` - an opaque wrapper (mirroring
+`TrustedTier`'s split from `ProviderTrust`, SI-021) whose only production constructor,
+`BuildChannel::from_compiled_env`, reads a `CANCELLAI_CHANNEL` value baked in at *compile* time
+(`option_env!`), never a runtime environment variable a user running the binary could set to
+claim a higher channel than the build actually is. `stable` carries no additional cap (channel
+alone never lowers a stable build below what its other constraints already allow); `beta` caps
+at `Govern` (a confirmed, non-unattended `Delete` is still reachable; `Autopilot` is not);
+`nightly` (and any unset/unrecognized value - a malformed override is never treated as more
+permissive than an absent one) caps at `Recommend`, strictly below what even `Quarantine`
+requires, let alone `Delete`. `.github/workflows/release.yml`'s `build-artifacts` job
+(E17-S02) sets `CANCELLAI_CHANNEL=stable` for every canonical tier-1 build.
+
+Wiring this into `cancellai-cli`'s own classification pipeline
+(`cancellai-policy::retention::RetentionPolicy`/`classify`) is deferred to whichever story
+makes `cancellai-cli` the canonical, packaged-release engine (E06-S04) - it remains a beta,
+source-built artifact today (`docs/RELEASING.md`'s "Beta side-by-side" section), and every
+`cargo test`/local `cargo build` in this repository is, correctly, an unlabeled (Nightly-
+equivalent) build; forcing that pipeline to declare a channel now would have meant picking an
+arbitrary placeholder for callers nothing yet asks to enforce it against. The constraint itself
+is fully implemented and adversarially tested in `cancellai-safety::authority`'s own test suite
+today, ready for that future caller to adopt.
+
 ## Installation-source awareness
 
 cancellAI records whether it was installed via Homebrew, direct installer, Windows package channel, Linux package, etc. `update --check` can inform, but upgrades should follow the original package manager/channel rather than silently replacing package-managed binaries.

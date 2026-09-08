@@ -157,6 +157,23 @@ pub enum ProviderTrust {
     BuiltinVerified,
 }
 
+/// Which release channel a binary was built as (`docs/security/SUPPLY_CHAIN.md` "Release
+/// channels", SI-030, E17-S05). Declaration order is deliberately `Nightly < Beta < Stable`,
+/// matching increasing default authority, so `derive(Ord)` needs no hand-written comparison.
+/// This type carries only the fact - `cancellai-safety::BuildChannel` is the opaque wrapper
+/// that actually gates `AuthorityInputs::release_channel` (mirrors
+/// `ProviderTrust`/`TrustedTier`'s own split for the identical reason: this crate stays free of
+/// policy/decision logic, and the value that reaches an authority computation must not be
+/// something an external caller can manufacture at an arbitrary level, however trivially they
+/// can construct a bare `ReleaseChannel`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReleaseChannel {
+    Nightly,
+    Beta,
+    Stable,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

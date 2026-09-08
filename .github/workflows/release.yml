@@ -133,8 +133,17 @@ jobs:
         with:
           toolchain: stable
           targets: ${{ matrix.target }}
+      # CANCELLAI_CHANNEL is read at compile time (option_env!, cancellai-safety::BuildChannel)
+      # and baked permanently into the binary - it is not a runtime override a user could set
+      # (E17-S05, SI-030). No production code path calls BuildChannel::from_compiled_env() yet
+      # (cancellai-cli's own classification pipeline is not wired to it until E06-S04, the
+      # cutover story - see docs/security/SUPPLY_CHAIN.md's "Release channels" section for why),
+      # so this is currently inert; set here so the release pipeline already records the correct
+      # value for whenever a caller consumes it, rather than needing to remember to add it later.
       - run: cargo build --release --locked -p cancellai-cli --target ${{ matrix.target }}
         working-directory: rust
+        env:
+          CANCELLAI_CHANNEL: stable
       - name: package the archive and its checksum, then smoke-test the packaged binary
         shell: bash
         run: |

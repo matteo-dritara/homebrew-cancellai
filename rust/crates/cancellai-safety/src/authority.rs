@@ -28,16 +28,39 @@
 //! module doc for the E05 verifier round 1 defect this closes) plus an explicit
 //! `ConstitutionalSafetyFloor` restating SI-001's own rule as its own always-present constraint
 //! (SI-006: known protection is checked in more than one place, on purpose).
-//! `ProviderCapabilityAuthority` and `ReleaseChannelAuthority` are not wired in - no
-//! capability-classification or release-channel subsystem exists yet to supply them -
-//! `compute_effective_authority` needing no redesign to add them is exactly the point of
-//! keeping it generic over named constraints rather than a fixed nine-argument function.
+//! `ProviderCapabilityAuthority` is not wired in - no capability-classification subsystem
+//! exists yet to supply it - `compute_effective_authority` needing no redesign to add it later
+//! is exactly the point of keeping it generic over named constraints rather than a fixed
+//! nine-argument function.
+//!
+//! [`effective_authority_for_channel`] (E17-S05, SI-030) adds the ninth: `ReleaseChannelAuthority`
+//! (from [`crate::BuildChannel`], `docs/security/SUPPLY_CHAIN.md` "Release channels" -
+//! deliberately the opaque `BuildChannel`, not a bare `cancellai_model::ReleaseChannel`,
+//! mirroring `provider_trust`'s split for the identical reason: a caller must not be able to
+//! claim "stable" from a nightly binary by constructing the vocabulary type directly). It is a
+//! separate function from [`effective_authority`], not a new required field on
+//! [`AuthorityInputs`], deliberately: `AuthorityInputs` already has real production callers
+//! (`cancellai-policy::retention::reachable_authority`) that predate release-channel awareness
+//! and are not yet wired to supply one - `cancellai-cli` remains a beta, source-built artifact
+//! with no packaged release yet (`docs/RELEASING.md`'s "Beta side-by-side" section), so binding
+//! its classification pipeline to a real per-build channel is deferred to whichever story wires
+//! `cancellai-cli` into the actual release/cutover path (E06-S04). Adding a *required* field to
+//! `AuthorityInputs` today would force every existing caller to supply a value that has no
+//! honest answer yet, and the only "safe" placeholder (`BuildChannel::default()`, i.e.
+//! `Nightly`) would silently cap every one of those callers' existing, already-verified
+//! Delete-reaching test scenarios at `Recommend` - a large, misleading blast radius for a
+//! constraint nothing yet asks those callers to enforce. `effective_authority_for_channel`
+//! keeps the constraint fully implemented and tested here, ready for that future caller to
+//! adopt by construction (it cannot forget to combine it correctly, since it calls
+//! `effective_authority` itself and only ever narrows the result), without disturbing anyone
+//! who has not opted in.
 
 use cancellai_model::{
     ActionClass, ActivityState, AuthorityLevel, IntegrityState, KnowledgeConfidence,
-    ProtectionState, ProviderTrust, Reversibility,
+    ProtectionState, ProviderTrust, ReleaseChannel, Reversibility,
 };
 
+use crate::build_channel::BuildChannel;
 use crate::trust_promotion::TrustedTier;
 
 /// One named input to an Effective Authority computation.
@@ -136,6 +159,24 @@ fn provider_trust_ceiling(trust: ProviderTrust) -> AuthorityLevel {
     }
 }
 
+/// E17-S05, SI-030: the maximum default authority a release channel alone permits, matching
+/// `docs/security/SUPPLY_CHAIN.md`'s "Release channels" table - `Stable` carries no additional
+/// cap from channel alone (the highest verified default authority a build can claim; other
+/// constraints still apply independently), `Beta` caps at `Govern` (reduced autonomous
+/// defaults - it can still reach a real, confirmed `Delete`, but not unattended `Autopilot`),
+/// and `Nightly` caps at `Recommend` - strictly below `minimum_authority_for(ActionClass::
+/// Quarantine)`, let alone `Delete`'s `Govern`, so a nightly build can never reach even
+/// `Quarantine` by channel default alone, matching "Observe/Recommend oriented by default" and
+/// this story's own AC: "Nightly defaults cannot execute stable-equivalent irreversible
+/// autonomy."
+fn release_channel_ceiling(channel: ReleaseChannel) -> AuthorityLevel {
+    match channel {
+        ReleaseChannel::Stable => AuthorityLevel::Autopilot,
+        ReleaseChannel::Beta => AuthorityLevel::Govern,
+        ReleaseChannel::Nightly => AuthorityLevel::Recommend,
+    }
+}
+
 /// SI-001's own rule, restated as its own always-present constraint rather than folded only
 /// into `lifecycle_ceiling`/`confidence_ceiling` (SI-006: defense in depth - a future change
 /// to either of those must not silently remove this floor along with it).
@@ -166,10 +207,10 @@ pub struct AuthorityInputs {
     pub provider_trust: TrustedTier,
 }
 
-/// Compute Effective Authority from the constraints this story wires up for real (module
-/// docs list which of the documented nine inputs these are, and which are not yet wired).
-pub fn effective_authority(inputs: AuthorityInputs) -> EffectiveAuthority {
-    let constraints = vec![
+/// The constraint list [`effective_authority`] and [`effective_authority_for_channel`] share -
+/// factored out so the latter cannot drift from the former by re-deriving these six by hand.
+fn base_constraints(inputs: &AuthorityInputs) -> Vec<AuthorityConstraint> {
+    vec![
         AuthorityConstraint {
             name: "user_authority",
             ceiling: inputs.user_requested,
@@ -194,7 +235,28 @@ pub fn effective_authority(inputs: AuthorityInputs) -> EffectiveAuthority {
             name: "constitutional_safety_floor",
             ceiling: constitutional_safety_floor(inputs.protection, inputs.confidence),
         },
-    ];
+    ]
+}
+
+/// Compute Effective Authority from the constraints this story wires up for real (module
+/// docs list which of the documented nine inputs these are, and which are not yet wired).
+pub fn effective_authority(inputs: AuthorityInputs) -> EffectiveAuthority {
+    compute_effective_authority(&base_constraints(&inputs))
+}
+
+/// [`effective_authority`], plus the release-channel ceiling (E17-S05, SI-030) - see the
+/// module doc for why this is a separate function rather than a new required field on
+/// [`AuthorityInputs`]. A caller ready to bind its authority computation to the build's real
+/// release channel calls this instead of [`effective_authority`]; nothing else changes.
+pub fn effective_authority_for_channel(
+    inputs: AuthorityInputs,
+    channel: BuildChannel,
+) -> EffectiveAuthority {
+    let mut constraints = base_constraints(&inputs);
+    constraints.push(AuthorityConstraint {
+        name: "release_channel_authority",
+        ceiling: release_channel_ceiling(channel.level()),
+    });
     compute_effective_authority(&constraints)
 }
 
@@ -535,5 +597,130 @@ mod tests {
                 );
             }
         }
+    }
+
+    // --- E17-S05, SI-030: release channel bounds default authority -----------------------
+    // Uses effective_authority_for_channel, not effective_authority - see the module doc for
+    // why release_channel is a separate opt-in function rather than a required AuthorityInputs
+    // field.
+
+    #[test]
+    fn e17s05_nightly_channel_collapses_to_non_destructive_even_at_maximum_everything_else() {
+        let inputs = permissive_inputs(AuthorityLevel::Autopilot, AuthorityLevel::Autopilot);
+        let result = effective_authority_for_channel(
+            inputs,
+            BuildChannel::for_tests(ReleaseChannel::Nightly),
+        );
+        assert_eq!(result.level, AuthorityLevel::Recommend);
+    }
+
+    #[test]
+    fn e17s05_ac_nightly_can_never_reach_the_authority_delete_or_even_quarantine_requires() {
+        // The story's own AC, stated as a direct proof rather than a single example: a nightly
+        // build's channel ceiling alone is strictly below what ActionClass::Quarantine needs,
+        // let alone Delete - so no other permissive input can ever let a nightly build reach
+        // either, exactly "cannot execute stable-equivalent irreversible autonomy."
+        let inputs = permissive_inputs(AuthorityLevel::Autopilot, AuthorityLevel::Autopilot);
+        let result = effective_authority_for_channel(
+            inputs,
+            BuildChannel::for_tests(ReleaseChannel::Nightly),
+        );
+        assert!(result.level < minimum_authority_for(ActionClass::Quarantine));
+        assert!(result.level < minimum_authority_for(ActionClass::Delete));
+    }
+
+    #[test]
+    fn e17s05_beta_channel_can_reach_delete_but_not_unattended_autopilot() {
+        let inputs = permissive_inputs(AuthorityLevel::Autopilot, AuthorityLevel::Autopilot);
+        let result =
+            effective_authority_for_channel(inputs, BuildChannel::for_tests(ReleaseChannel::Beta));
+        assert_eq!(result.level, AuthorityLevel::Govern);
+        assert!(result.level >= minimum_authority_for(ActionClass::Delete));
+        assert!(result.level < AuthorityLevel::Autopilot);
+    }
+
+    #[test]
+    fn e17s05_stable_channel_does_not_cap_below_a_fully_permissive_result() {
+        // Not vacuously true: proves Stable's ceiling is actually Autopilot (no additional cap
+        // from channel alone), not a bug that happens to also produce a lower level here.
+        let inputs = permissive_inputs(AuthorityLevel::Autopilot, AuthorityLevel::Autopilot);
+        let result = effective_authority_for_channel(
+            inputs,
+            BuildChannel::for_tests(ReleaseChannel::Stable),
+        );
+        assert_eq!(result.level, AuthorityLevel::Autopilot);
+    }
+
+    #[test]
+    fn e17s05_a_fresh_default_build_channel_is_nightly_and_collapses_the_same_way() {
+        // BuildChannel::default() must be exactly as restrictive as an explicit Nightly -
+        // proves the fail-closed default has teeth in a real computation, not only in
+        // build_channel.rs's own unit tests.
+        let inputs = permissive_inputs(AuthorityLevel::Autopilot, AuthorityLevel::Autopilot);
+        let result = effective_authority_for_channel(inputs, BuildChannel::default());
+        assert_eq!(result.level, AuthorityLevel::Recommend);
+    }
+
+    #[test]
+    fn e17s05_raising_user_authority_never_raises_a_nightly_build_past_its_channel_ceiling() {
+        // Mirrors ac1_raising_user_authority_never_raises_the_result_above_the_artifact_ceiling
+        // above, for the new constraint: SI-030's whole point is that user-side configuration
+        // cannot buy back authority a nightly build's channel does not grant by default.
+        for &user in &ALL_LEVELS {
+            let inputs = permissive_inputs(user, AuthorityLevel::Autopilot);
+            let result = effective_authority_for_channel(
+                inputs,
+                BuildChannel::for_tests(ReleaseChannel::Nightly),
+            );
+            assert!(
+                result.level <= AuthorityLevel::Recommend,
+                "user={user:?} must never exceed the Nightly channel ceiling, got {:?}",
+                result.level
+            );
+        }
+    }
+
+    #[test]
+    fn e17s05_ac3_release_channel_authority_is_named_when_it_is_the_unique_bottleneck() {
+        let inputs = permissive_inputs(AuthorityLevel::Autopilot, AuthorityLevel::Autopilot);
+        let result = effective_authority_for_channel(
+            inputs,
+            BuildChannel::for_tests(ReleaseChannel::Nightly),
+        );
+        assert_eq!(
+            result.binding_constraints,
+            vec!["release_channel_authority"]
+        );
+    }
+
+    #[test]
+    fn e17s05_effective_authority_for_channel_agrees_with_effective_authority_when_channel_is_not_the_bottleneck()
+     {
+        // The two functions must never silently diverge on the six shared constraints - proven
+        // directly rather than assumed from both calling base_constraints internally.
+        let inputs = permissive_inputs(AuthorityLevel::Quarantine, AuthorityLevel::Quarantine);
+        let plain = effective_authority(inputs);
+        let with_channel = effective_authority_for_channel(
+            inputs,
+            BuildChannel::for_tests(ReleaseChannel::Stable),
+        );
+        assert_eq!(plain.level, with_channel.level);
+        assert_eq!(plain.binding_constraints, with_channel.binding_constraints);
+    }
+
+    #[test]
+    fn e17s05_release_channel_ceiling_matches_the_documented_table_exactly() {
+        assert_eq!(
+            release_channel_ceiling(ReleaseChannel::Stable),
+            AuthorityLevel::Autopilot
+        );
+        assert_eq!(
+            release_channel_ceiling(ReleaseChannel::Beta),
+            AuthorityLevel::Govern
+        );
+        assert_eq!(
+            release_channel_ceiling(ReleaseChannel::Nightly),
+            AuthorityLevel::Recommend
+        );
     }
 }

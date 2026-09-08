@@ -1771,7 +1771,7 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 ### E17-S05 - Stable/beta/nightly authority constraints
 
-**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E17-S03 | **Safety obligations:** SI-030
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E17-S03 | **Safety obligations:** SI-030
 
 **Outcome.** Bind release channel to maximum default authority.
 

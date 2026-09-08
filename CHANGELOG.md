@@ -43,6 +43,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cryptographically verifies both attestations for every archive before `publish`, which now
   depends on it: a missing or invalid attestation fails the release rather than shipping
   silently.
+- Bound release channel to maximum default authority (E17-S05, CR4, SI-030,
+  [ADR-0023](docs/adrs/0023-release-channel-authority-as-opt-in-function.md)):
+  `cancellai-safety::authority::effective_authority_for_channel` adds a `ReleaseChannelAuthority`
+  constraint to the Effective Authority minimum, sourced from the new `cancellai-safety::
+  BuildChannel` - an opaque wrapper (mirroring `TrustedTier`'s split from `ProviderTrust`,
+  SI-021) whose only production constructor reads a `CANCELLAI_CHANNEL` value baked in at
+  *compile* time, never a runtime environment variable a user could set to claim a higher
+  channel than the build actually is. `stable` carries no additional cap; `beta` caps at
+  `Govern` (reaches a confirmed `Delete`, never unattended `Autopilot`); `nightly` (and any
+  unset/unrecognized value) caps at `Recommend`, strictly below what even `Quarantine`
+  requires. `.github/workflows/release.yml`'s `build-artifacts` job (E17-S02) now sets
+  `CANCELLAI_CHANNEL=stable` for every canonical tier-1 build. Wiring this into
+  `cancellai-cli`'s own classification pipeline is deferred to E06-S04 (the cutover story) -
+  see `docs/security/SUPPLY_CHAIN.md`'s "Release channels" section for why.
 
 ## [1.11.0] - 2026-09-08
 

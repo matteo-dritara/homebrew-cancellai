@@ -141,8 +141,13 @@ side-by-side" above); this pipeline exists so the automation is proven ahead of 
 not so users install these archives today. Native installer formats (`.pkg`/`.msi`/`.deb`) are
 deliberately out of this story's scope - ADR-0021 records that as the main reason a future
 cargo-dist adoption remains open (see that ADR's 2026-09-08 correction for why "no network
-access" is no longer part of that reasoning). Channel identity beyond the hardcoded `stable`
-every `v*` tag currently gets is E17-S05 (no beta/nightly tag scheme exists yet).
+access" is no longer part of that reasoning). No beta/nightly tag scheme exists yet, so
+`build-artifacts` always builds with `CANCELLAI_CHANNEL=stable` set - E17-S05
+([ADR-0023](adrs/0023-release-channel-authority-as-opt-in-function.md)) implements the SI-030
+authority binding this value feeds (`cancellai-safety::BuildChannel::from_compiled_env`, read at
+compile time and baked into the binary, never a runtime override), but no caller in
+`cancellai-cli` enforces it yet; see `docs/security/SUPPLY_CHAIN.md`'s "Release channels"
+section.
 
 ## Versioning
 

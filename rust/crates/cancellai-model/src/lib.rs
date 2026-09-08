@@ -25,5 +25,6 @@ pub use diagnostic::{Diagnostic, ErrorCategory};
 pub use evidence::{Evidence, EvidenceId};
 pub use vocabulary::{
     ActionClass, ActivityState, AuthorityLevel, IntegrityState, KnowledgeConfidence,
-    ProtectionState, ProviderTrust, ResidencyState, Reversibility, RiskClass, RootFingerprint,
+    ProtectionState, ProviderTrust, ReleaseChannel, ResidencyState, Reversibility, RiskClass,
+    RootFingerprint,
 };

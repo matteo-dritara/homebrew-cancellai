@@ -99,7 +99,7 @@
     {
       "id": "E17-S05",
       "title": "Stable/beta/nightly authority constraints",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Bind release channel to maximum default authority.",
       "change_risk": "CR4",
       "dependencies": [

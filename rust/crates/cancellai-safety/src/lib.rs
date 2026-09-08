@@ -18,12 +18,18 @@
 //! (SI-021, SI-022) - [`AuthorityInputs::provider_trust`] accepts only this type, not a bare
 //! `ProviderTrust`, specifically so no external caller can supply an unpromoted trust tier
 //! directly (E05 verifier review round 1 found and this repair closed exactly that gap; see
-//! `trust_promotion.rs`'s module doc). This crate performs no OS calls of its own; every
-//! OS-facing operation goes through a `cancellai-platform` capability (`IdentityObserver`,
-//! `PathResolver`, `MutationExecutor`) consumed as plain data (`docs/architecture/PLATFORM_MODEL.md`:
-//! "domain and policy code consume capability results, not OS-specific syscalls").
+//! `trust_promotion.rs`'s module doc). E17-S05 adds [`BuildChannel`], the same split applied to
+//! release channel (SI-030): an opaque wrapper around [`cancellai_model::ReleaseChannel`] whose
+//! only production constructor, [`BuildChannel::from_compiled_env`], reads a compile-time
+//! environment variable baked into the binary at build time, not a runtime one a user could set
+//! to unlock stable-level authority from a nightly build (`build_channel.rs`'s module doc).
+//! This crate performs no OS calls of its own; every OS-facing operation goes through a
+//! `cancellai-platform` capability (`IdentityObserver`, `PathResolver`, `MutationExecutor`)
+//! consumed as plain data (`docs/architecture/PLATFORM_MODEL.md`: "domain and policy code
+//! consume capability results, not OS-specific syscalls").
 
 pub mod authority;
+pub mod build_channel;
 pub mod mutation_executor;
 pub mod root_capability;
 pub mod sealed_plan;
@@ -31,8 +37,9 @@ pub mod trust_promotion;
 
 pub use authority::{
     AuthorityConstraint, AuthorityInputs, EffectiveAuthority, compute_effective_authority,
-    effective_authority,
+    effective_authority, effective_authority_for_channel,
 };
+pub use build_channel::BuildChannel;
 pub use mutation_executor::{ActionResult, execute, execute_all, execute_with_system_capabilities};
 pub use root_capability::{ApprovedRoot, BoundaryError, BoundedPath};
 pub use sealed_plan::{RevalidationOutcome, SealedPlan, revalidate};
