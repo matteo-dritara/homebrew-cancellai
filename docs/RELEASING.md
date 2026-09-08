@@ -167,13 +167,100 @@ See `docs/security/SUPPLY_CHAIN.md` and SI-030.
 
 ## Repository topology transition
 
-The current remote is `matteo-dritara/homebrew-cancellai`. It remains canonical while Python v1/Homebrew is the shipping product. Do not rename/split the repository during P0/P1 merely for aesthetics.
+The current remote is `matteo-dritara/homebrew-cancellai`. It remains canonical while Python v1/Homebrew is the shipping product. Do not rename/split the repository during P0/P1 merely for aesthetics ([ADR-0011](adrs/0011-defer-canonical-repository-split.md)).
 
-When the Rust core and cross-platform release factory are proven, E17-S06 evaluates a controlled split:
+`scripts/check_repository_topology.py check` (E17-S06) enforces AC2 ("the canonical source
+repository is unambiguously identified") as a real, running check rather than only a documented
+claim: it cross-checks that `Formula/cancellai.rb`'s `homepage`, `scripts/release.py`'s `REPO`
+constant, and this section's own "current remote" both name the exact same repository, and fails
+if any of the three drifts from the others. It runs in `pre-commit` and CI, alongside every
+other topology-relevant check (`scripts/check_workflows.py`, `scripts/release.py check`).
+
+### Target topology
 
 ```text
 matteo-dritara/cancellai          canonical product source/releases
 matteo-dritara/homebrew-cancellai  Homebrew tap/distribution compatibility
 ```
 
-The migration must preserve existing Homebrew upgrade paths and make release provenance point unambiguously at the canonical source repository. Repository movement is a distribution migration with compatibility evidence, not a housekeeping rename.
+ADR-0011 already decided *that* this split happens, deferred until "the Rust core and
+cross-platform release factory are proven" (E06-S04's cutover, plus E17-S02/S03 giving the new
+repository something real to release from day one). This section is the "exact timing and GitHub
+migration mechanics" ADR-0011 says that decision still needs before execution - a runbook to
+follow when the trigger condition is met, not an instruction this story executes now. No
+external repository state is created or moved by this story; the plan below is written so
+whoever executes it later does not have to re-derive these decisions under time pressure.
+
+### Trigger condition
+
+Do not begin this migration until **all** of the following hold:
+
+- E06-S04's cutover gate has opened (`cancellai-cli` is the canonical engine, not the beta
+  side-by-side artifact `docs/CLI_RUST.md` currently describes);
+- at least one real `v*` release has shipped canonical tier-1 binaries through E17-S02's
+  `build-artifacts`/E17-S03's attestation pipeline, so the new repository's first release is a
+  genuine, evidenced artifact rather than an empty shell;
+- the project owner has explicitly authorized the migration - creating a repository, transferring
+  history, and repointing the tap are all real, hard-to-reverse actions on shared GitHub state,
+  never something an agent executes as a side effect of a story reaching this point in the
+  backlog.
+
+### Migration steps
+
+1. **Create `matteo-dritara/cancellai`** and push the full history there with `git push --mirror`
+   (every branch and every tag, byte-identical commit SHAs - not a squashed or partial copy), so
+   `v1.0.0` through the last pre-migration tag resolve to the same commits in both repositories
+   during the transition window. Alternatively, GitHub's own repository-transfer feature (Settings
+   → Transfer ownership, or the REST API's `repos/{owner}/{repo}/transfer` endpoint) moves a
+   repository in place, preserving stars/watchers/issues/PRs automatically - but transfers the
+   *existing* `homebrew-cancellai` repository itself, which is the wrong direction here (the tap
+   must keep its current name/location for `brew tap`/`brew install cancellai` to keep working
+   unmodified - see "Homebrew continuity" below); a mirror push into a newly created `cancellai`
+   repository, leaving `homebrew-cancellai` in place, is the mechanics that actually preserves
+   both properties at once.
+2. **Issues**: `gh issue transfer <number> matteo-dritara/cancellai` for issues that concern the
+   product going forward (real bugs/feature requests); issues that are specifically about the
+   Python v1/Homebrew-only era stay in `homebrew-cancellai` as historical record. This is a
+   documented, deliberate split, not an automatic bulk migration - GitHub has no "transfer every
+   issue" primitive, and a bulk transfer would silently lose the "which era does this issue
+   belong to" distinction that makes the split meaningful.
+3. **Releases/tags**: existing tags and their GitHub Releases are immutable history (this
+   document's own release process already treats published tags this way - "Published tags are
+   immutable history and are never deleted") and stay in `homebrew-cancellai` permanently, exactly
+   where users who `brew install`ed an old version can still find them. New releases, from the
+   first tag cut after this migration, are tagged and published from `matteo-cancellai/cancellai`.
+   `release-manifest.json`'s `build_identity.repository` field (E17-S01/E02-S02) then reads
+   `matteo-dritara/cancellai` automatically (it is `${GITHUB_REPOSITORY}`, not a hand-maintained
+   string) - this is what makes AC2 true going forward without a separate manual step.
+4. **Homebrew continuity (AC "does not break existing Homebrew users")**: `homebrew-cancellai`
+   is not touched as a *location* - Homebrew's own tap-naming convention (`brew tap OWNER/NAME`
+   resolves to `github.com/OWNER/homebrew-NAME`) is exactly why the repository must keep this
+   name. Only `Formula/cancellai.rb`'s `homepage`/`url` fields change, to point at
+   `matteo-dritara/cancellai`'s release archives instead of `homebrew-cancellai`'s own. An
+   existing user's `brew update && brew upgrade cancellai` continues to work with zero action on
+   their part: the tap they already have resolves to the same repository it always did, and that
+   repository's formula now happens to fetch from a different upstream. `scripts/release.py`'s
+   `REPO` constant and `check_repository_topology.py`'s cross-check (above) are what keeps this
+   formula from drifting silently out of sync with wherever canonical source actually moved to.
+5. **`homebrew-cancellai` is never silently retired.** Per ADR-0011's target topology, it remains
+   the Homebrew tap/distribution compatibility surface indefinitely - the same `brew audit
+   --strict`/`brew style`/`brew install`/`brew test` CI gates `docs/security/SUPPLY_CHAIN.md`
+   already describes keep running against it after the migration, unchanged. Retiring it (not
+   merely repointing it) would itself need its own explicit compatibility plan and release
+   evidence, per this same AC - nothing in this migration does that, and nothing should, absent a
+   separate, later decision with its own ADR.
+
+### Dry-run and smoke test (this story's verification contract)
+
+- **Dry-run**: the steps above, reviewed and left ready to execute - this story does not create,
+  transfer, or push anything to a new repository (see "Trigger condition"). `git push --mirror`
+  and `gh issue transfer` are both real, standard commands verified against a real `gh` CLI
+  installation during this story (`gh issue transfer --help`); neither was executed against this
+  repository or any other.
+- **Existing Homebrew upgrade-path smoke test**: already continuously exercised today, not a new
+  addition this story invents - `brew audit --strict`/`brew style` run in CI on every change, and
+  `brew install`/`brew test` exercise the tagged archive at release time
+  (`docs/security/SUPPLY_CHAIN.md`). `check_repository_topology.py check` adds the piece that
+  did not exist before: an automated guarantee that the Formula, `scripts/release.py`, and this
+  document cannot silently disagree about which repository is canonical while that smoke test
+  keeps passing.

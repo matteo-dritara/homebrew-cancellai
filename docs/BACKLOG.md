@@ -1791,7 +1791,7 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 ### E17-S06 - Canonical source and distribution repository topology
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E17-S02 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E17-S02 | **Safety obligations:** none
 
 **Outcome.** Move the canonical cross-platform product source to a product-named repository when Rust becomes canonical while preserving homebrew-cancellai as a compatibility/distribution tap rather than forcing a premature repository migration.
 

@@ -19,7 +19,7 @@ repos:
     hooks:
       - id: mypy
         args: [--strict]
-        files: ^(cancellai\.py|scripts/(gen_docs|project_os|check_docs|check_workflows|check_process|release|check_fixtures|check_schemas|characterize|diff_harness|check_rust_workspace|check_mutation_boundary|check_provider_compatibility|rust_python_parity|release_manifest)\.py)$
+        files: ^(cancellai\.py|scripts/(gen_docs|project_os|check_docs|check_workflows|check_process|release|check_fixtures|check_schemas|characterize|diff_harness|check_rust_workspace|check_mutation_boundary|check_provider_compatibility|rust_python_parity|release_manifest|check_repository_topology)\.py)$
 
   - repo: local
     hooks:
@@ -70,6 +70,13 @@ repos:
         entry: python3 scripts/release_manifest.py check
         language: system
         files: ^(project/schemas/release_manifest\.schema\.json|tests/fixtures/release_manifest/.*|scripts/release_manifest\.py)$
+        pass_filenames: false
+
+      - id: repository-topology-check
+        name: canonical source repository is unambiguously identified
+        entry: python3 scripts/check_repository_topology.py check
+        language: system
+        files: ^(Formula/cancellai\.rb|scripts/release\.py|docs/RELEASING\.md|scripts/check_repository_topology\.py)$
         pass_filenames: false
 
       - id: characterization-check

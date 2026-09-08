@@ -33,6 +33,18 @@ For a single-maintainer project, independent AI verification is useful evidence 
 
 Current CI actions are immutable-SHA pinned and checked by `scripts/check_workflows.py`; Python development/CI tools are version-pinned in `requirements-dev.txt`. Dependabot proposes updates, but workflow/development dependency updates are review-gated rather than auto-merged.
 
+### Canonical repository identity
+
+The canonical source repository is `matteo-dritara/homebrew-cancellai` today; a controlled
+split to a product-named canonical repository plus a Homebrew-tap-only `homebrew-cancellai`
+is a deferred, evidence-gated decision, not an aesthetic rename
+([ADR-0011](../adrs/0011-defer-canonical-repository-split.md), `docs/RELEASING.md`'s
+"Repository topology transition" - E17-S06). `scripts/check_repository_topology.py check`
+enforces that `Formula/cancellai.rb`'s `homepage`, `scripts/release.py`'s `REPO` constant, and
+`docs/RELEASING.md`'s documented "current remote" all name the same repository, in `pre-commit`
+and CI - the identity claim this section and the release manifest's `build_identity.repository`
+field (E17-S01) both rely on cannot drift silently out of sync between them.
+
 The Rust workspace carries the same posture (E22-S02): `.github/dependabot.yml` proposes cargo-ecosystem updates for `rust/` (`serde`, `serde_json`, `unicode-normalization`, and `libc` - the last inside `cancellai-sealedfs`, the only crate in the workspace containing `unsafe`), and `.github/workflows/codeql.yml`'s `analyze-rust` job runs CodeQL over the built workspace - the authority kernel, the `sealedfs` FFI boundary, and the provider adapters - reporting to the same repository security-events channel the Python analysis already uses (`permissions.security-events: write`, shared by both jobs in that workflow).
 
 ## Dependency policy after Rust bootstrap

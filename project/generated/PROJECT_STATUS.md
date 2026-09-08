@@ -11,8 +11,8 @@ Epics: **24** | Stories: **110**
 - `blocked`: 1
 - `cancelled`: 1
 - `done`: 59
-- `planned`: 44
-- `ready_for_review`: 5
+- `planned`: 43
+- `ready_for_review`: 6
 
 ## Change risk distribution
 
@@ -33,3 +33,4 @@ Epics: **24** | Stories: **110**
 - **E17-S03** - Provenance, SBOM, and signing (CR3)
 - **E17-S04** - Installation-source awareness (CR1)
 - **E17-S05** - Stable/beta/nightly authority constraints (CR4)
+- **E17-S06** - Canonical source and distribution repository topology (CR2)

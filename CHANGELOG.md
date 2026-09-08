@@ -57,6 +57,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CANCELLAI_CHANNEL=stable` for every canonical tier-1 build. Wiring this into
   `cancellai-cli`'s own classification pipeline is deferred to E06-S04 (the cutover story) -
   see `docs/security/SUPPLY_CHAIN.md`'s "Release channels" section for why.
+- Wrote the canonical-repository-topology migration runbook and made its identity claim
+  enforced rather than only documented (E17-S06, CR2): `docs/RELEASING.md`'s "Repository
+  topology transition" section now names the trigger condition, migration steps (history
+  preservation, issue handling, release/tag continuity, and - critically - why
+  `homebrew-cancellai` keeps its name so `brew tap`/`brew install cancellai` keeps working for
+  existing users with zero action on their part), and an explicit "never silently retired" tap
+  commitment, executing ADR-0011's already-accepted decision to defer the actual split rather
+  than deciding it now. `scripts/check_repository_topology.py check` (new; `pre-commit` and CI)
+  cross-checks that `Formula/cancellai.rb`, `scripts/release.py`'s `REPO` constant, and that
+  document's own "current remote" claim all name the same repository.
 
 ## [1.11.0] - 2026-09-08
 

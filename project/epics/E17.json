@@ -123,7 +123,7 @@
     {
       "id": "E17-S06",
       "title": "Canonical source and distribution repository topology",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Move the canonical cross-platform product source to a product-named repository when Rust becomes canonical while preserving homebrew-cancellai as a compatibility/distribution tap rather than forcing a premature repository migration.",
       "change_risk": "CR2",
       "dependencies": [
