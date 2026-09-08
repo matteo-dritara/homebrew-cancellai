@@ -28,12 +28,18 @@ checksummed, smoke-tested tier-1 binaries plus a manifest describing them":
   archives, their checksums, and `release-manifest.json` to the GitHub Release.
 
 [ADR-0021](../../../docs/adrs/0021-hand-rolled-release-build-matrix.md) records the tool decision:
-a hand-written build matrix instead of adopting `cargo-dist` now, because this session's
-environment has no outbound network path to `crates.io` (`cargo install` fails to resolve the
-registry - confirmed empirically) and so cannot produce or review cargo-dist's generated
-workflow output for a decision `docs/security/SUPPLY_CHAIN.md` calls security-sensitive enough
-to require an ADR either way. `docs/BACKLOG.md`'s own story wording ("a release toolchain such
-as dist/cargo-dist **or equivalent**") explicitly allows this.
+a hand-written build matrix instead of adopting `cargo-dist` now. **Correction, recorded in the
+ADR itself (2026-09-08, during E17-S03):** this evidence originally repeated the ADR's claim
+that the session had no network path to `crates.io`; that claim was never actually tested
+against `cargo install cargo-dist` and was later found false (`cargo install cargo-dist
+--locked` succeeds). The ADR's decision to hand-roll the matrix stands - reconfirmed with the
+project owner once the mistake was found - on the corrected grounds that E17-S02 was already
+implemented, tested, and committed by then, and re-deriving it around cargo-dist's generated
+workflow (which needs its own full audit against `scripts/check_workflows.py`'s pinning/
+permissions policy) would cost more of this epic's remaining budget than it is worth. See
+ADR-0021's own "2026-09-08 correction" note for the full record. `docs/BACKLOG.md`'s story
+wording ("a release toolchain such as dist/cargo-dist **or equivalent**") still explicitly
+permits the hand-rolled choice on its own terms, independent of this correction.
 
 ## Acceptance Criteria Evidence
 

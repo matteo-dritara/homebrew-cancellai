@@ -16,11 +16,32 @@ script), and its normal workflow is `dist init` / `dist generate`, which writes 
 GitHub Actions workflow from a template this repository would then need to audit and adapt to
 coexist with the still-shipping Python/Homebrew release path (`docs/RELEASING.md`'s "Beta
 side-by-side" section - `cancellai-cli` is a beta artifact today, built from source, with no
-packaged release of its own yet). The executing environment for this story has no outbound
-network access to `crates.io` (`cargo install cargo-dist` fails to resolve the registry), so
-`cargo-dist`'s generated output cannot be produced, inspected, or verified locally in this
-session - only asserted from documentation, which is not good enough for a supply-chain
-decision this repository's own policy calls security-sensitive.
+packaged release of its own yet).
+
+**2026-09-08 correction:** this ADR originally claimed the executing environment had no
+outbound network access to `crates.io`, inferred solely from `curl https://crates.io` returning
+HTTP 403 - `cargo install cargo-dist` itself was never actually attempted before that claim was
+written. During E17-S03 (same session), `cargo install cargo-cyclonedx --locked` and, to check
+this ADR's own premise directly, `cargo install cargo-dist --locked` were both attempted for
+real and both **succeeded** (`cargo-dist v0.32.0` installed cleanly): `cargo`'s registry/index
+and crate-download traffic reaches `crates.io` through infrastructure the plain website `curl`
+request does not, and the two are not the same reachability question. The "no network access"
+premise below is therefore false and is left struck through rather than silently deleted, per
+this repository's own norm that a defect gets corrected in the record, not quietly patched over
+(see `docs/development/AGENT_PROTOCOL.md`'s Failure cycle). The decision itself - hand-roll the
+matrix for E17-S02 rather than adopt cargo-dist immediately - stands, but on the corrected
+grounds in "Alternatives considered" below: this was reconfirmed with the project owner
+(2026-09-08) as the preferred path specifically because E17-S02 was already implemented,
+tested, and committed under the original (mistaken) premise by the time the mistake was found,
+and re-deriving it around cargo-dist's generated workflow now would cost materially more of this
+epic's remaining budget than finishing E17-S03/S05/S06 does, not because cargo-dist remains
+unreachable.
+
+~~The executing environment for this story has no outbound network access to `crates.io`
+(`cargo install cargo-dist` fails to resolve the registry), so `cargo-dist`'s generated output
+cannot be produced, inspected, or verified locally in this session - only asserted from
+documentation, which is not good enough for a supply-chain decision this repository's own
+policy calls security-sensitive.~~
 
 E17-S01 already fixed the artifact manifest contract (`project/schemas/release_manifest.schema.json`)
 independently of which build tool produces the artifacts it describes, so the build-tool choice
@@ -51,23 +72,26 @@ immutable-pin policy - this ADR does not relax that policy for a new tool's gene
 
 ## Alternatives considered
 
-### Adopt cargo-dist now
+### Adopt cargo-dist now (as of the 2026-09-08 correction, this is genuinely reachable, not blocked)
 
-Rejected for this story: its generated workflow cannot be produced or inspected in this
-session (no network path to `crates.io`), and a supply-chain workflow this repository has not
-been able to read line-by-line is not something to commit under a policy that exists
-specifically because "release tooling becomes part of the security boundary" (ADR-0009). A
-follow-up ADR can adopt cargo-dist once someone with real network access can generate, review,
-and diff its output against this hand-rolled baseline - the two are not mutually exclusive
-long-term; cargo-dist can replace this baseline without changing what
+Rejected for E17-S02 specifically, on schedule/audit-cost grounds rather than access: adopting
+it means running `dist init`/`dist generate`, then auditing its entire generated GitHub Actions
+workflow line-by-line against this repository's own supply-chain policy
+(`scripts/check_workflows.py`: every third-party action pinned to a real, verified 40-hex
+commit SHA; least-privilege `permissions:`; no silently-skippable gate) before committing it -
+cargo-dist's own workflow pulls in a number of its own actions and steps this repository has
+not yet individually verified. That is a materially larger task than the hand-rolled matrix
+this ADR ships, which is fully inspectable today with nothing generated to audit. A follow-up
+ADR can still adopt cargo-dist once that audit is done against real, reachable output - the two
+are not mutually exclusive long-term; cargo-dist can replace this baseline without changing what
 `release_manifest.schema.json` describes.
 
 ### Wait for E17-S02 until cargo-dist can be evaluated
 
 Rejected: E17-S03 (provenance/SBOM/signing), E17-S04 (installation-source awareness), E17-S05
 (channel authority), and E17-S06 (repository topology) all depend on E17-S02, directly or
-transitively. Blocking the whole remainder of the epic on one external tool's availability, when
-an equivalent (`docs/BACKLOG.md`'s own wording: "a release toolchain such as dist/cargo-dist or
+transitively. Blocking the whole remainder of the epic on a full cargo-dist audit, when an
+equivalent (`docs/BACKLOG.md`'s own wording: "a release toolchain such as dist/cargo-dist or
 equivalent") satisfies the story's acceptance criteria today, is a worse trade than shipping the
 hand-rolled matrix now and revisiting the tool choice later.
 
@@ -75,7 +99,7 @@ hand-rolled matrix now and revisiting the tool choice later.
 
 ### Positive
 
-- unblocks E17-S03 through E17-S06 without waiting on network access this session does not have;
+- unblocks E17-S03 through E17-S06 without a large mid-epic tool-audit detour;
 - every line of the build/package/checksum/manifest pipeline is inspectable in this repository
   today, with no generated-and-vendored third-party workflow to audit;
 - reuses `release_manifest.schema.json` (E17-S01) unchanged - the manifest contract is decoupled
@@ -93,8 +117,9 @@ hand-rolled matrix now and revisiting the tool choice later.
 ### Neutral / follow-up
 
 - revisit cargo-dist adoption via a follow-up ADR once (a) installer-format needs exceed plain
-  archives, or (b) a session with real `crates.io` network access can generate and review its
-  output against this baseline.
+  archives, or (b) someone runs `dist init`/`dist generate` for real and audits the output
+  against this repository's workflow policy (`scripts/check_workflows.py`) - network access is
+  no longer the blocker per the 2026-09-08 correction above; the audit itself is.
 
 ## Safety and compatibility impact
 
