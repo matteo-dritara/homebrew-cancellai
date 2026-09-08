@@ -11,7 +11,8 @@ Epics: **24** | Stories: **110**
 - `blocked`: 1
 - `cancelled`: 1
 - `done`: 58
-- `planned`: 50
+- `planned`: 49
+- `ready_for_review`: 1
 
 ## Change risk distribution
 
@@ -27,4 +28,4 @@ Epics: **24** | Stories: **110**
 
 ## Awaiting independent review
 
-- none
+- **E23-S01** - Fetch release provenance history before platform verification (CR4)

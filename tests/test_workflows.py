@@ -177,5 +177,94 @@ class ReleaseGateDriftTests(unittest.TestCase):
         self.assertIn("publish", "\n".join(errors))
 
 
+# E23-S01: check_platforms.py's ancestor check needs the verified_commit object present
+# locally, not merely a checkout that contains the tagged ref. A shallow checkout regression
+# must be caught statically, the same way CR-TE-06 taught release_gate_drift_errors() to catch
+# a dropped gate rather than relying on a real tag push to notice.
+class ReleaseHistoryGateTests(unittest.TestCase):
+    def test_release_workflow_currently_fetches_full_history_for_the_provenance_gate(self) -> None:
+        self.assertEqual(check_workflows.release_history_gate_errors(), [])
+
+    def test_removing_fetch_depth_from_the_verify_checkout_is_caught(self) -> None:
+        # Reproduces the exact v1.10.0 incident: the checkout step has no fetch-depth at all,
+        # so GitHub Actions defaults to a shallow (depth-1) checkout.
+        release_text = (
+            "jobs:\n"
+            "  verify:\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@deadbeefdeadbeefdeadbeefdeadbeefdeadbeef # v7.0.1\n"
+            "        with:\n"
+            "          persist-credentials: false\n"
+            "      - run: python3 scripts/check_platforms.py check\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "release.yml"
+            path.write_text(release_text, encoding="utf-8")
+            with mock.patch.object(check_workflows, "RELEASE_WORKFLOW", path):
+                errors = check_workflows.release_history_gate_errors()
+        self.assertTrue(errors)
+        self.assertIn("fetch-depth", "\n".join(errors))
+
+    def test_a_nonzero_fetch_depth_on_the_verify_checkout_is_caught(self) -> None:
+        # A finite depth (e.g. 50) is still not enough: an arbitrarily old verified_commit is
+        # not bounded by any fixed depth, so only fetch-depth: 0 (full history) is accepted.
+        release_text = (
+            "jobs:\n"
+            "  verify:\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@deadbeefdeadbeefdeadbeefdeadbeefdeadbeef # v7.0.1\n"
+            "        with:\n"
+            "          persist-credentials: false\n"
+            "          fetch-depth: 50\n"
+            "      - run: python3 scripts/check_platforms.py check\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "release.yml"
+            path.write_text(release_text, encoding="utf-8")
+            with mock.patch.object(check_workflows, "RELEASE_WORKFLOW", path):
+                errors = check_workflows.release_history_gate_errors()
+        self.assertTrue(errors)
+        self.assertIn("fetch-depth", "\n".join(errors))
+
+    def test_a_job_without_the_provenance_gate_is_not_required_to_fetch_full_history(self) -> None:
+        # A shallow checkout is fine for a job that never runs the ancestor-based check - this
+        # check only protects the specific gate it exists for, not every checkout in the file.
+        release_text = (
+            "jobs:\n"
+            "  verify:\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@deadbeefdeadbeefdeadbeefdeadbeefdeadbeef # v7.0.1\n"
+            "        with:\n"
+            "          persist-credentials: false\n"
+            "      - run: python3 -m pytest tests -v\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "release.yml"
+            path.write_text(release_text, encoding="utf-8")
+            with mock.patch.object(check_workflows, "RELEASE_WORKFLOW", path):
+                errors = check_workflows.release_history_gate_errors()
+        self.assertEqual(errors, [])
+
+    def test_fetch_depth_on_a_later_unrelated_step_does_not_mask_a_shallow_checkout(self) -> None:
+        release_text = (
+            "jobs:\n"
+            "  verify:\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@deadbeefdeadbeefdeadbeefdeadbeefdeadbeef # v7.0.1\n"
+            "        with:\n"
+            "          persist-credentials: false\n"
+            "      - run: python3 scripts/check_platforms.py check\n"
+            "      - uses: some/other-action@deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n"
+            "        with:\n"
+            "          fetch-depth: 0\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "release.yml"
+            path.write_text(release_text, encoding="utf-8")
+            with mock.patch.object(check_workflows, "RELEASE_WORKFLOW", path):
+                errors = check_workflows.release_history_gate_errors()
+        self.assertTrue(errors)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -57,6 +57,15 @@ text (E22-S01, closing `CR-TE-06` - at v1.8.0 `release.yml` ran no Rust check at
 reported success while `rust / quality (windows-latest)` failed on the same tagged commit; see
 `project/evidence/RELEASE-v1.8.0.md`).
 
+The `verify` job's checkout uses `fetch-depth: 0` (full history), not GitHub Actions' default
+shallow checkout, because `check_platforms.py check`'s ancestor check
+(`git merge-base --is-ancestor <verified_commit> HEAD`) needs the `verified_commit` object to
+exist locally at all - a shallow checkout does not merely make an older `verified_commit`
+unreachable, it makes the commit object absent, failing with `fatal: Not a valid commit name`
+instead of validating provenance. This broke the tagged `verify` job at v1.10.0 (release run
+34252829459); `scripts/check_workflows.py`'s `release_history_gate_errors()` now fails if the
+checkout step in the job running that gate reverts to anything but `fetch-depth: 0` (E23-S01).
+
 `finalize` refuses to leave the repository inconsistent: it re-runs `release.py check` and
 fails if the source, the packaging metadata and the formula disagree.
 

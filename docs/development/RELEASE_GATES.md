@@ -205,6 +205,16 @@ independently reproduced regressions of exactly this kind - so this cannot silen
 the way it did the first time.
 `E06-S04` no longer carries this as a blocker.
 
+The `v1.10.0` tag then reproduced a narrower variant of the same class of defect: the `verify`
+job's checkout was shallow (GitHub Actions' default), so `check_platforms.py check`'s ancestor
+check found each platform's `verified_commit` object entirely absent from the tagged commit's
+local history rather than merely unreachable, and the tag's release workflow failed
+(`gh run 34252829459`) after `v1.10.0` had already been committed, tagged, and pushed - the
+GitHub release itself was never published. `E23-S01` gives the `verify` job's checkout
+`fetch-depth: 0` and adds `scripts/check_workflows.py::release_history_gate_errors()` so a
+reversion to a shallow checkout on that job fails statically instead of only at the next tag
+push.
+
 **Conclusion**: cutover is not recommended at this time, and as of 2026-09-03 the reason is no longer only packaging and platform coverage - G2 carries a reproduced authority defect. Closing E06-S04 (and E06 as a whole)
 requires this checklist to read "ready" against real evidence, an independent CR4 verifier
 pass, and the owner's own Safety Verdict acceptance - none of which the executor grants itself

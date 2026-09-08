@@ -12,7 +12,7 @@
     {
       "id": "E23-S01",
       "title": "Fetch release provenance history before platform verification",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Repair release.yml so the tagged checkout contains the commit history required by scripts/check_platforms.py to verify each platform's cited verified_commit is an ancestor, without weakening that provenance check.",
       "change_risk": "CR4",
       "dependencies": [

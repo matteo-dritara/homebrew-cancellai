@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `.github/workflows/release.yml`'s `verify` job now checks out full git history
+  (`fetch-depth: 0`) instead of GitHub Actions' default shallow checkout, so
+  `scripts/check_platforms.py check`'s ancestor validation
+  (`git merge-base --is-ancestor <verified_commit> HEAD`) can find each platform's
+  `verified_commit` object at all. A shallow checkout made an older `verified_commit`
+  entirely absent from the tagged commit's local history (not merely unreachable), which
+  failed the `v1.10.0` tag's release workflow after the tag had already been pushed - the
+  GitHub release was never published (`gh run 34252829459`). `scripts/check_workflows.py`
+  now fails statically if the checkout step in the job running that provenance gate reverts
+  to anything but `fetch-depth: 0` (E23-S01).
+
 ## [1.10.0] - 2026-09-08
 
 ### Added

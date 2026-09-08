@@ -38,6 +38,15 @@ IF_RE = re.compile(r"^\s*if:\s*.+$", re.MULTILINE)
 CONTINUE_ON_ERROR_RE = re.compile(r"^\s*continue-on-error:\s*true\s*$", re.MULTILINE)
 NEEDS_RE = re.compile(r"^\s*needs:\s*\[(.+?)\]\s*$", re.MULTILINE)
 
+# E23-S01: release.yml's `verify` job runs check_platforms.py's ancestor-based provenance
+# gate (`git merge-base --is-ancestor <verified_commit> HEAD`), which needs the
+# verified_commit object present locally, not merely a checkout containing it. A step-level
+# `with:` block's fetch-depth is checked, not the whole job body, so a fetch-depth found on an
+# unrelated step cannot mask a shallow checkout.
+CHECKOUT_USES_RE = re.compile(r"^(?P<indent>[ \t]*)-\s*uses:\s*actions/checkout@\S+.*$", re.MULTILINE)
+FETCH_DEPTH_RE = re.compile(r"^\s*fetch-depth:\s*(\S+)\s*$", re.MULTILINE)
+PLATFORM_PROVENANCE_GATE = "python3 scripts/check_platforms.py check"
+
 # E22-S01 (CR-TE-06 round 2): pytest and the remote ruff/mypy pre-commit hooks have no
 # repository-owned `entry:` this checker can read (pytest is not a hook at all; ruff/mypy
 # come from a third-party hook repo, not `repo: local`), so precommit_gate_commands() alone
@@ -226,6 +235,59 @@ def job_body(text: str, job_id: str) -> str:
     return ""
 
 
+def checkout_fetch_depth(job_body_text: str) -> str | None:
+    """The `fetch-depth` value of the first `actions/checkout` step in a job body, or None if
+    the step has no such key (GitHub Actions then defaults to a shallow, depth-1 checkout).
+
+    Scoped to that one step: slices from the `uses:` line to the next step line at the same
+    indentation (or the end of the job), so a `fetch-depth` set on a later, unrelated step
+    cannot be mistaken for this checkout step's own setting.
+    """
+    match = CHECKOUT_USES_RE.search(job_body_text)
+    if not match:
+        return None
+    indent = match.group("indent")
+    rest = job_body_text[match.end() :]
+    next_step = re.search(rf"^{re.escape(indent)}-\s", rest, re.MULTILINE)
+    step_text = rest[: next_step.start()] if next_step else rest
+    depth_match = FETCH_DEPTH_RE.search(step_text)
+    if not depth_match:
+        return None
+    return depth_match.group(1).strip("\"'")
+
+
+def release_history_gate_errors() -> list[str]:
+    """release.yml's `verify` job must check out full history when it runs
+    check_platforms.py's ancestor-based provenance gate (E23-S01).
+
+    A shallow checkout does not make an older `verified_commit` merely unreachable - the commit
+    object itself is absent from the local repository - so `git merge-base --is-ancestor` fails
+    with "Not a valid commit name" instead of validating provenance. This is exactly what broke
+    the v1.10.0 tag (release run 34252829459): the checkout step had no `fetch-depth`, GitHub
+    Actions defaulted it to 1, and every `verified_commit` older than the tag itself was
+    unresolvable. Reproduced locally with a real `git clone --depth 1 --branch v1.10.0` against
+    this repository (`project/evidence/E23-S01/EVIDENCE.md`).
+    """
+    if not RELEASE_WORKFLOW.exists():
+        return []
+    text = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+    body = job_body(text, "verify")
+    if not body:
+        return []
+    if PLATFORM_PROVENANCE_GATE not in job_run_commands(text, "verify"):
+        return []  # nothing to protect: this job does not run the ancestor-based gate
+    depth = checkout_fetch_depth(body)
+    if depth != "0":
+        return [
+            f"{display_path(RELEASE_WORKFLOW)}: job 'verify' runs {PLATFORM_PROVENANCE_GATE!r} "
+            f"(check_platforms.py's ancestor-based provenance gate) but its checkout step has "
+            f"fetch-depth={depth!r}, not '0'; a shallow checkout makes an older verified_commit's "
+            "SHA absent from the tagged commit's history entirely, so the ancestry check fails "
+            "with 'Not a valid commit name' instead of validating provenance"
+        ]
+    return []
+
+
 def blocking_job_errors(rel: Path, text: str, job_id: str) -> list[str]:
     """A required gate job must always run and every step in it must be allowed to fail the build.
 
@@ -358,6 +420,7 @@ def validate_workflows() -> None:
                 errors.append(f"{rel}:{line}: action must be pinned to a full 40-hex commit SHA: {spec}")
     errors.extend(docker_only_action_errors())
     errors.extend(release_gate_drift_errors())
+    errors.extend(release_history_gate_errors())
     required = required_check_names()
     if not required:
         errors.append("docs/development/REPOSITORY_GOVERNANCE.md must list required checks in a required-checks block")
