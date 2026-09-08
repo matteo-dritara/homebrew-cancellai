@@ -11,8 +11,8 @@ Epics: **24** | Stories: **110**
 - `blocked`: 2
 - `cancelled`: 1
 - `done`: 59
-- `planned`: 38
-- `ready_for_review`: 10
+- `planned`: 37
+- `ready_for_review`: 11
 
 ## Change risk distribution
 
@@ -29,6 +29,7 @@ Epics: **24** | Stories: **110**
 ## Awaiting independent review
 
 - **E16-S01** - Manifest schema v1 (CR2)
+- **E16-S02** - Signed knowledge bundle format (CR4)
 - **E16-S03** - Gemini CLI adapter (CR2)
 - **E16-S04** - GitHub Copilot CLI adapter (CR2)
 - **E16-S05** - OpenCode adapter (CR2)

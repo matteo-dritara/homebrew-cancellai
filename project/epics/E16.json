@@ -35,7 +35,7 @@
     {
       "id": "E16-S02",
       "title": "Signed knowledge bundle format",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Package provider/version/layout intelligence separately from the binary with signature/provenance verification.",
       "change_risk": "CR4",
       "dependencies": [

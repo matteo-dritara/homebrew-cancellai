@@ -1590,7 +1590,7 @@ Scale provider coverage through manifests, native adapters, signed knowledge bun
 
 ### E16-S02 - Signed knowledge bundle format
 
-**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E16-S01 | **Safety obligations:** SI-022, SI-029
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E16-S01 | **Safety obligations:** SI-022, SI-029
 
 **Outcome.** Package provider/version/layout intelligence separately from the binary with signature/provenance verification.
 

@@ -107,6 +107,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   satisfying "internal state is not mutated without documented native capability" by
   construction. The separate, platform-conditional `COPILOT_CACHE_HOME` directory is not
   modeled as a root in this schema version. Defaults to `TrustedTier::untrusted()`.
+- Defined the signed knowledge bundle format (E16-S02, CR4,
+  [ADR-0024](docs/adrs/0024-ed25519-dalek-for-knowledge-bundle-signatures.md),
+  `docs/security/SUPPLY_CHAIN.md` "Knowledge updates"):
+  `cancellai-safety::knowledge_bundle::KnowledgeBundle` packages provider/version/layout
+  intelligence separately from the binary, verified with Ed25519 (verification-only dependency
+  - no signing capability ships) against a caller-supplied `LocalTrustPolicy`. A verified
+  bundle's trust tier always comes from local policy, never from the bundle itself - there is no
+  field in the wire format that could assert one. `KnowledgeStore` refuses a stale/replayed
+  update from the same publisher and supports rollback to the prior trusted bundle, re-checking
+  expiry so a failed rollback never displaces the still-current bundle. Adversarially tested:
+  tamper (payload, digest, signature), expiry, unknown-signer, and rollback-after-expiry cases.
 
 ## [1.11.0] - 2026-09-08
 

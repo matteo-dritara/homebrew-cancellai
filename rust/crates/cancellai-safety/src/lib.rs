@@ -26,10 +26,14 @@
 //! This crate performs no OS calls of its own; every OS-facing operation goes through a
 //! `cancellai-platform` capability (`IdentityObserver`, `PathResolver`, `MutationExecutor`)
 //! consumed as plain data (`docs/architecture/PLATFORM_MODEL.md`: "domain and policy code
-//! consume capability results, not OS-specific syscalls").
+//! consume capability results, not OS-specific syscalls"). E16-S02 adds
+//! [`knowledge_bundle`] (SI-022, SI-029, ADR-0024): signed provider knowledge bundles,
+//! verified with Ed25519 against a caller-supplied [`LocalTrustPolicy`] whose tier assignments
+//! are the only source of authority a verified bundle ever carries - never the bundle itself.
 
 pub mod authority;
 pub mod build_channel;
+pub mod knowledge_bundle;
 pub mod mutation_executor;
 pub mod root_capability;
 pub mod sealed_plan;
@@ -40,6 +44,11 @@ pub use authority::{
     effective_authority, effective_authority_for_channel,
 };
 pub use build_channel::BuildChannel;
+pub use knowledge_bundle::{
+    KnowledgeBundle, KnowledgeBundleError, KnowledgeStore, LocalTrustPolicy,
+    SUPPORTED_SCHEMA_VERSIONS, TrustedPublisher, VerifiedKnowledgeBundle, parse_bundle,
+    verify_bundle,
+};
 pub use mutation_executor::{ActionResult, execute, execute_all, execute_with_system_capabilities};
 pub use root_capability::{ApprovedRoot, BoundaryError, BoundedPath};
 pub use sealed_plan::{RevalidationOutcome, SealedPlan, revalidate};

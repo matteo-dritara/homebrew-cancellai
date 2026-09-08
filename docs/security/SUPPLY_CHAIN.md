@@ -126,6 +126,27 @@ Provider knowledge updates are separate signed artifacts from software releases.
 - cannot elevate above local trust/authority ceilings;
 - supports rollback to last known trusted bundle.
 
+E16-S02 ([ADR-0024](../adrs/0024-ed25519-dalek-for-knowledge-bundle-signatures.md)) implements
+this: `cancellai-safety::knowledge_bundle::KnowledgeBundle` carries `schema_version`,
+`publisher_id`, `sequence`, `issued_at`, `expires_at`, `content_digest`, `payload`, and an
+Ed25519 `signature` - `parse_bundle` rejects a bundle missing any field (including one missing
+`signature` entirely - the literal "unsigned" case) before verification is ever attempted.
+`verify_bundle` checks schema version, publisher identity against a caller-supplied
+`LocalTrustPolicy`, the SHA-256 content digest, and the Ed25519 signature, then expiry; the
+`VerifiedKnowledgeBundle` it returns carries the `TrustedTier` the local policy already assigned
+that publisher, never anything read from the bundle - a knowledge update cannot elevate trust
+because there is no field in the wire format that could assert one. `KnowledgeStore::apply`
+refuses a bundle whose `sequence` does not exceed the currently installed bundle's from the same
+publisher (replay/rollback-of-trust protection), and `KnowledgeStore::rollback` reinstates the
+bundle a later one replaced, re-checking expiry against the current clock so a failed rollback
+never displaces the still-current bundle. The bundle's `payload` is opaque to this module - a
+provider-manifest payload (E16-S01/`cancellai-provider-api::parse_manifest`) is a natural fit,
+since that type is independently, structurally incapable of expressing a capability/trust/
+authority claim, but wiring a verified bundle into that parser and into an actual distribution
+channel is deferred to whichever future story makes knowledge updates a real, shipped mechanism
+- this story delivers the format and its verification, adversarially tested (tamper, replay,
+expiry, unknown-signer, rollback), not a running update service.
+
 ## Release channels
 
 - `stable` - highest verified default authority allowed by product policy.
