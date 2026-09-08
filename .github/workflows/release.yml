@@ -101,8 +101,126 @@ jobs:
       - run: cargo deny check
         working-directory: rust
 
-  publish:
+  # E17-S02 / ADR-0021: canonical tier-1 cross-platform build (docs/PLATFORMS.md's matrix)
+  # produced from the tagged commit, not merely checked/tested against it. Each leg packages
+  # its own archive and proves the packaged binary actually runs on the platform that built it
+  # (the "installer smoke test" the story's verification contract names) before anything is
+  # uploaded.
+  build-artifacts:
     needs: [verify, verify-rust]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+      - run: cargo build --release --locked -p cancellai-cli --target ${{ matrix.target }}
+        working-directory: rust
+      - name: package the archive and its checksum, then smoke-test the packaged binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          name="cancellai-cli-${version}-${{ matrix.target }}"
+          staging="dist/${name}"
+          mkdir -p "$staging"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            bin="rust/target/${{ matrix.target }}/release/cancellai-cli.exe"
+          else
+            bin="rust/target/${{ matrix.target }}/release/cancellai-cli"
+          fi
+          cp "$bin" "$staging/"
+          # Prove the packaged artifact actually executes on the platform that built it, not
+          # merely that it compiled - this is the story's "installer smoke test".
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            "./${staging}/cancellai-cli.exe" version
+          else
+            chmod +x "${staging}/cancellai-cli"
+            "./${staging}/cancellai-cli" version
+          fi
+          cd dist
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            archive="${name}.zip"
+            7z a "$archive" "$name" >/dev/null
+          else
+            archive="${name}.tar.gz"
+            tar czf "$archive" "$name"
+          fi
+          python3 -c "
+          import hashlib, sys
+          data = open(sys.argv[1], 'rb').read()
+          open(sys.argv[1] + '.sha256', 'w').write(hashlib.sha256(data).hexdigest() + '\n')
+          " "$archive"
+          echo "ARCHIVE_NAME=$archive" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-artifact-${{ matrix.target }}
+          path: |
+            dist/${{ env.ARCHIVE_NAME }}
+            dist/${{ env.ARCHIVE_NAME }}.sha256
+          if-no-files-found: error
+
+  # Assembles E17-S01's release manifest contract (project/schemas/release_manifest.schema.json)
+  # from the artifacts build-artifacts just produced - real checksums of real files, not typed
+  # by hand.
+  release-manifest-generate:
+    needs: [verify, verify-rust, build-artifacts]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: release-artifact-*
+          path: dist
+          merge-multiple: true
+      - name: build the release manifest (E17-S01 contract)
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          # Every "v*" tag today is a stable release; no beta/nightly tag scheme exists yet
+          # (that is E17-S05's concern, once one does).
+          python3 scripts/release_manifest.py generate \
+            --version "$version" \
+            --channel stable \
+            --source-sha "$GITHUB_SHA" \
+            --repository "$GITHUB_REPOSITORY" \
+            --workflow release.yml \
+            --run-id "$GITHUB_RUN_ID" \
+            --knowledge-min 1 --knowledge-max 1 \
+            --artifact "cancellai-cli-${version}-aarch64-apple-darwin" aarch64-apple-darwin "dist/cancellai-cli-${version}-aarch64-apple-darwin.tar.gz" \
+            --artifact "cancellai-cli-${version}-x86_64-apple-darwin" x86_64-apple-darwin "dist/cancellai-cli-${version}-x86_64-apple-darwin.tar.gz" \
+            --artifact "cancellai-cli-${version}-x86_64-unknown-linux-gnu" x86_64-unknown-linux-gnu "dist/cancellai-cli-${version}-x86_64-unknown-linux-gnu.tar.gz" \
+            --artifact "cancellai-cli-${version}-x86_64-pc-windows-msvc" x86_64-pc-windows-msvc "dist/cancellai-cli-${version}-x86_64-pc-windows-msvc.zip" \
+            --out release-manifest.json
+      - run: python3 scripts/release_manifest.py verify-checksums release-manifest.json dist
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-manifest
+          path: release-manifest.json
+          if-no-files-found: error
+
+  publish:
+    needs: [verify, verify-rust, build-artifacts, release-manifest-generate]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -110,6 +228,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: release-artifact-*
+          path: dist
+          merge-multiple: true
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-manifest
+          path: .
+      - name: refuse to publish if the manifest's checksums do not match the built artifacts
+        run: python3 scripts/release_manifest.py verify-checksums release-manifest.json dist
       - name: checksum of the archive GitHub generates from this tag
         id: archive
         run: |
@@ -133,4 +262,5 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --title "cancellAI ${GITHUB_REF_NAME}" \
             --notes-file "$notes" \
-            --verify-tag
+            --verify-tag \
+            dist/*.tar.gz dist/*.zip dist/*.sha256 release-manifest.json

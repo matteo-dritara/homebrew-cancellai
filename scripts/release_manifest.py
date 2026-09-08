@@ -238,6 +238,72 @@ def build_manifest(
     return doc
 
 
+def build_manifest_from_files(
+    *,
+    version: str,
+    channel: str,
+    source_sha: str,
+    repository: str,
+    workflow: str,
+    run_id: str,
+    knowledge_min: int,
+    knowledge_max: int,
+    artifact_files: Sequence[tuple[str, str, Path]],
+) -> dict[str, Any]:
+    """Like `build_manifest`, but the checksum for each artifact is computed from real bytes
+    read off disk (E17-S02: a manifest generated from an actual build, not typed by hand).
+
+    `artifact_files` is `(name, target_triple, path)` triples; every path must exist and be
+    readable, or this raises before any checksum is computed - a manifest naming an artifact
+    this machine cannot actually read is not evidence of anything.
+    """
+    artifacts: list[tuple[str, str, str]] = []
+    missing: list[str] = []
+    for name, triple, path in artifact_files:
+        if not path.is_file():
+            missing.append(f"{name}: no such file {path}")
+            continue
+        artifacts.append((name, triple, sha256_of(path.read_bytes())))
+    if missing:
+        raise ReleaseManifestError("cannot generate a manifest for missing artifact file(s):\n" + "\n".join(f"- {m}" for m in missing))
+    return build_manifest(
+        version=version,
+        channel=channel,
+        source_sha=source_sha,
+        repository=repository,
+        workflow=workflow,
+        run_id=run_id,
+        knowledge_min=knowledge_min,
+        knowledge_max=knowledge_max,
+        artifacts=artifacts,
+    )
+
+
+def verify_checksums_against_directory(doc: dict[str, Any], directory: Path) -> list[str]:
+    """Round-trip every artifact in `doc` against a real file named `<artifact name>.*` under
+    `directory` (E17-S02's publish-time guard: refuse to publish a manifest whose declared
+    checksums do not match the bytes actually built).
+
+    An artifact with no matching file under `directory` is an error - a manifest cannot be
+    trusted to describe a release whose artifacts are not all present to check.
+    """
+    errors: list[str] = []
+    artifact_bytes: dict[str, bytes] = {}
+    for artifact in doc.get("artifacts", []):
+        if not isinstance(artifact, dict):
+            continue
+        name = artifact.get("name")
+        if not isinstance(name, str):
+            continue
+        matches = sorted(directory.glob(f"{name}.*"))
+        if not matches:
+            errors.append(f"artifact {name!r}: no file matching {name}.* under {directory}")
+            continue
+        artifact_bytes[name] = matches[0].read_bytes()
+    errors.extend(verify_artifact_checksums(doc, artifact_bytes))
+    return errors
+
+
 def check() -> list[str]:
     errors: list[str] = []
     if not SCHEMA_PATH.exists():
@@ -264,13 +330,83 @@ def check() -> list[str]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Validate the cancellAI release artifact manifest contract.")
-    parser.add_argument("command", nargs="?", default="check", choices=["check"])
+    parser = argparse.ArgumentParser(description="Validate/generate the cancellAI release artifact manifest.")
+    sub = parser.add_subparsers(dest="command")
+    sub.add_parser("check", help="Validate the committed golden manifest corpus (default).")
+
+    generate = sub.add_parser("generate", help="Build a manifest from real, already-built artifact files (E17-S02).")
+    generate.add_argument("--version", required=True)
+    generate.add_argument("--channel", required=True, choices=CHANNELS)
+    generate.add_argument("--source-sha", required=True)
+    generate.add_argument("--repository", required=True)
+    generate.add_argument("--workflow", required=True)
+    generate.add_argument("--run-id", required=True)
+    generate.add_argument("--knowledge-min", required=True, type=int)
+    generate.add_argument("--knowledge-max", required=True, type=int)
+    generate.add_argument(
+        "--artifact",
+        action="append",
+        nargs=3,
+        metavar=("NAME", "TARGET_TRIPLE", "PATH"),
+        default=[],
+        help="repeatable: one built artifact's canonical name, target triple, and file path",
+    )
+    generate.add_argument("--out", required=True, type=Path, help="where to write the generated manifest JSON")
+
+    verify = sub.add_parser(
+        "verify-checksums",
+        help="Round-trip a manifest's declared checksums against real files (E17-S02 publish-time guard).",
+    )
+    verify.add_argument("manifest", type=Path, help="path to a release-manifest.json document")
+    verify.add_argument("directory", type=Path, help="directory containing '<artifact name>.*' files to check")
+
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
-    build_parser().parse_args(argv)
+def _cmd_generate(args: argparse.Namespace) -> int:
+    try:
+        doc = build_manifest_from_files(
+            version=args.version,
+            channel=args.channel,
+            source_sha=args.source_sha,
+            repository=args.repository,
+            workflow=args.workflow,
+            run_id=args.run_id,
+            knowledge_min=args.knowledge_min,
+            knowledge_max=args.knowledge_max,
+            artifact_files=[(name, triple, Path(path)) for name, triple, path in args.artifact],
+        )
+    except ReleaseManifestError as exc:
+        print(f"RELEASE MANIFEST ERROR: {exc}", file=sys.stderr)
+        return 2
+    args.out.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+    print(f"wrote {args.out} ({len(doc['artifacts'])} artifact(s))")
+    return 0
+
+
+def _cmd_verify_checksums(args: argparse.Namespace) -> int:
+    try:
+        doc = json.loads(args.manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"RELEASE MANIFEST ERROR: cannot read {args.manifest}: {exc}", file=sys.stderr)
+        return 2
+    structural_errors = validate_document(doc, str(args.manifest))
+    if structural_errors:
+        print("RELEASE MANIFEST ERROR:", file=sys.stderr)
+        for error in structural_errors:
+            print(f"  {error}", file=sys.stderr)
+        return 2
+    checksum_errors = verify_checksums_against_directory(doc, args.directory)
+    if checksum_errors:
+        print("RELEASE MANIFEST ERROR:", file=sys.stderr)
+        for error in checksum_errors:
+            print(f"  {error}", file=sys.stderr)
+        return 2
+    print(f"release manifest checksums OK: {len(doc['artifacts'])} artifact(s) match {args.directory}")
+    return 0
+
+
+def _cmd_check() -> int:
     try:
         errors = check()
     except ReleaseManifestError as exc:
@@ -284,6 +420,16 @@ def main(argv: list[str] | None = None) -> int:
     count = len(list(GOLDEN_DIR.glob("*.golden.json")))
     print(f"release manifest OK: {count} golden document(s) match project/schemas/release_manifest.schema.json")
     return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    command = args.command or "check"
+    if command == "generate":
+        return _cmd_generate(args)
+    if command == "verify-checksums":
+        return _cmd_verify_checksums(args)
+    return _cmd_check()
 
 
 if __name__ == "__main__":

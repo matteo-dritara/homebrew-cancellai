@@ -16,6 +16,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `scripts/release_manifest.py check` validates it against a golden fixture corpus
   (`tests/fixtures/release_manifest/golden/`) and runs in `pre-commit` and CI. Generating a
   manifest from a real multi-platform build is E17-S02/E17-S03 scope.
+- Automated the tier-1 cross-platform release build (E17-S02,
+  [ADR-0021](docs/adrs/0021-hand-rolled-release-build-matrix.md)): `.github/workflows/release.yml`
+  now builds `cancellai-cli` natively for `aarch64-apple-darwin`/`x86_64-apple-darwin`/
+  `x86_64-unknown-linux-gnu`/`x86_64-pc-windows-msvc` on every `v*` tag, packages an archive
+  plus SHA-256 checksum per target, smoke-tests each packaged binary by unpacking and running
+  it on the platform that built it, and assembles/round-trips a real `release-manifest.json`
+  (E17-S01) before `publish` attaches everything to the GitHub Release.
+  `scripts/release_manifest.py` gained `generate` and `verify-checksums` subcommands for this.
+  These binaries are not a shipping product yet - `cancellai-cli` stays a beta, source-built
+  artifact until E06-S04's cutover gate opens.
 
 ## [1.11.0] - 2026-09-08
 

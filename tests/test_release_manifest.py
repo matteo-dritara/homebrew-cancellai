@@ -11,7 +11,9 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import tempfile
 import unittest
+from pathlib import Path
 
 from scripts import release_manifest
 
@@ -241,6 +243,160 @@ class BuildManifestTests(unittest.TestCase):
                 knowledge_max=1,
                 artifacts=[("cancellai-x86_64-unknown-linux-gnu", "x86_64-unknown-linux-gnu", "b" * 64)],
             )
+
+
+class BuildManifestFromFilesTests(unittest.TestCase):
+    """E17-S02: generating a manifest from real, already-built artifact files."""
+
+    def test_builds_a_valid_manifest_from_a_real_file_on_disk(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp) / "cancellai-cli-x86_64-unknown-linux-gnu.tar.gz"
+            payload = b"a fake canonical archive, for the purposes of this test"
+            archive.write_bytes(payload)
+            doc = release_manifest.build_manifest_from_files(
+                version="9.9.9",
+                channel="nightly",
+                source_sha="a" * 40,
+                repository="matteo-dritara/homebrew-cancellai",
+                workflow="release.yml",
+                run_id="1",
+                knowledge_min=1,
+                knowledge_max=1,
+                artifact_files=[("cancellai-cli-x86_64-unknown-linux-gnu", "x86_64-unknown-linux-gnu", archive)],
+            )
+            self.assertEqual([], release_manifest.validate_document(doc, "synthetic"))
+            self.assertEqual(doc["artifacts"][0]["sha256"], release_manifest.sha256_of(payload))
+
+    def test_refuses_to_generate_a_manifest_for_a_missing_artifact_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = Path(tmp) / "does-not-exist.tar.gz"
+            with self.assertRaises(release_manifest.ReleaseManifestError):
+                release_manifest.build_manifest_from_files(
+                    version="9.9.9",
+                    channel="nightly",
+                    source_sha="a" * 40,
+                    repository="matteo-dritara/homebrew-cancellai",
+                    workflow="release.yml",
+                    run_id="1",
+                    knowledge_min=1,
+                    knowledge_max=1,
+                    artifact_files=[("cancellai-cli-x86_64-unknown-linux-gnu", "x86_64-unknown-linux-gnu", missing)],
+                )
+
+
+class VerifyChecksumsAgainstDirectoryTests(unittest.TestCase):
+    """E17-S02's publish-time guard: refuse to publish on a checksum mismatch."""
+
+    def test_matches_real_files_named_after_each_artifact(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            payload = b"a fake canonical archive, for the purposes of this test"
+            (directory / "cancellai-cli-x86_64-unknown-linux-gnu.tar.gz").write_bytes(payload)
+            doc = release_manifest.build_manifest(
+                version="9.9.9",
+                channel="nightly",
+                source_sha="a" * 40,
+                repository="matteo-dritara/homebrew-cancellai",
+                workflow="release.yml",
+                run_id="1",
+                knowledge_min=1,
+                knowledge_max=1,
+                artifacts=[("cancellai-cli-x86_64-unknown-linux-gnu", "x86_64-unknown-linux-gnu", release_manifest.sha256_of(payload))],
+            )
+            self.assertEqual([], release_manifest.verify_checksums_against_directory(doc, directory))
+
+    def test_flags_a_missing_artifact_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            doc = copy.deepcopy(load_golden())
+            errors = release_manifest.verify_checksums_against_directory(doc, Path(tmp))
+            self.assertTrue(any("no file matching" in e for e in errors), errors)
+
+    def test_flags_a_real_file_that_does_not_match_the_declared_checksum(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "cancellai-cli-x86_64-unknown-linux-gnu.tar.gz").write_bytes(b"tampered bytes")
+            doc = release_manifest.build_manifest(
+                version="9.9.9",
+                channel="nightly",
+                source_sha="a" * 40,
+                repository="matteo-dritara/homebrew-cancellai",
+                workflow="release.yml",
+                run_id="1",
+                knowledge_min=1,
+                knowledge_max=1,
+                artifacts=[("cancellai-cli-x86_64-unknown-linux-gnu", "x86_64-unknown-linux-gnu", "0" * 64)],
+            )
+            errors = release_manifest.verify_checksums_against_directory(doc, directory)
+            self.assertTrue(any("checksum mismatch" in e for e in errors), errors)
+
+
+class CliSubcommandTests(unittest.TestCase):
+    """The `generate` and `verify-checksums` subcommands end to end (E17-S02)."""
+
+    def test_generate_then_verify_checksums_round_trips_through_the_cli(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            archive = directory / "cancellai-cli-9.9.9-x86_64-unknown-linux-gnu.tar.gz"
+            archive.write_bytes(b"a fake canonical archive, for the purposes of this test")
+            out = directory / "release-manifest.json"
+
+            exit_code = release_manifest.main(
+                [
+                    "generate",
+                    "--version",
+                    "9.9.9",
+                    "--channel",
+                    "nightly",
+                    "--source-sha",
+                    "a" * 40,
+                    "--repository",
+                    "matteo-dritara/homebrew-cancellai",
+                    "--workflow",
+                    "release.yml",
+                    "--run-id",
+                    "1",
+                    "--knowledge-min",
+                    "1",
+                    "--knowledge-max",
+                    "1",
+                    "--artifact",
+                    "cancellai-cli-9.9.9-x86_64-unknown-linux-gnu",
+                    "x86_64-unknown-linux-gnu",
+                    str(archive),
+                    "--out",
+                    str(out),
+                ]
+            )
+            self.assertEqual(0, exit_code)
+            doc = json.loads(out.read_text(encoding="utf-8"))
+            self.assertEqual([], release_manifest.validate_document(doc, "synthetic"))
+
+            exit_code = release_manifest.main(["verify-checksums", str(out), str(directory)])
+            self.assertEqual(0, exit_code)
+
+    def test_verify_checksums_cli_fails_on_a_tampered_artifact(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "cancellai-cli-x86_64-unknown-linux-gnu.tar.gz").write_bytes(b"tampered")
+            manifest_path = directory / "release-manifest.json"
+            doc = release_manifest.build_manifest(
+                version="9.9.9",
+                channel="nightly",
+                source_sha="a" * 40,
+                repository="matteo-dritara/homebrew-cancellai",
+                workflow="release.yml",
+                run_id="1",
+                knowledge_min=1,
+                knowledge_max=1,
+                artifacts=[("cancellai-cli-x86_64-unknown-linux-gnu", "x86_64-unknown-linux-gnu", "0" * 64)],
+            )
+            manifest_path.write_text(json.dumps(doc), encoding="utf-8")
+            exit_code = release_manifest.main(["verify-checksums", str(manifest_path), str(directory)])
+            self.assertEqual(2, exit_code)
+
+    def test_bare_command_still_checks_the_golden_corpus(self):
+        self.assertEqual(0, release_manifest.main([]))
+        self.assertEqual(0, release_manifest.main(["check"]))
 
 
 if __name__ == "__main__":

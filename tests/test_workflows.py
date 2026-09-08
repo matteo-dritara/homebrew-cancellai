@@ -172,7 +172,12 @@ class ReleaseGateDriftTests(unittest.TestCase):
 
     def test_dropping_verify_rust_from_publish_needs_is_caught(self) -> None:
         release_text, _ = self._release_and_rust_text()
-        errors = self._errors_with(release_text=release_text.replace("needs: [verify, verify-rust]", "needs: [verify]"))
+        errors = self._errors_with(
+            release_text=release_text.replace(
+                "needs: [verify, verify-rust, build-artifacts, release-manifest-generate]",
+                "needs: [verify, build-artifacts, release-manifest-generate]",
+            )
+        )
         self.assertTrue(errors)
         self.assertIn("publish", "\n".join(errors))
 

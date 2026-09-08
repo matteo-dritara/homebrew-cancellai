@@ -1713,7 +1713,7 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 ### E17-S02 - Automated multi-target build
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E17-S01, E20-S03 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E17-S01, E20-S03 | **Safety obligations:** none
 
 **Outcome.** Use a release toolchain such as dist/cargo-dist or equivalent to produce macOS/Linux/Windows artifacts and installers from tags.
 

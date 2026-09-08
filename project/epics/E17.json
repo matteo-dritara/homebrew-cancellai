@@ -34,7 +34,7 @@
     {
       "id": "E17-S02",
       "title": "Automated multi-target build",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Use a release toolchain such as dist/cargo-dist or equivalent to produce macOS/Linux/Windows artifacts and installers from tags.",
       "change_risk": "CR2",
       "dependencies": [
