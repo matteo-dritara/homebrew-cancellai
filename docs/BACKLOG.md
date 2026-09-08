@@ -2373,7 +2373,7 @@ Make tagged-release verification capable of evaluating history-backed provenance
 
 ### E23-S01 - Fetch release provenance history before platform verification
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E22-S01 | **Safety obligations:** SI-019
+**Status:** `in_progress` | **Change Risk:** `CR4` | **Dependencies:** E22-S01 | **Safety obligations:** SI-019
 
 **Outcome.** Repair release.yml so the tagged checkout contains the commit history required by scripts/check_platforms.py to verify each platform's cited verified_commit is an ancestor, without weakening that provenance check.
 
