@@ -90,6 +90,33 @@ downgrade to inspection-only" (SI-004).
 
 Declarative root/pattern/category knowledge. Appropriate for discovery/inventory and conservative classification.
 
+E16-S01 implements the manifest schema itself at
+`rust/crates/cancellai-provider-api/src/manifest.rs` (`ProviderManifest`, versioned via
+`schema_version`/`CURRENT_SCHEMA_VERSION`) and its filesystem-facing half at
+`manifest_provider.rs` (`ManifestProvider`, implementing [`ProviderCapabilities`](#capability-contract)
+purely from a parsed manifest and resolved root paths - no per-provider Rust code). AC1
+("manifest-only integrations cannot acquire destructive capability implicitly") is enforced by
+*shape*: the schema has no field anywhere - root, marker, or artifact pattern - that can express
+a capability claim, a trust level, or an authority ceiling, so there is no key a malicious or
+merely overbroad manifest could set to claim one; `#[serde(deny_unknown_fields)]` on every
+struct in the schema rejects an attempt to smuggle one in as an unrecognized field outright
+(AC2) rather than silently ignoring it. A manifest-driven provider computes authority through
+the identical `cancellai_safety::effective_authority`/`TrustedTier` gate (SI-021) every
+hand-written adapter uses, and defaults to `TrustedTier::untrusted()` like everything else -
+nothing about being manifest-driven, or about shipping compiled into this repository, raises
+that by itself.
+
+`ManifestProvider::capability` only ever answers `DETECT`/`FINGERPRINT_ROOT`/`INVENTORY_MAP`
+from real evidence (root fingerprinting reuses this crate's own `derive_root_confidence` - the
+identical rule Claude/Codex's adapters use, so a manifest-driven provider's confidence is not a
+second, drifting notion of "how sure are we"); every other capability
+(`SESSION_GRAPH`/`PROJECT_ATTRIBUTION`/`ACTIVITY_DETECTION`/`NATIVE_DELETE`/
+`RETENTION_CONFIG`) is unconditionally `UNSUPPORTED`, citing this section by name - those
+require real adapter code a manifest cannot supply, matching this document's own "Manifest-only"
+versus "Native adapter" distinction exactly. An unrecognized layout (no root reaches at least
+`Low` confidence) reports `UNSUPPORTED`/`LowUnknown` and stays inspection-only (SI-004), the
+same floor `RootConfidence::Unknown` maps to for a hand-written adapter.
+
 ### Native adapter
 
 Code for session graphs, activity, project attribution, structured metadata, and richer compatibility checks.

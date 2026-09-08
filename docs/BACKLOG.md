@@ -1571,7 +1571,7 @@ Scale provider coverage through manifests, native adapters, signed knowledge bun
 
 ### E16-S01 - Manifest schema v1
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E05-S01 | **Safety obligations:** SI-021
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E05-S01 | **Safety obligations:** SI-021
 
 **Outcome.** Define declarative roots/artifact patterns/capability hints that are inspection-safe by default.
 

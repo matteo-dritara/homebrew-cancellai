@@ -12,7 +12,7 @@
     {
       "id": "E16-S01",
       "title": "Manifest schema v1",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Define declarative roots/artifact patterns/capability hints that are inspection-safe by default.",
       "change_risk": "CR2",
       "dependencies": [

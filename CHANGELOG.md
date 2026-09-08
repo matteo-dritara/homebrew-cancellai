@@ -67,6 +67,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   than deciding it now. `scripts/check_repository_topology.py check` (new; `pre-commit` and CI)
   cross-checks that `Formula/cancellai.rb`, `scripts/release.py`'s `REPO` constant, and that
   document's own "current remote" claim all name the same repository.
+- Defined the provider manifest schema v1 (E16-S01, `docs/architecture/PROVIDER_MODEL.md`
+  "Manifest-only" integration level, SI-021): `rust/crates/cancellai-provider-api/src/manifest.rs`
+  (`ProviderManifest`, versioned, `#[serde(deny_unknown_fields)]` on every struct) has no field
+  anywhere that can express a capability, trust, or authority claim - a manifest can only ever
+  describe *where* provider state lives (roots) and *what kind* of thing each matched file is
+  (session/protected/cache), never claim delete capability or a trust level. `manifest_provider.rs`
+  adds `ManifestProvider`, a generic `ProviderCapabilities` implementation driven entirely by a
+  parsed manifest and resolved root paths - it answers `DETECT`/`FINGERPRINT_ROOT`/
+  `INVENTORY_MAP` from real evidence (reusing the same root-confidence rule Claude/Codex's
+  adapters use) and reports every other capability unconditionally `UNSUPPORTED`. A
+  manifest-driven provider's authority is computed through the identical
+  `cancellai_safety::TrustedTier` gate every hand-written adapter uses and defaults to
+  `TrustedTier::untrusted()`.
 
 ## [1.11.0] - 2026-09-08
 

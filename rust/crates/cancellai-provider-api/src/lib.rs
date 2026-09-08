@@ -11,17 +11,27 @@
 //! are tool-agnostic utilities every adapter needs (protected-name comparison, provider-root
 //! marker probes, root confidence vocabulary/derivation) ported from `cancellai.py`, kept here
 //! rather than duplicated per adapter crate since none carries any provider-specific knowledge
-//! of its own. The manifest model (declarative root/pattern/category knowledge,
-//! PROVIDER_MODEL.md "Manifest-only" integration level) does not exist yet and is deferred to
-//! a later E05 story.
+//! of its own. `manifest`/`manifest_provider` (E16-S01) add the manifest model PROVIDER_MODEL.md
+//! calls the "Manifest-only" integration level: declarative root/pattern/category knowledge - no
+//! code, and structurally no way to claim a capability or trust level a hand-written adapter did
+//! not also have to earn through the same `cancellai-safety::TrustedTier` gate (SI-021).
 
 pub mod capability;
+pub mod manifest;
+pub mod manifest_provider;
 pub mod protection;
 pub mod root_fingerprint;
 pub mod root_probe;
 
 pub use capability::{
     CapabilityKind, CapabilityOutcome, ProviderCapabilities, SupportState, capability_report,
+};
+pub use manifest::{
+    ArtifactCategory, ArtifactPattern, CURRENT_SCHEMA_VERSION, ManifestError, ManifestRoot, Marker,
+    MarkerProbe, ProviderManifest, parse_manifest,
+};
+pub use manifest_provider::{
+    ManifestProvider, ResolvedManifestRoot, fingerprint_manifest_root, resolve_root,
 };
 pub use protection::{ProtectionOutcome, canonical_name, protected_component};
 pub use root_fingerprint::{RootConfidence, RootFingerprint, RootOrigin, derive_root_confidence};
