@@ -17,6 +17,7 @@
 
 mod cli;
 mod documents;
+mod install_source;
 mod roots;
 mod timestamp;
 
@@ -66,7 +67,8 @@ fn run(args: &[String]) -> i32 {
         cli::Invocation::Plan(a) => cmd_read_only(a.into(), RunMode::Plan),
         cli::Invocation::Clean(a) => cmd_clean(a.into()),
         cli::Invocation::Configure(a) => cmd_configure(a.claude_retention),
-        cli::Invocation::Version => cmd_version(),
+        cli::Invocation::Version(a) => cmd_version(a.source),
+        cli::Invocation::Update(a) => cmd_update_check(a.check),
     }
 }
 
@@ -1007,7 +1009,36 @@ fn configure_claude_retention(claude_home: &Path, days: u32) -> Result<(), Confi
     Ok(())
 }
 
-fn cmd_version() -> i32 {
+/// Bare `version` output is an exact, committed golden contract
+/// (`tests/cli_behavior.rs::version_output_matches_the_exact_golden_contract`) - `--source`
+/// only ever *adds* trailing lines, it never changes the first line's shape (E17-S04).
+fn cmd_version(show_source: bool) -> i32 {
     println!("cancellai-cli {VERSION}");
+    if show_source {
+        print_install_source();
+    }
+    0
+}
+
+fn print_install_source() {
+    let source = std::env::current_exe()
+        .map(|p| install_source::detect_from_path(&p))
+        .unwrap_or(install_source::InstallSource::Unknown);
+    println!("install_source: {}", source.label());
+    println!("upgrade: {}", source.upgrade_guidance());
+}
+
+/// `update --check` (E17-S04): purely observational - reports the detected installation
+/// source and that source's own upgrade guidance, and performs no mutation. `--check` is
+/// required (not merely accepted) so a bare `update` invocation is refused rather than
+/// silently implying some future default behavior (SI-007: ambiguity never escalates).
+fn cmd_update_check(check: bool) -> i32 {
+    if !check {
+        return invalid_input(
+            "cancellai-cli update requires --check; no other update mode exists yet",
+        );
+    }
+    println!("cancellai-cli {VERSION}");
+    print_install_source();
     0
 }

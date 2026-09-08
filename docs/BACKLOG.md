@@ -1752,7 +1752,7 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 ### E17-S04 - Installation-source awareness
 
-**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E17-S02 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E17-S02 | **Safety obligations:** none
 
 **Outcome.** Record Homebrew/direct/Windows/Linux package source and route upgrade guidance through the same source.
 

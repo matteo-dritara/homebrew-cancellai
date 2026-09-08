@@ -19,7 +19,15 @@ use cancellai_policy::ToolScope;
 
 /// Every subcommand name this build recognizes as an explicit first token
 /// ([`normalize_args`]'s own contract - this is not the general clap "possible values" list).
-const COMMANDS: &[&str] = &["status", "inspect", "plan", "clean", "configure", "version"];
+const COMMANDS: &[&str] = &[
+    "status",
+    "inspect",
+    "plan",
+    "clean",
+    "configure",
+    "version",
+    "update",
+];
 /// Tokens that must reach the *top-level* parser unmodified so `cancellai-cli --help`/`-h`/
 /// `--version` show the overall command overview - matching the reference CLI's own
 /// `cancellai --help`/`cancellai --version` - rather than being folded into the injected
@@ -50,7 +58,9 @@ enum Commands {
     /// Configure Claude Code's built-in retention
     Configure(ConfigureArgs),
     /// Print the engine name and version
-    Version,
+    Version(VersionArgs),
+    /// Report installation source and source-appropriate upgrade guidance - never mutates (E17-S04)
+    Update(UpdateArgs),
 }
 
 /// Flags shared by `status`/`inspect`/`plan` - every read-only command. A flag another
@@ -97,6 +107,21 @@ pub struct ConfigureArgs {
     pub claude_retention: u32,
 }
 
+#[derive(clap::Args, Debug, Clone)]
+pub struct VersionArgs {
+    /// Also print the detected installation source and its upgrade guidance (E17-S04)
+    #[arg(long)]
+    pub source: bool,
+}
+
+#[derive(clap::Args, Debug, Clone)]
+pub struct UpdateArgs {
+    /// The only supported mode today; required so a bare `update` never implies a future
+    /// auto-update default (SI-007)
+    #[arg(long)]
+    pub check: bool,
+}
+
 #[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToolArg {
     All,
@@ -123,7 +148,8 @@ pub enum Invocation {
     Plan(ReadOnlyArgs),
     Clean(CleanArgs),
     Configure(ConfigureArgs),
-    Version,
+    Version(VersionArgs),
+    Update(UpdateArgs),
 }
 
 /// No subcommand, or a leading flag with no subcommand, always means `status` - the read-only
@@ -162,7 +188,8 @@ pub fn parse(args: &[String]) -> Invocation {
         Commands::Plan(a) => Invocation::Plan(a),
         Commands::Clean(a) => Invocation::Clean(a),
         Commands::Configure(a) => Invocation::Configure(a),
-        Commands::Version => Invocation::Version,
+        Commands::Version(a) => Invocation::Version(a),
+        Commands::Update(a) => Invocation::Update(a),
     }
 }
 

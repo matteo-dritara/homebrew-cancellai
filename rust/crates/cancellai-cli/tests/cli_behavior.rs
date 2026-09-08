@@ -374,6 +374,67 @@ fn version_rejects_unrecognized_arguments() {
     assert_eq!(output.status.code(), Some(2));
 }
 
+#[test]
+fn version_bare_output_is_byte_identical_whether_or_not_source_support_exists() {
+    // The golden contract above (`top_level_version_flag_prints_the_crate_version_and_exits_
+    // zero`) locks the exact bare-version shape; this proves --source is additive-only, never
+    // touching that first line, by checking the same exact-match contract directly against the
+    // `version` subcommand's own bare invocation (E17-S04).
+    let home = TempHome::new("version-bare-exact");
+    let output = run(&home, &["version"]);
+    assert!(output.status.success());
+    assert_eq!(
+        stdout(&output),
+        format!("cancellai-cli {}\n", env!("CARGO_PKG_VERSION"))
+    );
+}
+
+#[test]
+fn version_source_appends_install_source_without_changing_the_first_line() {
+    let home = TempHome::new("version-source");
+    let output = run(&home, &["version", "--source"]);
+    assert!(output.status.success(), "{}", stdout(&output));
+    let text = stdout(&output);
+    assert!(text.starts_with(&format!("cancellai-cli {}\n", env!("CARGO_PKG_VERSION"))));
+    assert!(text.contains("install_source:"));
+    assert!(text.contains("upgrade:"));
+}
+
+#[test]
+fn update_check_reports_version_and_install_source_and_never_mutates() {
+    let home = TempHome::new("update-check");
+    home.write_stale_claude_session("proj-a", "session-a");
+    let output = run(&home, &["update", "--check"]);
+    assert!(output.status.success(), "{}", stdout(&output));
+    let text = stdout(&output);
+    assert!(text.contains("cancellai-cli"));
+    assert!(text.contains("install_source:"));
+    assert!(text.contains("upgrade:"));
+    // CR1: observational only - the session written above must still be there.
+    assert!(
+        home.path()
+            .join(".claude/projects/proj-a/session-a.jsonl")
+            .exists()
+    );
+}
+
+#[test]
+fn bare_update_without_check_is_refused_not_silently_a_no_op() {
+    // SI-007: a bare `update` must not be accepted as if it meant something - it is refused
+    // with a clear message, not silently treated as an implicit --check.
+    let home = TempHome::new("update-bare");
+    let output = run(&home, &["update"]);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stderr(&output).contains("--check"), "{}", stderr(&output));
+}
+
+#[test]
+fn update_rejects_unrecognized_arguments() {
+    let home = TempHome::new("update-invalid");
+    let output = run(&home, &["update", "--definitely-invalid"]);
+    assert_eq!(output.status.code(), Some(2));
+}
+
 /// E06 verifier review round 1's exact reproduction: a stale session under a root supplied
 /// through `CLAUDE_CONFIG_DIR`, containing only a low-confidence `projects/` marker, must never
 /// be deleted - the Python reference refuses every custom root regardless of confidence
@@ -1055,6 +1116,7 @@ fn every_subcommand_help_matches_its_committed_golden_snapshot() {
         ("clean", "clean_help.txt"),
         ("configure", "configure_help.txt"),
         ("version", "version_help.txt"),
+        ("update", "update_help.txt"),
     ] {
         let output = run(&home, &[command, "--help"]);
         assert!(

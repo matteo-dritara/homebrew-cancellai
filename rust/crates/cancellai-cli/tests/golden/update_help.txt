@@ -1,0 +1,7 @@
+Report installation source and source-appropriate upgrade guidance - never mutates (E17-S04)
+
+Usage: cancellai-cli update [OPTIONS]
+
+Options:
+      --check  The only supported mode today; required so a bare `update` never implies a future auto-update default (SI-007)
+  -h, --help   Print help

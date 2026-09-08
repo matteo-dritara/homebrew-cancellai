@@ -26,6 +26,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `scripts/release_manifest.py` gained `generate` and `verify-checksums` subcommands for this.
   These binaries are not a shipping product yet - `cancellai-cli` stays a beta, source-built
   artifact until E06-S04's cutover gate opens.
+- Added installation-source awareness to `cancellai-cli` (E17-S04, CR1, observational only):
+  `cancellai-cli update --check` and `cancellai-cli version --source` report the installation
+  source detected from the running binary's own resolved path (`homebrew`, `windows_package`,
+  `linux_package`, `direct_download`, or `unknown`) and source-specific upgrade guidance that
+  never names a different channel than the one detected. A bare `update` (no `--check`) is
+  refused rather than silently implying a future auto-update default (SI-007); `version`'s bare
+  output is unchanged - `--source` only ever appends lines.
 
 ## [1.11.0] - 2026-09-08
 

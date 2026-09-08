@@ -78,7 +78,7 @@
     {
       "id": "E17-S04",
       "title": "Installation-source awareness",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Record Homebrew/direct/Windows/Linux package source and route upgrade guidance through the same source.",
       "change_risk": "CR1",
       "dependencies": [

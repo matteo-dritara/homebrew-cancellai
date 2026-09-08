@@ -1,6 +1,7 @@
 Print the engine name and version
 
-Usage: cancellai-cli version
+Usage: cancellai-cli version [OPTIONS]
 
 Options:
-  -h, --help  Print help
+      --source  Also print the detected installation source and its upgrade guidance (E17-S04)
+  -h, --help    Print help

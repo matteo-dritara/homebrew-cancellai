@@ -62,7 +62,22 @@ rather than falling back to an unprotected path-based write - see "Known gaps" b
 
 ### `version`
 
-Prints the engine name and version.
+Prints the engine name and version. That bare line is an exact, committed golden contract
+(`tests/cli_behavior.rs`) - `--source` (E17-S04) appends the detected installation source and
+its upgrade guidance as additional lines; it never changes the first line's shape.
+
+### `update`
+
+`--check` (required - E17-S04, CR1, purely observational): reports the version and the
+installation source detected from this binary's own resolved path (`homebrew`,
+`windows_package`, `linux_package`, `direct_download`, or `unknown`), plus upgrade guidance
+specific to that source (`rust/crates/cancellai-cli/src/install_source.rs`). Never mutates, and
+never recommends a different channel than the one it detected - a bare `update` with no
+`--check` is refused (exit 2) rather than silently implying some future default behavior
+(SI-007). No package manager currently distributes `cancellai-cli` (see `docs/RELEASING.md`'s
+"Beta side-by-side" section), so `direct_download`/`unknown` are the common results today;
+detection is path-heuristic and improves automatically once E17-S02's build pipeline artifacts
+reach a real package channel.
 
 ## Shared flags
 
