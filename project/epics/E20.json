@@ -4,10 +4,8 @@
   "phase": "P2",
   "title": "Windows and WSL Native Support",
   "objective": "Make Windows native and WSL2 first-class platform targets, once a real Windows/WSL development or CI environment is available to verify against.",
-  "dependencies": [
-    "E06"
-  ],
-  "status": "planned",
+  "dependencies": [],
+  "status": "done",
   "stories": [
     {
       "id": "E20-S01",
@@ -106,7 +104,7 @@
     {
       "id": "E20-S05",
       "title": "Windows process observation, allocated-size, atomic move, and mutation authority",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Implement the Windows capabilities named by E20-S01's original outcome text but ruled out of that story's scope by round-1 independent verifier review: native process/activity observation, allocated-size reporting (GetCompressedFileSizeW), atomic rename/move semantics, and - the largest piece - a verified no-follow, handle-relative root-establishment walk in cancellai-sealedfs (extending ADR-0020) so cancellai-safety::mutation_executor can grant real deletion authority on Windows, matching the scrutiny SI-019/E21-S07 already applies on Unix.",
       "change_risk": "CR4",
       "dependencies": [

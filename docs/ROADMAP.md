@@ -59,7 +59,7 @@ Become genuinely cross-platform and make agent state understandable by machine/p
 - **E08 - Universal Artifact and Project Intelligence** (`planned`): Map provider state into the multidimensional AgentArtifact model and evidence-based project relationships.
 - **E09 - Atlas TUI** (`planned`): Deliver the first rich exploratory interface without duplicating engine logic.
 - **E10 - Storage Accounting and Performance** (`planned`): Make storage numbers trustworthy and the scanner inexpensive enough for continuous use.
-- **E20 - Windows and WSL Native Support** (`planned`): Make Windows native and WSL2 first-class platform targets, once a real Windows/WSL development or CI environment is available to verify against.
+- **E20 - Windows and WSL Native Support** (`done`): Make Windows native and WSL2 first-class platform targets, once a real Windows/WSL development or CI environment is available to verify against.
 
 ## P3 - Govern
 
