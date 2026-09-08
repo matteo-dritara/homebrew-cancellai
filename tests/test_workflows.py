@@ -181,14 +181,28 @@ class ReleaseGateDriftTests(unittest.TestCase):
 # locally, not merely a checkout that contains the tagged ref. A shallow checkout regression
 # must be caught statically, the same way CR-TE-06 taught release_gate_drift_errors() to catch
 # a dropped gate rather than relying on a real tag push to notice.
+#
+# Round 1 independent verifier review (project/evidence/E23-VERIFIER-REVIEW.md) found a first
+# version of this check inspected only the job's first `actions/checkout` step: a workflow
+# with a full-history checkout aimed at an isolated `path:`, followed by a second, default
+# (shallow) checkout into the actual job workspace, passed while the gate still ran shallow -
+# reproducing the v1.10.0 failure under a different layout. `ReleaseHistoryMultiCheckoutTests`
+# below is that exact bypass, plus adversarial siblings, as permanent regression coverage.
 class ReleaseHistoryGateTests(unittest.TestCase):
+    def _errors_for(self, release_text: str) -> list[str]:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "release.yml"
+            path.write_text(release_text, encoding="utf-8")
+            with mock.patch.object(check_workflows, "RELEASE_WORKFLOW", path):
+                return check_workflows.release_history_gate_errors()
+
     def test_release_workflow_currently_fetches_full_history_for_the_provenance_gate(self) -> None:
         self.assertEqual(check_workflows.release_history_gate_errors(), [])
 
     def test_removing_fetch_depth_from_the_verify_checkout_is_caught(self) -> None:
         # Reproduces the exact v1.10.0 incident: the checkout step has no fetch-depth at all,
         # so GitHub Actions defaults to a shallow (depth-1) checkout.
-        release_text = (
+        errors = self._errors_for(
             "jobs:\n"
             "  verify:\n"
             "    steps:\n"
@@ -197,18 +211,13 @@ class ReleaseHistoryGateTests(unittest.TestCase):
             "          persist-credentials: false\n"
             "      - run: python3 scripts/check_platforms.py check\n"
         )
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "release.yml"
-            path.write_text(release_text, encoding="utf-8")
-            with mock.patch.object(check_workflows, "RELEASE_WORKFLOW", path):
-                errors = check_workflows.release_history_gate_errors()
         self.assertTrue(errors)
         self.assertIn("fetch-depth", "\n".join(errors))
 
     def test_a_nonzero_fetch_depth_on_the_verify_checkout_is_caught(self) -> None:
         # A finite depth (e.g. 50) is still not enough: an arbitrarily old verified_commit is
         # not bounded by any fixed depth, so only fetch-depth: 0 (full history) is accepted.
-        release_text = (
+        errors = self._errors_for(
             "jobs:\n"
             "  verify:\n"
             "    steps:\n"
@@ -218,18 +227,13 @@ class ReleaseHistoryGateTests(unittest.TestCase):
             "          fetch-depth: 50\n"
             "      - run: python3 scripts/check_platforms.py check\n"
         )
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "release.yml"
-            path.write_text(release_text, encoding="utf-8")
-            with mock.patch.object(check_workflows, "RELEASE_WORKFLOW", path):
-                errors = check_workflows.release_history_gate_errors()
         self.assertTrue(errors)
         self.assertIn("fetch-depth", "\n".join(errors))
 
     def test_a_job_without_the_provenance_gate_is_not_required_to_fetch_full_history(self) -> None:
         # A shallow checkout is fine for a job that never runs the ancestor-based check - this
         # check only protects the specific gate it exists for, not every checkout in the file.
-        release_text = (
+        errors = self._errors_for(
             "jobs:\n"
             "  verify:\n"
             "    steps:\n"
@@ -238,15 +242,10 @@ class ReleaseHistoryGateTests(unittest.TestCase):
             "          persist-credentials: false\n"
             "      - run: python3 -m pytest tests -v\n"
         )
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "release.yml"
-            path.write_text(release_text, encoding="utf-8")
-            with mock.patch.object(check_workflows, "RELEASE_WORKFLOW", path):
-                errors = check_workflows.release_history_gate_errors()
         self.assertEqual(errors, [])
 
     def test_fetch_depth_on_a_later_unrelated_step_does_not_mask_a_shallow_checkout(self) -> None:
-        release_text = (
+        errors = self._errors_for(
             "jobs:\n"
             "  verify:\n"
             "    steps:\n"
@@ -258,11 +257,137 @@ class ReleaseHistoryGateTests(unittest.TestCase):
             "        with:\n"
             "          fetch-depth: 0\n"
         )
+        self.assertTrue(errors)
+
+
+# E23-S01 round 2 repair: adversarial coverage for multi-checkout workflow layouts, the exact
+# class of bypass round 1 independent review found.
+class ReleaseHistoryMultiCheckoutTests(unittest.TestCase):
+    def _errors_for(self, release_text: str) -> list[str]:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "release.yml"
             path.write_text(release_text, encoding="utf-8")
             with mock.patch.object(check_workflows, "RELEASE_WORKFLOW", path):
-                errors = check_workflows.release_history_gate_errors()
+                return check_workflows.release_history_gate_errors()
+
+    def test_full_history_checkout_at_an_isolated_path_does_not_satisfy_a_shallow_workspace(self) -> None:
+        # The exact round-1 finding: a full-history checkout aimed at `path:
+        # full-history-copy`, then a second, default (shallow) checkout populating the actual
+        # job workspace the gate runs in.
+        errors = self._errors_for(
+            "jobs:\n"
+            "  verify:\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n"
+            "        with:\n"
+            "          fetch-depth: 0\n"
+            "          path: full-history-copy\n"
+            "      - uses: actions/checkout@deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n"
+            "      - run: python3 scripts/check_platforms.py check\n"
+        )
+        self.assertTrue(errors, "the round-1 bypass must be rejected")
+        self.assertIn("fetch-depth", "\n".join(errors))
+
+    def test_a_later_full_history_checkout_overwriting_the_workspace_root_is_accepted(self) -> None:
+        # The mirror image, and a real workflow pattern: an initial default (shallow) checkout,
+        # then a second checkout - also targeting the workspace root - with fetch-depth: 0.
+        # actions/checkout re-populates whatever directory it targets, so the *later* checkout
+        # determines the final state; this must pass.
+        errors = self._errors_for(
+            "jobs:\n"
+            "  verify:\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n"
+            "      - uses: actions/checkout@deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n"
+            "        with:\n"
+            "          fetch-depth: 0\n"
+            "      - run: python3 scripts/check_platforms.py check\n"
+        )
+        self.assertEqual(errors, [])
+
+    def test_a_later_shallow_checkout_overwriting_a_prior_full_history_root_checkout_is_caught(self) -> None:
+        # The inverse ordering of the round-1 bypass: full history at the root first, then a
+        # second, unrelated shallow checkout that also targets the root and clobbers it. Only
+        # the state at the moment the gate's own run step executes matters.
+        errors = self._errors_for(
+            "jobs:\n"
+            "  verify:\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n"
+            "        with:\n"
+            "          fetch-depth: 0\n"
+            "      - uses: actions/checkout@deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n"
+            "      - run: python3 scripts/check_platforms.py check\n"
+        )
+        self.assertTrue(errors)
+        self.assertIn("fetch-depth", "\n".join(errors))
+
+    def test_the_gate_run_in_a_working_directory_checked_out_full_is_accepted(self) -> None:
+        # A full-history checkout at a named path, with the gate step's own
+        # `working-directory:` pointed at that same path (not the default workspace root),
+        # while the workspace root itself stays shallow - the gate genuinely runs somewhere
+        # with full history, so this must pass.
+        errors = self._errors_for(
+            "jobs:\n"
+            "  verify:\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n"
+            "      - uses: actions/checkout@deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n"
+            "        with:\n"
+            "          fetch-depth: 0\n"
+            "          path: full-history-copy\n"
+            "      - run: python3 scripts/check_platforms.py check\n"
+            "        working-directory: full-history-copy\n"
+        )
+        self.assertEqual(errors, [])
+
+    def test_the_gate_run_in_a_working_directory_never_checked_out_is_caught(self) -> None:
+        # A full-history checkout exists, but the gate's own working-directory points somewhere
+        # that checkout never targeted - nothing establishes that directory has any history at
+        # all (in practice the command would not even find its target file there).
+        errors = self._errors_for(
+            "jobs:\n"
+            "  verify:\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n"
+            "        with:\n"
+            "          fetch-depth: 0\n"
+            "      - run: python3 scripts/check_platforms.py check\n"
+            "        working-directory: some-other-dir\n"
+        )
+        self.assertTrue(errors)
+        self.assertIn("fetch-depth=None", "\n".join(errors))
+
+    def test_a_leading_dot_slash_on_path_and_working_directory_are_recognized_as_the_same_dir(self) -> None:
+        # `path: ./full-history-copy` and `working-directory: full-history-copy` name the same
+        # directory; a literal-string mismatch here must not cause a false failure.
+        errors = self._errors_for(
+            "jobs:\n"
+            "  verify:\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n"
+            "      - uses: actions/checkout@deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n"
+            "        with:\n"
+            "          fetch-depth: 0\n"
+            "          path: ./full-history-copy\n"
+            "      - run: python3 scripts/check_platforms.py check\n"
+            "        working-directory: full-history-copy\n"
+        )
+        self.assertEqual(errors, [])
+
+    def test_a_path_scoped_full_history_checkout_after_the_gate_step_does_not_help(self) -> None:
+        # A full-history checkout that only happens *after* the gate already ran must not be
+        # credited retroactively.
+        errors = self._errors_for(
+            "jobs:\n"
+            "  verify:\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n"
+            "      - run: python3 scripts/check_platforms.py check\n"
+            "      - uses: actions/checkout@deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n"
+            "        with:\n"
+            "          fetch-depth: 0\n"
+        )
         self.assertTrue(errors)
 
 

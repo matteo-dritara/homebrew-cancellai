@@ -1,8 +1,11 @@
 # Evidence Packet - E23-S01
 
-- Commit/PR: pending (this work item, on top of `21d4379`)
+- Commit/PR: `dbb1ae9` (round 1), repaired on top of it (round 2, this commit)
 - Executor: Claude
-- Independent verifier: pending - E23 epic review round 1
+- Independent verifier: Codex (`/root`), round 1 - FAIL, see `project/evidence/E23-VERIFIER-REVIEW.md`.
+  Round 2 repair closed by owner decision without a second independent review round - see
+  `project/evidence/E23-S01/ROUND2-REPAIR.md`'s Process note and
+  `project/evidence/E23-S01/SAFETY_VERDICT-ROUND2.md`.
 - Change Risk: CR4
 - Spec version/commit: `project/epics/E23.json`; the incident this repairs is the `v1.10.0`
   tag's `verify` job failure (`gh run 34252829459`, 2026-09-08)
@@ -29,8 +32,8 @@ reversion to shallow fails before a tag is pushed, not after.
 | --- | --- | --- |
 | AC1 - the tagged release verify job has the complete history needed for ancestry-backed platform verification | `.github/workflows/release.yml`'s `verify` job checkout step now sets `fetch-depth: 0` (full history), with an inline comment explaining why a shallow checkout is insufficient. | PASS |
 | AC2 - `scripts/check_platforms.py check` passes at a tag that cites historical verified commits without reducing its ancestor validation | Reproduced the real failure and the fix locally against this repository (see Verification Commands below) - `git_is_ancestor()`/`validate()` in `scripts/check_platforms.py` are unchanged; only the checkout depth changed. | PASS |
-| AC3 - a regression test or workflow-policy check fails if release.yml reverts to a shallow checkout while retaining the platform provenance gate | New `release_history_gate_errors()` in `scripts/check_workflows.py`, wired into `validate_workflows()`: if the `verify` job runs `python3 scripts/check_platforms.py check`, its first `actions/checkout` step must have `fetch-depth: 0` exactly (not absent, not a finite depth, not a `fetch-depth` on some other, unrelated step). Five new tests in `tests/test_workflows.py::ReleaseHistoryGateTests` cover the current-passes case, dropped `fetch-depth`, a finite `fetch-depth`, a job without the provenance gate (must not require full history), and a `fetch-depth: 0` on a later unrelated step (must not mask the real checkout being shallow). | PASS |
-| AC4 - a replacement release tag is verified successfully before publication | Not yet satisfied by this executor change. Per `docs/development/AGENT_PROTOCOL.md`, cutting/tagging a release is tied to epic closure and happens at verification time (the same sequence `E20-S05`/`v1.10.0` just followed: independent review passes, epic closes, release is cut) - not something the executor does while a story is still `ready_for_review`. This AC is satisfied when E23 closes and a replacement tag's `verify` job (with this fix in place) is observed to pass on real CI, per the Verification Contract below. Flagged as a residual until then. | PENDING (structural - not an executor-time step) |
+| AC3 - a regression test or workflow-policy check fails if release.yml reverts to a shallow checkout while retaining the platform provenance gate | Round 1: `release_history_gate_errors()` inspected only the job's *first* checkout step; Codex's independent review found a full-history checkout at an isolated `path:` plus a second, default shallow checkout in the actual workspace bypassed it (`project/evidence/E23-VERIFIER-REVIEW.md`). Round 2 repair: `checkout_fetch_depth_for_run()` now tracks every checkout step's target directory and depth in file order and resolves the depth of the directory the gate's own `run:` step (its `working-directory:`, default workspace root) actually executes in. 13 tests total in `tests/test_workflows.py` (`ReleaseHistoryGateTests` + `ReleaseHistoryMultiCheckoutTests`), including round 1's exact bypass now caught, plus 7 additional adversarial multi-checkout/working-directory variants. Details: `project/evidence/E23-S01/ROUND2-REPAIR.md`. | PASS |
+| AC4 - a replacement release tag is verified successfully before publication | Satisfied at closure: see `project/evidence/RELEASE-v1.11.0.md` for the real tag push and its passing `verify`/`verify-rust` CI runs. | PASS (see release evidence) |
 
 ## Safety Evidence
 
@@ -81,6 +84,17 @@ $ python3 scripts/check_workflows.py check
 workflow policy OK: 6 workflow files use explicit permissions and immutable action SHAs
 ```
 
+Round 2 (repairing round 1's finding - see `project/evidence/E23-S01/ROUND2-REPAIR.md`):
+
+```text
+$ python3 -m pytest tests/test_workflows.py -v
+... 27 passed (20 above + 8 in ReleaseHistoryMultiCheckoutTests, including round 1's exact
+    bypass, now caught, and a correct multi-checkout pattern proven still accepted)
+
+$ python3 -m pytest tests -v
+... 204 passed, 28 subtests passed
+```
+
 Full local gate set (AGENTS.md "Current Python checks"):
 
 ```text
@@ -129,18 +143,23 @@ strongest evidence obtainable without pushing a tag.
   checkout.
 - `docs/development/RELEASE_GATES.md`: records the `v1.10.0` incident and the E23-S01 fix in
   the cutover-checklist narrative, alongside the earlier CR-TE-06/E22-S01 entry it continues.
-- `CHANGELOG.md`: `Unreleased` / `Fixed`.
+- `CHANGELOG.md`: `[1.11.0]` / `Fixed`.
 - `.github/workflows/release.yml`: inline comment on the `fetch-depth: 0` line.
+- `project/evidence/RELEASE-v1.11.0.md`: records why this release exists (the unpublished
+  `v1.10.0` tag) and how E23-S01 was verified (round 1 FAIL, round 2 owner-decision closure).
 
 ## Residual risks
 
-- AC4 (a replacement release tag verified successfully before publication) is open until E23
-  closes and a real tag is pushed with this fix in place - see AC4 row above. This is the
-  intended sequencing per `AGENT_PROTOCOL.md`, not a gap in this change.
+- This story's round 2 repair was self-verified by the executor under explicit owner
+  authorization to close without a second independent review round, not independently
+  re-confirmed by a separate agent - see `project/evidence/E23-S01/SAFETY_VERDICT-ROUND2.md`'s
+  "Known residual risks" and `project/evidence/E23-S01/ROUND2-REPAIR.md`'s Process note.
 - `gh_confirms_successful_run()`'s network-dependent `gh` probe in `check_platforms.py` was not
   exercised by this story (it is a soft warning, not a hard failure, and is unrelated to the
   ancestor-resolution defect this story fixes).
 
 ## Verifier verdict
 
-PENDING
+Round 1 (Codex): FAIL - see `project/evidence/E23-VERIFIER-REVIEW.md`.
+Round 2: not independently reviewed: PASS self-assessed by the executor under explicit owner
+authorization, see `project/evidence/E23-S01/SAFETY_VERDICT-ROUND2.md`.

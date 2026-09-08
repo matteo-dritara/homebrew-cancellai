@@ -2367,13 +2367,13 @@ Close the gaps between what the engineering system claims to enforce and what it
 
 ## E23 - Release gate history availability
 
-**Phase:** `P1` | **Status:** `planned` | **Epic dependencies:** E22
+**Phase:** `P1` | **Status:** `done` | **Epic dependencies:** E22
 
 Make tagged-release verification capable of evaluating history-backed provenance gates from the complete tagged repository history.
 
 ### E23-S01 - Fetch release provenance history before platform verification
 
-**Status:** `in_progress` | **Change Risk:** `CR4` | **Dependencies:** E22-S01 | **Safety obligations:** SI-019
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** E22-S01 | **Safety obligations:** SI-019
 
 **Outcome.** Repair release.yml so the tagged checkout contains the commit history required by scripts/check_platforms.py to verify each platform's cited verified_commit is an ancestor, without weakening that provenance check.
 
