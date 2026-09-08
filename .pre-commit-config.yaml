@@ -19,7 +19,7 @@ repos:
     hooks:
       - id: mypy
         args: [--strict]
-        files: ^(cancellai\.py|scripts/(gen_docs|project_os|check_docs|check_workflows|check_process|release|check_fixtures|check_schemas|characterize|diff_harness|check_rust_workspace|check_mutation_boundary|check_provider_compatibility|rust_python_parity|release_manifest|check_repository_topology)\.py)$
+        files: ^(cancellai\.py|scripts/(gen_docs|project_os|check_docs|check_workflows|check_process|release|check_fixtures|check_schemas|characterize|diff_harness|check_rust_workspace|check_mutation_boundary|check_provider_compatibility|check_provider_trust|rust_python_parity|release_manifest|check_repository_topology)\.py)$
 
   - repo: local
     hooks:
