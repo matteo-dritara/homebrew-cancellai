@@ -18,6 +18,30 @@
 //! docs because they answer the same question ("is this still the same object?") at two
 //! different layers - wire-level cross-run/cross-engine matching versus execution-time
 //! replacement detection - not because either is defined in terms of the other.
+//!
+//! ## `relationships` (E08-S01)
+//!
+//! `docs/architecture/PERSISTENCE_MODEL.md`'s Layer 1 lists "artifact identity and
+//! relationships" as a bullet distinct from "provider/project/session references" - the latter
+//! is project/session *attribution*, deferred to E08-S02 ("Attribute artifacts to projects only
+//! through explicit provider metadata, known paths, or strong observed evidence"), which this
+//! story does not implement. `relationships` here is the narrower, already-evidenced thing:
+//! artifact-to-artifact structural links. Today exactly one such link is real and observed -
+//! `cancellai_provider_codex::CodexSession::parent_session_id`, read from a rollout's own
+//! `session_meta` record - and it used to reach `cancellai-policy::retention::classify` as a
+//! `group_key` argument that was immediately discarded (`let _ = group_key;`). `RelationshipKind`
+//! carries only `ChildOf` because that is the one direction this build can name without
+//! recomputing the other: a parent knowing all its children requires scanning every sibling,
+//! which is derivable from the child links already present rather than independent information,
+//! so it is not duplicated here (same reasoning `ErrorCategory::code()` uses for its own
+//! single-source-of-truth split, `diagnostic.rs`).
+//!
+//! ## `provenance`
+//!
+//! The epic's outcome text also names "provenance" as an axis. `Evidence`/`evidence_ids`
+//! (E06-S01) already are that axis - `docs/DECISION_REGISTER.md`: "Every classified artifact has
+//! evidence provenance" - so this story does not add a second, parallel field that would only
+//! duplicate `evidence_ids`/`knowledge_confidence` without a new fact to carry.
 
 use crate::evidence::EvidenceId;
 use crate::vocabulary::{
@@ -44,6 +68,21 @@ impl std::fmt::Display for ArtifactId {
     }
 }
 
+/// What kind of structural link one [`AgentArtifact`] has to another (this module's own doc,
+/// "`relationships` (E08-S01)"). Not project/session attribution - see [`AgentArtifact::relationships`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RelationshipKind {
+    ChildOf,
+}
+
+/// One directed relationship from an [`AgentArtifact`] to another, by [`ArtifactId`].
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct ArtifactRelationship {
+    pub kind: RelationshipKind,
+    pub related_artifact_id: ArtifactId,
+}
+
 /// One observed unit of provider state, classified along every lifecycle axis
 /// (`docs/architecture/DOMAIN_MODEL.md` "AgentArtifact").
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -61,6 +100,10 @@ pub struct AgentArtifact {
     pub integrity_state: IntegrityState,
     pub authority_ceiling: AuthorityLevel,
     pub evidence_ids: Vec<EvidenceId>,
+    /// Artifact-to-artifact structural links (this module's own doc, "`relationships`
+    /// (E08-S01)"). Empty, not omitted, when none are observed - a caller must never infer
+    /// absence-of-evidence as absence-of-relationship from a missing key.
+    pub relationships: Vec<ArtifactRelationship>,
 }
 
 #[cfg(test)]
@@ -82,6 +125,7 @@ mod tests {
             integrity_state: IntegrityState::Healthy,
             authority_ceiling: AuthorityLevel::Govern,
             evidence_ids: vec![EvidenceId::new("evidence-0001")],
+            relationships: Vec::new(),
         }
     }
 
@@ -105,5 +149,27 @@ mod tests {
         ] {
             assert!(json.get(key).is_some(), "missing field {key} in {json}");
         }
+    }
+
+    #[test]
+    fn empty_relationships_serialize_as_an_empty_array_not_an_omitted_key() {
+        let json = serde_json::to_value(sample()).expect("serializable");
+        assert_eq!(json.get("relationships"), Some(&serde_json::json!([])));
+    }
+
+    #[test]
+    fn a_child_of_relationship_serializes_the_kind_and_the_related_artifact_id() {
+        let mut artifact = sample();
+        artifact.relationships.push(ArtifactRelationship {
+            kind: RelationshipKind::ChildOf,
+            related_artifact_id: ArtifactId::new("artifact-root"),
+        });
+        let json = serde_json::to_value(artifact).expect("serializable");
+        assert_eq!(
+            json.get("relationships"),
+            Some(&serde_json::json!([
+                { "kind": "child_of", "related_artifact_id": "artifact-root" }
+            ]))
+        );
     }
 }

@@ -925,7 +925,7 @@ Map provider state into the multidimensional AgentArtifact model and evidence-ba
 
 ### E08-S01 - AgentArtifact domain implementation
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E20-S03 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E20-S03 | **Safety obligations:** none
 
 **Outcome.** Implement lifecycle axes, risk, reversibility, confidence, authority ceiling, provenance, and relationships.
 

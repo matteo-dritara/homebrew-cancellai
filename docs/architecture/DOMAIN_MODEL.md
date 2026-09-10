@@ -31,6 +31,35 @@ Capabilities[]
 
 Provider adapters map raw observations into this model; they do not redefine safety semantics.
 
+### `relationships` (E08-S01)
+
+E06-S01 implemented the wire-format-minimum slice of `AgentArtifact` (`rust/crates/
+cancellai-model/src/agent_artifact.rs`) - lifecycle axes, risk, reversibility, confidence, and
+authority ceiling - deliberately not the epic's full "minimum conceptual fields" sketch above.
+E08-S01 adds the one remaining axis that has a real, already-observed producer today:
+`relationships: Vec<ArtifactRelationship>`, each a `{ kind: RelationshipKind, related_artifact_id:
+ArtifactId }` pair. `RelationshipKind` carries only `ChildOf` - the direction this build can name
+without recomputing the other, since a parent enumerating its children requires scanning every
+sibling rather than adding new information (`docs/architecture/PERSISTENCE_MODEL.md`'s Layer 1
+lists "artifact identity and relationships" as its own bullet, distinct from "provider/project/
+session references").
+
+This is deliberately narrower than project/session *attribution*, which stays out of scope here
+and is E08-S02's own outcome ("Attribute artifacts to projects only through explicit provider
+metadata, known paths, or strong observed evidence"). `relationships` is populated today from
+`cancellai_provider_codex::CodexSession::parent_session_id` (read from a rollout's own
+`session_meta` record) - data `cancellai-policy::retention::resolve_codex` already discovered but
+previously discarded before it reached `AgentArtifact` (a `group_key` argument the classifier threw
+away). An unresolved `parent_thread_id` - one that does not match any session this scan actually
+discovered - produces no relationship, the same fail-closed rule
+`cancellai_provider_codex::graph::root_id_for` already applies when treating such a session as its
+own independent root. Claude sessions are flat and always carry empty `relationships`.
+
+The epic outcome also names "provenance" as an axis. `Evidence`/`evidence_ids` (E06-S01) already
+are that axis (`docs/DECISION_REGISTER.md`: "Every classified artifact has evidence provenance"),
+so E08-S01 does not add a second, parallel field that would only duplicate `evidence_ids`/
+`knowledge_confidence` without a new fact to carry.
+
 ### FileFacts: the OBSERVE-stage evidence `AgentArtifact` is built from
 
 E04-S01 implements the `LogicalSize`/`AllocatedSize?`/"Observed timestamps"/`ArtifactType`/

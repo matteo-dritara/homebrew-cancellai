@@ -17,9 +17,9 @@
 
 use cancellai_inventory::{CompletenessReason, ScopeCompleteness, ScopeObservation};
 use cancellai_model::{
-    Action, ActionClass, ActivityState, AgentArtifact, ArtifactId, AuthorityLevel, Evidence,
-    EvidenceId, IntegrityState, KnowledgeConfidence, Precondition, ProtectionState, ResidencyState,
-    Reversibility, RiskClass,
+    Action, ActionClass, ActivityState, AgentArtifact, ArtifactId, ArtifactRelationship,
+    AuthorityLevel, Evidence, EvidenceId, IntegrityState, KnowledgeConfidence, Precondition,
+    ProtectionState, RelationshipKind, ResidencyState, Reversibility, RiskClass,
 };
 use cancellai_platform::{Clock, FsObserver, Observation, ProcessObserver, Timestamp};
 use cancellai_provider_api::ProtectionOutcome;
@@ -377,7 +377,9 @@ pub fn resolve_claude(
                     "claude:projects/{}/{}.jsonl",
                     session.project, session.session_id
                 ),
-                &session.session_id,
+                // Claude sessions are flat (no parent/child structure this build observes) -
+                // `RelationshipKind::ChildOf` only applies to Codex's `parent_session_id`, below.
+                Vec::new(),
                 is_protected,
                 is_pinned,
                 degraded_companion,
@@ -452,6 +454,16 @@ pub fn resolve_codex(
         sessions,
         observation,
     } = discover_codex_sessions(root);
+    // Looked up per member below to turn `CodexSession::parent_session_id` - already read from
+    // `session_meta`, previously discarded before reaching `AgentArtifact` - into a
+    // `RelationshipKind::ChildOf` relationship. Only a parent this scan actually discovered
+    // counts: an id that does not resolve here is exactly `group_into_subagent_trees`'
+    // `root_id_for` "parent not itself discovered => independent unit" case, so no relationship
+    // is fabricated for it either.
+    let by_session_id: std::collections::HashMap<&str, &CodexSession> = sessions
+        .iter()
+        .map(|s| (s.session_id.as_str(), s))
+        .collect();
     let trees = group_into_subagent_trees(&sessions);
     let liveness = process.observe(&["codex", "Codex"]);
     let process_active =
@@ -530,13 +542,32 @@ pub fn resolve_codex(
                 member.category.label(),
                 member.session_id
             );
+            let relationships: Vec<ArtifactRelationship> = member
+                .parent_session_id
+                .as_deref()
+                .and_then(|parent_id| by_session_id.get(parent_id))
+                .map(|parent| {
+                    let parent_identity = format!(
+                        "codex:{}/{}.jsonl",
+                        parent.category.label(),
+                        parent.session_id
+                    );
+                    vec![ArtifactRelationship {
+                        kind: RelationshipKind::ChildOf,
+                        related_artifact_id: ArtifactId::new(stable_id(
+                            "artifact",
+                            &["codex-cli", &parent_identity],
+                        )),
+                    }]
+                })
+                .unwrap_or_default();
             artifacts.push(classify(
                 "codex-cli",
                 &member.path,
                 member.size_bytes,
                 mtime.map(Timestamp),
                 &identity,
-                root_id,
+                relationships,
                 is_protected,
                 tree_pinned,
                 tree_integrity_unknown && mtime.is_none(),
@@ -603,7 +634,7 @@ fn classify(
     size_bytes: u64,
     mtime: Option<Timestamp>,
     identity_token: &str,
-    group_key: &str,
+    relationships: Vec<ArtifactRelationship>,
     is_protected: bool,
     is_pinned: bool,
     degraded_evidence: bool,
@@ -689,10 +720,10 @@ fn classify(
         integrity_state: integrity,
         authority_ceiling: ceiling,
         evidence_ids: vec![evidence_id.clone()],
+        relationships,
     };
 
     let _ = Evidence::new(evidence_id.0.clone(), evidence_description);
-    let _ = group_key;
 
     ClassifiedArtifact {
         artifact,
@@ -1062,6 +1093,132 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    /// E08-S01: `CodexSession::parent_session_id` (read from `session_meta`'s
+    /// `parent_thread_id`) must reach `AgentArtifact::relationships` as a `ChildOf` link to the
+    /// parent's own `ArtifactId` - previously this reached `classify` as a `group_key` argument
+    /// that was immediately discarded (`let _ = group_key;`), so no relationship was ever
+    /// recorded. The root itself has no parent, so its own `relationships` stays empty.
+    #[test]
+    fn a_codex_child_session_carries_a_child_of_relationship_to_its_resolved_parent() {
+        let dir = tree(Path::new(""), "codex-relationships");
+        let root_id = "55555555-5555-4555-8555-555555555555";
+        let child_id = "55555555-5555-4555-8555-555555555556";
+        let root_path = dir.join(format!("sessions/rollout-{root_id}.jsonl"));
+        let child_path = dir.join(format!("sessions/rollout-{child_id}.jsonl"));
+        std::fs::create_dir_all(root_path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &root_path,
+            format!(
+                "{}\n",
+                serde_json::json!({
+                    "type": "session_meta",
+                    "payload": {"meta": {"id": root_id}}
+                })
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            &child_path,
+            format!(
+                "{}\n",
+                serde_json::json!({
+                    "type": "session_meta",
+                    "payload": {"meta": {"id": child_id, "parent_thread_id": root_id}}
+                })
+            ),
+        )
+        .unwrap();
+        filetime_set(&root_path, 0);
+        filetime_set(&child_path, 0);
+
+        let policy = RetentionPolicy {
+            days: 7,
+            keep_latest: 2,
+            tool: ToolScope::Codex,
+            allow_running: false,
+        };
+        let fs = SystemFsObserver;
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
+        let clock = frozen_now();
+        let trust = crate::trust::builtin_provider_trust();
+
+        let resolution = resolve_codex(&dir, clear, &policy, &fs, &process, &clock, trust);
+        let by_identity: std::collections::HashMap<_, _> = resolution
+            .observed()
+            .iter()
+            .map(|c| (c.artifact.identity_token.clone(), &c.artifact))
+            .collect();
+
+        let root_identity = format!("codex:session/{root_id}.jsonl");
+        let child_identity = format!("codex:session/{child_id}.jsonl");
+        let root_artifact = by_identity[&root_identity];
+        let child_artifact = by_identity[&child_identity];
+
+        assert!(
+            root_artifact.relationships.is_empty(),
+            "the tree root has no parent, so it must carry no relationships: {:?}",
+            root_artifact.relationships
+        );
+        assert_eq!(
+            child_artifact.relationships,
+            vec![ArtifactRelationship {
+                kind: RelationshipKind::ChildOf,
+                related_artifact_id: root_artifact.artifact_id.clone(),
+            }],
+            "the child must carry exactly one ChildOf relationship to its resolved parent"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A `parent_thread_id` that does not resolve to any session this scan actually discovered
+    /// (unknown/foreign id) must not fabricate a relationship - the same fail-closed rule
+    /// `group_into_subagent_trees::root_id_for` already applies when treating such a session as
+    /// its own independent root.
+    #[test]
+    fn a_parent_thread_id_that_was_not_itself_discovered_produces_no_relationship() {
+        let dir = tree(Path::new(""), "codex-unresolved-parent");
+        let session_id = "66666666-6666-4666-8666-666666666666";
+        let session_path = dir.join(format!("sessions/rollout-{session_id}.jsonl"));
+        std::fs::create_dir_all(session_path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &session_path,
+            format!(
+                "{}\n",
+                serde_json::json!({
+                    "type": "session_meta",
+                    "payload": {"meta": {
+                        "id": session_id,
+                        "parent_thread_id": "00000000-0000-4000-8000-000000000000"
+                    }}
+                })
+            ),
+        )
+        .unwrap();
+        filetime_set(&session_path, 0);
+
+        let policy = RetentionPolicy {
+            days: 7,
+            keep_latest: 1,
+            tool: ToolScope::Codex,
+            allow_running: false,
+        };
+        let fs = SystemFsObserver;
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
+        let clock = frozen_now();
+        let trust = crate::trust::builtin_provider_trust();
+
+        let resolution = resolve_codex(&dir, clear, &policy, &fs, &process, &clock, trust);
+        assert_eq!(resolution.observed().len(), 1);
+        assert!(
+            resolution.observed()[0].artifact.relationships.is_empty(),
+            "an unresolvable parent id must not fabricate a relationship: {:?}",
+            resolution.observed()[0].artifact.relationships
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     #[cfg(unix)]
     #[test]
     fn a_degraded_companion_withholds_every_action_for_the_whole_tool_not_only_its_own_session() {
@@ -1392,7 +1549,7 @@ mod tests {
             0,
             None, // unobservable mtime
             "codex:sessions/unknown.jsonl",
-            "group",
+            Vec::new(),
             false,
             false,
             false,

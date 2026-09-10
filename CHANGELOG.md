@@ -130,6 +130,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   evidence-required rule; `project/provider_trust.json` is added to `CODEOWNERS` so only the
   project owner can merge a change to it. A community PR therefore cannot mark itself Built-in
   Verified through either a smuggled manifest field or a bare registry claim.
+- Widened `cancellai-model::AgentArtifact` with `relationships: Vec<ArtifactRelationship>`
+  (E08-S01, `docs/architecture/DOMAIN_MODEL.md` "`relationships` (E08-S01)"): each entry is a
+  `{ kind: RelationshipKind, related_artifact_id: ArtifactId }` pair, with `RelationshipKind`
+  carrying only `ChildOf` today. Populated from `cancellai_provider_codex::CodexSession::
+  parent_session_id`, which `cancellai-policy::retention::resolve_codex` was already reading but
+  discarding before this change; an unresolved `parent_thread_id` produces no relationship
+  rather than a fabricated one. Claude sessions are flat and always report an empty list. New
+  key, additive-only, in `--json` inventory output's `artifacts[]` entries.
 
 ## [1.11.0] - 2026-09-08
 

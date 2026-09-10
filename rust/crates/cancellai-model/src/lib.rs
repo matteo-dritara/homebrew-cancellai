@@ -11,7 +11,9 @@
 //! add the remaining domain types DOMAIN_MODEL.md names: `Evidence`, `AgentArtifact`, and the
 //! plan document's `Action` envelope - deferred until E06 because, per `agent_artifact`'s own
 //! module docs, classifying an artifact's `RiskClass`/lifecycle axes/`AuthorityCeiling` needs
-//! provider/policy knowledge no earlier story has.
+//! provider/policy knowledge no earlier story has. E08-S01 widens `AgentArtifact` with
+//! `relationships` (`ArtifactRelationship`/`RelationshipKind`) - see `agent_artifact`'s own
+//! module doc for why that is the one net-new axis this story adds.
 
 pub mod action;
 pub mod agent_artifact;
@@ -20,7 +22,7 @@ pub mod evidence;
 pub mod vocabulary;
 
 pub use action::{Action, ActionId, Precondition, PreconditionValue};
-pub use agent_artifact::{AgentArtifact, ArtifactId};
+pub use agent_artifact::{AgentArtifact, ArtifactId, ArtifactRelationship, RelationshipKind};
 pub use diagnostic::{Diagnostic, ErrorCategory};
 pub use evidence::{Evidence, EvidenceId};
 pub use vocabulary::{

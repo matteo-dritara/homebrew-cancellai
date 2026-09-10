@@ -12,7 +12,7 @@
     {
       "id": "E08-S01",
       "title": "AgentArtifact domain implementation",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Implement lifecycle axes, risk, reversibility, confidence, authority ceiling, provenance, and relationships.",
       "change_risk": "CR2",
       "dependencies": [
