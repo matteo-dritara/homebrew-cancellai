@@ -982,7 +982,7 @@ Map provider state into the multidimensional AgentArtifact model and evidence-ba
 
 ### E08-S04 - Multi-dimensional query API
 
-**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E08-S01 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E08-S01 | **Safety obligations:** none
 
 **Outcome.** Expose machine/project/provider/artifact/session views over one inventory model.
 

@@ -159,6 +159,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   have in `cancellai-safety::authority::lifecycle_ceiling`. `activity_signal` is `None` for
   `Active`/`Idle`/`Unknown`. New key, additive-only, in `--json` inventory output's `artifacts[]`
   entries.
+- Added `cancellai-policy::views` (E08-S04, CR1, `docs/architecture/TARGET.md` "Engine / Query
+  API (E08-S04)"): machine/project/provider/artifact/session query views over one classified
+  inventory (`by_machine`/`by_project`/`by_provider`/`by_artifact`/`by_session`), the first real
+  occupant of the target architecture's "Engine / Query API" layer. Every view groups borrowed
+  references rather than cloning artifact data; `by_project` carries an explicit `Unattributed`
+  bucket for E08-S02's `None` attribution; `by_session` groups a Codex subagent tree under its
+  `ChildOf` root (E08-S01) while Claude's flat sessions each stay their own bucket; `by_machine`
+  is a single bucket today (no multi-machine support exists yet). A generic reconciliation test
+  proves every dimension partitions its input exactly - same total count, same artifact-id set,
+  in every view.
 
 ## [1.11.0] - 2026-09-08
 

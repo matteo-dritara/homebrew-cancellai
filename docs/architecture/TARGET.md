@@ -151,6 +151,30 @@ classification that a planning-facing view cannot be handed without). See
 for the full account; this crate still has no `AgentArtifact`/classification logic of its
 own - that is CLASSIFY-stage scope (E05/E06), not this epic's.
 
+### Engine / Query API (E08-S04)
+
+The target diagram's "Engine / Query API" box, above "Inventory + Providers" and "Policy +
+Explanation," gets its first real occupant here: `cancellai-policy::views` groups one classified
+inventory (`&[ClassifiedArtifact]`) into machine/project/provider/artifact/session views. No
+dedicated crate backs the box yet - `cancellai-cli` previously assembled `status`/`inspect`
+output ad hoc, per command, with no shared grouping logic between them - so `views` lives in
+`cancellai-policy`, the crate directly beneath the box that already produces the
+`ClassifiedArtifact` collections it reads. A dedicated crate split is a future, separately
+reviewed architectural step if the query surface grows enough to need its own dependency
+boundary.
+
+Every view is a grouping of borrowed references (`Vec<&ClassifiedArtifact>`), never a clone of
+the underlying `AgentArtifact` data, mirroring `retention::ProviderPlanningView`'s own
+`'a`-borrowing pattern - and every grouping function partitions its input exactly (proven
+generically, not by per-function inspection, by `views::tests::
+every_dimension_reconciles_to_the_same_total`). `by_project` carries an explicit `Unattributed`
+bucket rather than dropping or silently merging E08-S02's `None` attribution. `by_session`
+groups a Codex subagent tree under its `RelationshipKind::ChildOf` root (E08-S01); Claude's own
+sessions are already flat, so its session view coincides with the degenerate `by_artifact` view.
+`by_machine` is honestly a single bucket today - `MachineId` does not exist on `AgentArtifact`
+because E18/E19's remote-target work has not landed, and every artifact a single-machine build
+observes is definitionally on the one machine running it.
+
 ## Core loop
 
 The engine behaves as an evidence-driven reconciliation loop:

@@ -8,16 +8,23 @@
 //! [`retention::RetentionPolicy`]/[`retention::resolve_claude`]/[`retention::resolve_codex`]/
 //! [`retention::build_actions`] - see `retention`'s own module docs for the classification
 //! rationale, and `docs/adrs/0016-rust-artifact-risk-classification.md` for the
-//! `RiskClass -> AuthorityCeiling` mapping decision this module implements.
+//! `RiskClass -> AuthorityCeiling` mapping decision this module implements. E08-S04 adds
+//! [`views`], the first occupant of `docs/architecture/TARGET.md`'s "Engine / Query API" layer -
+//! see that module's own doc for why it lives here rather than in a dedicated crate.
 
 pub mod retention;
 mod trust;
+pub mod views;
 
 pub use retention::{
     ClassifiedArtifact, ProviderPlanningView, ProviderResolution, RetentionPolicy, ToolScope,
     build_actions, resolve_claude, resolve_codex,
 };
 pub use trust::builtin_provider_trust;
+pub use views::{
+    MachineBucket, ProjectBucket, ProjectBucketKey, ProviderBucket, SessionBucket, by_artifact,
+    by_machine, by_project, by_provider, by_session,
+};
 
 use cancellai_model as _;
 use cancellai_safety as _;
