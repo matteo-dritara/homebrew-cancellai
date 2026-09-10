@@ -7,12 +7,12 @@
   "dependencies": [
     "E07"
   ],
-  "status": "planned",
+  "status": "in_progress",
   "stories": [
     {
       "id": "E08-S01",
       "title": "AgentArtifact domain implementation",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Implement lifecycle axes, risk, reversibility, confidence, authority ceiling, provenance, and relationships.",
       "change_risk": "CR2",
       "dependencies": [
@@ -33,7 +33,7 @@
     {
       "id": "E08-S02",
       "title": "Project attribution evidence model",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Attribute artifacts to projects only through explicit provider metadata, known paths, or strong observed evidence.",
       "change_risk": "CR2",
       "dependencies": [
@@ -56,7 +56,7 @@
     {
       "id": "E08-S03",
       "title": "Orphan and staleness signals",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Derive ORPHANED/STALE signals without directly implying deletion eligibility.",
       "change_risk": "CR2",
       "dependencies": [
@@ -77,7 +77,7 @@
     {
       "id": "E08-S04",
       "title": "Multi-dimensional query API",
-      "status": "ready_for_review",
+      "status": "in_progress",
       "outcome": "Expose machine/project/provider/artifact/session views over one inventory model.",
       "change_risk": "CR1",
       "dependencies": [

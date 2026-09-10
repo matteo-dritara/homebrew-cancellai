@@ -919,13 +919,13 @@ Make macOS and Linux first-class, hardened platform targets, including provider-
 
 ## E08 - Universal Artifact and Project Intelligence
 
-**Phase:** `P2` | **Status:** `planned` | **Epic dependencies:** E07
+**Phase:** `P2` | **Status:** `in_progress` | **Epic dependencies:** E07
 
 Map provider state into the multidimensional AgentArtifact model and evidence-based project relationships.
 
 ### E08-S01 - AgentArtifact domain implementation
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E20-S03 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E20-S03 | **Safety obligations:** none
 
 **Outcome.** Implement lifecycle axes, risk, reversibility, confidence, authority ceiling, provenance, and relationships.
 
@@ -944,7 +944,7 @@ Map provider state into the multidimensional AgentArtifact model and evidence-ba
 
 ### E08-S02 - Project attribution evidence model
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E08-S01 | **Safety obligations:** SI-023
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E08-S01 | **Safety obligations:** SI-023
 
 **Outcome.** Attribute artifacts to projects only through explicit provider metadata, known paths, or strong observed evidence.
 
@@ -963,7 +963,7 @@ Map provider state into the multidimensional AgentArtifact model and evidence-ba
 
 ### E08-S03 - Orphan and staleness signals
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E08-S02 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E08-S02 | **Safety obligations:** none
 
 **Outcome.** Derive ORPHANED/STALE signals without directly implying deletion eligibility.
 
@@ -982,7 +982,7 @@ Map provider state into the multidimensional AgentArtifact model and evidence-ba
 
 ### E08-S04 - Multi-dimensional query API
 
-**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E08-S01 | **Safety obligations:** none
+**Status:** `in_progress` | **Change Risk:** `CR1` | **Dependencies:** E08-S01 | **Safety obligations:** none
 
 **Outcome.** Expose machine/project/provider/artifact/session views over one inventory model.
 

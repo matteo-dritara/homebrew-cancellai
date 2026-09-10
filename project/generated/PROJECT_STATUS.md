@@ -10,9 +10,9 @@ Epics: **24** | Stories: **110**
 
 - `blocked`: 2
 - `cancelled`: 1
-- `done`: 71
+- `done`: 74
+- `in_progress`: 1
 - `planned`: 32
-- `ready_for_review`: 4
 
 ## Change risk distribution
 
@@ -28,7 +28,4 @@ Epics: **24** | Stories: **110**
 
 ## Awaiting independent review
 
-- **E08-S01** - AgentArtifact domain implementation (CR2)
-- **E08-S02** - Project attribution evidence model (CR2)
-- **E08-S03** - Orphan and staleness signals (CR2)
-- **E08-S04** - Multi-dimensional query API (CR1)
+- none
