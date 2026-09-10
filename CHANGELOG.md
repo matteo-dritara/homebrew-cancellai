@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-09-11
+
 ### Added
 
 - Defined the canonical release artifact manifest contract (E17-S01):
@@ -164,11 +166,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   inventory (`by_machine`/`by_project`/`by_provider`/`by_artifact`/`by_session`), the first real
   occupant of the target architecture's "Engine / Query API" layer. Every view groups borrowed
   references rather than cloning artifact data; `by_project` carries an explicit `Unattributed`
-  bucket for E08-S02's `None` attribution; `by_session` groups a Codex subagent tree under its
-  `ChildOf` root (E08-S01) while Claude's flat sessions each stay their own bucket; `by_machine`
-  is a single bucket today (no multi-machine support exists yet). A generic reconciliation test
-  proves every dimension partitions its input exactly - same total count, same artifact-id set,
-  in every view.
+  bucket for E08-S02's `None` attribution; `by_session` walks a full `ChildOf` chain to its
+  ultimate root (E08-S01) rather than one edge, so a transitive Codex subagent tree lands in one
+  bucket, with a target absent from the given slice or a cycle falling back to the artifact's own
+  id instead of propagating an unbacked id (round-1 independent verifier review finding, repaired
+  in the same round); Claude's flat sessions each stay their own bucket. `by_machine` is a single
+  bucket today (no multi-machine support exists yet). A generic reconciliation test compares
+  counted id occurrences, not a set, so a duplicate or dropped source row is observable in every
+  view.
 
 ## [1.11.0] - 2026-09-08
 

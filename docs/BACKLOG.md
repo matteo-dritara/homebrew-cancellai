@@ -919,7 +919,7 @@ Make macOS and Linux first-class, hardened platform targets, including provider-
 
 ## E08 - Universal Artifact and Project Intelligence
 
-**Phase:** `P2` | **Status:** `in_progress` | **Epic dependencies:** E07
+**Phase:** `P2` | **Status:** `done` | **Epic dependencies:** E07
 
 Map provider state into the multidimensional AgentArtifact model and evidence-based project relationships.
 
@@ -982,7 +982,7 @@ Map provider state into the multidimensional AgentArtifact model and evidence-ba
 
 ### E08-S04 - Multi-dimensional query API
 
-**Status:** `in_progress` | **Change Risk:** `CR1` | **Dependencies:** E08-S01 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** E08-S01 | **Safety obligations:** none
 
 **Outcome.** Expose machine/project/provider/artifact/session views over one inventory model.
 

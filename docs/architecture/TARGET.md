@@ -167,13 +167,22 @@ Every view is a grouping of borrowed references (`Vec<&ClassifiedArtifact>`), ne
 the underlying `AgentArtifact` data, mirroring `retention::ProviderPlanningView`'s own
 `'a`-borrowing pattern - and every grouping function partitions its input exactly (proven
 generically, not by per-function inspection, by `views::tests::
-every_dimension_reconciles_to_the_same_total`). `by_project` carries an explicit `Unattributed`
-bucket rather than dropping or silently merging E08-S02's `None` attribution. `by_session`
-groups a Codex subagent tree under its `RelationshipKind::ChildOf` root (E08-S01); Claude's own
-sessions are already flat, so its session view coincides with the degenerate `by_artifact` view.
-`by_machine` is honestly a single bucket today - `MachineId` does not exist on `AgentArtifact`
-because E18/E19's remote-target work has not landed, and every artifact a single-machine build
-observes is definitionally on the one machine running it.
+every_dimension_reconciles_to_the_same_total`, which compares *counted* id occurrences rather
+than a `BTreeSet`, so a duplicate or dropped source row is observable rather than silently
+absorbed into a set). `by_project` carries an explicit `Unattributed` bucket rather than
+dropping or silently merging E08-S02's `None` attribution. `by_session` walks a `RelationshipKind::
+ChildOf` chain to its ultimate root (E08-S01), not merely one edge - round-1 independent
+verifier review (`project/evidence/E08-VERIFIER-REVIEW.md`) found the first version followed
+only the immediate parent, splitting a three-level Codex tree into one bucket per generation,
+and trusted a `ChildOf` target that was absent from the given slice as the bucket key verbatim.
+`session_root` now walks the full chain against an index of the slice actually supplied,
+mirroring `cancellai_provider_codex::graph::root_id_for`'s own fail-safe rules: a target absent
+from that index, an artifact with no `ChildOf` relationship, or a cycle all isolate the walk at
+its current position rather than looping or propagating an id nothing in the view can back up.
+Claude's own sessions are already flat, so its session view coincides with the degenerate
+`by_artifact` view. `by_machine` is honestly a single bucket today - `MachineId` does not exist
+on `AgentArtifact` because E18/E19's remote-target work has not landed, and every artifact a
+single-machine build observes is definitionally on the one machine running it.
 
 ## Core loop
 

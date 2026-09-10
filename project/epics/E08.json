@@ -7,7 +7,7 @@
   "dependencies": [
     "E07"
   ],
-  "status": "in_progress",
+  "status": "done",
   "stories": [
     {
       "id": "E08-S01",
@@ -77,7 +77,7 @@
     {
       "id": "E08-S04",
       "title": "Multi-dimensional query API",
-      "status": "in_progress",
+      "status": "done",
       "outcome": "Expose machine/project/provider/artifact/session views over one inventory model.",
       "change_risk": "CR1",
       "dependencies": [
