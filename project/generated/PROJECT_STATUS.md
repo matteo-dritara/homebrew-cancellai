@@ -11,8 +11,8 @@ Epics: **24** | Stories: **110**
 - `blocked`: 2
 - `cancelled`: 1
 - `done`: 59
-- `planned`: 34
-- `ready_for_review`: 14
+- `planned`: 33
+- `ready_for_review`: 15
 
 ## Change risk distribution
 
@@ -30,6 +30,7 @@ Epics: **24** | Stories: **110**
 
 - **E08-S01** - AgentArtifact domain implementation (CR2)
 - **E08-S02** - Project attribution evidence model (CR2)
+- **E08-S03** - Orphan and staleness signals (CR2)
 - **E16-S01** - Manifest schema v1 (CR2)
 - **E16-S02** - Signed knowledge bundle format (CR4)
 - **E16-S03** - Gemini CLI adapter (CR2)

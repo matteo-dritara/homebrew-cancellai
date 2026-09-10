@@ -74,6 +74,36 @@
 //! alongside `knowledge_confidence` rather than leaving it stale at a higher value (SI-023's
 //! concrete, testable form: a degraded scan cannot leave attribution looking more certain than
 //! the artifact it is attached to).
+//!
+//! ## `activity_signal` / `ActivityState::Orphaned` (E08-S03)
+//!
+//! `ActivityState::Orphaned` existed in `vocabulary.rs` since E03-S02 but no producer ever set
+//! it - `cancellai-policy::retention::classify` only ever derived `Active`/`Idle`/`Stale`/
+//! `Unknown`. This story derives it from real, already-discovered-but-previously-unused
+//! evidence: `cancellai_provider_codex::CodexSession::parent_session_id` naming a parent that
+//! this scan did *not* discover - the same "not itself discovered" condition
+//! `group_into_subagent_trees::root_id_for` already treats as "isolate as its own root," and
+//! that E08-S01's own relationship resolution already distinguishes from "genuinely has no
+//! parent" (both collapsed to "no relationship recorded" there; this story is what tells them
+//! apart for activity purposes). Claude sessions have no parent-reference concept, so they can
+//! never be `Orphaned` by this rule.
+//!
+//! Precedence is safety-first, not merely "most specific wins": `Active` and `Unknown` are left
+//! untouched by an unresolved parent, because `cancellai_safety::authority::lifecycle_ceiling`
+//! already caps authority specifically for those two values (never for `Idle`/`Stale`) - silently
+//! overwriting either with `Orphaned` would *remove* an existing authority-capping protection,
+//! not merely relabel it (a real safety regression this story must not introduce; SI-006-style
+//! defense in depth). `Orphaned` only ever replaces what would otherwise have been `Idle` or
+//! `Stale`, which `lifecycle_ceiling` already treats identically to `Orphaned` (neither caps
+//! authority on its own today), so this story's outcome - "derive ORPHANED/STALE signals without
+//! directly implying deletion eligibility" - holds by construction: adding the signal changes no
+//! existing authority computation.
+//!
+//! `activity_signal: Option<ActivitySignal>` is this story's AC2 ("Signal explanation identifies
+//! evidence and thresholds"): `Some` exactly when `activity_state` is `Orphaned` or `Stale`,
+//! naming the concrete evidence (the unresolved parent id, or the observed mtime and cutoff)
+//! rather than leaving the reader to infer why from the bare enum value. `None` for `Active`/
+//! `Idle` (nothing notable to explain) and `Unknown` (no evidence to cite by definition).
 
 use crate::evidence::EvidenceId;
 use crate::vocabulary::{
@@ -157,6 +187,15 @@ pub struct ProjectAttribution {
     pub confidence: KnowledgeConfidence,
 }
 
+/// Explains an `ORPHANED`/`STALE` [`ActivityState`] in terms of the concrete evidence and
+/// threshold that produced it (this module's own doc, "`activity_signal` / `ActivityState::
+/// Orphaned` (E08-S03)", AC2).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct ActivitySignal {
+    pub evidence_ids: Vec<EvidenceId>,
+    pub explanation: String,
+}
+
 /// One observed unit of provider state, classified along every lifecycle axis
 /// (`docs/architecture/DOMAIN_MODEL.md` "AgentArtifact").
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -182,6 +221,9 @@ pub struct AgentArtifact {
     /// doc, "`project_attribution` (E08-S02)", SI-023). Present as an explicit `null`, not an
     /// omitted key, for the same reason `relationships` is never omitted empty.
     pub project_attribution: Option<ProjectAttribution>,
+    /// Explains an `ORPHANED`/`STALE` `activity_state`, or `None` for any other value (this
+    /// module's own doc, "`activity_signal` / `ActivityState::Orphaned` (E08-S03)").
+    pub activity_signal: Option<ActivitySignal>,
 }
 
 #[cfg(test)]
@@ -205,6 +247,7 @@ mod tests {
             evidence_ids: vec![EvidenceId::new("evidence-0001")],
             relationships: Vec::new(),
             project_attribution: None,
+            activity_signal: None,
         }
     }
 
@@ -276,6 +319,29 @@ mod tests {
                 "project_ref": "-Users-example-project",
                 "source": "explicit_provider_metadata",
                 "confidence": "verified"
+            }))
+        );
+    }
+
+    #[test]
+    fn no_activity_signal_serializes_as_an_explicit_null_not_an_omitted_key() {
+        let json = serde_json::to_value(sample()).expect("serializable");
+        assert_eq!(json.get("activity_signal"), Some(&serde_json::Value::Null));
+    }
+
+    #[test]
+    fn an_activity_signal_serializes_its_evidence_ids_and_explanation() {
+        let mut artifact = sample();
+        artifact.activity_signal = Some(ActivitySignal {
+            evidence_ids: vec![EvidenceId::new("evidence-0001")],
+            explanation: "mtime 0 is older than the 604800s retention cutoff".to_string(),
+        });
+        let json = serde_json::to_value(artifact).expect("serializable");
+        assert_eq!(
+            json.get("activity_signal"),
+            Some(&serde_json::json!({
+                "evidence_ids": ["evidence-0001"],
+                "explanation": "mtime 0 is older than the 604800s retention cutoff"
             }))
         );
     }

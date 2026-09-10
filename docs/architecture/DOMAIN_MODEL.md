@@ -91,6 +91,40 @@ it is attached to. Detecting an actual moved/deleted project (comparing a projec
 across two separate scans, or resolving whether a real path still exists) needs history the
 current reconstructible-cache Layer 1 store does not keep yet, and is out of scope here.
 
+### `activity_signal` / `ActivityState::Orphaned` (E08-S03)
+
+`ActivityState::Orphaned` (Activity axis, above) existed since E03-S02 but had no producer -
+`cancellai-policy::retention::classify` only ever derived `Active`/`Idle`/`Stale`/`Unknown`. This
+story gives it one, from real, already-discovered-but-previously-unused evidence:
+`cancellai_provider_codex::CodexSession::parent_session_id` naming a parent this scan did *not*
+discover. `group_into_subagent_trees::root_id_for` already treats that condition as "isolate as
+its own root" (a session is never assumed part of a tree it cannot verify), and E08-S01's own
+relationship resolution already collapses it to "no relationship recorded" - indistinguishable
+there from a session that genuinely has no parent at all. This story is what tells the two apart
+for activity purposes: a *declared* parent that cannot be found is a dangling reference, real
+evidence that the artifact's original context is gone, not the ordinary case of a standalone
+session. Claude sessions have no parent-reference concept and can never be `Orphaned` by this
+rule.
+
+Precedence is safety-first, not "most specific wins": an unresolved parent only ever overrides
+what would otherwise be `Idle` or `Stale`, never `Active` or `Unknown`. `cancellai_safety::
+authority::lifecycle_ceiling` already caps authority specifically for `Active`/`Unknown` (neither
+for `Idle`/`Stale`/`Orphaned`) - silently relabelling either as `Orphaned` would *remove* an
+existing authority-capping protection, not merely rename it. Because `lifecycle_ceiling` already
+treats `Idle`/`Stale`/`Orphaned` identically, adding the new value changes no existing authority
+computation - this story's own outcome, "derive ORPHANED/STALE signals without directly implying
+deletion eligibility," holds by construction rather than by a new rule this story would have to
+add and separately prove safe.
+
+`activity_signal: Option<ActivitySignal>` is this story's AC2 ("Signal explanation identifies
+evidence and thresholds"): `Some { evidence_ids, explanation }` exactly when `activity_state` is
+`Orphaned` (naming the concrete missing parent id) or `Stale` (naming the observed mtime and the
+cutoff it was compared against), `None` for `Active`/`Idle` (nothing notable to explain) and
+`Unknown` (no evidence to cite by definition). AC1 ("Orphan state and protection state coexist")
+needs no new mechanism - `ActivityState` and `ProtectionState` were already independent fields
+before this story (`cancellai-policy::retention::classify` computes them separately); a `Pinned`
+or `Protected` orphaned session is the existing architecture, exercised by a new fixture.
+
 ### FileFacts: the OBSERVE-stage evidence `AgentArtifact` is built from
 
 E04-S01 implements the `LogicalSize`/`AllocatedSize?`/"Observed timestamps"/`ArtifactType`/

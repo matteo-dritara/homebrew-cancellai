@@ -148,6 +148,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Unattributed` rather than a hollow reference. Codex sessions have no project concept this
   adapter observes and are always `Unattributed`. New key, additive-only, in `--json` inventory
   output's `artifacts[]` entries.
+- Gave `cancellai-model::ActivityState::Orphaned` its first producer, and added
+  `AgentArtifact::activity_signal: Option<ActivitySignal>` (E08-S03,
+  `docs/architecture/DOMAIN_MODEL.md` "`activity_signal` / `ActivityState::Orphaned` (E08-S03)"):
+  a Codex session declaring a `parent_session_id` this scan did not discover is now classified
+  `Orphaned` (a dangling parent reference), with `activity_signal` naming the missing parent id;
+  an ordinary `Stale` session's `activity_signal` names the observed mtime and cutoff. An
+  unresolved parent only ever overrides what would otherwise be `Idle`/`Stale` - never `Active`
+  or `Unknown` - preserving the existing authority-capping protection those two values already
+  have in `cancellai-safety::authority::lifecycle_ceiling`. `activity_signal` is `None` for
+  `Active`/`Idle`/`Unknown`. New key, additive-only, in `--json` inventory output's `artifacts[]`
+  entries.
 
 ## [1.11.0] - 2026-09-08
 

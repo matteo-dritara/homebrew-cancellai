@@ -17,10 +17,10 @@
 
 use cancellai_inventory::{CompletenessReason, ScopeCompleteness, ScopeObservation};
 use cancellai_model::{
-    Action, ActionClass, ActivityState, AgentArtifact, ArtifactId, ArtifactRelationship,
-    AttributionSource, AuthorityLevel, Evidence, EvidenceId, IntegrityState, KnowledgeConfidence,
-    Precondition, ProjectAttribution, ProjectRef, ProtectionState, RelationshipKind,
-    ResidencyState, Reversibility, RiskClass,
+    Action, ActionClass, ActivitySignal, ActivityState, AgentArtifact, ArtifactId,
+    ArtifactRelationship, AttributionSource, AuthorityLevel, Evidence, EvidenceId, IntegrityState,
+    KnowledgeConfidence, Precondition, ProjectAttribution, ProjectRef, ProtectionState,
+    RelationshipKind, ResidencyState, Reversibility, RiskClass,
 };
 use cancellai_platform::{Clock, FsObserver, Observation, ProcessObserver, Timestamp};
 use cancellai_provider_api::ProtectionOutcome;
@@ -381,6 +381,8 @@ pub fn resolve_claude(
                 // Claude sessions are flat (no parent/child structure this build observes) -
                 // `RelationshipKind::ChildOf` only applies to Codex's `parent_session_id`, below.
                 Vec::new(),
+                // No parent-reference concept - never `Orphaned` by this rule (E08-S03).
+                None,
                 Some(session.project.as_str()),
                 is_protected,
                 is_pinned,
@@ -549,10 +551,21 @@ pub fn resolve_codex(
                 member.category.label(),
                 member.session_id
             );
-            let relationships: Vec<ArtifactRelationship> = member
+            let resolved_parent = member
                 .parent_session_id
                 .as_deref()
-                .and_then(|parent_id| by_session_id.get(parent_id))
+                .and_then(|parent_id| by_session_id.get(parent_id));
+            // E08-S03: a session that *declares* a parent this scan did not discover is a
+            // dangling reference, not the same as genuinely having no parent - the distinction
+            // `relationships` collapsed away (both produce no `ArtifactRelationship`) and this
+            // story's own `ActivityState::Orphaned` needs. Carries the declared id itself so
+            // `classify`'s explanation can name it (AC2).
+            let orphan_evidence: Option<String> = match (&member.parent_session_id, resolved_parent)
+            {
+                (Some(parent_id), None) => Some(parent_id.clone()),
+                _ => None,
+            };
+            let relationships: Vec<ArtifactRelationship> = resolved_parent
                 .map(|parent| {
                     let parent_identity = format!(
                         "codex:{}/{}.jsonl",
@@ -575,6 +588,7 @@ pub fn resolve_codex(
                 mtime.map(Timestamp),
                 &identity,
                 relationships,
+                orphan_evidence,
                 // Codex has no project concept this adapter observes (grouped only by
                 // subagent tree) - always `Unattributed`, a true absence of evidence.
                 None,
@@ -651,6 +665,11 @@ fn classify(
     mtime: Option<Timestamp>,
     identity_token: &str,
     relationships: Vec<ArtifactRelationship>,
+    // `Some(parent_id)` when this session declares a parent this scan did not discover - a
+    // dangling reference, distinct from genuinely having no parent (`None`). Drives
+    // `ActivityState::Orphaned` below (E08-S03). Claude has no parent-reference concept, so its
+    // call site always passes `None`.
+    orphan_evidence: Option<String>,
     // `None` for a provider with no project concept this adapter observes (Codex); `Some(name)`
     // for Claude's own `projects/<name>/` grouping, verbatim - never a decoded, guessed
     // filesystem path (`cancellai-model::agent_artifact`'s own module doc, E08-S02). A blank/
@@ -676,6 +695,12 @@ fn classify(
     } else {
         IntegrityState::Healthy
     };
+    // E08-S03: `orphan_evidence` only ever overrides what would otherwise be `Idle`/`Stale` -
+    // never `Active` or `Unknown` - because `cancellai_safety::authority::lifecycle_ceiling`
+    // already caps authority specifically for those two values and neither of the values
+    // `Orphaned` replaces (`agent_artifact`'s own module doc has the full reasoning). This
+    // preserves this story's own outcome ("without directly implying deletion eligibility") by
+    // construction: `lifecycle_ceiling` treats `Orphaned` exactly like `Idle`/`Stale` already.
     let activity = if process_active {
         ActivityState::Active
     } else {
@@ -683,8 +708,20 @@ fn classify(
             // A tree whose effective (max-of-members) mtime is at/after the cutoff is
             // wholly protected by the reference rule above - an individually old member
             // inside it is never itself stale.
-            Some(t) if t.0 < cutoff_secs && !tree_recent => ActivityState::Stale,
-            Some(_) => ActivityState::Idle,
+            Some(t) if t.0 < cutoff_secs && !tree_recent => {
+                if orphan_evidence.is_some() {
+                    ActivityState::Orphaned
+                } else {
+                    ActivityState::Stale
+                }
+            }
+            Some(_) => {
+                if orphan_evidence.is_some() {
+                    ActivityState::Orphaned
+                } else {
+                    ActivityState::Idle
+                }
+            }
             None => ActivityState::Unknown,
         }
     };
@@ -741,6 +778,29 @@ fn classify(
             confidence,
         });
 
+    // E08-S03 AC2: name the concrete evidence and threshold behind an ORPHANED/STALE signal
+    // rather than leaving a reader to infer it from the bare `ActivityState` value. `None` for
+    // every other value - `Active`/`Idle` have nothing notable to explain, `Unknown` has no
+    // evidence to cite by definition.
+    let activity_signal = match (activity, &orphan_evidence) {
+        (ActivityState::Orphaned, Some(parent_id)) => Some(ActivitySignal {
+            evidence_ids: vec![evidence_id.clone()],
+            explanation: format!(
+                "declared parent session {parent_id} was not discovered in this scan"
+            ),
+        }),
+        (ActivityState::Stale, _) => Some(ActivitySignal {
+            evidence_ids: vec![evidence_id.clone()],
+            explanation: format!(
+                "mtime {} is older than the {cutoff_secs}s retention cutoff",
+                mtime
+                    .map(|t| t.0.to_string())
+                    .unwrap_or_else(|| "unknown".to_string())
+            ),
+        }),
+        _ => None,
+    };
+
     let artifact = AgentArtifact {
         artifact_id: ArtifactId::new(stable_id("artifact", &[provider_id, identity_token])),
         identity_token: identity_token.to_string(),
@@ -757,6 +817,7 @@ fn classify(
         evidence_ids: vec![evidence_id.clone()],
         relationships,
         project_attribution,
+        activity_signal,
     };
 
     let _ = Evidence::new(evidence_id.0.clone(), evidence_description);
@@ -1000,6 +1061,7 @@ mod tests {
             Some(Timestamp(0)),
             "claude:projects/blank/session.jsonl",
             Vec::new(),
+            None,
             Some("   "),
             false,
             false,
@@ -1374,7 +1436,10 @@ mod tests {
     /// A `parent_thread_id` that does not resolve to any session this scan actually discovered
     /// (unknown/foreign id) must not fabricate a relationship - the same fail-closed rule
     /// `group_into_subagent_trees::root_id_for` already applies when treating such a session as
-    /// its own independent root.
+    /// its own independent root. E08-S03: that same dangling reference *is* real evidence for
+    /// `ActivityState::Orphaned`, with an explanation naming the missing parent id (AC2) - and,
+    /// since this fixture's only session is also `keep_latest`-pinned, this is also the AC1
+    /// fixture proving orphan and protection state coexist rather than one masking the other.
     #[test]
     fn a_parent_thread_id_that_was_not_itself_discovered_produces_no_relationship() {
         let dir = tree(Path::new(""), "codex-unresolved-parent");
@@ -1410,10 +1475,119 @@ mod tests {
 
         let resolution = resolve_codex(&dir, clear, &policy, &fs, &process, &clock, trust);
         assert_eq!(resolution.observed().len(), 1);
+        let artifact = &resolution.observed()[0].artifact;
         assert!(
-            resolution.observed()[0].artifact.relationships.is_empty(),
+            artifact.relationships.is_empty(),
             "an unresolvable parent id must not fabricate a relationship: {:?}",
-            resolution.observed()[0].artifact.relationships
+            artifact.relationships
+        );
+        assert_eq!(
+            artifact.activity_state,
+            ActivityState::Orphaned,
+            "a dangling parent reference must derive ActivityState::Orphaned"
+        );
+        assert_eq!(
+            artifact.protection_state,
+            ProtectionState::Pinned,
+            "AC1: orphan state and protection state must coexist, not mask each other"
+        );
+        let signal = artifact
+            .activity_signal
+            .as_ref()
+            .expect("an Orphaned artifact must carry an explaining activity_signal (AC2)");
+        assert!(
+            signal
+                .explanation
+                .contains("00000000-0000-4000-8000-000000000000"),
+            "the explanation must name the concrete missing-parent evidence: {}",
+            signal.explanation
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Safety precedence (E08-S03): a currently-running process must keep `ActivityState::Active`
+    /// even when the session also declares an unresolved parent - `Active` is one of the two
+    /// values `lifecycle_ceiling` specifically caps authority for, and `Orphaned` must never be
+    /// allowed to silently remove that protection.
+    #[test]
+    fn a_running_process_keeps_active_state_even_with_an_unresolved_parent() {
+        let dir = tree(Path::new(""), "codex-orphan-but-active");
+        let session_id = "88888888-8888-4888-8888-888888888888";
+        let session_path = dir.join(format!("sessions/rollout-{session_id}.jsonl"));
+        std::fs::create_dir_all(session_path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &session_path,
+            format!(
+                "{}\n",
+                serde_json::json!({
+                    "type": "session_meta",
+                    "payload": {"meta": {
+                        "id": session_id,
+                        "parent_thread_id": "00000000-0000-4000-8000-000000000001"
+                    }}
+                })
+            ),
+        )
+        .unwrap();
+        filetime_set(&session_path, 0);
+
+        let policy = RetentionPolicy {
+            days: 7,
+            keep_latest: 0,
+            tool: ToolScope::Codex,
+            allow_running: false,
+        };
+        let fs = SystemFsObserver;
+        let process = SyntheticProcessObserver::complete(vec!["codex".to_string()]);
+        let clock = frozen_now();
+        let trust = crate::trust::builtin_provider_trust();
+
+        let resolution = resolve_codex(&dir, clear, &policy, &fs, &process, &clock, trust);
+        assert_eq!(resolution.observed().len(), 1);
+        let artifact = &resolution.observed()[0].artifact;
+        assert_eq!(
+            artifact.activity_state,
+            ActivityState::Active,
+            "a live process must keep Active, never be overridden by orphan evidence"
+        );
+        assert_eq!(artifact.activity_signal, None);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// AC2, the `STALE` half: the explanation names the observed mtime and the threshold it was
+    /// compared against, not just the bare enum value.
+    #[test]
+    fn a_stale_sessions_activity_signal_names_the_mtime_and_the_cutoff() {
+        let dir = tree(Path::new(""), "stale-signal");
+        write_claude_session(&dir, "proj-a", "11111111-1111-4111-8111-111111111111", 0);
+
+        let policy = RetentionPolicy {
+            days: 7,
+            keep_latest: 0,
+            tool: ToolScope::Claude,
+            allow_running: false,
+        };
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
+        let clock = frozen_now();
+        let trust = crate::trust::builtin_provider_trust();
+
+        let resolution = resolve_claude(&dir, clear, &policy, &process, &clock, trust);
+        assert_eq!(resolution.observed().len(), 1);
+        let artifact = &resolution.observed()[0].artifact;
+        assert_eq!(artifact.activity_state, ActivityState::Stale);
+        let signal = artifact
+            .activity_signal
+            .as_ref()
+            .expect("a Stale artifact must carry an explaining activity_signal (AC2)");
+        // frozen_now() = 10 days; days=7 => cutoff = 3 days = 259200s (matches
+        // `age_cutoff_is_a_strict_less_than_matching_the_python_reference`'s own arithmetic).
+        assert!(signal.explanation.contains('0'), "{}", signal.explanation);
+        assert!(
+            signal.explanation.contains("259200"),
+            "the explanation must name the concrete cutoff threshold actually used: {}",
+            signal.explanation
         );
 
         std::fs::remove_dir_all(&dir).ok();
@@ -1750,6 +1924,7 @@ mod tests {
             None, // unobservable mtime
             "codex:sessions/unknown.jsonl",
             Vec::new(),
+            None,
             None,
             false,
             false,

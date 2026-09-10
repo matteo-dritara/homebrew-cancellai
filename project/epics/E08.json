@@ -56,7 +56,7 @@
     {
       "id": "E08-S03",
       "title": "Orphan and staleness signals",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Derive ORPHANED/STALE signals without directly implying deletion eligibility.",
       "change_risk": "CR2",
       "dependencies": [

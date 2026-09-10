@@ -14,7 +14,8 @@
 //! provider/policy knowledge no earlier story has. E08-S01 widens `AgentArtifact` with
 //! `relationships` (`ArtifactRelationship`/`RelationshipKind`) - see `agent_artifact`'s own
 //! module doc for why that is the one net-new axis this story adds. E08-S02 further adds
-//! `project_attribution` (`ProjectAttribution`/`ProjectRef`/`AttributionSource`).
+//! `project_attribution` (`ProjectAttribution`/`ProjectRef`/`AttributionSource`). E08-S03 adds
+//! `activity_signal` (`ActivitySignal`) and gives `ActivityState::Orphaned` its first producer.
 
 pub mod action;
 pub mod agent_artifact;
@@ -24,8 +25,8 @@ pub mod vocabulary;
 
 pub use action::{Action, ActionId, Precondition, PreconditionValue};
 pub use agent_artifact::{
-    AgentArtifact, ArtifactId, ArtifactRelationship, AttributionSource, ProjectAttribution,
-    ProjectRef, RelationshipKind,
+    ActivitySignal, AgentArtifact, ArtifactId, ArtifactRelationship, AttributionSource,
+    ProjectAttribution, ProjectRef, RelationshipKind,
 };
 pub use diagnostic::{Diagnostic, ErrorCategory};
 pub use evidence::{Evidence, EvidenceId};
