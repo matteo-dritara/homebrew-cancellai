@@ -944,7 +944,7 @@ Map provider state into the multidimensional AgentArtifact model and evidence-ba
 
 ### E08-S02 - Project attribution evidence model
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E08-S01 | **Safety obligations:** SI-023
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E08-S01 | **Safety obligations:** SI-023
 
 **Outcome.** Attribute artifacts to projects only through explicit provider metadata, known paths, or strong observed evidence.
 

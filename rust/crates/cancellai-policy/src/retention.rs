@@ -18,8 +18,9 @@
 use cancellai_inventory::{CompletenessReason, ScopeCompleteness, ScopeObservation};
 use cancellai_model::{
     Action, ActionClass, ActivityState, AgentArtifact, ArtifactId, ArtifactRelationship,
-    AuthorityLevel, Evidence, EvidenceId, IntegrityState, KnowledgeConfidence, Precondition,
-    ProtectionState, RelationshipKind, ResidencyState, Reversibility, RiskClass,
+    AttributionSource, AuthorityLevel, Evidence, EvidenceId, IntegrityState, KnowledgeConfidence,
+    Precondition, ProjectAttribution, ProjectRef, ProtectionState, RelationshipKind,
+    ResidencyState, Reversibility, RiskClass,
 };
 use cancellai_platform::{Clock, FsObserver, Observation, ProcessObserver, Timestamp};
 use cancellai_provider_api::ProtectionOutcome;
@@ -380,6 +381,7 @@ pub fn resolve_claude(
                 // Claude sessions are flat (no parent/child structure this build observes) -
                 // `RelationshipKind::ChildOf` only applies to Codex's `parent_session_id`, below.
                 Vec::new(),
+                Some(session.project.as_str()),
                 is_protected,
                 is_pinned,
                 degraded_companion,
@@ -414,6 +416,11 @@ pub fn resolve_claude(
         // `Verified`, overstating what this run actually proved).
         for classified in &mut artifacts {
             classified.artifact.knowledge_confidence = KnowledgeConfidence::LowUnknown;
+            // E08-S02/SI-023: attribution confidence must never be left stale above the
+            // artifact's own downgraded confidence.
+            if let Some(attribution) = &mut classified.artifact.project_attribution {
+                attribution.confidence = KnowledgeConfidence::LowUnknown;
+            }
         }
     }
 
@@ -568,6 +575,9 @@ pub fn resolve_codex(
                 mtime.map(Timestamp),
                 &identity,
                 relationships,
+                // Codex has no project concept this adapter observes (grouped only by
+                // subagent tree) - always `Unattributed`, a true absence of evidence.
+                None,
                 is_protected,
                 tree_pinned,
                 tree_integrity_unknown && mtime.is_none(),
@@ -588,6 +598,12 @@ pub fn resolve_codex(
     if !scan_complete {
         for classified in &mut artifacts {
             classified.artifact.knowledge_confidence = KnowledgeConfidence::LowUnknown;
+            // No-op today (Codex artifacts are always `Unattributed`), kept in lockstep with
+            // `resolve_claude` so this stays correct the moment Codex gains a real attribution
+            // producer (E08-S02/SI-023).
+            if let Some(attribution) = &mut classified.artifact.project_attribution {
+                attribution.confidence = KnowledgeConfidence::LowUnknown;
+            }
         }
     }
 
@@ -635,6 +651,11 @@ fn classify(
     mtime: Option<Timestamp>,
     identity_token: &str,
     relationships: Vec<ArtifactRelationship>,
+    // `None` for a provider with no project concept this adapter observes (Codex); `Some(name)`
+    // for Claude's own `projects/<name>/` grouping, verbatim - never a decoded, guessed
+    // filesystem path (`cancellai-model::agent_artifact`'s own module doc, E08-S02). A blank/
+    // whitespace-only name is degenerate metadata and resolves to `Unattributed` below (AC1).
+    project: Option<&str>,
     is_protected: bool,
     is_pinned: bool,
     degraded_evidence: bool,
@@ -706,6 +727,20 @@ fn classify(
             .unwrap_or_else(|| "unknown".to_string())
     );
 
+    // E08-S02 AC1: degenerate (blank/whitespace-only) provider metadata names no real project,
+    // so it resolves to `Unattributed` rather than a hollow `ProjectRef`. Confidence starts
+    // equal to this artifact's own `confidence` - not an independent computation, since the same
+    // scan evidence backs both - and both are downgraded together by the caller's partial-scan
+    // handling (`agent_artifact`'s own module doc, "`project_attribution` (E08-S02)").
+    let project_attribution = project
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(|name| ProjectAttribution {
+            project_ref: ProjectRef::new(name),
+            source: AttributionSource::ExplicitProviderMetadata,
+            confidence,
+        });
+
     let artifact = AgentArtifact {
         artifact_id: ArtifactId::new(stable_id("artifact", &[provider_id, identity_token])),
         identity_token: identity_token.to_string(),
@@ -721,6 +756,7 @@ fn classify(
         authority_ceiling: ceiling,
         evidence_ids: vec![evidence_id.clone()],
         relationships,
+        project_attribution,
     };
 
     let _ = Evidence::new(evidence_id.0.clone(), evidence_description);
@@ -898,6 +934,170 @@ mod tests {
         let actions = build_actions(std::slice::from_ref(&resolution.planning_view()));
         assert_eq!(actions.len(), 1);
         assert_eq!(actions[0].action_class, ActionClass::Delete);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// E08-S02 AC2: a Claude session is attributed to its own `projects/<name>/` directory
+    /// verbatim, with `AttributionSource::ExplicitProviderMetadata` and a confidence that starts
+    /// equal to the artifact's own (this module's own doc, "`project_attribution` (E08-S02)").
+    #[test]
+    fn a_claude_session_is_attributed_to_its_project_directory_verbatim() {
+        let dir = tree(Path::new(""), "project-attribution");
+        write_claude_session(
+            &dir,
+            "-Users-example-project",
+            "11111111-1111-4111-8111-111111111111",
+            0,
+        );
+
+        let policy = RetentionPolicy {
+            days: 7,
+            keep_latest: 1,
+            tool: ToolScope::Claude,
+            allow_running: false,
+        };
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
+        let clock = frozen_now();
+        let trust = crate::trust::builtin_provider_trust();
+
+        let resolution = resolve_claude(&dir, clear, &policy, &process, &clock, trust);
+        assert_eq!(resolution.observed().len(), 1);
+        let attribution = resolution.observed()[0]
+            .artifact
+            .project_attribution
+            .as_ref()
+            .expect("a real project directory must produce an attribution, not Unattributed");
+        assert_eq!(
+            attribution.project_ref,
+            ProjectRef::new("-Users-example-project")
+        );
+        assert_eq!(
+            attribution.source,
+            AttributionSource::ExplicitProviderMetadata
+        );
+        assert_eq!(
+            attribution.confidence,
+            resolution.observed()[0].artifact.knowledge_confidence,
+            "attribution confidence must start equal to the artifact's own"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// E08-S02 AC1: degenerate provider metadata (a blank/whitespace-only project name) names no
+    /// real grouping and must resolve to `Unattributed` rather than a hollow `ProjectRef` -
+    /// tested directly against `classify` since a real filesystem directory cannot be named the
+    /// empty string (same rationale as `an_unobservable_mtime_...`'s direct-call approach).
+    #[test]
+    fn a_blank_project_name_resolves_to_unattributed_rather_than_a_hollow_project_ref() {
+        let trust = crate::trust::builtin_provider_trust();
+
+        let classified = classify(
+            "claude-code",
+            Path::new("/synthetic/session.jsonl"),
+            0,
+            Some(Timestamp(0)),
+            "claude:projects/blank/session.jsonl",
+            Vec::new(),
+            Some("   "),
+            false,
+            false,
+            false,
+            false,
+            3 * 86_400,
+            false,
+            trust,
+        );
+
+        assert_eq!(classified.artifact.project_attribution, None);
+    }
+
+    /// E08-S02/SI-023: the "moved/deleted project" fixture this codebase can actually observe
+    /// today - a scan degraded by an unreadable companion directory must not leave the
+    /// *ordinary*, perfectly-readable sessions' `project_attribution` reporting a higher
+    /// confidence than the artifact they are attached to now carries. Reuses the same fixture as
+    /// `a_degraded_companion_withholds_every_action_for_the_whole_tool_not_only_its_own_session`.
+    #[cfg(unix)]
+    #[test]
+    fn a_degraded_scan_downgrades_project_attribution_confidence_alongside_the_artifact() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tree(Path::new(""), "degraded-attribution");
+        let project = dir.join("projects/proj-d");
+        std::fs::create_dir_all(&project).unwrap();
+        let ok_session = project.join("11111111-1111-4111-8111-111111111111.jsonl");
+        std::fs::write(&ok_session, "{}").unwrap();
+        filetime_set(&ok_session, 0);
+
+        let degraded_id = "22222222-2222-4222-8222-222222222222";
+        let degraded_session = project.join(format!("{degraded_id}.jsonl"));
+        std::fs::write(&degraded_session, "{}").unwrap();
+        filetime_set(&degraded_session, 0);
+        let companion = project.join(degraded_id);
+        std::fs::create_dir_all(companion.join("tool-results")).unwrap();
+        std::fs::write(companion.join("tool-results/large.txt"), "x").unwrap();
+        std::fs::set_permissions(&companion, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+        let policy = RetentionPolicy {
+            days: 7,
+            keep_latest: 0,
+            tool: ToolScope::Claude,
+            allow_running: false,
+        };
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
+        let clock = frozen_now();
+        let trust = crate::trust::builtin_provider_trust();
+
+        let resolution = resolve_claude(&dir, clear, &policy, &process, &clock, trust);
+        std::fs::set_permissions(&companion, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        assert!(!resolution.scan_complete());
+        assert!(
+            resolution.artifacts.iter().all(|c| {
+                c.artifact
+                    .project_attribution
+                    .as_ref()
+                    .is_some_and(|a| a.confidence == KnowledgeConfidence::LowUnknown)
+            }),
+            "every artifact from a PARTIAL/UNKNOWN scope, including the ordinary session whose \
+             own evidence was perfectly readable, must report project_attribution.confidence no \
+             higher than LOW/UNKNOWN: {:?}",
+            resolution
+                .artifacts
+                .iter()
+                .map(|c| c.artifact.project_attribution.clone())
+                .collect::<Vec<_>>()
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Codex sessions have no project concept this adapter observes at all - always
+    /// `Unattributed`, a true absence of evidence rather than a placeholder guess (this module's
+    /// own doc, "`project_attribution` (E08-S02)").
+    #[test]
+    fn a_codex_session_is_always_unattributed() {
+        let dir = tree(Path::new(""), "codex-unattributed");
+        let session_path = dir.join("sessions/rollout-77777777-7777-4777-8777-777777777777.jsonl");
+        std::fs::create_dir_all(session_path.parent().unwrap()).unwrap();
+        std::fs::write(&session_path, "{}\n").unwrap();
+        filetime_set(&session_path, 0);
+
+        let policy = RetentionPolicy {
+            days: 7,
+            keep_latest: 1,
+            tool: ToolScope::Codex,
+            allow_running: false,
+        };
+        let fs = SystemFsObserver;
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
+        let clock = frozen_now();
+        let trust = crate::trust::builtin_provider_trust();
+
+        let resolution = resolve_codex(&dir, clear, &policy, &fs, &process, &clock, trust);
+        assert_eq!(resolution.observed().len(), 1);
+        assert_eq!(resolution.observed()[0].artifact.project_attribution, None);
 
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -1550,6 +1750,7 @@ mod tests {
             None, // unobservable mtime
             "codex:sessions/unknown.jsonl",
             Vec::new(),
+            None,
             false,
             false,
             false,

@@ -42,6 +42,38 @@
 //! (E06-S01) already are that axis - `docs/DECISION_REGISTER.md`: "Every classified artifact has
 //! evidence provenance" - so this story does not add a second, parallel field that would only
 //! duplicate `evidence_ids`/`knowledge_confidence` without a new fact to carry.
+//!
+//! ## `project_attribution` (E08-S02)
+//!
+//! DOMAIN_MODEL.md's own "minimum conceptual fields" sketch lists `ProjectRef? / Unattributed`.
+//! `project_attribution: Option<ProjectAttribution>` is that field, `None` meaning `Unattributed`
+//! (SI-023: attribution uncertainty must stay explicit, never silently promoted to a stronger
+//! claim). Every `Some` records not just *which* project but *how sure* and *from what evidence
+//! category* (this story's AC2), reusing the story outcome's own three-source vocabulary
+//! (`AttributionSource`).
+//!
+//! Only `ExplicitProviderMetadata` has a real producer today: Claude's `projects/<name>/`
+//! directory name (`cancellai_provider_claude::session::ClaudeSession::project`) is the
+//! provider's own structural grouping, taken verbatim - not decoded into a claimed real
+//! filesystem path. Claude Code's actual encoding (`/` folded into `-`) is lossy and ambiguous
+//! for path segments that themselves contain `-`, so guessing a real path back out of it would
+//! risk exactly the overclaim SI-023 forbids; DOMAIN_MODEL.md's own "known paths" category
+//! (`KnownPath` below) is reserved for a *real, currently-observed* path, which no adapter
+//! resolves today, so it stays unpopulated (the same "field exists for a future real producer,
+//! not invented now" precedent `FileFacts::provider_hint`/`category_hint` already set).
+//! `ObservedEvidence` (a heuristic match weaker than either) is likewise unpopulated. A blank/
+//! whitespace-only project name - degenerate metadata that names no real grouping - resolves to
+//! `Unattributed` rather than a hollow `ProjectRef`. Codex sessions have no project concept this
+//! adapter observes at all (`cancellai-provider-codex` groups only by subagent tree, never by
+//! project), so every Codex artifact is `Unattributed` - a true absence of evidence, not a
+//! placeholder guess.
+//!
+//! `project_attribution.confidence` starts equal to the artifact's own `knowledge_confidence` -
+//! not an independent computation, since the same scan evidence backs both today - and
+//! `cancellai-policy::retention`'s existing partial-scan downgrade (SI-008/SI-009) lowers it
+//! alongside `knowledge_confidence` rather than leaving it stale at a higher value (SI-023's
+//! concrete, testable form: a degraded scan cannot leave attribution looking more certain than
+//! the artifact it is attached to).
 
 use crate::evidence::EvidenceId;
 use crate::vocabulary::{
@@ -83,6 +115,48 @@ pub struct ArtifactRelationship {
     pub related_artifact_id: ArtifactId,
 }
 
+/// An opaque, provider-assigned project grouping identity (this module's own doc,
+/// "`project_attribution` (E08-S02)"). Like [`ArtifactId`]/`provider_id`, its value is
+/// whatever the provider's own metadata names the project - not a claim that it is, or decodes
+/// to, a real filesystem path. See [`AttributionSource::KnownPath`] for that distinct, stronger
+/// claim.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(transparent)]
+pub struct ProjectRef(pub String);
+
+impl ProjectRef {
+    pub fn new(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
+}
+
+/// Which evidence category justified a [`ProjectAttribution`] (E08-S02's own outcome:
+/// "explicit provider metadata, known paths, or strong observed evidence").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AttributionSource {
+    /// The provider's own structural grouping (e.g. Claude's `projects/<name>/` directory) -
+    /// today's only populated source; see this module's own doc for why.
+    ExplicitProviderMetadata,
+    /// A real, currently-observed filesystem path backs the attribution - not merely a decoded
+    /// guess at one. No adapter resolves this today (this module's own doc).
+    KnownPath,
+    /// A heuristic match strong enough to attribute but weaker than either source above. Not
+    /// produced by any adapter today.
+    ObservedEvidence,
+}
+
+/// One artifact's project attribution: which project, from what evidence, held with how much
+/// confidence (E08-S02 AC2). `AgentArtifact::project_attribution` is `None` - `Unattributed` -
+/// rather than this type wrapping an optional/empty `ProjectRef`, so "we don't know" can never
+/// be represented as a hollow attribution record (SI-023).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct ProjectAttribution {
+    pub project_ref: ProjectRef,
+    pub source: AttributionSource,
+    pub confidence: KnowledgeConfidence,
+}
+
 /// One observed unit of provider state, classified along every lifecycle axis
 /// (`docs/architecture/DOMAIN_MODEL.md` "AgentArtifact").
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -104,6 +178,10 @@ pub struct AgentArtifact {
     /// (E08-S01)"). Empty, not omitted, when none are observed - a caller must never infer
     /// absence-of-evidence as absence-of-relationship from a missing key.
     pub relationships: Vec<ArtifactRelationship>,
+    /// Which project this artifact belongs to, or `None` for `Unattributed` (this module's own
+    /// doc, "`project_attribution` (E08-S02)", SI-023). Present as an explicit `null`, not an
+    /// omitted key, for the same reason `relationships` is never omitted empty.
+    pub project_attribution: Option<ProjectAttribution>,
 }
 
 #[cfg(test)]
@@ -126,6 +204,7 @@ mod tests {
             authority_ceiling: AuthorityLevel::Govern,
             evidence_ids: vec![EvidenceId::new("evidence-0001")],
             relationships: Vec::new(),
+            project_attribution: None,
         }
     }
 
@@ -170,6 +249,34 @@ mod tests {
             Some(&serde_json::json!([
                 { "kind": "child_of", "related_artifact_id": "artifact-root" }
             ]))
+        );
+    }
+
+    #[test]
+    fn unattributed_serializes_as_an_explicit_null_not_an_omitted_key() {
+        let json = serde_json::to_value(sample()).expect("serializable");
+        assert_eq!(
+            json.get("project_attribution"),
+            Some(&serde_json::Value::Null)
+        );
+    }
+
+    #[test]
+    fn a_project_attribution_serializes_the_ref_source_and_confidence() {
+        let mut artifact = sample();
+        artifact.project_attribution = Some(ProjectAttribution {
+            project_ref: ProjectRef::new("-Users-example-project"),
+            source: AttributionSource::ExplicitProviderMetadata,
+            confidence: KnowledgeConfidence::Verified,
+        });
+        let json = serde_json::to_value(artifact).expect("serializable");
+        assert_eq!(
+            json.get("project_attribution"),
+            Some(&serde_json::json!({
+                "project_ref": "-Users-example-project",
+                "source": "explicit_provider_metadata",
+                "confidence": "verified"
+            }))
         );
     }
 }

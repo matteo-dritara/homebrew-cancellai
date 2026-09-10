@@ -33,7 +33,7 @@
     {
       "id": "E08-S02",
       "title": "Project attribution evidence model",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Attribute artifacts to projects only through explicit provider metadata, known paths, or strong observed evidence.",
       "change_risk": "CR2",
       "dependencies": [

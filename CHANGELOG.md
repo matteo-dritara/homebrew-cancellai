@@ -138,6 +138,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   discarding before this change; an unresolved `parent_thread_id` produces no relationship
   rather than a fabricated one. Claude sessions are flat and always report an empty list. New
   key, additive-only, in `--json` inventory output's `artifacts[]` entries.
+- Widened `cancellai-model::AgentArtifact` with `project_attribution: Option<ProjectAttribution>`
+  (E08-S02, CR2, SI-023, `docs/architecture/DOMAIN_MODEL.md` "`project_attribution` (E08-S02)"):
+  `None` means `Unattributed`; a `Some` names the project (`ProjectRef`), the evidence category
+  (`AttributionSource::ExplicitProviderMetadata` today - Claude's own `projects/<name>/`
+  directory, taken verbatim, never decoded into a guessed real filesystem path), and a
+  confidence that starts equal to the artifact's own and is downgraded alongside it by the
+  existing partial-scan handling. A blank/whitespace-only project name resolves to
+  `Unattributed` rather than a hollow reference. Codex sessions have no project concept this
+  adapter observes and are always `Unattributed`. New key, additive-only, in `--json` inventory
+  output's `artifacts[]` entries.
 
 ## [1.11.0] - 2026-09-08
 

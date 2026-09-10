@@ -60,6 +60,37 @@ are that axis (`docs/DECISION_REGISTER.md`: "Every classified artifact has evide
 so E08-S01 does not add a second, parallel field that would only duplicate `evidence_ids`/
 `knowledge_confidence` without a new fact to carry.
 
+### `project_attribution` (E08-S02)
+
+`project_attribution: Option<ProjectAttribution>` is the `ProjectRef? / Unattributed` field from
+the "minimum conceptual fields" sketch above - `None` means `Unattributed` (SI-023: uncertain
+attribution stays explicit, never a stronger lifecycle/deletion claim). A `Some` records not just
+*which* project but *how sure* and *from what evidence category*
+(`{ project_ref, source: AttributionSource, confidence: KnowledgeConfidence }`), reusing this
+story's own outcome vocabulary: `AttributionSource::ExplicitProviderMetadata` (provider structural
+grouping, e.g. Claude's `projects/<name>/` directory - the only populated source today),
+`KnownPath` (a real, currently-observed filesystem path - no adapter resolves one today), and
+`ObservedEvidence` (a weaker heuristic match - also unpopulated today).
+
+Claude Code's actual directory-name encoding (`/` folded into `-`) is lossy and ambiguous for
+path segments that themselves contain `-`, so this story does not attempt to decode it back into
+a claimed real filesystem path - that would risk exactly the overclaim SI-023 forbids. The
+directory name is taken verbatim as the `ProjectRef`, which still answers "which project" (every
+session under that directory shares it) without asserting anything about where that project
+currently lives on disk. A blank/whitespace-only name is degenerate metadata naming no real
+grouping and resolves to `Unattributed` rather than a hollow `ProjectRef`. Codex sessions have no
+project concept `cancellai-provider-codex` observes at all (grouped only by subagent tree), so
+every Codex artifact is `Unattributed` - a true absence of evidence, not a placeholder guess.
+
+`project_attribution.confidence` starts equal to the artifact's own `knowledge_confidence` (the
+same scan evidence backs both today, so this is not an independent computation) and is downgraded
+alongside it by `cancellai-policy::retention`'s existing partial-scan handling (SI-008/SI-009) -
+this is this story's concrete, testable form of the "moved/deleted project" fixture category: a
+scan degraded after discovery must never leave attribution looking more certain than the artifact
+it is attached to. Detecting an actual moved/deleted project (comparing a project's location
+across two separate scans, or resolving whether a real path still exists) needs history the
+current reconstructible-cache Layer 1 store does not keep yet, and is out of scope here.
+
 ### FileFacts: the OBSERVE-stage evidence `AgentArtifact` is built from
 
 E04-S01 implements the `LogicalSize`/`AllocatedSize?`/"Observed timestamps"/`ArtifactType`/
