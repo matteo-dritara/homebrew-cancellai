@@ -105,7 +105,7 @@ Scale provider coverage and ship verifiable, signed, multi-channel releases with
 
 **Epics**
 
-- **E16 - Provider Ecosystem and Federated Knowledge** (`planned`): Scale provider coverage through manifests, native adapters, signed knowledge bundles, and explicit trust promotion.
+- **E16 - Provider Ecosystem and Federated Knowledge** (`blocked`): Scale provider coverage through manifests, native adapters, signed knowledge bundles, and explicit trust promotion.
 - **E17 - Verifiable Supply Chain and Distribution** (`planned`): Automate canonical cross-platform builds, provenance, SBOM, signatures/attestations, and channel-aware installers.
 
 ## P6 - Network & Experience

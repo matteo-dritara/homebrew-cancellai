@@ -7,12 +7,12 @@
   "dependencies": [
     "E15"
   ],
-  "status": "planned",
+  "status": "blocked",
   "stories": [
     {
       "id": "E16-S01",
       "title": "Manifest schema v1",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Define declarative roots/artifact patterns/capability hints that are inspection-safe by default.",
       "change_risk": "CR2",
       "dependencies": [
@@ -35,7 +35,7 @@
     {
       "id": "E16-S02",
       "title": "Signed knowledge bundle format",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Package provider/version/layout intelligence separately from the binary with signature/provenance verification.",
       "change_risk": "CR4",
       "dependencies": [
@@ -60,7 +60,7 @@
     {
       "id": "E16-S03",
       "title": "Gemini CLI adapter",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Add discovery/inventory first, then only capabilities supported by verified evidence.",
       "change_risk": "CR2",
       "dependencies": [
@@ -81,7 +81,7 @@
     {
       "id": "E16-S04",
       "title": "GitHub Copilot CLI adapter",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Add local session/state inventory with capability truthfulness.",
       "change_risk": "CR2",
       "dependencies": [
@@ -102,7 +102,7 @@
     {
       "id": "E16-S05",
       "title": "OpenCode adapter",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Add local state inventory and cleanup capabilities incrementally.",
       "change_risk": "CR2",
       "dependencies": [
@@ -123,7 +123,7 @@
     {
       "id": "E16-S06",
       "title": "Community provider verification workflow",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Automate manifest lint, fixture tests, trust-level labeling, and maintainer promotion criteria.",
       "change_risk": "CR3",
       "dependencies": [

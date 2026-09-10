@@ -1565,13 +1565,13 @@ Run monitoring continuously using OS-native user services while keeping all acti
 
 ## E16 - Provider Ecosystem and Federated Knowledge
 
-**Phase:** `P5` | **Status:** `planned` | **Epic dependencies:** E15
+**Phase:** `P5` | **Status:** `blocked` | **Epic dependencies:** E15
 
 Scale provider coverage through manifests, native adapters, signed knowledge bundles, and explicit trust promotion.
 
 ### E16-S01 - Manifest schema v1
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E05-S01 | **Safety obligations:** SI-021
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E05-S01 | **Safety obligations:** SI-021
 
 **Outcome.** Define declarative roots/artifact patterns/capability hints that are inspection-safe by default.
 
@@ -1590,7 +1590,7 @@ Scale provider coverage through manifests, native adapters, signed knowledge bun
 
 ### E16-S02 - Signed knowledge bundle format
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E16-S01 | **Safety obligations:** SI-022, SI-029
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** E16-S01 | **Safety obligations:** SI-022, SI-029
 
 **Outcome.** Package provider/version/layout intelligence separately from the binary with signature/provenance verification.
 
@@ -1610,7 +1610,7 @@ Scale provider coverage through manifests, native adapters, signed knowledge bun
 
 ### E16-S03 - Gemini CLI adapter
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E16-S01 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E16-S01 | **Safety obligations:** none
 
 **Outcome.** Add discovery/inventory first, then only capabilities supported by verified evidence.
 
@@ -1629,7 +1629,7 @@ Scale provider coverage through manifests, native adapters, signed knowledge bun
 
 ### E16-S04 - GitHub Copilot CLI adapter
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E16-S01 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E16-S01 | **Safety obligations:** none
 
 **Outcome.** Add local session/state inventory with capability truthfulness.
 
@@ -1648,7 +1648,7 @@ Scale provider coverage through manifests, native adapters, signed knowledge bun
 
 ### E16-S05 - OpenCode adapter
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E16-S01 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E16-S01 | **Safety obligations:** none
 
 **Outcome.** Add local state inventory and cleanup capabilities incrementally.
 
@@ -1667,7 +1667,7 @@ Scale provider coverage through manifests, native adapters, signed knowledge bun
 
 ### E16-S06 - Community provider verification workflow
 
-**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E16-S01 | **Safety obligations:** SI-021
+**Status:** `done` | **Change Risk:** `CR3` | **Dependencies:** E16-S01 | **Safety obligations:** SI-021
 
 **Outcome.** Automate manifest lint, fixture tests, trust-level labeling, and maintainer promotion criteria.
 
@@ -1693,7 +1693,7 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 ### E17-S01 - Release artifact manifest
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E02-S02 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E02-S02 | **Safety obligations:** none
 
 **Outcome.** Define canonical artifact names, checksums, target triples, channel, source SHA, build identity, and knowledge compatibility metadata.
 
@@ -1713,7 +1713,7 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 ### E17-S02 - Automated multi-target build
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E17-S01, E20-S03 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E17-S01, E20-S03 | **Safety obligations:** none
 
 **Outcome.** Use a release toolchain such as dist/cargo-dist or equivalent to produce macOS/Linux/Windows artifacts and installers from tags.
 
@@ -1732,7 +1732,7 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 ### E17-S03 - Provenance, SBOM, and signing
 
-**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E17-S02 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR3` | **Dependencies:** E17-S02 | **Safety obligations:** none
 
 **Outcome.** Generate GitHub artifact attestations/provenance, SBOM, and cryptographic verification material for canonical artifacts.
 
@@ -1752,7 +1752,7 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 ### E17-S04 - Installation-source awareness
 
-**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E17-S02 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** E17-S02 | **Safety obligations:** none
 
 **Outcome.** Record Homebrew/direct/Windows/Linux package source and route upgrade guidance through the same source.
 
@@ -1771,7 +1771,7 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 ### E17-S05 - Stable/beta/nightly authority constraints
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E17-S03 | **Safety obligations:** SI-030
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** E17-S03 | **Safety obligations:** SI-030
 
 **Outcome.** Bind release channel to maximum default authority.
 
@@ -1791,7 +1791,7 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 ### E17-S06 - Canonical source and distribution repository topology
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E17-S02 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E17-S02 | **Safety obligations:** none
 
 **Outcome.** Move the canonical cross-platform product source to a product-named repository when Rust becomes canonical while preserving homebrew-cancellai as a compatibility/distribution tap rather than forcing a premature repository migration.
 

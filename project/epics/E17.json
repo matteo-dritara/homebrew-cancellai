@@ -12,7 +12,7 @@
     {
       "id": "E17-S01",
       "title": "Release artifact manifest",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Define canonical artifact names, checksums, target triples, channel, source SHA, build identity, and knowledge compatibility metadata.",
       "change_risk": "CR2",
       "dependencies": [
@@ -34,7 +34,7 @@
     {
       "id": "E17-S02",
       "title": "Automated multi-target build",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Use a release toolchain such as dist/cargo-dist or equivalent to produce macOS/Linux/Windows artifacts and installers from tags.",
       "change_risk": "CR2",
       "dependencies": [
@@ -56,7 +56,7 @@
     {
       "id": "E17-S03",
       "title": "Provenance, SBOM, and signing",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Generate GitHub artifact attestations/provenance, SBOM, and cryptographic verification material for canonical artifacts.",
       "change_risk": "CR3",
       "dependencies": [
@@ -78,7 +78,7 @@
     {
       "id": "E17-S04",
       "title": "Installation-source awareness",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Record Homebrew/direct/Windows/Linux package source and route upgrade guidance through the same source.",
       "change_risk": "CR1",
       "dependencies": [
@@ -99,7 +99,7 @@
     {
       "id": "E17-S05",
       "title": "Stable/beta/nightly authority constraints",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Bind release channel to maximum default authority.",
       "change_risk": "CR4",
       "dependencies": [
@@ -123,7 +123,7 @@
     {
       "id": "E17-S06",
       "title": "Canonical source and distribution repository topology",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Move the canonical cross-platform product source to a product-named repository when Rust becomes canonical while preserving homebrew-cancellai as a compatibility/distribution tap rather than forcing a premature repository migration.",
       "change_risk": "CR2",
       "dependencies": [
