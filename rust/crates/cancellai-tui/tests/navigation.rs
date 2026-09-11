@@ -6,7 +6,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 
-use cancellai_tui::app::{App, Screen};
+use cancellai_tui::app::{App, PlanContext, Screen};
 use cancellai_tui::capability::{ColorSupport, TerminalCapability};
 use cancellai_tui::data::EngineData;
 use cancellai_tui::ui;
@@ -31,12 +31,12 @@ fn a_full_keyboard_session_reaches_every_screen_then_quits_cleanly() {
         terminal
             .draw(|frame| ui::draw(frame, &app, capability, &data))
             .expect("draw must not panic");
-        app.handle_key(key(KeyCode::Tab));
+        app.handle_key(key(KeyCode::Tab), PlanContext::default());
     }
     // Tab from Plan wraps back to Home rather than advancing past the last screen.
     assert_eq!(app.screen, Screen::Home);
 
-    app.handle_key(key(KeyCode::Char('q')));
+    app.handle_key(key(KeyCode::Char('q')), PlanContext::default());
     assert!(
         app.should_quit,
         "q must terminate the session from any reachable screen"
@@ -52,10 +52,10 @@ fn help_overlay_opens_and_closes_without_losing_the_current_screen() {
     let mut terminal = Terminal::new(TestBackend::new(60, 15)).expect("terminal");
     let mut app = App::new();
     let data = EngineData::default();
-    app.handle_key(key(KeyCode::Char('2')));
+    app.handle_key(key(KeyCode::Char('2')), PlanContext::default());
     assert_eq!(app.screen, Screen::Atlas);
 
-    app.handle_key(key(KeyCode::Char('?')));
+    app.handle_key(key(KeyCode::Char('?')), PlanContext::default());
     assert!(app.show_help);
     terminal
         .draw(|frame| ui::draw(frame, &app, capability, &data))
@@ -66,7 +66,7 @@ fn help_overlay_opens_and_closes_without_losing_the_current_screen() {
         "opening help must not change the active screen"
     );
 
-    app.handle_key(key(KeyCode::Char('?')));
+    app.handle_key(key(KeyCode::Char('?')), PlanContext::default());
     assert!(!app.show_help);
 }
 
@@ -91,6 +91,6 @@ fn every_ascii_no_color_frame_in_a_full_session_avoids_unicode_borders() {
             !content.contains('\u{2500}'),
             "ASCII capability must never render a Unicode border"
         );
-        app.handle_key(key(KeyCode::Tab));
+        app.handle_key(key(KeyCode::Tab), PlanContext::default());
     }
 }

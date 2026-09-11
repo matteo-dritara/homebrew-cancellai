@@ -12,7 +12,9 @@
 //! [`views`], the first occupant of `docs/architecture/TARGET.md`'s "Engine / Query API" layer -
 //! see that module's own doc for why it lives here rather than in a dedicated crate. E09-S02
 //! adds [`atlas`], the second occupant, for `cancellai-tui`'s Atlas screen. E09-S03 adds
-//! [`explain`], the third, for `cancellai-tui`'s artifact explain view.
+//! [`explain`], the third, for `cancellai-tui`'s artifact explain view. E09-S04 (Plan review)
+//! adds no new module - it reads `explain`'s own output through `cancellai-tui`'s
+//! `EngineData::plan_context`.
 
 pub mod atlas;
 pub mod explain;
@@ -21,7 +23,7 @@ mod trust;
 pub mod views;
 
 pub use atlas::{AtlasSummary, ProjectTotals, ProviderTotals, TopContributor, summarize};
-pub use cancellai_model::KnowledgeConfidence;
+pub use cancellai_model::{KnowledgeConfidence, Reversibility};
 pub use explain::{AttributedProject, ExplainView, PolicyOutcome, explain, is_low_confidence};
 pub use retention::{
     ClassifiedArtifact, ProviderPlanningView, ProviderResolution, RetentionPolicy, ToolScope,

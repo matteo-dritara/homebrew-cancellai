@@ -193,6 +193,17 @@ those two arrive with the policy and provider stories that produce them) - this 
 deliberate, documented scope boundary, not a silent omission (see `sealed_plan.rs`'s own
 module doc comment and `docs/architecture/DOMAIN_MODEL.md`'s "SealedPlan" section).
 
+E09-S04's TUI Plan review screen holds this invariant by construction, not by a runtime check:
+`cancellai-tui` depends on neither `cancellai-safety` nor `cancellai-platform` at all (its
+`Cargo.toml`'s own comment, confirmed by `scripts/check_mutation_boundary.py` finding no
+mutation-capability reference in the crate), so nothing in it can construct a `SealedPlan` or
+reach the mutation executor, whatever the user does on that screen. The screen reviews an
+engine-computed `reversibility`/policy outcome (`cancellai_policy::explain::ExplainView`, E09-
+S03) and requires a second keypress to confirm an `Irreversible` recommendation rather than
+one (AC2) - but "confirm" only reaches a terminal, non-executing review state in the TUI
+itself; real execution stays a distinct, already-existing command (`cancellai-cli clean`) this
+screen never invokes.
+
 ### SI-017 Platform-native identity semantics
 
 Unix inode/device assumptions are not applied to Windows reparse/file identity or other platforms without a verified mapping. Unsupported identity semantics lower authority.

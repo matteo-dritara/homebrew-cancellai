@@ -7,7 +7,7 @@
   "dependencies": [
     "E08"
   ],
-  "status": "in_progress",
+  "status": "ready_for_review",
   "stories": [
     {
       "id": "E09-S01",
@@ -77,7 +77,7 @@
     {
       "id": "E09-S04",
       "title": "Plan review workflow",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Allow select/inspect/plan handoff while execution remains in the shared safety engine.",
       "change_risk": "CR3",
       "dependencies": [

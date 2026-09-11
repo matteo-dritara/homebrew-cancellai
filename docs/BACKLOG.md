@@ -1001,7 +1001,7 @@ Map provider state into the multidimensional AgentArtifact model and evidence-ba
 
 ## E09 - Atlas TUI
 
-**Phase:** `P2` | **Status:** `in_progress` | **Epic dependencies:** E08
+**Phase:** `P2` | **Status:** `ready_for_review` | **Epic dependencies:** E08
 
 Deliver the first rich exploratory interface without duplicating engine logic.
 
@@ -1065,7 +1065,7 @@ Deliver the first rich exploratory interface without duplicating engine logic.
 
 ### E09-S04 - Plan review workflow
 
-**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E09-S03 | **Safety obligations:** SI-016
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E09-S03 | **Safety obligations:** SI-016
 
 **Outcome.** Allow select/inspect/plan handoff while execution remains in the shared safety engine.
 

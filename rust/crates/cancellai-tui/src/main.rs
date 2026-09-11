@@ -40,7 +40,8 @@ fn run(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> io::Result<()> {
     while !app.should_quit {
         terminal.draw(|frame| ui::draw(frame, &app, capability, &data))?;
         if let AppEvent::Key(key) = event::next(Duration::from_millis(250))? {
-            app.handle_key(key);
+            let plan_context = data.plan_context(app.explain_selected);
+            app.handle_key(key, plan_context);
         }
     }
     Ok(())

@@ -43,6 +43,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   itself, not only by color. Fixed a real rendering bug this story's own tests caught along the
   way: a long policy reason or provider summary line could be silently clipped instead of
   wrapping - both the Explain and Atlas detail panels now wrap.
+- Added the Plan review workflow to `cancellai-tui` (E09-S04, CR3, SI-016): the Plan screen
+  reviews the same selected artifact the Explain screen shows and requires stronger
+  confirmation for irreversible actions than for others - one keypress confirms a
+  non-irreversible recommendation, an irreversible one needs a second, and changing the
+  selection or leaving the screen cancels any pending or completed confirmation. This is a
+  review-only workflow: `cancellai-tui` still depends on neither `cancellai-safety` nor
+  `cancellai-platform`, so nothing in it can construct a plan or execute a mutation - the
+  confirmed state names `cancellai-cli clean` as the real, separate execution path rather than
+  claiming to execute anything itself. `docs/architecture/TARGET.md` and
+  `docs/security/SAFETY_INVARIANTS.md` (SI-016) record this scope decision explicitly.
 
 ## [1.12.0] - 2026-09-11
 

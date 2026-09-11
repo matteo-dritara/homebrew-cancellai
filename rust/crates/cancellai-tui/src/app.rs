@@ -4,10 +4,9 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-/// One destination in the shell. `Atlas` (E09-S02) and `Explain` (E09-S03) render real,
-/// engine-derived content when `data::EngineData` carries it; `Plan` remains a placeholder
-/// pending E09-S04. Nothing this story displays for a still-stubbed screen is a fabricated
-/// action.
+/// One destination in the shell. `Atlas` (E09-S02), `Explain` (E09-S03), and `Plan` (E09-S04)
+/// all render real, engine-derived content when `data::EngineData` carries it, and an explicit
+/// "nothing loaded" state otherwise - never a fabricated action standing in for missing data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
     Home,
@@ -57,7 +56,11 @@ pub const KEY_BINDINGS: &[KeyBinding] = &[
     },
     KeyBinding {
         keys: "Up / Down",
-        description: "select artifact (Explain screen)",
+        description: "select artifact (Explain / Plan screens)",
+    },
+    KeyBinding {
+        keys: "c",
+        description: "confirm plan (2 presses if irreversible)",
     },
     KeyBinding {
         keys: "?",
@@ -69,6 +72,21 @@ pub const KEY_BINDINGS: &[KeyBinding] = &[
     },
 ];
 
+/// What the Plan screen's confirmation logic needs to know about the currently selected
+/// artifact, computed by [`crate::data::EngineData::plan_context`]. Plain `bool`s only - `App`
+/// stays free of `cancellai_policy`/`cancellai_model` types by design (`lib.rs`'s own doc), the
+/// same reason `explain_selected` is reduced modulo the real list length only at render/context
+/// time, never stored here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PlanContext {
+    /// The selected artifact's policy outcome is `Recommended` - there is something to confirm
+    /// at all. `false` for `ObservationOnly`/`NotEvaluated`, or when nothing is loaded.
+    pub can_confirm: bool,
+    /// ...and its reversibility is `Irreversible` (AC2: "irreversible actions receive stronger
+    /// confirmation than quarantine").
+    pub requires_strong_confirmation: bool,
+}
+
 /// The whole shell's state. `should_quit` is checked by `main.rs`'s event loop after every
 /// [`App::handle_key`] call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,12 +94,20 @@ pub struct App {
     pub screen: Screen,
     pub show_help: bool,
     pub should_quit: bool,
-    /// Which artifact is highlighted on the Explain screen (E09-S03). Deliberately not bounded
-    /// against the real explain-list length here - `App` has no knowledge of engine data by
-    /// design (see `lib.rs`'s AC1 doc) - `ui::draw_explain_content` reduces it modulo the
-    /// actual list length at render time, so an unbounded counter still produces correct
-    /// wraparound selection without coupling this pure state machine to `data::EngineData`.
+    /// Which artifact is highlighted on the Explain/Plan screens (E09-S03/E09-S04). Deliberately
+    /// not bounded against the real explain-list length here - `App` has no knowledge of engine
+    /// data by design (see `lib.rs`'s AC1 doc) - `ui::draw_explain_content`/`draw_plan_content`
+    /// reduce it modulo the actual list length at render time, so an unbounded counter still
+    /// produces correct wraparound selection without coupling this pure state machine to
+    /// `data::EngineData`.
     pub explain_selected: usize,
+    /// E09-S04: the currently selected artifact's irreversible action has received its first
+    /// confirmation press and is waiting for the second (AC2's "stronger confirmation").
+    pub plan_confirm_armed: bool,
+    /// E09-S04: the currently selected artifact's plan has been fully confirmed - the TUI's own
+    /// terminal review state. Never itself a mutation: see `data.rs`/`ui.rs`'s own docs for why
+    /// nothing this crate does at this state actually executes anything.
+    pub plan_confirmed: bool,
 }
 
 impl Default for App {
@@ -91,6 +117,8 @@ impl Default for App {
             show_help: false,
             should_quit: false,
             explain_selected: 0,
+            plan_confirm_armed: false,
+            plan_confirmed: false,
         }
     }
 }
@@ -101,16 +129,36 @@ impl App {
     }
 
     /// Advance state for one key event. Pure: no I/O, no global state, so every branch is
-    /// directly unit-testable.
-    pub fn handle_key(&mut self, key: KeyEvent) {
+    /// directly unit-testable. `plan` is the current Plan-screen confirmation context
+    /// (`data::EngineData::plan_context`) - the only engine-derived fact this reducer ever sees,
+    /// and only as plain `bool`s (`PlanContext`'s own doc).
+    pub fn handle_key(&mut self, key: KeyEvent, plan: PlanContext) {
+        // Any key but a second `c` cancels a pending irreversible-action confirmation - one
+        // general rule rather than special-casing every other branch below.
+        if self.plan_confirm_armed && key.code != KeyCode::Char('c') {
+            self.plan_confirm_armed = false;
+        }
         match key.code {
             KeyCode::Char('q') | KeyCode::Esc => self.should_quit = true,
             KeyCode::Char('?') => self.show_help = !self.show_help,
-            KeyCode::Tab => self.go_to(self.next_screen()),
-            KeyCode::BackTab => self.go_to(self.previous_screen()),
-            KeyCode::Down => self.explain_selected = self.explain_selected.saturating_add(1),
-            KeyCode::Up => self.explain_selected = self.explain_selected.saturating_sub(1),
+            KeyCode::Tab => {
+                self.reset_plan_confirmation();
+                self.go_to(self.next_screen());
+            }
+            KeyCode::BackTab => {
+                self.reset_plan_confirmation();
+                self.go_to(self.previous_screen());
+            }
+            KeyCode::Down => {
+                self.reset_plan_confirmation();
+                self.explain_selected = self.explain_selected.saturating_add(1);
+            }
+            KeyCode::Up => {
+                self.reset_plan_confirmation();
+                self.explain_selected = self.explain_selected.saturating_sub(1);
+            }
             KeyCode::Char(digit @ '1'..='4') => {
+                self.reset_plan_confirmation();
                 let index = digit as usize - '1' as usize;
                 self.go_to(SCREENS[index]);
             }
@@ -118,10 +166,31 @@ impl App {
             // instead deliver Tab with the Shift modifier set - handle both rather than
             // silently dropping the reverse-navigation case on those terminals.
             KeyCode::Char('\t') if key.modifiers.contains(KeyModifiers::SHIFT) => {
+                self.reset_plan_confirmation();
                 self.go_to(self.previous_screen());
+            }
+            // AC2: one press confirms a non-irreversible recommendation; an irreversible one
+            // needs a second press (the first only arms it - see the disarm rule above for how
+            // any other key cancels that arming instead of letting it linger). Idempotent once
+            // confirmed: a further `c` press is a no-op rather than re-arming, so repeatedly
+            // pressing the same key never un-confirms and re-demands a second press.
+            KeyCode::Char('c') if self.screen == Screen::Plan && plan.can_confirm => {
+                if self.plan_confirmed {
+                    // already confirmed - nothing left for this key to do
+                } else if plan.requires_strong_confirmation && !self.plan_confirm_armed {
+                    self.plan_confirm_armed = true;
+                } else {
+                    self.plan_confirmed = true;
+                    self.plan_confirm_armed = false;
+                }
             }
             _ => {}
         }
+    }
+
+    fn reset_plan_confirmation(&mut self) {
+        self.plan_confirm_armed = false;
+        self.plan_confirmed = false;
     }
 
     fn go_to(&mut self, screen: Screen) {
@@ -156,12 +225,12 @@ mod tests {
     #[test]
     fn tab_cycles_forward_and_wraps() {
         let mut app = App::new();
-        app.handle_key(key(KeyCode::Tab));
+        app.handle_key(key(KeyCode::Tab), PlanContext::default());
         assert_eq!(app.screen, Screen::Atlas);
-        app.handle_key(key(KeyCode::Tab));
-        app.handle_key(key(KeyCode::Tab));
+        app.handle_key(key(KeyCode::Tab), PlanContext::default());
+        app.handle_key(key(KeyCode::Tab), PlanContext::default());
         assert_eq!(app.screen, Screen::Plan);
-        app.handle_key(key(KeyCode::Tab));
+        app.handle_key(key(KeyCode::Tab), PlanContext::default());
         assert_eq!(
             app.screen,
             Screen::Home,
@@ -172,7 +241,7 @@ mod tests {
     #[test]
     fn backtab_cycles_backward_and_wraps() {
         let mut app = App::new();
-        app.handle_key(key(KeyCode::BackTab));
+        app.handle_key(key(KeyCode::BackTab), PlanContext::default());
         assert_eq!(
             app.screen,
             Screen::Plan,
@@ -183,41 +252,44 @@ mod tests {
     #[test]
     fn shift_tab_delivered_as_char_tab_also_navigates_backward() {
         let mut app = App::new();
-        app.handle_key(KeyEvent::new(KeyCode::Char('\t'), KeyModifiers::SHIFT));
+        app.handle_key(
+            KeyEvent::new(KeyCode::Char('\t'), KeyModifiers::SHIFT),
+            PlanContext::default(),
+        );
         assert_eq!(app.screen, Screen::Plan);
     }
 
     #[test]
     fn number_keys_jump_directly_to_a_screen() {
         let mut app = App::new();
-        app.handle_key(key(KeyCode::Char('3')));
+        app.handle_key(key(KeyCode::Char('3')), PlanContext::default());
         assert_eq!(app.screen, Screen::Explain);
     }
 
     #[test]
     fn question_mark_toggles_help() {
         let mut app = App::new();
-        app.handle_key(key(KeyCode::Char('?')));
+        app.handle_key(key(KeyCode::Char('?')), PlanContext::default());
         assert!(app.show_help);
-        app.handle_key(key(KeyCode::Char('?')));
+        app.handle_key(key(KeyCode::Char('?')), PlanContext::default());
         assert!(!app.show_help);
     }
 
     #[test]
     fn q_and_esc_both_quit() {
         let mut app = App::new();
-        app.handle_key(key(KeyCode::Char('q')));
+        app.handle_key(key(KeyCode::Char('q')), PlanContext::default());
         assert!(app.should_quit);
 
         let mut app = App::new();
-        app.handle_key(key(KeyCode::Esc));
+        app.handle_key(key(KeyCode::Esc), PlanContext::default());
         assert!(app.should_quit);
     }
 
     #[test]
     fn an_unbound_key_changes_nothing() {
         let mut app = App::new();
-        app.handle_key(key(KeyCode::Char('z')));
+        app.handle_key(key(KeyCode::Char('z')), PlanContext::default());
         assert_eq!(app, App::new());
     }
 
@@ -225,17 +297,119 @@ mod tests {
     fn down_advances_and_up_retreats_the_explain_selection() {
         let mut app = App::new();
         assert_eq!(app.explain_selected, 0);
-        app.handle_key(key(KeyCode::Down));
-        app.handle_key(key(KeyCode::Down));
+        app.handle_key(key(KeyCode::Down), PlanContext::default());
+        app.handle_key(key(KeyCode::Down), PlanContext::default());
         assert_eq!(app.explain_selected, 2);
-        app.handle_key(key(KeyCode::Up));
+        app.handle_key(key(KeyCode::Up), PlanContext::default());
         assert_eq!(app.explain_selected, 1);
     }
 
     #[test]
     fn up_from_zero_saturates_rather_than_underflowing() {
         let mut app = App::new();
-        app.handle_key(key(KeyCode::Up));
+        app.handle_key(key(KeyCode::Up), PlanContext::default());
         assert_eq!(app.explain_selected, 0);
+    }
+
+    fn plan(can_confirm: bool, requires_strong_confirmation: bool) -> PlanContext {
+        PlanContext {
+            can_confirm,
+            requires_strong_confirmation,
+        }
+    }
+
+    fn on_plan_screen() -> App {
+        let mut app = App::new();
+        app.screen = Screen::Plan;
+        app
+    }
+
+    #[test]
+    fn a_single_c_press_confirms_a_non_irreversible_recommendation() {
+        let mut app = on_plan_screen();
+        app.handle_key(key(KeyCode::Char('c')), plan(true, false));
+        assert!(
+            app.plan_confirmed,
+            "AC2: quarantine-tier needs only one press"
+        );
+        assert!(!app.plan_confirm_armed);
+    }
+
+    #[test]
+    fn repeated_c_presses_after_confirmation_are_idempotent_not_a_re_arm() {
+        let mut app = on_plan_screen();
+        app.handle_key(key(KeyCode::Char('c')), plan(true, true));
+        app.handle_key(key(KeyCode::Char('c')), plan(true, true));
+        assert!(app.plan_confirmed);
+        assert!(!app.plan_confirm_armed);
+        // A third press must stay confirmed, never quietly un-confirm and re-arm.
+        app.handle_key(key(KeyCode::Char('c')), plan(true, true));
+        assert!(app.plan_confirmed);
+        assert!(!app.plan_confirm_armed);
+    }
+
+    #[test]
+    fn an_irreversible_recommendation_needs_two_c_presses() {
+        let mut app = on_plan_screen();
+        app.handle_key(key(KeyCode::Char('c')), plan(true, true));
+        assert!(
+            app.plan_confirm_armed && !app.plan_confirmed,
+            "AC2: the first press on an irreversible action must only arm, not confirm"
+        );
+        app.handle_key(key(KeyCode::Char('c')), plan(true, true));
+        assert!(app.plan_confirmed, "the second press must confirm");
+        assert!(!app.plan_confirm_armed);
+    }
+
+    #[test]
+    fn any_key_other_than_c_cancels_an_armed_irreversible_confirmation() {
+        let mut app = on_plan_screen();
+        app.handle_key(key(KeyCode::Char('c')), plan(true, true));
+        assert!(app.plan_confirm_armed);
+        app.handle_key(key(KeyCode::Char('?')), plan(true, true));
+        assert!(
+            !app.plan_confirm_armed,
+            "an unrelated key must cancel the pending confirmation, not leave it armed"
+        );
+        assert!(!app.plan_confirmed, "cancelling must never confirm");
+    }
+
+    #[test]
+    fn c_does_nothing_when_the_selection_cannot_be_confirmed() {
+        let mut app = on_plan_screen();
+        app.handle_key(key(KeyCode::Char('c')), plan(false, false));
+        assert!(!app.plan_confirmed);
+        assert!(!app.plan_confirm_armed);
+    }
+
+    #[test]
+    fn c_does_nothing_off_the_plan_screen_even_if_the_context_says_it_could_confirm() {
+        let mut app = App::new();
+        assert_eq!(app.screen, Screen::Home);
+        app.handle_key(key(KeyCode::Char('c')), plan(true, true));
+        assert!(!app.plan_confirmed);
+        assert!(!app.plan_confirm_armed);
+    }
+
+    #[test]
+    fn changing_the_selected_artifact_resets_a_pending_or_completed_confirmation() {
+        let mut app = on_plan_screen();
+        app.handle_key(key(KeyCode::Char('c')), plan(true, false));
+        assert!(app.plan_confirmed);
+        app.handle_key(key(KeyCode::Down), plan(true, false));
+        assert!(
+            !app.plan_confirmed,
+            "selecting a different artifact must never carry over a confirmation for the old one"
+        );
+    }
+
+    #[test]
+    fn leaving_the_plan_screen_resets_a_pending_or_completed_confirmation() {
+        let mut app = on_plan_screen();
+        app.handle_key(key(KeyCode::Char('c')), plan(true, true));
+        assert!(app.plan_confirm_armed);
+        app.handle_key(key(KeyCode::Tab), plan(true, true));
+        assert!(!app.plan_confirm_armed);
+        assert!(!app.plan_confirmed);
     }
 }

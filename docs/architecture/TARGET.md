@@ -323,6 +323,56 @@ real clipping bug this story's own tests caught) renders in full rather than bei
 **Residual**: live-scan wiring is deferred identically to E09-S02 - the Explain screen shows "No
 artifacts to explain yet." until a future story assembles real classified artifacts and actions.
 
+### Plan review workflow (E09-S04)
+
+**Scope decision, recorded rather than left implicit**: the outcome text ("select/inspect/plan
+handoff while execution remains in the shared safety engine") could be read as either the TUI
+itself calling `cancellai_safety::mutation_executor::execute_with_system_capabilities`, or the
+TUI only reviewing and requiring confirmation while real execution stays a separate step. The
+first would require reintroducing `cancellai-safety`/`cancellai-platform` as direct
+`cancellai-tui` dependencies - crossing the exact boundary E09-S01 established and E09-S02/S03
+preserved - for an interactive confirm-before-delete flow that cannot be validated on a real
+terminal from a development environment whose PTY does not pass data through at all (confirmed
+independently in E09-S01, not specific to this crate). The owner chose the second reading:
+review-only, no real execution, matching the "live-scan wiring is deferred" pattern already
+established and evidenced by E09-S02/E09-S03.
+
+No new `cancellai-policy` module: the Plan screen is a different view over the same
+`data.explain` list E09-S03 populates, keyed by the same `app.explain_selected` cursor Explain
+already uses - "select" is that existing single cursor, not an invented multi-select mechanism.
+
+**AC1 - TUI cannot mutate without a sealed engine plan**: holds by construction. `cancellai-tui`
+still depends on neither `cancellai-safety` nor `cancellai-platform` (`Cargo.toml`'s own
+comment, and `scripts/check_mutation_boundary.py` confirms no mutation-capability reference
+exists anywhere in the crate) - nothing in it, including this screen, is capable of
+constructing a `SealedPlan` or reaching the mutation executor. Confirming a plan here reaches
+only a terminal, non-executing review state; the confirmed message explicitly names
+`cancellai-cli clean` as the real, separate execution path, never claiming to execute itself.
+
+**AC2 - irreversible actions receive stronger confirmation than quarantine**: a new
+`EngineData::plan_context` (`data.rs`) derives `PlanContext { can_confirm,
+requires_strong_confirmation }` purely from the selected artifact's
+`ExplainView::policy_outcome`/`reversibility` - `can_confirm` only for `Recommended`,
+`requires_strong_confirmation` only when `reversibility == Reversibility::Irreversible`.
+`App::handle_key` (still a pure, engine-data-free reducer - `PlanContext` carries only `bool`s)
+implements the two-tier confirmation: one `c` press confirms a non-irreversible recommendation,
+an irreversible one arms on the first press and needs a second to confirm; any other key, or
+changing the selected artifact, or leaving the Plan screen, cancels a pending or completed
+confirmation rather than letting it linger or silently apply to a different artifact.
+
+**Verification ("TUI-to-engine semantic equivalence tests")**: two layers. `cancellai-policy`'s
+own `explain.rs` tests (E09-S03) already prove `explain()` copies `reversibility` verbatim from
+real `build_actions` output. New `cancellai-tui` tests (`data.rs`, `app.rs`, `ui.rs`) prove
+`plan_context`/the confirmation state machine are pure functions of that same
+`ExplainView`-carried data, with no separately re-derived classification - `Recommended`+
+`Irreversible` requires strong confirmation, `Recommended`+`Quarantinable` does not,
+`ObservationOnly`/`NotEvaluated` can never be confirmed regardless of reversibility, and
+selection modulo-wraps onto the real list length exactly like the Explain screen.
+
+**Documentation**: this section and `docs/security/SAFETY_INVARIANTS.md`'s SI-016 entry both
+record the "review-only, no execution" scope decision so a future reader does not have to
+re-derive it from the code.
+
 ## Core loop
 
 The engine behaves as an evidence-driven reconciliation loop:

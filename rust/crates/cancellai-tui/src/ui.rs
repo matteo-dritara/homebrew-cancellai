@@ -137,6 +137,9 @@ fn draw_content(
         Screen::Explain if !data.explain.is_empty() => {
             draw_explain_content(frame, area, border_set, capability, app, &data.explain)
         }
+        Screen::Plan if !data.explain.is_empty() => {
+            draw_plan_content(frame, area, border_set, capability, app, &data.explain)
+        }
         Screen::Home => frame.render_widget(
             Paragraph::new(
                 "Keyboard-first navigation shell for cancellAI's Atlas engine query API.",
@@ -149,7 +152,7 @@ fn draw_content(
             area,
         ),
         Screen::Plan => frame.render_widget(
-            Paragraph::new("Coming in E09-S04: plan review workflow.").block(block),
+            Paragraph::new("No artifacts loaded to plan yet.").block(block),
             area,
         ),
     }
@@ -307,6 +310,97 @@ fn confidence_span(
     }
 }
 
+/// The Plan screen (E09-S04): reviews the same selected artifact `draw_explain_content` shows,
+/// through the lens of whether it has a destructive recommendation and, if so, what confirming
+/// it requires. AC1 ("TUI cannot mutate without a sealed engine plan") holds by construction,
+/// not by anything checked here: this crate has no dependency on `cancellai-safety`/
+/// `cancellai-platform` at all (`Cargo.toml`'s own comment), so nothing in this function - or
+/// anywhere else in this crate - is capable of constructing a `SealedPlan` or calling the
+/// mutation executor. Confirming here only reaches the terminal "ready for handoff" message
+/// below; real execution stays a separate, already-existing command (`cancellai-cli clean`).
+fn draw_plan_content(
+    frame: &mut Frame,
+    area: Rect,
+    border_set: border::Set,
+    capability: TerminalCapability,
+    app: &App,
+    views: &[cancellai_policy::ExplainView],
+) {
+    use cancellai_policy::PolicyOutcome;
+
+    let selected = app.explain_selected % views.len();
+    let view = &views[selected];
+
+    let mut lines: Vec<Line> = Vec::new();
+    lines.push(Line::raw(format!(
+        "{} ({})",
+        view.artifact_id, view.provider_id
+    )));
+
+    let (action_class, reason) = match &view.policy_outcome {
+        PolicyOutcome::Recommended {
+            action_class,
+            reason,
+        } => (*action_class, *reason),
+        PolicyOutcome::ObservationOnly { .. } | PolicyOutcome::NotEvaluated => {
+            lines.push(Line::raw(format!(
+                "No destructive action proposed for {} - nothing to plan.",
+                view.artifact_id
+            )));
+            frame.render_widget(
+                Paragraph::new(lines).wrap(Wrap { trim: false }).block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .border_set(border_set)
+                        .title("Plan"),
+                ),
+                area,
+            );
+            return;
+        }
+    };
+
+    lines.push(Line::raw(format!("Action: {action_class:?}")));
+    lines.push(Line::raw(format!(
+        "Reversibility: {:?}",
+        view.reversibility
+    )));
+    lines.push(Line::raw(format!("Reason: {reason}")));
+    lines.push(Line::raw(""));
+
+    let is_irreversible = view.reversibility == cancellai_policy::Reversibility::Irreversible;
+    let confirmation_line = if app.plan_confirmed {
+        Line::from(Span::styled(
+            format!(
+                "Plan confirmed: {action_class:?} {}. Execute via `cancellai-cli clean` - \
+                 execution stays in the shared safety engine, never here.",
+                view.artifact_id
+            ),
+            highlight_style(capability),
+        ))
+    } else if app.plan_confirm_armed {
+        Line::from(Span::styled(
+            "This is IRREVERSIBLE. Press c again to confirm, or any other key to cancel.",
+            attention_style(capability),
+        ))
+    } else if is_irreversible {
+        Line::raw("This is IRREVERSIBLE. Press c to begin confirming.")
+    } else {
+        Line::raw("Press c to confirm.")
+    };
+    lines.push(confirmation_line);
+
+    frame.render_widget(
+        Paragraph::new(lines).wrap(Wrap { trim: false }).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_set(border_set)
+                .title("Plan"),
+        ),
+        area,
+    );
+}
+
 /// AC1 ("Logical and estimated reclaimable values are visually distinct"): the two totals get
 /// different labels always, plus different styling when color is available - distinctness never
 /// depends on color alone. AC2 ("Unknown/incomplete scans are prominent and never hidden in
@@ -448,7 +542,7 @@ fn draw_help_overlay(frame: &mut Frame, area: Rect, border_set: border::Set) {
         width,
         height,
     };
-    let paragraph = Paragraph::new(lines).block(
+    let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false }).block(
         Block::default()
             .borders(Borders::ALL)
             .border_set(border_set)
@@ -566,7 +660,7 @@ mod tests {
     }
 
     #[test]
-    fn stub_screens_show_a_coming_soon_placeholder_not_fabricated_data() {
+    fn plan_screen_with_no_artifacts_loaded_shows_an_explicit_not_fabricated_placeholder() {
         let mut app = App::new();
         app.screen = Screen::Plan;
         let content = render(
@@ -578,7 +672,7 @@ mod tests {
             60,
             15,
         );
-        assert!(content.contains("Coming in E09-S04"));
+        assert!(content.contains("No artifacts loaded to plan yet"));
     }
 
     #[test]
@@ -758,6 +852,23 @@ mod tests {
                     reason: "artifact is inside the retention window",
                 },
             },
+            cancellai_policy::ExplainView {
+                artifact_id: Box::leak(Box::new(ArtifactId::new("claude-c"))),
+                provider_id: "claude-code",
+                artifact_type: "session",
+                project: None,
+                relationships: no_relationships,
+                risk_class: RiskClass::R2Recoverable,
+                reversibility: Reversibility::Quarantinable,
+                knowledge_confidence: KnowledgeConfidence::Verified,
+                evidence_ids: no_evidence,
+                reachable_authority: AuthorityLevel::Govern,
+                binding_constraints: &[],
+                policy_outcome: PolicyOutcome::Recommended {
+                    action_class: ActionClass::Delete,
+                    reason: "artifact is quarantinable and past the retention cutoff",
+                },
+            },
         ]
     }
 
@@ -835,7 +946,7 @@ mod tests {
     fn explain_screen_selection_wraps_via_modulo_over_the_real_list_length() {
         let mut app = App::new();
         app.screen = Screen::Explain;
-        app.explain_selected = 2; // one past the end of a two-item list
+        app.explain_selected = 3; // one past the end of a three-item list
         let data = EngineData {
             explain: sample_explain_views(),
             ..Default::default()
@@ -850,8 +961,8 @@ mod tests {
             20,
             &data,
         );
-        // index 2 % 2 == 0, so this must show the first artifact's detail, not panic.
-        assert!(content.contains("past the retention cutoff"));
+        // index 3 % 3 == 0, so this must show the first artifact's detail, not panic.
+        assert!(content.contains("artifact is past the retention cutoff"));
     }
 
     #[test]
@@ -892,5 +1003,130 @@ mod tests {
         // Exactly one [low confidence] marker: the project's Inferred attribution, not the
         // artifact's own Verified knowledge_confidence.
         assert_eq!(content.matches("[low confidence]").count(), 1);
+    }
+
+    fn plan_app(selected: usize) -> App {
+        let mut app = App::new();
+        app.screen = Screen::Plan;
+        app.explain_selected = selected;
+        app
+    }
+
+    #[test]
+    fn plan_screen_shows_nothing_to_plan_for_an_observation_only_artifact() {
+        let data = EngineData {
+            explain: sample_explain_views(),
+            ..Default::default()
+        };
+        // claude-b (index 1) is ObservationOnly.
+        let content = render_with_data(
+            &plan_app(1),
+            TerminalCapability {
+                color: ColorSupport::Basic,
+                unicode: true,
+            },
+            160,
+            20,
+            &data,
+        );
+        assert!(content.contains("nothing to plan"));
+        assert!(
+            !content.contains("Press c"),
+            "AC1: no confirmation control may appear for a non-destructive outcome"
+        );
+    }
+
+    #[test]
+    fn plan_screen_prompts_a_single_press_for_a_quarantinable_recommendation() {
+        let data = EngineData {
+            explain: sample_explain_views(),
+            ..Default::default()
+        };
+        // claude-c (index 2) is Recommended + Quarantinable.
+        let content = render_with_data(
+            &plan_app(2),
+            TerminalCapability {
+                color: ColorSupport::Basic,
+                unicode: true,
+            },
+            160,
+            20,
+            &data,
+        );
+        assert!(content.contains("Press c to confirm."));
+        assert!(!content.contains("IRREVERSIBLE"));
+    }
+
+    #[test]
+    fn plan_screen_warns_irreversible_before_the_first_press() {
+        let data = EngineData {
+            explain: sample_explain_views(),
+            ..Default::default()
+        };
+        // claude-a (index 0) is Recommended + Irreversible.
+        let content = render_with_data(
+            &plan_app(0),
+            TerminalCapability {
+                color: ColorSupport::Basic,
+                unicode: true,
+            },
+            160,
+            20,
+            &data,
+        );
+        assert!(content.contains("IRREVERSIBLE"));
+        assert!(content.contains("Press c to begin confirming"));
+    }
+
+    #[test]
+    fn plan_screen_shows_the_armed_warning_after_one_press() {
+        let mut app = plan_app(0);
+        let data = EngineData {
+            explain: sample_explain_views(),
+            ..Default::default()
+        };
+        app.handle_key(
+            crossterm::event::KeyEvent::new(
+                crossterm::event::KeyCode::Char('c'),
+                crossterm::event::KeyModifiers::NONE,
+            ),
+            data.plan_context(app.explain_selected),
+        );
+        assert!(app.plan_confirm_armed);
+        let content = render_with_data(&app, TerminalCapability::MINIMAL, 160, 20, &data);
+        assert!(content.contains("Press c again to confirm"));
+    }
+
+    #[test]
+    fn plan_screen_shows_the_handoff_message_once_confirmed_never_claiming_to_execute() {
+        let mut app = plan_app(2); // Quarantinable: a single press confirms.
+        let data = EngineData {
+            explain: sample_explain_views(),
+            ..Default::default()
+        };
+        app.handle_key(
+            crossterm::event::KeyEvent::new(
+                crossterm::event::KeyCode::Char('c'),
+                crossterm::event::KeyModifiers::NONE,
+            ),
+            data.plan_context(app.explain_selected),
+        );
+        assert!(app.plan_confirmed);
+        let content = render_with_data(
+            &app,
+            TerminalCapability {
+                color: ColorSupport::Basic,
+                unicode: true,
+            },
+            160,
+            20,
+            &data,
+        );
+        assert!(content.contains("Plan confirmed"));
+        assert!(
+            content.contains("cancellai-cli clean"),
+            "AC1: the handoff message must point at the real execution command, not claim to \
+             execute itself"
+        );
     }
 }
