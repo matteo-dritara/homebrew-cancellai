@@ -55,7 +55,7 @@
     {
       "id": "E09-S03",
       "title": "Artifact explain view",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Expose why an artifact exists, classification, evidence, risk, reversibility, allowed authority, and policy outcome.",
       "change_risk": "CR1",
       "dependencies": [

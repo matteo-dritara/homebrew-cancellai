@@ -30,11 +30,12 @@ fn main() -> io::Result<()> {
 fn run(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> io::Result<()> {
     let capability = capability::detect(&ProcessEnv);
     let mut app = App::new();
-    // No inventory scan is wired into the running binary yet (E09-S02's own evidence packet:
-    // fixture-driven view-model correctness is this story's scope, live-scan wiring is a
-    // separate, deferred change, matching E08-S04's identical deferral for the CLI). The Atlas
-    // screen renders its explicit "not loaded" state until a future story assembles a real
-    // `Vec<ProviderResolution>` here and feeds it through `cancellai_policy::atlas::summarize`.
+    // No inventory scan is wired into the running binary yet (E09-S02/E09-S03's own evidence
+    // packets: fixture-driven view-model correctness is each story's scope, live-scan wiring is
+    // a separate, deferred change, matching E08-S04's identical deferral for the CLI). The Atlas
+    // and Explain screens render their explicit "not loaded" states until a future story
+    // assembles a real `Vec<ProviderResolution>` here and feeds it through
+    // `cancellai_policy::atlas::summarize`/`cancellai_policy::explain::explain`.
     let data = EngineData::default();
     while !app.should_quit {
         terminal.draw(|frame| ui::draw(frame, &app, capability, &data))?;

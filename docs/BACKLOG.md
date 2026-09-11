@@ -1046,7 +1046,7 @@ Deliver the first rich exploratory interface without duplicating engine logic.
 
 ### E09-S03 - Artifact explain view
 
-**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E09-S01, E08-S01 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E09-S01, E08-S01 | **Safety obligations:** none
 
 **Outcome.** Expose why an artifact exists, classification, evidence, risk, reversibility, allowed authority, and policy outcome.
 

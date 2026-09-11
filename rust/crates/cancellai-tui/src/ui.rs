@@ -8,7 +8,7 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::symbols::border;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
+use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph, Wrap};
 
 use crate::app::{App, KEY_BINDINGS, SCREENS, Screen};
 use crate::capability::{ColorSupport, TerminalCapability};
@@ -126,24 +126,185 @@ fn draw_content(
         .border_set(border_set)
         .title(app.screen.title());
 
-    if app.screen == Screen::Atlas {
-        match &data.atlas {
+    match app.screen {
+        Screen::Atlas => match &data.atlas {
             Some(summary) => draw_atlas_summary(frame, area, block, capability, summary),
             None => frame.render_widget(
                 Paragraph::new("No inventory scan loaded yet.").block(block),
                 area,
             ),
+        },
+        Screen::Explain if !data.explain.is_empty() => {
+            draw_explain_content(frame, area, border_set, capability, app, &data.explain)
         }
-        return;
+        Screen::Home => frame.render_widget(
+            Paragraph::new(
+                "Keyboard-first navigation shell for cancellAI's Atlas engine query API.",
+            )
+            .block(block),
+            area,
+        ),
+        Screen::Explain => frame.render_widget(
+            Paragraph::new("No artifacts to explain yet.").block(block),
+            area,
+        ),
+        Screen::Plan => frame.render_widget(
+            Paragraph::new("Coming in E09-S04: plan review workflow.").block(block),
+            area,
+        ),
+    }
+}
+
+/// The Explain screen (E09-S03): a selectable list of artifacts on the left, the selected
+/// artifact's full explanation on the right. `app.explain_selected` is reduced modulo `views`'
+/// length here (see `App::explain_selected`'s own doc for why the reduction lives at render
+/// time rather than in the pure key reducer).
+fn draw_explain_content(
+    frame: &mut Frame,
+    area: Rect,
+    border_set: border::Set,
+    capability: TerminalCapability,
+    app: &App,
+    views: &[cancellai_policy::ExplainView],
+) {
+    let columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Length(24), Constraint::Min(1)])
+        .split(area);
+
+    let selected = app.explain_selected % views.len();
+    let items: Vec<ListItem> = views
+        .iter()
+        .enumerate()
+        .map(|(index, view)| {
+            let style = if index == selected {
+                highlight_style(capability)
+            } else {
+                Style::default()
+            };
+            ListItem::new(Line::from(Span::styled(
+                view.artifact_id.to_string(),
+                style,
+            )))
+        })
+        .collect();
+    frame.render_widget(
+        List::new(items).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_set(border_set)
+                .title("Artifacts"),
+        ),
+        columns[0],
+    );
+
+    draw_explanation_detail(frame, columns[1], border_set, capability, &views[selected]);
+}
+
+/// AC2 ("Low-confidence data is visibly differentiated"): every confidence value is rendered
+/// through [`confidence_span`], which appends a `[low confidence]` marker whenever
+/// `cancellai_policy::is_low_confidence` says so - the marker is always present in the text
+/// (so it survives even with no color support), with styling as an enhancement only.
+fn draw_explanation_detail(
+    frame: &mut Frame,
+    area: Rect,
+    border_set: border::Set,
+    capability: TerminalCapability,
+    view: &cancellai_policy::ExplainView,
+) {
+    use cancellai_policy::PolicyOutcome;
+
+    let mut lines: Vec<Line> = Vec::new();
+
+    lines.push(Line::raw(format!(
+        "{} ({})",
+        view.artifact_id, view.provider_id
+    )));
+    lines.push(Line::raw(format!("Classification: {}", view.artifact_type)));
+
+    let why = match &view.project {
+        Some(project) => Line::from(vec![
+            Span::raw(format!(
+                "Why it exists: project \"{}\" ",
+                project.project_ref
+            )),
+            confidence_span(project.confidence, capability),
+        ]),
+        None => Line::raw("Why it exists: Unattributed"),
+    };
+    lines.push(why);
+    if let Some(relationship) = view.relationships.first() {
+        lines.push(Line::raw(format!(
+            "  relationship: {:?} -> {}",
+            relationship.kind, relationship.related_artifact_id
+        )));
     }
 
-    let body = match app.screen {
-        Screen::Home => "Keyboard-first navigation shell for cancellAI's Atlas engine query API.",
-        Screen::Atlas => unreachable!("handled above"),
-        Screen::Explain => "Coming in E09-S03: artifact explain view.",
-        Screen::Plan => "Coming in E09-S04: plan review workflow.",
+    lines.push(Line::raw(format!("Risk: {:?}", view.risk_class)));
+    lines.push(Line::raw(format!(
+        "Reversibility: {:?}",
+        view.reversibility
+    )));
+    lines.push(Line::from(vec![
+        Span::raw("Knowledge confidence: "),
+        confidence_span(view.knowledge_confidence, capability),
+    ]));
+    lines.push(Line::raw(format!(
+        "Evidence: {} reference(s)",
+        view.evidence_ids.len()
+    )));
+
+    let constraints = if view.binding_constraints.is_empty() {
+        String::new()
+    } else {
+        format!(" ({})", view.binding_constraints.join(", "))
     };
-    frame.render_widget(Paragraph::new(body).block(block), area);
+    lines.push(Line::raw(format!(
+        "Allowed authority: {:?}{constraints}",
+        view.reachable_authority
+    )));
+
+    lines.push(Line::raw(""));
+    let outcome_line = match &view.policy_outcome {
+        PolicyOutcome::Recommended {
+            action_class,
+            reason,
+        } => Line::from(Span::styled(
+            format!("Policy outcome: {action_class:?} - {reason}"),
+            highlight_style(capability),
+        )),
+        PolicyOutcome::ObservationOnly { reason } => {
+            Line::raw(format!("Policy outcome: no destructive action - {reason}"))
+        }
+        PolicyOutcome::NotEvaluated => {
+            Line::raw("Policy outcome: not evaluated against the current plan")
+        }
+    };
+    lines.push(outcome_line);
+
+    frame.render_widget(
+        Paragraph::new(lines).wrap(Wrap { trim: false }).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_set(border_set)
+                .title("Explanation"),
+        ),
+        area,
+    );
+}
+
+fn confidence_span(
+    confidence: cancellai_policy::KnowledgeConfidence,
+    capability: TerminalCapability,
+) -> Span<'static> {
+    if cancellai_policy::is_low_confidence(confidence) {
+        Span::styled(
+            format!("{confidence:?} [low confidence]"),
+            attention_style(capability),
+        )
+    } else {
+        Span::raw(format!("{confidence:?}"))
+    }
 }
 
 /// AC1 ("Logical and estimated reclaimable values are visually distinct"): the two totals get
@@ -170,7 +331,7 @@ fn draw_atlas_summary(
         Span::raw("   Estimated reclaimable: "),
         Span::styled(
             format_bytes(summary.total_reclaimable_bytes),
-            reclaimable_style(capability),
+            attention_style(capability),
         ),
     ]));
 
@@ -239,10 +400,15 @@ fn draw_atlas_summary(
         )));
     }
 
-    frame.render_widget(Paragraph::new(lines).block(block), area);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .block(block),
+        area,
+    );
 }
 
-fn reclaimable_style(capability: TerminalCapability) -> Style {
+fn attention_style(capability: TerminalCapability) -> Style {
     match capability.color {
         ColorSupport::None => Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
         ColorSupport::Basic | ColorSupport::Extended => Style::default()
@@ -402,6 +568,22 @@ mod tests {
     #[test]
     fn stub_screens_show_a_coming_soon_placeholder_not_fabricated_data() {
         let mut app = App::new();
+        app.screen = Screen::Plan;
+        let content = render(
+            &app,
+            TerminalCapability {
+                color: ColorSupport::Basic,
+                unicode: true,
+            },
+            60,
+            15,
+        );
+        assert!(content.contains("Coming in E09-S04"));
+    }
+
+    #[test]
+    fn explain_screen_with_no_artifacts_loaded_shows_an_explicit_not_fabricated_placeholder() {
+        let mut app = App::new();
         app.screen = Screen::Explain;
         let content = render(
             &app,
@@ -412,7 +594,7 @@ mod tests {
             60,
             15,
         );
-        assert!(content.contains("Coming in E09-S03"));
+        assert!(content.contains("No artifacts to explain yet"));
     }
 
     #[test]
@@ -471,6 +653,7 @@ mod tests {
         app.screen = Screen::Atlas;
         let data = EngineData {
             atlas: Some(sample_summary()),
+            ..Default::default()
         };
         let content = render_with_data(
             &app,
@@ -494,6 +677,7 @@ mod tests {
         app.screen = Screen::Atlas;
         let data = EngineData {
             atlas: Some(sample_summary()),
+            ..Default::default()
         };
         let content = render_with_data(&app, TerminalCapability::MINIMAL, 80, 20, &data);
         assert!(content.contains("incomplete"));
@@ -508,6 +692,7 @@ mod tests {
         app.screen = Screen::Atlas;
         let data = EngineData {
             atlas: Some(sample_summary()),
+            ..Default::default()
         };
         let content = render_with_data(
             &app,
@@ -520,5 +705,192 @@ mod tests {
             &data,
         );
         assert!(content.contains("Unattributed"));
+    }
+
+    fn sample_explain_views() -> Vec<cancellai_policy::ExplainView<'static>> {
+        use cancellai_model::{
+            ActionClass, ArtifactId, AuthorityLevel, EvidenceId, Reversibility, RiskClass,
+        };
+        use cancellai_policy::{AttributedProject, KnowledgeConfidence, PolicyOutcome};
+
+        let id_a: &'static ArtifactId = Box::leak(Box::new(ArtifactId::new("claude-a")));
+        let id_b: &'static ArtifactId = Box::leak(Box::new(ArtifactId::new("claude-b")));
+        let evidence: &'static [EvidenceId] =
+            Box::leak(vec![EvidenceId::new("evidence-a")].into_boxed_slice());
+        let no_evidence: &'static [EvidenceId] = &[];
+        let no_relationships: &'static [cancellai_model::ArtifactRelationship] = &[];
+        let no_constraints: &'static [&'static str] = &["provider_trust_authority"];
+
+        vec![
+            cancellai_policy::ExplainView {
+                artifact_id: id_a,
+                provider_id: "claude-code",
+                artifact_type: "session",
+                project: Some(AttributedProject {
+                    project_ref: "proj-x",
+                    confidence: KnowledgeConfidence::Inferred,
+                }),
+                relationships: no_relationships,
+                risk_class: RiskClass::R3Resumable,
+                reversibility: Reversibility::Irreversible,
+                knowledge_confidence: KnowledgeConfidence::Verified,
+                evidence_ids: evidence,
+                reachable_authority: AuthorityLevel::Govern,
+                binding_constraints: &[],
+                policy_outcome: PolicyOutcome::Recommended {
+                    action_class: ActionClass::Delete,
+                    reason: "artifact is past the retention cutoff",
+                },
+            },
+            cancellai_policy::ExplainView {
+                artifact_id: id_b,
+                provider_id: "claude-code",
+                artifact_type: "session",
+                project: None,
+                relationships: no_relationships,
+                risk_class: RiskClass::R1Rebuildable,
+                reversibility: Reversibility::Rebuildable,
+                knowledge_confidence: KnowledgeConfidence::LowUnknown,
+                evidence_ids: no_evidence,
+                reachable_authority: AuthorityLevel::Observe,
+                binding_constraints: no_constraints,
+                policy_outcome: PolicyOutcome::ObservationOnly {
+                    reason: "artifact is inside the retention window",
+                },
+            },
+        ]
+    }
+
+    #[test]
+    fn explain_screen_lists_every_artifact_and_shows_the_first_ones_explanation() {
+        let mut app = App::new();
+        app.screen = Screen::Explain;
+        let data = EngineData {
+            explain: sample_explain_views(),
+            ..Default::default()
+        };
+        let content = render_with_data(
+            &app,
+            TerminalCapability {
+                color: ColorSupport::Basic,
+                unicode: true,
+            },
+            160,
+            20,
+            &data,
+        );
+        assert!(content.contains("claude-a"));
+        assert!(content.contains("claude-b"));
+        assert!(content.contains("proj-x"));
+    }
+
+    #[test]
+    fn explain_screen_surfaces_the_real_destructive_reason_for_a_recommended_action() {
+        let mut app = App::new();
+        app.screen = Screen::Explain;
+        let data = EngineData {
+            explain: sample_explain_views(),
+            ..Default::default()
+        };
+        let content = render_with_data(
+            &app,
+            TerminalCapability {
+                color: ColorSupport::Basic,
+                unicode: true,
+            },
+            160,
+            20,
+            &data,
+        );
+        // AC1: the selected (first) artifact's destructive recommendation shows its real reason.
+        assert!(content.contains("Delete"));
+        assert!(content.contains("past the retention cutoff"));
+    }
+
+    #[test]
+    fn explain_screen_shows_the_second_artifacts_observation_only_reason_when_selected() {
+        let mut app = App::new();
+        app.screen = Screen::Explain;
+        app.explain_selected = 1;
+        let data = EngineData {
+            explain: sample_explain_views(),
+            ..Default::default()
+        };
+        let content = render_with_data(
+            &app,
+            TerminalCapability {
+                color: ColorSupport::Basic,
+                unicode: true,
+            },
+            160,
+            20,
+            &data,
+        );
+        assert!(content.contains("no destructive action"));
+        assert!(content.contains("inside the retention window"));
+        assert!(content.contains("provider_trust_authority"));
+    }
+
+    #[test]
+    fn explain_screen_selection_wraps_via_modulo_over_the_real_list_length() {
+        let mut app = App::new();
+        app.screen = Screen::Explain;
+        app.explain_selected = 2; // one past the end of a two-item list
+        let data = EngineData {
+            explain: sample_explain_views(),
+            ..Default::default()
+        };
+        let content = render_with_data(
+            &app,
+            TerminalCapability {
+                color: ColorSupport::Basic,
+                unicode: true,
+            },
+            160,
+            20,
+            &data,
+        );
+        // index 2 % 2 == 0, so this must show the first artifact's detail, not panic.
+        assert!(content.contains("past the retention cutoff"));
+    }
+
+    #[test]
+    fn explain_screen_visibly_differentiates_low_confidence_data() {
+        let mut app = App::new();
+        app.screen = Screen::Explain;
+        app.explain_selected = 1; // claude-b: LowUnknown knowledge confidence
+        let data = EngineData {
+            explain: sample_explain_views(),
+            ..Default::default()
+        };
+        let content = render_with_data(&app, TerminalCapability::MINIMAL, 160, 20, &data);
+        assert!(
+            content.contains("[low confidence]"),
+            "AC2: a LowUnknown confidence value must be visibly flagged even with no color support"
+        );
+    }
+
+    #[test]
+    fn explain_screen_does_not_flag_a_verified_confidence_as_low() {
+        let mut app = App::new();
+        app.screen = Screen::Explain;
+        app.explain_selected = 0; // claude-a: Verified artifact confidence, Inferred project confidence
+        let data = EngineData {
+            explain: sample_explain_views(),
+            ..Default::default()
+        };
+        let content = render_with_data(
+            &app,
+            TerminalCapability {
+                color: ColorSupport::Basic,
+                unicode: true,
+            },
+            160,
+            20,
+            &data,
+        );
+        // Exactly one [low confidence] marker: the project's Inferred attribution, not the
+        // artifact's own Verified knowledge_confidence.
+        assert_eq!(content.matches("[low confidence]").count(), 1);
     }
 }

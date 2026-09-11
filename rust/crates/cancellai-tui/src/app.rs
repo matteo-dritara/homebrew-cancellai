@@ -4,10 +4,10 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-/// One destination in the shell. `Atlas`/`Explain`/`Plan` are stubs this story renders as
-/// placeholders (`ui::draw`) - E09-S02/E09-S03/E09-S04 give them real, engine-plan-derived
-/// content. Nothing this story displays for them is a fabricated action (AC2 holds vacuously
-/// until those stories add one).
+/// One destination in the shell. `Atlas` (E09-S02) and `Explain` (E09-S03) render real,
+/// engine-derived content when `data::EngineData` carries it; `Plan` remains a placeholder
+/// pending E09-S04. Nothing this story displays for a still-stubbed screen is a fabricated
+/// action.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
     Home,
@@ -56,6 +56,10 @@ pub const KEY_BINDINGS: &[KeyBinding] = &[
         description: "jump to screen",
     },
     KeyBinding {
+        keys: "Up / Down",
+        description: "select artifact (Explain screen)",
+    },
+    KeyBinding {
         keys: "?",
         description: "toggle this help",
     },
@@ -72,6 +76,12 @@ pub struct App {
     pub screen: Screen,
     pub show_help: bool,
     pub should_quit: bool,
+    /// Which artifact is highlighted on the Explain screen (E09-S03). Deliberately not bounded
+    /// against the real explain-list length here - `App` has no knowledge of engine data by
+    /// design (see `lib.rs`'s AC1 doc) - `ui::draw_explain_content` reduces it modulo the
+    /// actual list length at render time, so an unbounded counter still produces correct
+    /// wraparound selection without coupling this pure state machine to `data::EngineData`.
+    pub explain_selected: usize,
 }
 
 impl Default for App {
@@ -80,6 +90,7 @@ impl Default for App {
             screen: Screen::Home,
             show_help: false,
             should_quit: false,
+            explain_selected: 0,
         }
     }
 }
@@ -97,6 +108,8 @@ impl App {
             KeyCode::Char('?') => self.show_help = !self.show_help,
             KeyCode::Tab => self.go_to(self.next_screen()),
             KeyCode::BackTab => self.go_to(self.previous_screen()),
+            KeyCode::Down => self.explain_selected = self.explain_selected.saturating_add(1),
+            KeyCode::Up => self.explain_selected = self.explain_selected.saturating_sub(1),
             KeyCode::Char(digit @ '1'..='4') => {
                 let index = digit as usize - '1' as usize;
                 self.go_to(SCREENS[index]);
@@ -206,5 +219,23 @@ mod tests {
         let mut app = App::new();
         app.handle_key(key(KeyCode::Char('z')));
         assert_eq!(app, App::new());
+    }
+
+    #[test]
+    fn down_advances_and_up_retreats_the_explain_selection() {
+        let mut app = App::new();
+        assert_eq!(app.explain_selected, 0);
+        app.handle_key(key(KeyCode::Down));
+        app.handle_key(key(KeyCode::Down));
+        assert_eq!(app.explain_selected, 2);
+        app.handle_key(key(KeyCode::Up));
+        assert_eq!(app.explain_selected, 1);
+    }
+
+    #[test]
+    fn up_from_zero_saturates_rather_than_underflowing() {
+        let mut app = App::new();
+        app.handle_key(key(KeyCode::Up));
+        assert_eq!(app.explain_selected, 0);
     }
 }

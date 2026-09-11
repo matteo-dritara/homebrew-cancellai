@@ -280,6 +280,49 @@ matching the identical, already-accepted deferral E08-S04 recorded for `cancella
 view wiring. This story's contract is fixture-driven view-model correctness, not live-scan
 product wiring.
 
+### Artifact explain view (E09-S03)
+
+`cancellai_policy::explain` is the third occupant of the "Engine / Query API" layer, after
+`views` (E08-S04) and `atlas` (E09-S02). `explain(classified, actions) -> ExplainView` turns one
+classified artifact plus the plan's own `Action` list into the outcome's six named facets - why
+it exists (project attribution and structural relationships), classification, evidence, risk,
+reversibility, and allowed authority - plus the concrete policy outcome.
+
+**AC1 - every destructive recommendation has a human-readable explanation path**: this is not a
+second explanation mechanism. `retention::build_actions` already produces exactly one `Action`
+per artifact, every time, carrying a `reason: String` that SI-007 requires is never silently
+omitted. `explain` finds the artifact's own `Action` by id and surfaces its `reason` verbatim -
+the same sentence a `plan` document would show. `PolicyOutcome` distinguishes three cases so a
+caller can never conflate them: `Recommended { action_class, reason }` for a destructive/mutating
+class, `ObservationOnly { reason }` for `Observe` (still a real, non-fabricated reason), and
+`NotEvaluated` when the given `actions` slice simply does not cover this artifact (e.g. a
+filtered plan) - distinct from "policy looked and chose not to act."
+
+**AC2 - low-confidence data is visibly differentiated**: `is_low_confidence` returns `true` for
+every `KnowledgeConfidence` tier except `Verified`, mirroring
+`cancellai_safety::authority::confidence_ceiling`'s own distinction (`Verified` is the sole tier
+reaching the top authority ceiling). Applied independently to an artifact's own
+`knowledge_confidence` and to its `AttributedProject::confidence` - one can be low while the
+other is not, and `cancellai-tui`'s `ui::confidence_span` renders a `[low confidence]` marker in
+the text itself (not only a color), so the flag survives even under `ColorSupport::None`.
+
+**Dependency boundary**: unchanged from E09-S01/E09-S02 - `cancellai-tui` still depends only on
+`cancellai-policy` in production. `data::EngineData` gains one field, `explain: Vec<ExplainView>`,
+rendered by a new Explain-screen list-plus-detail layout (`Up`/`Down` select an artifact, reduced
+modulo the real list length at render time so `App` itself stays engine-data-agnostic).
+
+**Verification ("explanation golden tests")**: `explain`'s own tests build a real
+`ClassifiedArtifact`, wrap it in a `ProviderResolution::for_test`, and run it through the actual
+`build_actions` - asserting against `build_actions`' real, hardcoded reason strings (stale+
+eligible -> the real delete reason; non-stale -> the real retention-window reason; stale but
+authority-blocked -> the real constraint name) rather than a mocked stand-in. `cancellai-tui`'s
+own render tests cover the `[low confidence]` marker's presence/absence and that a long policy
+reason (now `Paragraph::wrap`-enabled in both the Explain and Atlas detail panels, fixing a
+real clipping bug this story's own tests caught) renders in full rather than being cut off.
+
+**Residual**: live-scan wiring is deferred identically to E09-S02 - the Explain screen shows "No
+artifacts to explain yet." until a future story assembles real classified artifacts and actions.
+
 ## Core loop
 
 The engine behaves as an evidence-driven reconciliation loop:

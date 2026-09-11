@@ -102,6 +102,14 @@ the totals it could be undercounting - the same "unknown is protected, never hid
 `docs/CONSTITUTION.md`'s C-02 states for destructive authority, applied here to what the user is
 told, not just to what the engine is allowed to do.
 
+The TUI's Explain screen (E09-S03) answers "why does this exist and what would happen to it": for
+one artifact at a time, why it exists (project, structural relationships), how it is classified,
+what evidence backs it, its risk and reversibility, the authority it can actually reach, and the
+concrete policy outcome - and when that outcome is destructive, the same human-readable reason a
+`plan` document would show, never a second, possibly-diverging explanation invented for the
+screen (C-06: evidence before action). Confidence weaker than fully verified is always flagged in
+the text itself, not only by color.
+
 ## Open-source and commercial boundary
 
 The single-machine product remains open source: scanner, artifact model, provider framework, safety kernel, CLI/TUI, quarantine, Guardian, and local policy engine.

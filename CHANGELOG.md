@@ -32,6 +32,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it - still no provider adapter or filesystem crate. Live-scan wiring into the running binary
   remains deferred; the screen shows an explicit "not loaded yet" state until that follow-up
   lands.
+- Added the Artifact explain view to `cancellai-tui` (E09-S03, CR1, observational only): a
+  selectable list of artifacts with, for the selected one, why it exists (project attribution and
+  structural relationships), classification, evidence, risk, reversibility, allowed authority,
+  and the concrete policy outcome. A destructive policy outcome always shows the real,
+  human-readable reason `cancellai_policy::retention::build_actions` already produces for it -
+  new `cancellai_policy::explain::explain` surfaces that reason rather than inventing a second
+  explanation mechanism. Any confidence weaker than fully verified (an artifact's own or its
+  project attribution's, independently) is flagged with a `[low confidence]` marker in the text
+  itself, not only by color. Fixed a real rendering bug this story's own tests caught along the
+  way: a long policy reason or provider summary line could be silently clipped instead of
+  wrapping - both the Explain and Atlas detail panels now wrap.
 
 ## [1.12.0] - 2026-09-11
 
