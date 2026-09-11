@@ -11,10 +11,20 @@ no-default-features = false
 [output]
 feature-depth = 1
 
-# RustSec advisory database. No workspace dependency exists yet to have an advisory against;
-# this section becomes load-bearing the first time one is added.
+# RustSec advisory database.
 [advisories]
-ignore = []
+ignore = [
+    # RUSTSEC-2024-0436: `paste` (a compile-time-only proc-macro, no runtime code shipped) is
+    # archived/unmaintained upstream. Pulled in transitively and non-optionally by ratatui
+    # 0.29 (E09-S01, ADR-0019's outer-ring TUI dependency) - the newest ratatui line this
+    # workspace's MSRV (1.85.0, ADR-0015) can build against, since ratatui 0.30 raises its own
+    # rust-version to 1.88.0. This is RustSec's "unmaintained" category, not a vulnerability
+    # advisory, and there is no ratatui alternative or vendoring option that removes it without
+    # either bumping MSRV workspace-wide (a separate, dedicated ADR-0015 decision) or forking
+    # `paste`. Revisit when ratatui drops the dependency upstream or this workspace's MSRV
+    # moves to >=1.88.0.
+    "RUSTSEC-2024-0436",
+]
 
 # ADR-0015: strict permissive allow-list. Anything not listed here - including weak
 # copyleft (MPL-2.0) and strong copyleft (GPL-*, LGPL-*, AGPL-*) - is denied by default.

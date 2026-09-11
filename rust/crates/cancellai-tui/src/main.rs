@@ -1,18 +1,60 @@
-//! Terminal experience client (E09 Atlas TUI; `docs/architecture/TARGET.md` - experience
-//! plane). Shares the engine/query API with the CLI rather than duplicating engine logic.
-//!
-//! Skeleton crate (E02-S01) - no TUI surface defined yet.
+//! Terminal experience client binary (E09-S01). Thin by design: terminal init/teardown, the
+//! event loop, and a panic hook that restores the terminal before the default handler runs -
+//! everything else lives in `cancellai_tui`'s library modules, which are what this crate's
+//! tests actually exercise (`lib.rs`'s own doc explains why).
 
-use cancellai_inventory as _;
-use cancellai_model as _;
-use cancellai_platform as _;
-use cancellai_policy as _;
-use cancellai_provider_api as _;
-use cancellai_provider_claude as _;
-use cancellai_provider_codex as _;
-use cancellai_safety as _;
-use cancellai_store as _;
+use std::io::{self, Stdout, stdout};
+use std::time::Duration;
 
-fn main() {
-    println!("cancellai-tui: workspace skeleton (E02-S01), no interface yet");
+use crossterm::execute;
+use crossterm::terminal::{
+    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+};
+use ratatui::Terminal;
+use ratatui::backend::CrosstermBackend;
+
+use cancellai_tui::app::App;
+use cancellai_tui::capability::{self, ProcessEnv};
+use cancellai_tui::event::{self, AppEvent};
+use cancellai_tui::ui;
+
+fn main() -> io::Result<()> {
+    install_panic_hook();
+    let mut terminal = init_terminal()?;
+    let result = run(&mut terminal);
+    restore_terminal()?;
+    result
+}
+
+fn run(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> io::Result<()> {
+    let capability = capability::detect(&ProcessEnv);
+    let mut app = App::new();
+    while !app.should_quit {
+        terminal.draw(|frame| ui::draw(frame, &app, capability))?;
+        if let AppEvent::Key(key) = event::next(Duration::from_millis(250))? {
+            app.handle_key(key);
+        }
+    }
+    Ok(())
+}
+
+fn init_terminal() -> io::Result<Terminal<CrosstermBackend<Stdout>>> {
+    enable_raw_mode()?;
+    execute!(stdout(), EnterAlternateScreen)?;
+    Terminal::new(CrosstermBackend::new(stdout()))
+}
+
+fn restore_terminal() -> io::Result<()> {
+    disable_raw_mode()?;
+    execute!(stdout(), LeaveAlternateScreen)
+}
+
+/// A panic anywhere in `run` must not leave the user's terminal in raw/alternate-screen mode -
+/// restore it first, then hand off to the default hook so the panic message still prints.
+fn install_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        let _ = restore_terminal();
+        default_hook(panic_info);
+    }));
 }

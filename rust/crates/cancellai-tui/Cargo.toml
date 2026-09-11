@@ -10,13 +10,17 @@ publish.workspace = true
 [lints]
 workspace = true
 
+# E09-S01: no cancellai-* dependency yet, deliberately - this story is the shell/navigation
+# layer only and has no data source to render (docs/architecture/TARGET.md "Atlas TUI shell
+# (E09-S01)"). AC1 ("No direct filesystem/provider access from the TUI crate") is enforced
+# concretely by this crate depending on neither a provider adapter nor cancellai-inventory/
+# cancellai-platform/cancellai-store at all. E09-S02 reintroduces cancellai-policy once it has
+# real fixture-inventory view data to feed the Atlas screen this story only stubs.
+#
+# ratatui/crossterm are outer-ring dependencies named explicitly for this epic in ADR-0019
+# ("Dependency rings - the kernel stays bare, the outer ring uses reviewed libraries"): both
+# MIT-licensed, already on rust/deny.toml's allow-list, replacing what would otherwise be a
+# hand-rolled ANSI terminal renderer and raw-mode/input handling loop.
 [dependencies]
-cancellai-model = { path = "../cancellai-model", version = "0.1.0" }
-cancellai-safety = { path = "../cancellai-safety", version = "0.1.0" }
-cancellai-inventory = { path = "../cancellai-inventory", version = "0.1.0" }
-cancellai-policy = { path = "../cancellai-policy", version = "0.1.0" }
-cancellai-provider-api = { path = "../cancellai-provider-api", version = "0.1.0" }
-cancellai-provider-claude = { path = "../cancellai-provider-claude", version = "0.1.0" }
-cancellai-provider-codex = { path = "../cancellai-provider-codex", version = "0.1.0" }
-cancellai-store = { path = "../cancellai-store", version = "0.1.0" }
-cancellai-platform = { path = "../cancellai-platform", version = "0.1.0" }
+ratatui = "0.29"
+crossterm = "0.28"

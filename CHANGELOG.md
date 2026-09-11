@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added a real Atlas TUI shell and keyboard-first navigation to `cancellai-tui` (E09-S01, CR1,
+  observational only), replacing the E02-S01 placeholder skeleton: `Tab`/`Shift+Tab`/`1`-`4`
+  cycle four screens (`Home`, and stubs for `Atlas`/`Explain`/`Plan` pending E09-S02/S03/S04),
+  `?` toggles a help overlay, `q`/`Esc` quits. Terminal capability detection
+  (`NO_COLOR`/`TERM`/`COLORTERM` color tiers, `LANG`/`LC_ALL`/`LC_CTYPE` Unicode-vs-ASCII
+  box-drawing, plus a `CANCELLAI_TUI_ASCII` escape hatch) degrades gracefully on any missing or
+  unrecognized signal, and a too-small terminal renders a message instead of panicking. Built on
+  `ratatui`/`crossterm` (outer-ring dependencies named for this epic in
+  [ADR-0019](docs/adrs/0019-dependency-rings-per-crate.md)); the crate depends on no
+  `cancellai-*` crate at all yet - no provider/filesystem access is possible from it by
+  construction, and `cancellai-policy`'s engine query API is reintroduced only once E09-S02 has
+  real view data to render.
+
 ## [1.12.0] - 2026-09-11
 
 ### Added

@@ -7,12 +7,12 @@
   "dependencies": [
     "E08"
   ],
-  "status": "planned",
+  "status": "in_progress",
   "stories": [
     {
       "id": "E09-S01",
       "title": "TUI shell and navigation",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Build keyboard-first terminal UI over engine query APIs.",
       "change_risk": "CR1",
       "dependencies": [

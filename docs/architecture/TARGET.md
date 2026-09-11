@@ -184,6 +184,54 @@ Claude's own sessions are already flat, so its session view coincides with the d
 on `AgentArtifact` because E18/E19's remote-target work has not landed, and every artifact a
 single-machine build observes is definitionally on the one machine running it.
 
+### Atlas TUI shell (E09-S01)
+
+The target diagram's "CLI / TUI / Guardian" experience-plane box gets its first real TUI
+occupant: `rust/crates/cancellai-tui` is now a keyboard-first navigation shell built on
+`ratatui`/`crossterm` (outer-ring dependencies pre-approved for this epic by name in
+[ADR-0019](../adrs/0019-dependency-rings-per-crate.md)), rather than the E02-S01 skeleton that
+printed a placeholder and declared unused `cancellai-inventory`/`cancellai-platform`/
+`cancellai-provider-claude`/`cancellai-provider-codex`/`cancellai-store` dependencies.
+
+**AC1 - no direct filesystem/provider access from the TUI crate**: `cancellai-tui`'s
+`Cargo.toml` now depends on `ratatui`/`crossterm` only - zero `cancellai-*` crates. This story
+has no data source to render yet (E09-S02's own verification plan is "golden view models from
+fixture inventory" - that wiring is its job), so adding `cancellai-policy` now, with nothing
+real to call, would repeat the "dependency ahead of the evidence that would justify it" pattern
+this codebase otherwise avoids (e.g. `by_machine` above). E09-S02 reintroduces
+`cancellai-policy` once it has real fixture-inventory view data for the Atlas screen this story
+only stubs.
+
+**Crate layout**: a library (`app`, `capability`, `ui`, `event`) plus a thin `main.rs` binary -
+a deliberate departure from `cancellai-cli`'s no-lib, spawn-the-real-binary test style
+(`tests/cli_behavior.rs`), because a TUI's raw-mode terminal initialization cannot run
+headlessly in CI at all. `app::App::handle_key` is a pure reducer over `Screen` (`Home`,
+`Atlas`, `Explain`, `Plan` - the latter three are `E09-S02`/`E09-S03`/`E09-S04`'s screens,
+rendered here only as "Coming in E09-S0X" placeholders, so AC2 - "all displayed actions derive
+from engine plans" - holds vacuously until those stories add real, plan-derived content).
+`ui::draw` is a pure `ratatui` render function, tested against `ratatui::backend::TestBackend`
+rather than a real terminal.
+
+**AC3 - tier-1 terminals with graceful capability fallback**: `docs/PLATFORMS.md`'s "tier-1" is
+an OS-platform concept, not a terminal-emulator one, so this story defines the axis it actually
+needs. `capability::detect` reads `NO_COLOR`/`TERM`/`COLORTERM` for a three-tier `ColorSupport`
+(`None`/`Basic`/`Extended`) and `LANG`/`LC_ALL`/`LC_CTYPE` (plus an explicit
+`CANCELLAI_TUI_ASCII` escape hatch) for Unicode-vs-ASCII box-drawing, always degrading to the
+weaker capability on a missing or unrecognized signal rather than assuming the best case.
+`ui::draw` also refuses to lay out a frame narrower than 24 columns or shorter than 6 rows,
+rendering a plain "terminal too small" message instead of panicking.
+
+**Manual accessibility checklist** (verification calls for "snapshot/render tests plus manual
+accessibility checklist" - the latter cannot be automated): every screen is reachable with the
+keyboard alone (`Tab`/`Shift+Tab`/`1`-`4`); `NO_COLOR=1` emits no color escape codes;
+`CANCELLAI_TUI_ASCII=1` emits no Unicode box-drawing glyphs; the terminal's raw mode and
+alternate screen are restored on both a clean quit and a panic (`main.rs`'s panic hook runs
+`restore_terminal` before the default handler); a very small terminal shows the fallback
+message rather than panicking. Executed once this story via a real macOS terminal
+(`project/evidence/E09-S01/EVIDENCE.md`); Linux/Windows terminal verification is a documented
+residual for a follow-up manual pass, the same per-platform honesty `docs/PLATFORMS.md` already
+uses.
+
 ## Core loop
 
 The engine behaves as an evidence-driven reconciliation loop:

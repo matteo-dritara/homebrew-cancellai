@@ -1001,13 +1001,13 @@ Map provider state into the multidimensional AgentArtifact model and evidence-ba
 
 ## E09 - Atlas TUI
 
-**Phase:** `P2` | **Status:** `planned` | **Epic dependencies:** E08
+**Phase:** `P2` | **Status:** `in_progress` | **Epic dependencies:** E08
 
 Deliver the first rich exploratory interface without duplicating engine logic.
 
 ### E09-S01 - TUI shell and navigation
 
-**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E08-S04 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E08-S04 | **Safety obligations:** none
 
 **Outcome.** Build keyboard-first terminal UI over engine query APIs.
 

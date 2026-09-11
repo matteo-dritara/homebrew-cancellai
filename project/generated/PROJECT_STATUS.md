@@ -11,7 +11,8 @@ Epics: **24** | Stories: **110**
 - `blocked`: 2
 - `cancelled`: 1
 - `done`: 75
-- `planned`: 32
+- `planned`: 31
+- `ready_for_review`: 1
 
 ## Change risk distribution
 
@@ -27,4 +28,4 @@ Epics: **24** | Stories: **110**
 
 ## Awaiting independent review
 
-- none
+- **E09-S01** - TUI shell and navigation (CR1)
