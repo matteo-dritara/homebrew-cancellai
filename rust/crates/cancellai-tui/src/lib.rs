@@ -8,10 +8,12 @@
 //!
 //! AC1 ("No direct filesystem/provider access from the TUI crate"): this crate depends on
 //! neither a provider adapter nor `cancellai-inventory`/`cancellai-platform`/`cancellai-store`
-//! at all (see `Cargo.toml`'s own comment) - `app`/`ui`/`capability`/`event` below read only
-//! `crossterm`/`ratatui` types and this crate's own state.
+//! at all (see `Cargo.toml`'s own comment) - only `cancellai-policy`'s public view-model API,
+//! read through [`data::EngineData`], plus `crossterm`/`ratatui` and this crate's own state.
 
 pub mod app;
 pub mod capability;
+pub mod data;
 pub mod event;
+pub mod format;
 pub mod ui;

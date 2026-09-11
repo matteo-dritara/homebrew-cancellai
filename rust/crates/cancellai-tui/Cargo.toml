@@ -10,12 +10,15 @@ publish.workspace = true
 [lints]
 workspace = true
 
-# E09-S01: no cancellai-* dependency yet, deliberately - this story is the shell/navigation
-# layer only and has no data source to render (docs/architecture/TARGET.md "Atlas TUI shell
-# (E09-S01)"). AC1 ("No direct filesystem/provider access from the TUI crate") is enforced
-# concretely by this crate depending on neither a provider adapter nor cancellai-inventory/
-# cancellai-platform/cancellai-store at all. E09-S02 reintroduces cancellai-policy once it has
-# real fixture-inventory view data to feed the Atlas screen this story only stubs.
+# E09-S01 kept this crate free of every cancellai-* dependency (docs/architecture/TARGET.md
+# "Atlas TUI shell (E09-S01)"); E09-S02 reintroduces exactly one: cancellai-policy, the "Engine
+# / Query API" layer (`atlas::summarize`, E09-S02). AC1 ("No direct filesystem/provider access
+# from the TUI crate") still holds: this crate depends on no provider adapter and no
+# cancellai-inventory/cancellai-platform/cancellai-store/cancellai-safety directly - only on
+# cancellai-policy's own public, already-classified view-model API. cancellai-policy happens to
+# depend on those crates internally to build that API; that is the query-API boundary working
+# as designed (docs/architecture/TARGET.md's diagram places "Engine / Query API" between "CLI /
+# TUI / Guardian" and "Inventory + Providers" for exactly this reason), not a loophole in it.
 #
 # ratatui/crossterm are outer-ring dependencies named explicitly for this epic in ADR-0019
 # ("Dependency rings - the kernel stays bare, the outer ring uses reviewed libraries"): both
@@ -24,3 +27,12 @@ workspace = true
 [dependencies]
 ratatui = "0.29"
 crossterm = "0.28"
+cancellai-policy = { path = "../cancellai-policy", version = "0.1.0" }
+
+# Test-only: building an `AtlasSummary` fixture in ui.rs's own render tests needs to name
+# `cancellai_model::ArtifactId` directly (`cancellai-policy` uses it internally but does not
+# re-export it). Never linked into the shipped binary - AC1's "no direct filesystem/provider
+# access" is a production-dependency claim and cancellai-model has no filesystem/provider access
+# of its own anyway (docs/architecture/TARGET.md: "pure domain types and invariants").
+[dev-dependencies]
+cancellai-model = { path = "../cancellai-model", version = "0.1.0" }

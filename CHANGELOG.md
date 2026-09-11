@@ -21,6 +21,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `cancellai-*` crate at all yet - no provider/filesystem access is possible from it by
   construction, and `cancellai-policy`'s engine query API is reintroduced only once E09-S02 has
   real view data to render.
+- Added the Machine and project atlas screen to `cancellai-tui` (E09-S02, CR1, observational
+  only): total footprint and an estimated-reclaimable subset shown as two visually distinct
+  values (never blended), per-provider and per-project breakdowns with an explicit
+  "Unattributed" bucket, and the individually largest contributors. An incomplete or unknown
+  provider scan is flagged prominently rather than hidden inside the totals it could be
+  undercounting. New `cancellai_policy::atlas::summarize` computes the summary from
+  already-classified inventory (reusing the exact reclaimability test `plan`/`clean` already
+  apply); `cancellai-tui` reintroduces `cancellai-policy` as its only new dependency to consume
+  it - still no provider adapter or filesystem crate. Live-scan wiring into the running binary
+  remains deferred; the screen shows an explicit "not loaded yet" state until that follow-up
+  lands.
 
 ## [1.12.0] - 2026-09-11
 

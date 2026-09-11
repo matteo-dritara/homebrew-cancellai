@@ -34,7 +34,7 @@
     {
       "id": "E09-S02",
       "title": "Machine and project atlas",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Show total footprint, reclaimable estimates, providers, projects, unattributed state, and top contributors.",
       "change_risk": "CR1",
       "dependencies": [

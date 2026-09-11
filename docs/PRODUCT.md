@@ -93,6 +93,15 @@ CLI and TUI are first-class clients of the same engine. Neither may contain doma
                   Guardian / Desktop later
 ```
 
+The TUI's Atlas screen (E09-S02) is the first exploration surface built on this shared engine:
+total footprint and an estimated-reclaimable subset - always shown as two distinct numbers,
+never blended into one - broken down by provider and by project, with an explicit
+"Unattributed" bucket rather than a silent drop, and the individually largest contributors to
+that footprint. An incomplete or unknown scan is flagged prominently rather than hidden inside
+the totals it could be undercounting - the same "unknown is protected, never hidden" posture
+`docs/CONSTITUTION.md`'s C-02 states for destructive authority, applied here to what the user is
+told, not just to what the engine is allowed to do.
+
 ## Open-source and commercial boundary
 
 The single-machine product remains open source: scanner, artifact model, provider framework, safety kernel, CLI/TUI, quarantine, Guardian, and local policy engine.

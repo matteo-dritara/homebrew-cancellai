@@ -1027,7 +1027,7 @@ Deliver the first rich exploratory interface without duplicating engine logic.
 
 ### E09-S02 - Machine and project atlas
 
-**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E09-S01 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E09-S01 | **Safety obligations:** none
 
 **Outcome.** Show total footprint, reclaimable estimates, providers, projects, unattributed state, and top contributors.
 

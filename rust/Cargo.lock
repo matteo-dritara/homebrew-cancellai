@@ -204,6 +204,8 @@ dependencies = [
 name = "cancellai-tui"
 version = "0.1.0"
 dependencies = [
+ "cancellai-model",
+ "cancellai-policy",
  "crossterm",
  "ratatui",
 ]

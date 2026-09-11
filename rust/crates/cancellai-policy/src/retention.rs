@@ -184,6 +184,24 @@ impl ProviderResolution {
     pub fn scan_error_count(&self) -> u32 {
         self.observation.unobserved_count()
     }
+
+    /// Test-only, crate-visible constructor (E09-S02). `artifacts`/`observation` are private by
+    /// design (E21-S04, ADR-0018 - see this struct's own doc) so nothing outside this crate can
+    /// separate them; `atlas.rs`'s tests need to build a `ProviderResolution` with a specific
+    /// `ScopeCompleteness` (Complete/Partial/Unknown) without going through a real
+    /// `resolve_claude`/`resolve_codex` filesystem round trip, which is what this exists for.
+    #[cfg(test)]
+    pub(crate) fn for_test(
+        provider_id: &'static str,
+        artifacts: Vec<ClassifiedArtifact>,
+        observation: ScopeObservation,
+    ) -> Self {
+        Self {
+            provider_id,
+            artifacts,
+            observation,
+        }
+    }
 }
 
 /// Turns a scope's completeness into the two things every caller needs: whether destructive

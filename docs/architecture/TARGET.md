@@ -232,6 +232,54 @@ message rather than panicking. Executed once this story via a real macOS termina
 residual for a follow-up manual pass, the same per-platform honesty `docs/PLATFORMS.md` already
 uses.
 
+### Machine and project atlas (E09-S02)
+
+`cancellai_policy::atlas` is the second occupant of the "Engine / Query API" layer, after
+`views` (E08-S04). `atlas::summarize(&[ProviderResolution], top_n)` turns already-classified,
+already-completeness-aware `ProviderResolution`s into an `AtlasSummary`: total logical footprint
+and a *separately-fielded* estimated-reclaimable subset, per-provider and per-project totals
+(the latter carrying `views::ProjectBucketKey`'s own explicit `Unattributed` case), and the
+`top_n` individually largest artifacts across every provider.
+
+**AC1 - logical and reclaimable are visually distinct**: `AtlasSummary::total_reclaimable_bytes`
+is never merged into `total_logical_bytes` - they are two separate `u64` fields a caller cannot
+blend even by accident. "Reclaimable" is not a new predicate invented for this screen: an
+artifact counts once its `ClassifiedArtifact::reachable_authority` clears
+`cancellai_safety::authority::minimum_authority_for(ActionClass::Delete)` - the identical test
+`cancellai-cli plan`/`clean` already apply, so a byte counted here as reclaimable is a byte a
+real `plan` would also propose deleting today. `cancellai-tui`'s `ui::draw_atlas_summary` labels
+the two totals with different text ("Total footprint" / "Estimated reclaimable") unconditionally
+and adds distinct styling only where color is available - distinctness never depends on color
+capability alone.
+
+**AC2 - unknown/incomplete scans are prominent, never hidden**: `AtlasSummary::any_incomplete`
+is true the moment any provider's scan is not `Complete`, but `summarize` still sums whatever
+*was* observed into the totals above - incompleteness flags a possible undercount, it never
+zeroes or withholds the numbers. The TUI renders a dedicated highlighted line
+("scans are incomplete - totals may be undercounted") whenever the flag is set.
+
+**Dependency boundary**: `cancellai-tui`'s `Cargo.toml` gains exactly one new production
+dependency, `cancellai-policy` - still no provider adapter, `cancellai-inventory`,
+`cancellai-platform`, or `cancellai-safety` directly (AC1 from E09-S01 continues to hold; see
+that section and `Cargo.toml`'s own comment for why depending on the query-API crate is the
+boundary working as designed, not a gap in it). `data::EngineData` is the one seam the TUI reads
+`cancellai-policy` types through, so a future screen (E09-S03/E09-S04) extends that one struct
+rather than importing engine types in every screen-drawing function.
+
+**Verification ("golden view models from fixture inventory")**: `atlas::summarize`'s own tests
+live in `cancellai-policy` (crate-internal, via a `#[cfg(test)]`-only `ProviderResolution::
+for_test` constructor - its `artifacts`/`observation` fields are private by E21-S04/ADR-0018
+design) against synthetic multi-provider, multi-project, Partial/Unknown-completeness fixtures.
+`cancellai-tui`'s own render tests construct an `AtlasSummary` fixture directly (all its fields
+are `pub`) and assert the rendered text distinguishes the two totals and surfaces incompleteness,
+without needing a real scan.
+
+**Residual**: wiring a real, live provider scan into the running `cancellai-tui` binary is
+deferred - `main.rs` renders the Atlas screen's explicit "No inventory scan loaded yet." state,
+matching the identical, already-accepted deferral E08-S04 recorded for `cancellai-cli`'s own
+view wiring. This story's contract is fixture-driven view-model correctness, not live-scan
+product wiring.
+
 ## Core loop
 
 The engine behaves as an evidence-driven reconciliation loop:

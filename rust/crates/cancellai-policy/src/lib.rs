@@ -10,12 +10,15 @@
 //! rationale, and `docs/adrs/0016-rust-artifact-risk-classification.md` for the
 //! `RiskClass -> AuthorityCeiling` mapping decision this module implements. E08-S04 adds
 //! [`views`], the first occupant of `docs/architecture/TARGET.md`'s "Engine / Query API" layer -
-//! see that module's own doc for why it lives here rather than in a dedicated crate.
+//! see that module's own doc for why it lives here rather than in a dedicated crate. E09-S02
+//! adds [`atlas`], the second occupant, for `cancellai-tui`'s Atlas screen.
 
+pub mod atlas;
 pub mod retention;
 mod trust;
 pub mod views;
 
+pub use atlas::{AtlasSummary, ProjectTotals, ProviderTotals, TopContributor, summarize};
 pub use retention::{
     ClassifiedArtifact, ProviderPlanningView, ProviderResolution, RetentionPolicy, ToolScope,
     build_actions, resolve_claude, resolve_codex,
@@ -25,6 +28,3 @@ pub use views::{
     MachineBucket, ProjectBucket, ProjectBucketKey, ProviderBucket, SessionBucket, by_artifact,
     by_machine, by_project, by_provider, by_session,
 };
-
-use cancellai_model as _;
-use cancellai_safety as _;

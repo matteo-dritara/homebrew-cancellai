@@ -15,6 +15,7 @@ use ratatui::backend::CrosstermBackend;
 
 use cancellai_tui::app::App;
 use cancellai_tui::capability::{self, ProcessEnv};
+use cancellai_tui::data::EngineData;
 use cancellai_tui::event::{self, AppEvent};
 use cancellai_tui::ui;
 
@@ -29,8 +30,14 @@ fn main() -> io::Result<()> {
 fn run(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> io::Result<()> {
     let capability = capability::detect(&ProcessEnv);
     let mut app = App::new();
+    // No inventory scan is wired into the running binary yet (E09-S02's own evidence packet:
+    // fixture-driven view-model correctness is this story's scope, live-scan wiring is a
+    // separate, deferred change, matching E08-S04's identical deferral for the CLI). The Atlas
+    // screen renders its explicit "not loaded" state until a future story assembles a real
+    // `Vec<ProviderResolution>` here and feeds it through `cancellai_policy::atlas::summarize`.
+    let data = EngineData::default();
     while !app.should_quit {
-        terminal.draw(|frame| ui::draw(frame, &app, capability))?;
+        terminal.draw(|frame| ui::draw(frame, &app, capability, &data))?;
         if let AppEvent::Key(key) = event::next(Duration::from_millis(250))? {
             app.handle_key(key);
         }

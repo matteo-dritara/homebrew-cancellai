@@ -8,6 +8,7 @@ use ratatui::backend::TestBackend;
 
 use cancellai_tui::app::{App, Screen};
 use cancellai_tui::capability::{ColorSupport, TerminalCapability};
+use cancellai_tui::data::EngineData;
 use cancellai_tui::ui;
 
 fn key(code: KeyCode) -> KeyEvent {
@@ -22,12 +23,13 @@ fn a_full_keyboard_session_reaches_every_screen_then_quits_cleanly() {
     };
     let mut terminal = Terminal::new(TestBackend::new(60, 15)).expect("terminal");
     let mut app = App::new();
+    let data = EngineData::default();
 
     let visited_in_order = [Screen::Home, Screen::Atlas, Screen::Explain, Screen::Plan];
     for expected in visited_in_order {
         assert_eq!(app.screen, expected);
         terminal
-            .draw(|frame| ui::draw(frame, &app, capability))
+            .draw(|frame| ui::draw(frame, &app, capability, &data))
             .expect("draw must not panic");
         app.handle_key(key(KeyCode::Tab));
     }
@@ -49,13 +51,14 @@ fn help_overlay_opens_and_closes_without_losing_the_current_screen() {
     };
     let mut terminal = Terminal::new(TestBackend::new(60, 15)).expect("terminal");
     let mut app = App::new();
+    let data = EngineData::default();
     app.handle_key(key(KeyCode::Char('2')));
     assert_eq!(app.screen, Screen::Atlas);
 
     app.handle_key(key(KeyCode::Char('?')));
     assert!(app.show_help);
     terminal
-        .draw(|frame| ui::draw(frame, &app, capability))
+        .draw(|frame| ui::draw(frame, &app, capability, &data))
         .expect("draw must not panic");
     assert_eq!(
         app.screen,
@@ -72,9 +75,10 @@ fn every_ascii_no_color_frame_in_a_full_session_avoids_unicode_borders() {
     let capability = TerminalCapability::MINIMAL;
     let mut terminal = Terminal::new(TestBackend::new(60, 15)).expect("terminal");
     let mut app = App::new();
+    let data = EngineData::default();
     for _ in 0..cancellai_tui::app::SCREENS.len() {
         terminal
-            .draw(|frame| ui::draw(frame, &app, capability))
+            .draw(|frame| ui::draw(frame, &app, capability, &data))
             .expect("draw");
         let content: String = terminal
             .backend()
