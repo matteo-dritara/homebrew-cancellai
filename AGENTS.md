@@ -20,9 +20,19 @@ python3 scripts/project_os.py check
 python3 scripts/project_os.py status
 python3 scripts/project_os.py next
 python3 scripts/project_os.py review
+python3 scripts/check_agent_toolchain.py report
 ```
 
 Do not begin implementation from chat context alone. The repository contract is authoritative.
+
+The last command is the session-start toolchain review, and it is here rather than in the check
+list because it is the one thing that must happen *before* the session starts working: the skills,
+hooks, subagents, plugins and MCP servers this session is carrying are third-party code and
+third-party prompt content entering the agent that is about to write code, and a session whose
+tooling nobody decided to carry produces work nobody can account for. Anything unmanaged, missing,
+or past its review date goes to the owner as a proposal before work begins. In Claude Code the
+`toolchain` skill does this; any other agent runs the command. **No agent installs, updates or
+removes a component** - see [`docs/development/AGENT_TOOLCHAIN.md`](docs/development/AGENT_TOOLCHAIN.md).
 
 ## Current transition state
 
