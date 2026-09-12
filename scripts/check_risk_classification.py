@@ -60,6 +60,18 @@ STORY_SHORTHAND = re.compile(r"E(\d{2})-S(\d{2})((?:/S\d{2})+)")
 # A level at or above this requires a second, independent classification before the story closes.
 INDEPENDENT_CLASSIFICATION_REQUIRED_AT = "CR4"
 
+# Floors that configuration may raise and may never lower. `project/risk_floors.json` is a file
+# like any other: the gate-sensitivity harness planted a mutant that edited the safety kernel's
+# floor from CR4 to CR0 and **no gate caught it**, which made the whole mechanism weakenable by
+# whoever it constrains. These four surfaces are therefore stated in code, where changing them is
+# a change to a checker under review rather than a line in a data file.
+MANDATORY_FLOORS: dict[str, str] = {
+    "rust/crates/cancellai-safety/src/*": "CR4",
+    "rust/crates/cancellai-sealedfs/src/*": "CR4",
+    "rust/crates/cancellai-platform/src/mutation*": "CR4",
+    "cancellai.py": "CR3",
+}
+
 
 class RiskClassificationError(RuntimeError):
     pass
@@ -85,6 +97,19 @@ def load_floors() -> dict[str, Any]:
         if not entry.get("reason"):
             raise RiskClassificationError(
                 f"floor {entry.get('pattern')!r} has no reason; a floor nobody can argue with is a floor nobody will respect"
+            )
+    configured = {entry["pattern"]: entry["level"] for entry in data.get("floors", [])}
+    for pattern, minimum in MANDATORY_FLOORS.items():
+        actual = configured.get(pattern)
+        if actual is None:
+            raise RiskClassificationError(
+                f"mandatory floor {pattern!r} ({minimum}) is missing from {FLOORS_FILE.name}; "
+                "configuration may add floors and raise them, never remove one"
+            )
+        if rank(actual) < rank(minimum):
+            raise RiskClassificationError(
+                f"floor {pattern!r} is configured at {actual} but may never be below {minimum}. "
+                "Configuration can raise a floor; lowering one is a change to the checker, under review"
             )
     return data
 

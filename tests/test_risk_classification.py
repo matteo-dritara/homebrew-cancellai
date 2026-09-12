@@ -130,6 +130,13 @@ class DisagreementSummaryTests(unittest.TestCase):
 class AttributionTests(unittest.TestCase):
     def test_attribution_reports_what_it_could_not_attribute(self):
         attributed, ambiguous = risk.attributable_paths()
+        if not attributed and not ambiguous:
+            # A source export has no `.git`, so there is nothing to attribute and the claim is
+            # vacuous rather than false. Asserting unconditionally made the whole suite fail in a
+            # released tarball - found by the gate-sensitivity control experiment, which runs the
+            # suite against a git-less copy and reported `pytest` as failing on a clean tree,
+            # which would have made every kill it recorded worthless.
+            self.skipTest("no git history available; attribution has nothing to read")
         # This repository batches stories into commits routinely; a checker that hid that would
         # report a clean run over a third of the backlog as if it covered all of it.
         self.assertGreater(ambiguous, 0)

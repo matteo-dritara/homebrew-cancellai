@@ -5,7 +5,7 @@
   "title": "Agent Execution Layer",
   "objective": "Make the cEOS contract executable by the agent harness that is supposed to execute it. The repository already states the executor/verifier protocol, the eleven falsification axes, the CR0-CR4 gate matrix and the dependency rings in prose; nothing in the repository loads them. This epic closes that gap in the open Agent Skills format, so the same pack loads for the executor (Claude) and the independent reviewer (Codex), and adds the drift check that keeps a skill from becoming a second, unchecked copy of the contract it cites.",
   "dependencies": [],
-  "status": "in_progress",
+  "status": "done_no_release",
   "stories": [
     {
       "id": "E24-S01",

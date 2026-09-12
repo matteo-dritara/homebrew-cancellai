@@ -9,6 +9,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The engineering system is now measured and falsifiable, not only documented** (E25, E26; CR0-CR2,
+  no user-visible product behavior change). Twelve findings from
+  [the methodology review](docs/audits/2026-09-12-METHODOLOGY_REVIEW.md) against DO-178C, ISO 26262,
+  IEC 61508, NPR 7150.2 and the software-measurement literature; eleven are now repaired.
+  - `scripts/process_metrics.py` measures the process from artifacts the repository already commits:
+    review yield per round, first-pass rejection rate split by reviewer independence, a
+    Lincoln-Petersen residual estimate from reviewer overlap, evidence-ledger integrity, and
+    documentation readership. The first result was that **47% of round-1 independent review verdicts
+    are `FAIL`, on work whose executor had run every gate green**.
+  - `scripts/check_risk_classification.py` gives the Change Risk Level a floor derived from the paths
+    a change touches, enforced at `commit-msg` where the staged diff and the story are both visible.
+    Four kernel surfaces are stated in code, where configuration may raise them and may never lower
+    one. No safety standard lets the implementing party assign its own criticality level.
+  - `scripts/gate_sensitivity.py` plants a violation of each named claim and records which gate
+    caught it - Mills' error seeding, generalised from the two comparators already using it. Eleven
+    mutants, all killed; the one that initially survived had edited the risk floor itself.
+  - `scripts/check_evidence.py` requires a row per acceptance criterion, a real residual-risk section
+    at CR3 and above, and a Safety Verdict for a CR4 story at `done`.
+  - `scripts/safety_oracle.py` checks protected-name enforcement, root capability and the retention
+    rule against predicates written from the invariants rather than recorded from the implementation.
+  - `scripts/check_ears.py` classifies acceptance criteria and requires a CR3+ story to say what
+    happens when something is wrong. **14 of 294 criteria describe unwanted behaviour.**
+  - `docs/security/HAZARD_ANALYSIS.md` adds an STPA pass over the mutation control loop: twenty
+    unsafe control actions, five loss scenarios from process-model inconsistency, and three gaps the
+    invariant set does not constrain.
+- **The agent toolchain is governed as a dependency** (E26). `project/agent_toolchain.json` records
+  every skill, hook, plugin, MCP server and language server with its source, pinned version, trust
+  tier, capability surface, always-on token cost and a dated decision - plus what was rejected and
+  why. Nothing unmanaged; a component that runs code must be first-party or a named vendor;
+  decisions expire; and the always-on context cost is budgeted, by the same argument C-11 makes
+  about storage. `scripts/check_agent_toolchain.py` also compares pins against upstream and records
+  which components are actually used. **No agent installs, updates or removes a component.**
+
+### Changed
+
+- Review stops on **measured yield** rather than a fixed round count, and an epic that changes
+  nothing in the shipped artifact closes as `done_no_release` instead of cutting an empty version
+  ([ADR-0025](docs/adrs/0025-review-stops-on-yield-and-a-shippable-nothing-does-not-cut-a-release.md),
+  amending ADR-0014).
+- `docs/development/AGENT_PROTOCOL.md` states what "independent" can mean here in the standards' own
+  vocabulary - one owner and two model instances is IEC 61508's lowest rung - and defines what a
+  self-review may and may not certify.
+- `docs/development/VERIFICATION_STRATEGY.md` separates **regression detectors** from **correctness
+  oracles**: a fixture recorded from an implementation detects change, never wrongness.
+
+No user-visible product behavior changes in E24, E25 or E26.
+
+### Added
+
 - The engineering contract is now loadable by the agent harness that is supposed to execute it
   (E24, CR0). `.claude/skills/` carries seven Agent Skills in the open
   [Agent Skills](https://agentskills.io) format - `orient`, `story-executor`, `epic-verifier`,

@@ -62,9 +62,10 @@ Classify each defect before proposing a fix: **implementation bug**, **spec gap*
 ## Record
 
 Write `project/evidence/<EPIC-ID>-VERIFIER-REVIEW[-ROUND2].md` containing: review target commit
-range, verifier identity, date; a `Story | Verdict | Concrete evidence` table; reproductions and
-required repairs for every `FAIL`; which gate commands actually ran and their results; the round
-verdict.
+range, verifier identity, date; a `Story | Verdict | Concrete evidence` table with the verdict in
+the **second column**, where `scripts/process_metrics.py` reads it from; reproductions and required
+repairs for every `FAIL`; which gate commands actually ran and their results; **the documents you
+actually opened, by path** - the only readership signal this project has; and the round verdict.
 
 Then, per `docs/development/WORK_ITEM_MODEL.md`: `PASS`/`PASS_WITH_RESIDUALS` stories move to
 `done`, `FAIL` stories move back to `in_progress` with dependents marked `blocked`, the epic moves

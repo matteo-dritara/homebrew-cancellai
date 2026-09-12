@@ -19,7 +19,7 @@ repos:
     hooks:
       - id: mypy
         args: [--strict]
-        files: ^(cancellai\.py|scripts/(gen_docs|project_os|check_docs|check_workflows|check_process|release|check_fixtures|check_schemas|characterize|diff_harness|check_rust_workspace|check_mutation_boundary|check_provider_compatibility|check_provider_trust|rust_python_parity|release_manifest|check_repository_topology|check_agent_skills|process_metrics|check_risk_classification|check_agent_toolchain|check_evidence)\.py)$
+        files: ^(cancellai\.py|scripts/(gen_docs|project_os|check_docs|check_workflows|check_process|release|check_fixtures|check_schemas|characterize|diff_harness|check_rust_workspace|check_mutation_boundary|check_provider_compatibility|check_provider_trust|rust_python_parity|release_manifest|check_repository_topology|check_agent_skills|process_metrics|check_risk_classification|check_agent_toolchain|check_evidence|check_ears|safety_oracle|gate_sensitivity)\.py)$
 
   - repo: local
     hooks:
@@ -90,6 +90,23 @@ repos:
         always_run: true
         pass_filenames: false
 
+      - id: safety-oracle
+        name: the highest-risk behaviours agree with a predicate, not with a recording
+        entry: python3 scripts/safety_oracle.py check
+        language: system
+        files: ^(cancellai\.py|scripts/safety_oracle\.py|docs/security/SAFETY_INVARIANTS\.md|README\.md)$
+        pass_filenames: false
+
+      - id: ears-check
+        name: CR3+ acceptance criteria say what happens when something is wrong
+        entry: python3 scripts/check_ears.py check
+        language: system
+        files: ^(project/(epics/.*\.json|ears_baseline\.json)|scripts/check_ears\.py)$
+        pass_filenames: false
+
+      # gate_sensitivity is deliberately NOT here: it copies the whole tree once per mutant and
+      # runs the gate set against each copy. A pre-commit hook nobody waits for is a hook nobody
+      # keeps. It runs in CI, where two minutes is affordable and the report's drift still fails.
       - id: evidence-check
         name: every evidence packet discharges the story contract it claims to
         entry: python3 scripts/check_evidence.py check

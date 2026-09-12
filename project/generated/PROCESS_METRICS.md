@@ -69,7 +69,7 @@ independent samples, and the population estimate collapses to what one round alr
 
 ## Evidence-ledger integrity
 
-- **76 of 91** story packets past `ready_for_review` carry a row per acceptance criterion.
+- **83 of 98** story packets past `ready_for_review` carry a row per acceptance criterion.
 - Packets that do not:
   - E00-S01 (CR4): 0 rows for 3 criteria
   - E00-S02 (CR4): 0 rows for 3 criteria
@@ -102,8 +102,69 @@ load-bearing rather than academic.
 - Independent classifications recorded: **0**. 5 stories are recorded below their floor, owner decision pending.
 - With no second classification the level is still self-assessed everywhere a floor does not reach.
 
+## Requirements shape
+
+- Acceptance criteria describing **unwanted behaviour**: **9 of 357** (3%).
+- Epics whose requirements describe the feature and not the hazard:
+  - `E00` - 0 of 29
+  - `E01` - 0 of 13
+  - `E02` - 0 of 10
+  - `E03` - 0 of 13
+  - `E04` - 0 of 8
+
+## Documentation readership
+
+- Documents a committed review record has named: **10**. Never named: **38**.
+- Never named is not the same as never read, and an unread document may still be the right
+  document. This is a list for the owner once a phase, not a purge, and accepted ADRs are
+  undeletable regardless of what it says.
+
+<details><summary>Never named in a review record</summary>
+
+- `docs/ARCHITECTURE.md`
+- `docs/CLI.md`
+- `docs/CONSTITUTION.md`
+- `docs/DECISION_REGISTER.md`
+- `docs/INDEX.md`
+- `docs/PLATFORMS.md`
+- `docs/PRODUCT.md`
+- `docs/PROVIDERS.md`
+- `docs/RELEASING.md`
+- `docs/ROADMAP.md`
+- `docs/architecture/AS_IS.md`
+- `docs/architecture/GUARDIAN_MODEL.md`
+- `docs/architecture/JSON_CONTRACTS.md`
+- `docs/architecture/PERSISTENCE_MODEL.md`
+- `docs/architecture/PLATFORM_MODEL.md`
+- `docs/architecture/POLICY_MODEL.md`
+- `docs/architecture/PROVIDER_MODEL.md`
+- `docs/architecture/TARGET.md`
+- `docs/audits/2026-08-27-CODE_REVIEW.md`
+- `docs/audits/2026-09-03-CODE_REVIEW.md`
+- `docs/development/AGENT_TOOLCHAIN.md`
+- `docs/development/ENGINEERING_SYSTEM.md`
+- `docs/development/MIGRATION_PYTHON_RUST.md`
+- `docs/development/REPOSITORY_GOVERNANCE.md`
+- `docs/development/WORK_ITEM_MODEL.md`
+- `docs/research/MARKET_AND_STANDARDS_2026-08.md`
+- `docs/rfcs/README.md`
+- `docs/security/INCIDENT_RESPONSE.md`
+- `docs/security/THREAT_MODEL.md`
+- `project/README.md`
+- `project/templates/ADR.md`
+- `project/templates/EVIDENCE_PACKET.md`
+- `project/templates/EXECUTOR_PROMPT.md`
+- `project/templates/RELEASE_EVIDENCE.md`
+- `project/templates/RFC.md`
+- `project/templates/SAFETY_VERDICT.md`
+- `project/templates/STORY.md`
+- `project/templates/VERIFIER_PROMPT.md`
+
+</details>
+
 ## Review records this tool could not classify
 
+- `project/evidence/E25-E26-SELF-REVIEW-ROUND2.md`
 - `project/evidence/E25-E26-SELF-REVIEW.md`
 
 ## Rework proxy

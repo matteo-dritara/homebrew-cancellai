@@ -227,6 +227,28 @@ def rework_ratio(limit: int = 300) -> tuple[int, int]:
     return fixes, feats
 
 
+DOC_REFERENCE = re.compile(r"(?<![\w/.-])((?:docs|project)/[\w./-]*\.md)")
+# Documents addressed by something other than a review: GitHub consumes these by location, and
+# evidence packets are addressed by work-item id. Listing them as unread would be noise.
+READERSHIP_EXEMPT = ("project/evidence/", "project/generated/", "docs/adrs/", ".github/")
+
+
+def readership() -> tuple[list[str], int]:
+    """Documents no committed review record has ever named, and how many were named.
+
+    Haddon-Cave's list of what a safety case degenerates into ends at decorative shelf-ware, and
+    the only way to know is to record what a review actually opened. This is the measurement, not
+    a purge: an unread document may still be the right document, and the output is a list for the
+    owner rather than a deletion.
+    """
+    named: set[str] = set()
+    for path in sorted(EVIDENCE.rglob("*REVIEW*.md")):
+        named.update(DOC_REFERENCE.findall(path.read_text(encoding="utf-8")))
+    everything = {p.relative_to(ROOT).as_posix() for p in ROOT.rglob("*.md") if "docs/" in p.as_posix() or "project/" in p.as_posix()}
+    candidates = {doc for doc in everything if not doc.startswith(READERSHIP_EXEMPT) and (doc.startswith("docs/") or doc.startswith("project/"))}
+    return sorted(candidates - named), len(named & candidates)
+
+
 def risk_summary() -> str:
     """The independent-classification disagreement rate, which E25-S02's AC3 says is reported here.
 
@@ -254,6 +276,52 @@ def risk_summary() -> str:
         else ""
     )
     return f"- Independent classifications recorded: **{len(entries)}**; disagreements: **{len(disagreements)}** ({rate:.0f}%).{tail}"
+
+
+def ears_summary() -> str:
+    """The unwanted-behaviour ratio, which E25-S08's AC3 says is reported here.
+
+    For a tool whose defining risk is deleting the wrong thing, this is the number that says
+    whether the requirements describe the feature or the hazard.
+    """
+    try:
+        result = subprocess.run(  # noqa: S603
+            [sys.executable, str(ROOT / "scripts" / "check_ears.py"), "ratio"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        rows = [(row["epic"], row["unwanted"], row["total"]) for row in json.loads(result.stdout)]
+    except (OSError, ValueError, KeyError):
+        return "- The EARS classifier could not be run, so the requirements shape was not measured."
+    if not rows:
+        return "- No acceptance criteria to classify."
+    unwanted = sum(row[1] for row in rows)
+    total = sum(row[2] for row in rows)
+    worst = sorted((row for row in rows if row[2]), key=lambda row: row[1] / row[2])[:5]
+    lines = [
+        f"- Acceptance criteria describing **unwanted behaviour**: **{unwanted} of {total}** ({100 * unwanted / total:.0f}%).",
+        "- Epics whose requirements describe the feature and not the hazard:",
+    ]
+    lines += [f"  - `{epic}` - {unwanted_n} of {total_n}" for epic, unwanted_n, total_n in worst]
+    return "\n".join(lines)
+
+
+def _readership_lines() -> list[str]:
+    unread, read = readership()
+    lines = [
+        f"- Documents a committed review record has named: **{read}**. Never named: **{len(unread)}**.",
+        "- Never named is not the same as never read, and an unread document may still be the right",
+        "  document. This is a list for the owner once a phase, not a purge, and accepted ADRs are",
+        "  undeletable regardless of what it says.",
+    ]
+    if unread:
+        lines += ["", "<details><summary>Never named in a review record</summary>", ""]
+        lines += [f"- `{doc}`" for doc in unread]
+        lines += ["", "</details>"]
+    return lines
 
 
 def render(stories: dict[str, dict[str, Any]], rounds: dict[str, list[Round]]) -> str:
@@ -376,6 +444,14 @@ def render(stories: dict[str, dict[str, Any]], rounds: dict[str, list[Round]]) -
         "## Risk classification",
         "",
         risk_summary(),
+        "",
+        "## Requirements shape",
+        "",
+        ears_summary(),
+        "",
+        "## Documentation readership",
+        "",
+        *_readership_lines(),
         "",
         "## Review records this tool could not classify",
         "",

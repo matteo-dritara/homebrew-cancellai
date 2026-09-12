@@ -21,6 +21,7 @@ reports them, and zero exist. That is stated rather than claimed as done.
 | AC2 - a second classification, recorded and compared | Structure present and validated (`independent_classifications`, with `EvaluationTests` refusing an unnamed classifier and an unknown story). **No classification has been produced**, so the mechanism is untested in use. | PARTIAL |
 | AC3 - the disagreement rate is reported, and zero over many is itself a signal | **Corrected after review:** the AC says the rate is reported by `scripts/process_metrics.py`, and it was reported only by this checker. `process_metrics.py` now carries a Risk classification section reading `project/risk_floors.json`. Also `disagreement_summary`; `test_a_zero_disagreement_rate_over_many_stories_is_itself_flagged`. `test_no_classifications_says_so_rather_than_reporting_agreement` pins the distinction between "none recorded" and "all agreed", which a summary that conflated them would report as a perfect second opinion. | PASS |
 | AC4 - an override names a reason or is refused | `test_an_override_with_no_reason_is_refused`. The error text is "'it is a small change' is not a reason", because that is the argument that will actually be offered. | PASS |
+| AC5 - unattributable commits are refused, not guessed | `attributable_paths` returns the ambiguous count alongside the attributed set, and `cmd_check` prints "29 of 127 stories had unambiguously attributable paths" with the reason. `test_attribution_reports_what_it_could_not_attribute`. | PASS |
 
 ## Safety Evidence
 

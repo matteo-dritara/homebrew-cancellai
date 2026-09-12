@@ -2,6 +2,58 @@
 
 A release is eligible only when the gates required by its changes are green. The project distinguishes feature completion from safety evidence.
 
+## Gates are structural or behavioural, and the difference matters
+
+A process audit verifies that a step was performed; it does not verify that a property holds. The
+Nimrod safety case was fully compliant and the aircraft was not safe. So every gate in
+`AGENTS.md`'s check list is classified here, and `scripts/gate_sensitivity.py` refuses a gate it
+does not find in this table.
+
+**Structural** gates assert that something exists, matches, or is consistent. They are cheap, they
+catch real drift, and a green one says nothing about whether the product is safe.
+
+**Behavioural** gates assert that the system does or does not do something. A behavioural gate can
+be shown to fail by planting a violation, which is what
+[`GATE_SENSITIVITY.md`](../../project/generated/GATE_SENSITIVITY.md) records.
+
+| Gate | Kind |
+| --- | --- |
+| `pytest` | behavioural |
+| `ruff check` / `ruff format --check` / `mypy` | structural |
+| `gen_docs.py --check` | structural |
+| `project_os.py check` | structural |
+| `check_docs.py check` | structural |
+| `check_workflows.py check` | structural |
+| `check_fixtures.py check` | behavioural |
+| `check_schemas.py check` | structural |
+| `characterize.py check` | behavioural |
+| `diff_harness.py check` | behavioural |
+| `check_rust_workspace.py check` | structural |
+| `check_mutation_boundary.py check` | behavioural |
+| `check_provider_compatibility.py check` | behavioural |
+| `check_provider_trust.py check` | behavioural |
+| `check_platforms.py check` | structural |
+| `check_process.py check` | structural |
+| `release.py check` | structural |
+| `release_manifest.py check` | structural |
+| `check_repository_topology.py check` | structural |
+| `check_agent_skills.py check` | structural |
+| `process_metrics.py check` | structural |
+| `check_risk_classification.py check` | behavioural |
+| `check_agent_toolchain.py check` | behavioural |
+| `check_evidence.py check` | structural |
+| `safety_oracle.py check` | behavioural |
+| `check_ears.py check` | behavioural |
+| `gate_sensitivity.py check` | behavioural |
+| `rust_python_parity.py check` | behavioural |
+| `cargo fmt / clippy / check` | structural |
+| `cargo test` | behavioural |
+| `cargo deny check` | behavioural |
+
+Nine of thirty-one are structural-only in the sense that no planted violation could make them fail
+about the product. That ratio is not a target and is recorded so that a green run is read for what
+it is: roughly two thirds of this gate set asserts a property, and one third asserts a shape.
+
 ## G1 Functional
 
 - acceptance criteria pass;

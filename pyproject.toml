@@ -47,5 +47,8 @@ files = [
   "scripts/check_risk_classification.py",
   "scripts/check_agent_toolchain.py",
   "scripts/check_evidence.py",
+  "scripts/check_ears.py",
+  "scripts/safety_oracle.py",
+  "scripts/gate_sensitivity.py",
 ]
 strict = true

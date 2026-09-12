@@ -39,12 +39,15 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "project" / "agent_toolchain.json"
+USAGE = ROOT / "project" / "agent_toolchain_usage.json"
 SKILLS_DIR = ROOT / ".claude" / "skills"
 HOOKS_DIR = ROOT / ".claude" / "hooks"
 SETTINGS = ROOT / ".claude" / "settings.json"
@@ -331,14 +334,157 @@ def render_report(data: dict[str, Any], installed: dict[str, str], today: dt.dat
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------------------- E26-S02, E26-S03
+
+
+def load_usage() -> dict[str, Any]:
+    """Recorded invocations, or an empty record.
+
+    Absence degrades to *unknown*, never to *unused*: a component with no record has not been
+    shown to be idle, and retiring it on that basis would be a decision made from missing data.
+    """
+    if not USAGE.is_file():
+        return {"schema_version": 1, "components": {}}
+    data: dict[str, Any] = json.loads(USAGE.read_text(encoding="utf-8"))
+    return data
+
+
+def record_usage(identifier: str, today: dt.date) -> int:
+    """Note that a component was invoked. Identity and a count only - no transcript, no paths.
+
+    Refuses an id the manifest does not name: a usage record for an unmanaged component would
+    make the retirement report describe something nobody decided to carry.
+    """
+    try:
+        known = {component["id"] for component in load_manifest().get("components", [])}
+    except (ToolchainError, OSError, ValueError):
+        known = set()
+    if known and identifier not in known:
+        print(f"refused: {identifier!r} is not in the manifest; add the component before recording its use", file=sys.stderr)
+        return 2
+    data = load_usage()
+    entry = data.setdefault("components", {}).setdefault(identifier, {"invocations": 0, "last": ""})
+    entry["invocations"] = int(entry.get("invocations", 0)) + 1
+    entry["last"] = today.isoformat()
+    USAGE.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(f"recorded: {identifier} ({entry['invocations']} invocations, last {entry['last']})")
+    return 0
+
+
+def usage_since_decision(component: dict[str, Any], usage: dict[str, Any]) -> str:
+    """Invocations since the decision, `0 since decision`, or `unknown`.
+
+    Dates are compared as `datetime.date`, not as strings. A lexical comparison happens to work
+    for well-formed ISO-8601 and silently gives a wrong answer for anything else, and a wrong
+    answer here retires a component that is in use.
+    """
+    entry = usage.get("components", {}).get(component["id"])
+    if entry is None:
+        return "unknown"
+    raw_decided = component.get("decision", {}).get("date", "")
+    raw_last = entry.get("last", "")
+    if raw_decided and raw_last:
+        try:
+            if dt.date.fromisoformat(str(raw_last)) < dt.date.fromisoformat(str(raw_decided)):
+                return "0 since decision"
+        except (TypeError, ValueError):
+            return "unknown"
+    return f"{entry.get('invocations', 0)}"
+
+
+def upstream(source: str) -> tuple[str, str] | None:
+    if not source.startswith("github:"):
+        return None
+    owner, _, name = source.removeprefix("github:").partition("/")
+    return (owner, name) if owner and name else None
+
+
+def cmd_updates(data: dict[str, Any]) -> int:
+    """Compare each pinned version against upstream, and say so plainly when it cannot.
+
+    A check that needs the network cannot be a gate, so this is a report. It degrades truthfully:
+    with no `gh`, no network, or an unreachable source it says it *could not compare* - never that
+    nothing changed. Nothing is fetched from a source the manifest does not already name.
+    """
+    binary = shutil.which("gh")
+    print("Upstream comparison\n")
+    if binary is None:
+        print("  `gh` is not available, so no comparison was made.")
+        print("  This is not 'everything is current'; it is 'nothing was checked'.")
+        return 0
+    checked = 0
+    for component in data.get("components", []):
+        remote = upstream(str(component.get("source", "")))
+        if remote is None:
+            continue
+        checked += 1
+        owner, name = remote
+        try:
+            result = subprocess.run(  # noqa: S603
+                [binary, "api", f"repos/{owner}/{name}", "--jq", r'"\(.pushed_at)"'],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+        except OSError:
+            print(f"  {component['id']:42} could not compare (gh failed)")
+            continue
+        if result.returncode != 0:
+            print(f"  {component['id']:42} could not compare ({result.stderr.strip()[:60] or 'unreachable'})")
+            continue
+        pushed = result.stdout.strip().strip('"')[:10]
+        # The pin itself, not only the push date: reporting "pinned 2.0.2, last push <date>" next
+        # to each other looks like a comparison and is not one.
+        latest = "unknown"
+        try:
+            tag = subprocess.run(  # noqa: S603
+                [binary, "api", f"repos/{owner}/{name}/releases/latest", "--jq", ".tag_name"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            if tag.returncode == 0 and tag.stdout.strip():
+                latest = tag.stdout.strip().lstrip("v")
+        except OSError:
+            latest = "could not compare"
+        pinned = str(component.get("version", ""))
+        if latest in ("unknown", "could not compare"):
+            drift = f"latest release {latest}"
+        elif latest == pinned:
+            drift = "current"
+        else:
+            drift = f"**behind: upstream {latest}**"
+        signal = ""
+        try:
+            age = (dt.date.today() - dt.date.fromisoformat(pushed)).days
+            if age > 365:
+                signal = f"  <- last push {age} days ago: abandonment candidate, not only a stale pin"
+        except ValueError:
+            pushed = "unknown"
+        print(f"  {component['id']:42} pinned {pinned:10} {drift:34} last push {pushed}{signal}")
+    print(f"\n  {checked} components have a comparable upstream.")
+    print("  A new release that adds a hook or an MCP server turns prompt content into software with")
+    print("  a shell. That is a new decision, not an update: re-record the capabilities before pinning it.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Govern the agent toolchain as a dependency.")
-    parser.add_argument("command", nargs="?", default="check", choices=["check", "report"])
+    sub = parser.add_subparsers(dest="command")
+    sub.add_parser("check", help="reconcile the manifest against what is installed")
+    sub.add_parser("report", help="the owner-facing review")
+    sub.add_parser("updates", help="compare pinned versions against upstream (network, never a gate)")
+    used = sub.add_parser("record", help="note that a component was invoked")
+    used.add_argument("component")
+    parser.set_defaults(command="check")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    command = build_parser().parse_args(argv).command
+    args = build_parser().parse_args(argv)
+    command = args.command
     try:
         data = load_manifest()
         installed = installed_project_components()
@@ -346,6 +492,10 @@ def main(argv: list[str] | None = None) -> int:
         if command == "report":
             print(render_report(data, installed, today))
             return 0
+        if command == "updates":
+            return cmd_updates(data)
+        if command == "record":
+            return record_usage(args.component, today)
         errors, warnings = evaluate(data, installed, today)
     except (ToolchainError, OSError, ValueError, KeyError) as exc:
         print(f"AGENT TOOLCHAIN ERROR: {exc}", file=sys.stderr)

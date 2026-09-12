@@ -2397,7 +2397,7 @@ Make tagged-release verification capable of evaluating history-backed provenance
 
 ## E24 - Agent Execution Layer
 
-**Phase:** `P1` | **Status:** `in_progress` | **Epic dependencies:** none
+**Phase:** `P1` | **Status:** `done_no_release` | **Epic dependencies:** none
 
 Make the cEOS contract executable by the agent harness that is supposed to execute it. The repository already states the executor/verifier protocol, the eleven falsification axes, the CR0-CR4 gate matrix and the dependency rings in prose; nothing in the repository loads them. This epic closes that gap in the open Agent Skills format, so the same pack loads for the executor (Claude) and the independent reviewer (Codex), and adds the drift check that keeps a skill from becoming a second, unchecked copy of the contract it cites.
 
@@ -2486,7 +2486,7 @@ Make the cEOS contract executable by the agent harness that is supposed to execu
 
 ## E25 - Engineering System Falsification
 
-**Phase:** `P1` | **Status:** `in_progress` | **Epic dependencies:** none
+**Phase:** `P1` | **Status:** `done_no_release` | **Epic dependencies:** none
 
 cEOS has borrowed the artifact set of a safety standard without the mechanism that makes it work. In DO-178C, ISO 26262, IEC 61508 and NPR 7150.2 that mechanism is independence applied to the act of classification, and measurement applied to the process itself; cEOS has neither. This epic closes the gap the 2026-09-12 methodology review found, in the order the review prioritised: make the risk classification something other than self-assessment, prove the gates can catch a planted violation, make the evidence ledger checkable, and replace the fixed review ceiling with a rule the measurement can support. See docs/audits/2026-09-12-METHODOLOGY_REVIEW.md.
 
@@ -2532,6 +2532,7 @@ cEOS has borrowed the artifact set of a safety standard without the mechanism th
 - A second classification is produced without sight of the first, and the two are recorded and compared; a disagreement is an escalation to the owner rather than a silent resolution.
 - The disagreement rate is reported by scripts/process_metrics.py, because a rate of exactly zero over many stories is evidence that the second classification is not independent - the mechanism must be able to detect its own failure.
 - An argument for a level below the floor names the specific reason the floor does not apply, and is refused if it merely asserts a lower level.
+- If a commit names more than one story, then the checker shall refuse to attribute its paths and shall report the uncovered count, rather than guessing an attribution and reporting a clean run over the stories it never checked.
 
 **Verification**
 
@@ -2630,7 +2631,7 @@ cEOS has borrowed the artifact set of a safety standard without the mechanism th
 
 ### E25-S06 - The gates are shown to catch a planted violation
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E25-S01 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E25-S01 | **Safety obligations:** none
 
 **Outcome.** Nothing has ever deliberately introduced a safety-invariant violation to find out whether the gate set catches it, so every claim about what the gates prevent is untested. The technique is already in this repository, applied twice and never generalised: scripts/rust_python_parity.py self-test injects a catalogue of known divergence classes and asserts the comparator catches each; scripts/diff_harness.py check does the same. That is Mills' defect seeding, correctly implemented, in production - on two comparators, and never on the thing that guards the product. Generalise it to the Safety Invariants, and use the same run to classify each gate as structural or behavioural, which answers the separate question of which half of the gate set is doing the safety work.
 
@@ -2641,6 +2642,7 @@ cEOS has borrowed the artifact set of a safety standard without the mechanism th
 - Every gate in docs/development/RELEASE_GATES.md is classified as structural or behavioural, and the classification is checked rather than asserted.
 - The harness never mutates the committed tree, and proves the tree is clean when it finishes.
 - A gate that has never failed in the history available is reported, because a gate with no observed failure is of unknown strength.
+- If the text a mutant edits is no longer present, then the harness shall raise rather than report that no gate caught it, because a stale mutant tests nothing and reporting it as unkilled would be wrong in the dangerous direction.
 
 **Verification**
 
@@ -2658,7 +2660,7 @@ cEOS has borrowed the artifact set of a safety standard without the mechanism th
 
 ### E25-S07 - The highest-risk behaviours get an oracle that is not the implementation
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E25-S06 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E25-S06 | **Safety obligations:** none
 
 **Outcome.** NORMATIVE fixtures are generated from cancellai.py's observed behaviour, so 'the implementation matches its characterization' proves the implementation matches itself - an acceptability fallacy, and where the recorded behaviour was wrong the defect is in the oracle. The KNOWN_DEFECT class is a real and uncommon mitigation for the defects somebody noticed; it cannot help with the ones nobody did, which are recorded as NORMATIVE and become requirements. AWS's ShardStore work answered the same problem on 40,000 lines of Rust with an independent executable reference model rather than golden files. Do that for the three behaviours where being wrong is unrecoverable, and be explicit everywhere else that the fixtures are regression detectors rather than correctness oracles.
 
@@ -2668,6 +2670,7 @@ cEOS has borrowed the artifact set of a safety standard without the mechanism th
 - Both engines are checked against that predicate, not only against each other.
 - docs/development/VERIFICATION_STRATEGY.md states plainly which fixture classes are regression detectors and which evidence is a correctness oracle.
 - A disagreement between an engine and the predicate is a failure even when the two engines agree with each other - agreement between two implementations of the same misunderstanding is not evidence.
+- If the reference stops exposing the decision function the oracle compares against, then the oracle shall report that it cannot compare rather than falling back to reimplementing the rule and comparing the predicate to itself.
 
 **Verification**
 
@@ -2684,16 +2687,17 @@ cEOS has borrowed the artifact set of a safety standard without the mechanism th
 
 ### E25-S08 - Acceptance criteria are written in a constrained syntax
 
-**Status:** `planned` | **Change Risk:** `CR0` | **Dependencies:** E25-S03 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR0` | **Dependencies:** E25-S03 | **Safety obligations:** none
 
-**Outcome.** Acceptance criteria are free English. Many are excellent, none is classified, and nothing links a criterion to the check that discharges it. EARS constrains a requirement to five patterns - ubiquitous, state-driven (While), event-driven (When), optional (Where) and unwanted behaviour (If/Then). The value here is not tidiness: the unwanted-behaviour pattern forces failure triggers to be written as first-class requirements rather than left as error handling, and for a tool whose defining risk is deleting the wrong thing, the ratio of If/Then criteria to happy-path criteria measures whether the requirements describe the feature or the hazard.
+**Outcome.** Acceptance criteria are free English. Many are excellent, none is classified, and nothing links a criterion to the check that discharges it. EARS constrains a requirement to five patterns - ubiquitous, state-driven (While), event-driven (When), optional (Where) and unwanted behaviour (If/Then). The value here is not tidiness: the unwanted-behaviour pattern forces failure triggers to be written as first-class requirements rather than left as error handling, and for a tool whose defining risk is deleting the wrong thing, the ratio of If/Then criteria to happy-path criteria measures whether the requirements describe the feature or the hazard. Contract amended after review: AC1 originally required a declared EARS pattern field per criterion in the story schema, and AC2 required an unclassifiable criterion to fail. Both were rejected with a reason rather than implemented. A declared field would require rewriting 356 criteria across 27 epics, most of them in closed contracts whose evidence packets discharge the text as written; and a classifier over prose cannot fail to classify, because every criterion falls back to ubiquitous - making AC2 unimplementable rather than unimplemented. What replaces them is the substantive rule the unwanted-behaviour pattern exists to protect, which binds at CR2 and above and from authoring time.
 
 **Acceptance criteria**
 
-- The story schema carries an EARS pattern per acceptance criterion for CR2 and above.
-- A criterion that cannot be classified into one of the five patterns fails the gate, because an unclassifiable criterion usually has an unstated precondition and unstated preconditions are where a destructive tool deletes the wrong thing.
-- scripts/process_metrics.py reports the unwanted-behaviour ratio per epic.
-- Closed epics are not retrofitted; the rule applies to stories written after it.
+- The system shall classify every acceptance criterion of every non-cancelled story into one of the five EARS patterns.
+- If a CR2, CR3 or CR4 story has no acceptance criterion describing unwanted behaviour, then the system shall fail, because at those levels the change decides classification, can mutate, or holds authority, and a requirement set that never says what happens when something is wrong has not specified the part that matters.
+- The system shall report the unwanted-behaviour ratio per epic in project/generated/PROCESS_METRICS.md.
+- The system shall bind from authoring time, judging a story while it is still planned, because that is the only moment its contract can still be written differently.
+- Where a contract predates this rule, the system shall record it in project/ears_baseline.json one story at a time, so the list can only shrink, rather than weakening the rule.
 
 **Verification**
 
@@ -2710,7 +2714,7 @@ cEOS has borrowed the artifact set of a safety standard without the mechanism th
 
 ### E25-S09 - One STPA pass over the mutation control loop
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** The threat model is adversary-shaped and good at that. STPA addresses the other half - hazards arising from interactions between components that each did what they were told - and its characteristic finding is a controller acting on a stale or wrong process model. For this product that is the central hazard rather than an abstract one: every serious defect in the E00 audit was a process-model defect, a protected name believed enforced that was not, a root believed validated that was accepted on path depth, an unreadable directory believed empty. No adversary, no failed component, and the tool deletes the wrong thing.
 
@@ -2720,6 +2724,7 @@ cEOS has borrowed the artifact set of a safety standard without the mechanism th
 - For each mutating control action, the four Unsafe Control Actions are enumerated - not provided when needed, provided when unsafe, wrong timing or order, wrong duration.
 - Each UCA is mapped to an existing Safety Invariant, and a UCA with no invariant is recorded as a gap in the invariant set rather than as an accepted risk.
 - Loss scenarios include process-model inconsistency in the controller, which is the class the threat model structurally cannot reach.
+- If an unsafe control action has no invariant constraining it, then the analysis shall record it as a gap with its reason rather than as an accepted risk, because an unconstrained hazard that reads as accepted is one nobody will return to.
 
 **Verification**
 
@@ -2762,7 +2767,7 @@ cEOS has borrowed the artifact set of a safety standard without the mechanism th
 
 ### E25-S11 - Documents record whether anyone read them
 
-**Status:** `planned` | **Change Risk:** `CR0` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR0` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** Governance prose outweighs shipping code 1.14 to 1, which for a destructive local tool is defensible and for which no threshold in the literature says otherwise. What is missing is any evidence of readership across 260 reachable Markdown files. Haddon-Cave's list of what a safety case degenerates into ends at decorative shelf-ware, and the only way to know is to record what a review actually opened. Deliberately no restructuring: a documentation taxonomy has no empirical support behind it and would be churn.
 
@@ -2788,7 +2793,7 @@ cEOS has borrowed the artifact set of a safety standard without the mechanism th
 
 ## E26 - Agent Toolchain Governance
 
-**Phase:** `P1` | **Status:** `in_progress` | **Epic dependencies:** none
+**Phase:** `P1` | **Status:** `done_no_release` | **Epic dependencies:** none
 
 Skills, hooks, subagents, plugins, MCP servers and language servers are third-party code and third-party prompt content entering the agent that writes this repository's code. They arrive by one command with no review, no pin, no expiry and no record of why. Every other dependency here is governed - cargo deny for crates, provider trust for manifests, dependabot for updates - and this class was governed by nobody. This epic makes the agent toolchain a managed dependency with a manifest, a trust bar set by capability, decisions that expire, a context budget, and a session-start review that proposes to the owner and never installs. See docs/development/AGENT_TOOLCHAIN.md. Depends on the skill pack E24-S01 committed, not on E24 closing - E24's closure is blocked by the release train, and an epic dependency would make that block propagate for no engineering reason.
 
@@ -2825,7 +2830,7 @@ Skills, hooks, subagents, plugins, MCP servers and language servers are third-pa
 
 ### E26-S02 - Update and abandonment signals are checked, not assumed
 
-**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E26-S01 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** E26-S01 | **Safety obligations:** none
 
 **Outcome.** The manifest pins a version; nothing compares the pin against upstream. A component whose upstream has not been pushed to in a year is an abandonment signal and belongs in the review as a removal candidate, not only as a stale pin - and a new release that adds a hook or an MCP server turns prompt content into software with a shell, which is a new decision rather than an update. Make the comparison mechanical for the sources that support it, and honest about the ones that do not.
 
@@ -2850,7 +2855,7 @@ Skills, hooks, subagents, plugins, MCP servers and language servers are third-pa
 
 ### E26-S03 - Usage is recorded, so retirement is evidence-based
 
-**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E26-S01 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** E26-S01 | **Safety obligations:** none
 
 **Outcome.** The review asks whether a component has been used since the last decision, and today that question is answered from memory. A component nobody invoked is paying always-on context in every session for nothing, and retiring it should be the default rather than an argument. Record invocations and report them alongside the cost, so the renewal decision is made against evidence rather than against whoever remembers advocating for it.
 

@@ -49,6 +49,9 @@ Commit one file, `project/evidence/<EPIC-ID>-VERIFIER-REVIEW.md` (or `-VERIFIER-
 - a per-story table: `Story | Verdict | Concrete evidence`;
 - for each `FAIL`: reproduction, the exact required repair, and which AC/safety obligation it violates;
 - gate status: which commands you actually ran and their pass/fail result;
+- **the documents you actually opened**, by path. This is the only readership signal this project
+  has: `scripts/process_metrics.py` lists the documents no review record has ever named, and once a
+  phase the owner decides whether they should exist. Name what you read, not what you should have;
 - overall verdict for the round.
 
 Then, per `docs/development/WORK_ITEM_MODEL.md`:

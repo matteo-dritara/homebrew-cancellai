@@ -29,6 +29,7 @@ cancellAI treats documentation as part of the executable product system. This pa
 
 - [security/THREAT_MODEL.md](security/THREAT_MODEL.md) - assets, actors, trust boundaries, misuse cases, mitigations.
 - [security/SAFETY_INVARIANTS.md](security/SAFETY_INVARIANTS.md) - constitutional runtime invariants with stable IDs.
+- [security/HAZARD_ANALYSIS.md](security/HAZARD_ANALYSIS.md) - STPA pass over the mutation control loop: control structure, unsafe control actions, loss scenarios from process-model inconsistency.
 - [security/SUPPLY_CHAIN.md](security/SUPPLY_CHAIN.md) - release provenance, SBOM, signing/attestation, knowledge trust.
 - [security/INCIDENT_RESPONSE.md](security/INCIDENT_RESPONSE.md) - containment, recovery, kill-switch hierarchy, and post-incident obligations.
 
@@ -66,6 +67,8 @@ The source of truth for project planning lives under [`project/`](../project/):
 - [`project/generated/PROCESS_METRICS.md`](../project/generated/PROCESS_METRICS.md) - generated measurement of the
   engineering process itself: review yield per round, first-pass rejection rate, residual-defect
   estimate from reviewer overlap, evidence-ledger integrity.
+- [`project/generated/GATE_SENSITIVITY.md`](../project/generated/GATE_SENSITIVITY.md) - for each planted
+  violation of a named claim, which gate caught it, or that none did.
 - `project/templates/` - see [the template index](../project/README.md#templates).
 
 Run:

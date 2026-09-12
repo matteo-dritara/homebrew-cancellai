@@ -79,6 +79,7 @@ REVIEW_ROUND_EXCEPTIONS = {
 VERIFIER_REVIEW_RE = re.compile(r"^(E\d{2})(?:-S\d{2})?-VERIFIER-REVIEW.*\.md$")
 GENERATED_FILES = (
     "project/generated/PROCESS_METRICS.md",
+    "project/generated/GATE_SENSITIVITY.md",
     "docs/DECISION_REGISTER.md",
     "docs/ROADMAP.md",
     "docs/BACKLOG.md",
