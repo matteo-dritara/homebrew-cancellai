@@ -43,6 +43,7 @@ Build and prove the provider-neutral Rust engine, formal safety kernel, inventor
 - **E21 - Target Engine Trust Remediation** (`done`): Repair the target engine's scan-completeness authority so that unknown state cannot become destructive permission, and make the differential gate capable of proving it.
 - **E22 - Engineering System Hardening** (`done`): Close the gaps between what the engineering system claims to enforce and what it actually enforces, so a green gate means what the repository says it means.
 - **E23 - Release gate history availability** (`done`): Make tagged-release verification capable of evaluating history-backed provenance gates from the complete tagged repository history.
+- **E24 - Agent Execution Layer** (`in_progress`): Make the cEOS contract executable by the agent harness that is supposed to execute it. The repository already states the executor/verifier protocol, the eleven falsification axes, the CR0-CR4 gate matrix and the dependency rings in prose; nothing in the repository loads them. This epic closes that gap in the open Agent Skills format, so the same pack loads for the executor (Claude) and the independent reviewer (Codex), and adds the drift check that keeps a skill from becoming a second, unchecked copy of the contract it cites.
 
 ## P2 - Atlas
 

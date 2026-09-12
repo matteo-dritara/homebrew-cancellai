@@ -2394,3 +2394,67 @@ Make tagged-release verification capable of evaluating history-backed provenance
 - `docs/RELEASING.md`
 - `docs/development/RELEASE_GATES.md`
 - `.github/workflows/release.yml`
+
+## E24 - Agent Execution Layer
+
+**Phase:** `P1` | **Status:** `in_progress` | **Epic dependencies:** none
+
+Make the cEOS contract executable by the agent harness that is supposed to execute it. The repository already states the executor/verifier protocol, the eleven falsification axes, the CR0-CR4 gate matrix and the dependency rings in prose; nothing in the repository loads them. This epic closes that gap in the open Agent Skills format, so the same pack loads for the executor (Claude) and the independent reviewer (Codex), and adds the drift check that keeps a skill from becoming a second, unchecked copy of the contract it cites.
+
+### E24-S01 - The agent skill pack is version-controlled and drift-checked
+
+**Status:** `ready_for_review` | **Change Risk:** `CR0` | **Dependencies:** none | **Safety obligations:** none
+
+**Outcome.** Commit an Agent Skills pack under .claude/skills/ that runs the procedures AGENTS.md and docs/development/AGENT_PROTOCOL.md already define, and add a checker that fails when a skill names a repository path or a scripts/*.py command that no longer exists. The pack's governing rule is that a skill points at the contract and never restates it: a skill that copies a rule into its own prose creates a second source of truth, which is the same defect this repository already refuses for generated documentation. The checker is what makes that rule enforced rather than aspirational.
+
+**Acceptance criteria**
+
+- .claude/skills/ contains skills in the Agent Skills format (SKILL.md with YAML frontmatter carrying name and description), so the pack loads in any skills-compatible agent rather than only in Claude Code - AGENTS.md assigns the independent review to a different agent than the executor, so cross-agent portability is a requirement of the protocol, not a convenience.
+- scripts/check_agent_skills.py fails when a skill's frontmatter is missing or malformed, when its name does not match its directory, when its description does not say when the skill applies, or when it names a repository path or scripts/*.py command that does not exist.
+- scripts/check_agent_skills.py check runs in .pre-commit-config.yaml and in .github/workflows/tests.yml, alongside the other governance checkers.
+- AGENTS.md points at the pack and states that a skill is a runner over the contract, never a second copy of it.
+- The pack does not become a merge gate for product behavior: it adds no product capability, changes no runtime code, and a skill's absence never blocks a story.
+
+**Verification**
+
+- A skill whose frontmatter name is edited to disagree with its directory makes the checker fail.
+- A skill that references a deleted docs/ path makes the checker fail.
+- A skill whose description omits when to apply it makes the checker fail.
+- The checker passes against the committed pack, and the count it reports matches the number of skill directories present.
+- mypy, ruff check and ruff format --check accept the new script under the settings the repository already pins.
+- Removing the whole .claude/skills/ directory makes the checker report a missing pack rather than silently passing on zero skills.
+
+**Documentation impact**
+
+- `AGENTS.md`
+- `.claude/skills/README.md`
+- `.pre-commit-config.yaml`
+- `.github/workflows/tests.yml`
+- `docs/development/AGENT_PROTOCOL.md`
+
+### E24-S02 - Generated documents refuse a hand-edit at the moment it is attempted
+
+**Status:** `ready_for_review` | **Change Risk:** `CR0` | **Dependencies:** none | **Safety obligations:** none
+
+**Outcome.** AGENTS.md says the generated planning documents must not be edited by hand, and scripts/gen_docs.py --check plus scripts/project_os.py check discover a violation in CI - that is, after the work is finished and the wrong file is already written. Add a PreToolUse hook that refuses the edit when it is attempted and returns the regeneration command instead, so the failure mode costs one refused tool call rather than one discarded work session. The hook is a convenience guard, not a safety boundary: the CI drift check stays the authority and is not weakened by it.
+
+**Acceptance criteria**
+
+- An attempt to write docs/DECISION_REGISTER.md, docs/ROADMAP.md, docs/BACKLOG.md or any path under project/generated/ is refused, and the refusal names the source file to edit and the regeneration command to run.
+- An attempt to write docs/CLI.md is refused and names scripts/gen_docs.py.
+- A write to any other path is not affected.
+- The hook is registered in .claude/settings.json so it applies to every session in this repository rather than to one machine's personal configuration.
+- The hook fails open on a payload it cannot parse: an unreadable or unexpected tool input exits zero rather than blocking unrelated work, because a convenience guard that can halt the session is worse than the mistake it prevents.
+
+**Verification**
+
+- Feeding the hook a payload naming each generated document exits 2 and prints the correct regeneration command.
+- Feeding the hook a payload naming a rust/ source file exits 0.
+- Feeding the hook malformed JSON, empty input, and a payload with no file_path exits 0.
+- Disabling the hook does not change the result of scripts/project_os.py check or scripts/gen_docs.py --check - the CI drift check remains the authority.
+
+**Documentation impact**
+
+- `AGENTS.md`
+- `.claude/skills/README.md`
+- `.claude/settings.json`

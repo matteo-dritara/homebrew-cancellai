@@ -4,6 +4,12 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .venv/
-.claude/
+# Claude Code. The skill pack, the hooks and the shared settings are project configuration
+# and are version-controlled (E24); everything else under .claude/ is per-machine session
+# state (settings.local.json, worktrees, caches, locks) and must never be committed.
+.claude/*
+!.claude/skills/
+!.claude/hooks/
+!.claude/settings.json
 .DS_Store
 /rust/target/

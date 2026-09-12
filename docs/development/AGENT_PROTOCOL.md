@@ -51,6 +51,10 @@ python3 scripts/project_os.py brief E00-S01 --role verifier
 
 The brief is generated from the story contract and canonical Safety Invariants. It is an input packet, not a replacement for reading the linked architecture/threat documents.
 
+## Loadable form of this protocol
+
+[`.claude/skills/`](../../.claude/skills/README.md) carries this protocol as Agent Skills (E24-S01): `orient`, `story-executor`, `epic-verifier`, `adversarial-cases`, `risk-gate`, `rust-kernel-guard`, `evidence-packet`. `epic-verifier` runs with `context: fork` so the review does not inherit the executor's conversation - the context isolation this document requires, enforced by the harness rather than by good intentions. That is not a substitute for role separation: a review performed by the agent that executed the work is a self-review, and the skill labels its own output that way. This document remains the contract; the skills are runners over it.
+
 ## Executor procedure
 
 1. Run `python3 scripts/project_os.py check` and `next/status`, then generate the executor brief for the selected story.

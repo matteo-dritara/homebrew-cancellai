@@ -110,6 +110,24 @@ Verifier:
 
 Do not pass private executor reasoning to the verifier as evidence.
 
+## Agent skill pack
+
+[`.claude/skills/`](.claude/skills/README.md) holds this protocol as loadable Agent Skills, in
+the open [Agent Skills](https://agentskills.io) format so the same pack loads for the executor
+and for the independent reviewer, which this document assigns to a different agent (E24-S01).
+Start a session with `/orient`; the pack also carries `story-executor`, `epic-verifier`,
+`adversarial-cases`, `risk-gate`, `rust-kernel-guard` and `evidence-packet`.
+
+**A skill is a runner over this contract, never a second copy of it.** A skill that restates a
+rule in its own prose creates a second source of truth, which drifts - the same defect this
+repository already refuses for generated documentation. A skill therefore injects live state,
+links the canonical document, and adds only procedural glue that no document holds.
+`scripts/check_agent_skills.py` enforces it: every repository path and every `scripts/*.py`
+command a skill names must resolve.
+
+The pack is developer convenience, not authority. A skill never decides what is permitted, and
+its absence never blocks a story - the gates in this document and in CI remain the authority.
+
 ## Current Python checks
 
 For changes that touch the Python reference stage, install the pinned development tools when needed:
@@ -119,7 +137,7 @@ python3 -m pip install -r requirements-dev.txt
 python3 -m pytest tests -v
 python3 -m ruff check .
 python3 -m ruff format --check .
-python3 -m mypy cancellai.py scripts/gen_docs.py scripts/project_os.py scripts/check_docs.py scripts/check_workflows.py scripts/check_fixtures.py scripts/check_schemas.py scripts/characterize.py scripts/diff_harness.py scripts/check_rust_workspace.py scripts/check_mutation_boundary.py scripts/check_provider_compatibility.py scripts/check_provider_trust.py scripts/check_platforms.py scripts/rust_python_parity.py scripts/release_manifest.py scripts/check_repository_topology.py
+python3 -m mypy cancellai.py scripts/gen_docs.py scripts/project_os.py scripts/check_docs.py scripts/check_workflows.py scripts/check_fixtures.py scripts/check_schemas.py scripts/characterize.py scripts/diff_harness.py scripts/check_rust_workspace.py scripts/check_mutation_boundary.py scripts/check_provider_compatibility.py scripts/check_provider_trust.py scripts/check_platforms.py scripts/rust_python_parity.py scripts/release_manifest.py scripts/check_repository_topology.py scripts/check_agent_skills.py
 python3 scripts/gen_docs.py --check
 python3 scripts/project_os.py check
 python3 scripts/check_docs.py check
@@ -139,6 +157,7 @@ python3 scripts/check_process.py check
 python3 scripts/release.py check
 python3 scripts/release_manifest.py check
 python3 scripts/check_repository_topology.py check
+python3 scripts/check_agent_skills.py check
 ```
 
 Or `pre-commit run --all-files`, which runs the same set. Install the hooks once with
