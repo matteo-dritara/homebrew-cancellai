@@ -2549,7 +2549,7 @@ cEOS has borrowed the artifact set of a safety standard without the mechanism th
 
 ### E25-S03 - The evidence ledger is checked against the story it discharges
 
-**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E25-S01 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E25-S01 | **Safety obligations:** none
 
 **Outcome.** check_process.py verifies that an evidence file names a real work item. Nothing compares the packet against the story it claims to discharge, and the convention has already decayed without anyone noticing: fifteen story packets past ready_for_review carry no acceptance-criteria rows at all, including all five E20 stories, two of them CR4. Worse than a missing row is a wrong one - the E24 review found two rows claiming PASS on the strength of tests that could not have detected the defects present, both sitting in ready_for_review with every gate green.
 

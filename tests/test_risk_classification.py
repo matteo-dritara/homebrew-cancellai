@@ -141,6 +141,27 @@ class AttributionTests(unittest.TestCase):
                 self.assertRegex(story_id, r"^E\d{2}-S\d{2}$")
 
 
+class StoryIdExtractionTests(unittest.TestCase):
+    """Shorthand must not make a batched commit look unambiguous."""
+
+    def test_a_single_story_is_found(self):
+        self.assertEqual({"E25-S04"}, risk.story_ids("feat(x): thing (E25-S04)"))
+
+    def test_shorthand_expands_to_every_story_it_names(self):
+        # Found by this checker on its own commit: `E25-S04/S05/S10` matched one id, so a
+        # three-story commit read as unambiguous and every file in it was attributed to the first.
+        self.assertEqual({"E25-S04", "E25-S05", "E25-S10"}, risk.story_ids("thing (E25-S04/S05/S10)"))
+
+    def test_shorthand_and_full_ids_combine(self):
+        self.assertEqual(
+            {"E24-S01", "E25-S02", "E25-S03"},
+            risk.story_ids("body mentions E24-S01 and the subject says (E25-S02/S03)"),
+        )
+
+    def test_a_message_naming_nothing_yields_nothing(self):
+        self.assertEqual(set(), risk.story_ids("chore: tidy up"))
+
+
 class CommandTests(unittest.TestCase):
     def test_check_passes_on_the_committed_state(self):
         self.assertEqual(0, risk.main(["check"]))

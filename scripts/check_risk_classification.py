@@ -52,6 +52,11 @@ FLOORS_FILE = PROJECT / "risk_floors.json"
 
 LEVELS = ("CR0", "CR1", "CR2", "CR3", "CR4")
 STORY_ID = re.compile(r"E\d{2}-S\d{2}")
+# A commit subject routinely writes several stories as `E25-S04/S05/S10`. Matching STORY_ID alone
+# finds one id there, so the commit reads as unambiguous and every file in it is attributed to the
+# first story - which is exactly the confident wrong attribution this checker refuses to make. This
+# was found by the checker itself, on its own commit.
+STORY_SHORTHAND = re.compile(r"E(\d{2})-S(\d{2})((?:/S\d{2})+)")
 # A level at or above this requires a second, independent classification before the story closes.
 INDEPENDENT_CLASSIFICATION_REQUIRED_AT = "CR4"
 
@@ -138,12 +143,21 @@ def attributable_paths() -> tuple[dict[str, set[str]], int]:
             continue
         message = f"{fields[1]} {fields[2]}"
         files = {line.strip() for line in fields[3].splitlines() if line.strip() and "/" in line}
-        found = set(STORY_ID.findall(message))
+        found = story_ids(message)
         if len(found) == 1:
             attributed[found.pop()] |= files
         elif len(found) > 1:
             ambiguous += 1
     return dict(attributed), ambiguous
+
+
+def story_ids(message: str) -> set[str]:
+    """Every story a commit message names, expanding `E25-S04/S05/S10` shorthand."""
+    found = set(STORY_ID.findall(message))
+    for epic, first, rest in STORY_SHORTHAND.findall(message):
+        found.add(f"E{epic}-S{first}")
+        found.update(f"E{epic}-{part}" for part in rest.strip("/").split("/") if part)
+    return found
 
 
 def load_stories() -> dict[str, dict[str, Any]]:

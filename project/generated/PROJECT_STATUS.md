@@ -11,8 +11,8 @@ Epics: **27** | Stories: **127**
 - `blocked`: 2
 - `cancelled`: 1
 - `done`: 84
-- `planned`: 34
-- `ready_for_review`: 6
+- `planned`: 33
+- `ready_for_review`: 7
 
 ## Change risk distribution
 
@@ -30,6 +30,7 @@ Epics: **27** | Stories: **127**
 
 - **E25-S01** - The process measures itself (CR0)
 - **E25-S02** - The Change Risk Level stops being self-assessment (CR2)
+- **E25-S03** - The evidence ledger is checked against the story it discharges (CR1)
 - **E25-S04** - Review stops on evidence rather than on a budget (CR1)
 - **E25-S05** - Independence is described at the level the structure can supply (CR0)
 - **E25-S10** - An epic that changes nothing shippable has a state (CR0)

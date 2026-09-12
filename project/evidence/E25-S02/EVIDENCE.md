@@ -49,6 +49,19 @@ is performed. A CR2 declaration removes the adversarial-test, fault-injection, i
 and Safety Verdict obligations from a change to that seam. This is precisely the failure the
 methodology review's M-01 predicted, found by the gate written because of it.
 
+## A defect this gate found in itself
+
+On its first run against a later commit, the checker flagged **E25-S04** (CR1) for touching
+`scripts/release.py`, which E25-S04 never touched. The cause: this repository writes several
+stories in one subject as `E25-S04/S05/S10`, and `E\d{2}-S\d{2}` finds exactly one id in that
+string - so a three-story commit read as *unambiguous* and every file in it was attributed to the
+first story. That is precisely the confident wrong attribution the design refuses to make, arriving
+through a commit-message convention nobody had thought about.
+
+Repaired by `story_ids()`, which expands the shorthand; `StoryIdExtractionTests` pins it. Worth
+recording rather than quietly fixing: the gate caught its own author, one commit after being
+written, which is the only kind of evidence that a gate can fail.
+
 ## Compatibility
 
 - Stdlib only. `git` is resolved absolutely and soft-fails, so a source export with no history

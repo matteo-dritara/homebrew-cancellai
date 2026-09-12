@@ -46,5 +46,6 @@ files = [
   "scripts/process_metrics.py",
   "scripts/check_risk_classification.py",
   "scripts/check_agent_toolchain.py",
+  "scripts/check_evidence.py",
 ]
 strict = true
