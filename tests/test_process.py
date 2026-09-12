@@ -22,7 +22,11 @@ class ProcessConventionTests(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertTrue(any("E00" in w for w in warnings))
         self.assertTrue(any("E07" in w for w in warnings))
-        self.assertEqual(check_process.MAX_REVIEW_ROUNDS, 2)
+        # ADR-0025 raised the ceiling to three and changed what it means: it is a cost control,
+        # not the stopping rule. Review now stops on measured yield (scripts/process_metrics.py),
+        # because E00's second round rejected more than its first while E20's rejected nothing -
+        # the right number of rounds is not a constant, which is only visible once it is counted.
+        self.assertEqual(check_process.MAX_REVIEW_ROUNDS, 3)
 
     def test_an_unexcepted_epic_cannot_exceed_the_review_ceiling(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -45,17 +49,36 @@ class ProcessConventionTests(unittest.TestCase):
             base = Path(td)
             (base / "E12-VERIFIER-REVIEW.md").write_text("x", encoding="utf-8")
             (base / "E12-VERIFIER-REVIEW-ROUND2.md").write_text("x", encoding="utf-8")
+            (base / "E12-VERIFIER-REVIEW-ROUND3.md").write_text("x", encoding="utf-8")
             (base / "E12-S01-VERIFIER-REVIEW.md").write_text("x", encoding="utf-8")
             errors: list[str] = []
             warnings: list[str] = []
             with mock.patch.object(check_process, "EVIDENCE", base):
                 check_process.check_review_rounds(errors, warnings)
-            self.assertTrue(errors, "a third round, even a story-scoped one, must fail an epic with no exception")
+            self.assertTrue(errors, "a round past the cost ceiling, even a story-scoped one, must fail an epic with no exception")
             self.assertEqual(warnings, [])
             # AC3: the failure message names which records were counted.
             self.assertIn("E12-S01-VERIFIER-REVIEW.md", errors[0])
             self.assertIn("E12-VERIFIER-REVIEW.md", errors[0])
             self.assertIn("E12-VERIFIER-REVIEW-ROUND2.md", errors[0])
+
+    def test_done_no_release_is_an_epic_status_and_not_a_story_status(self) -> None:
+        # ADR-0025. An epic can change nothing shippable; a story cannot, because nothing about a
+        # story is shippable on its own. Admitting the value for stories would let a story close
+        # into a state no gate knows how to interpret.
+        from scripts import project_os
+
+        self.assertIn("done_no_release", project_os.VALID_EPIC_STATUS)
+        self.assertNotIn("done_no_release", project_os.VALID_STORY_STATUS)
+        self.assertEqual({"done", "done_no_release"}, project_os.CLOSED_EPIC_STATUS)
+
+    def test_done_no_release_does_not_demand_release_evidence(self) -> None:
+        # The whole point: demanding a release for an epic that shipped nothing produces an empty
+        # version whose changelog says nothing, and trains everyone to read a version as
+        # bookkeeping. `release.py` must look only at `done`.
+        source = (Path(__file__).resolve().parent.parent / "scripts" / "release.py").read_text(encoding="utf-8")
+        self.assertIn('epic_ids(status="done")', source)
+        self.assertNotIn('epic_ids(status="done_no_release")', source)
 
     def test_reference_freeze_marker_present_in_the_real_repo(self) -> None:
         errors: list[str] = []

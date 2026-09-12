@@ -155,6 +155,9 @@ def check() -> list[str]:
         elif not release_evidence_path(versions.source).exists():
             problems.append(f"v{versions.source} is prepared but has no release evidence packet")
     covered = released_epics()
+    # `done_no_release` is deliberately absent here: an epic that changed nothing in the
+    # shipped artifact has no release to point at, and demanding one would produce an empty
+    # version whose changelog says nothing (ADR-0025).
     for epic_id in epic_ids(status="done"):
         if epic_id not in covered:
             problems.append(f"epic {epic_id} is done but no release evidence names it (PD-021)")

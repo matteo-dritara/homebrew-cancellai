@@ -26,8 +26,11 @@ PROJECT = ROOT / "project"
 DOCS = ROOT / "docs"
 
 VALID_DECISION_STATUS = {"proposed", "accepted", "superseded", "deprecated"}
-VALID_EPIC_STATUS = {"planned", "ready", "in_progress", "ready_for_review", "verification", "blocked", "done", "cancelled"}
-VALID_STORY_STATUS = VALID_EPIC_STATUS
+# `done_no_release` closes an epic that changed nothing in the shipped artifact (ADR-0025). It is
+# an epic status only: a story either is done or is not, and nothing about a story is shippable.
+CLOSED_EPIC_STATUS = {"done", "done_no_release"}
+VALID_EPIC_STATUS = {"planned", "ready", "in_progress", "ready_for_review", "verification", "blocked", "done", "done_no_release", "cancelled"}
+VALID_STORY_STATUS = VALID_EPIC_STATUS - {"done_no_release"}
 VALID_RISKS = {"CR0", "CR1", "CR2", "CR3", "CR4"}
 # ADR-0014: review is per epic, at most twice, not story by story. A same-epic dependency is
 # therefore satisfied once the predecessor has reached ready_for_review, not "done" - the whole

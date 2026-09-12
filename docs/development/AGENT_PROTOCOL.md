@@ -22,6 +22,38 @@ Roles may rotate between Claude and Codex across stories/sprints to reduce syste
 `ready_for_review`; Codex performs the independent review, once the whole epic is ready and
 at most twice per epic.
 
+## What "independent" can mean here
+
+The word is borrowed from standards that define it precisely, and it is worth saying what this
+project can and cannot supply. IEC 61508 scales required independence with risk on a three-rung
+ladder: **independent person**, **independent department**, **independent organisation**. DO-178C
+requires the verifier not be the author and that the separation be recorded as evidence. ISO 26262
+grades it I1/I2/I3 and subjects the risk classification itself to a confirmation review.
+
+Counting parties here rather than roles: one human owner, one executor model, one reviewer model.
+That is the **independent person** rung - the lowest one. It is genuinely better than same-model
+review, because Claude and Codex are different model families with different failure modes, and
+the measured 47% first-round rejection rate is evidence that the separation does real work. It is
+not an independent department and it is not an independent organisation, and a CR4 gate that says
+"independent verification" should be read as the first rung and no further.
+
+### Self-review
+
+A review performed by the agent that executed the work is a **self-review**. Context isolation
+removes priming; it does not remove self-preference bias, which is a property of the model rather
+than of the conversation.
+
+- A self-review **may** find defects, require repairs, and be recorded. Three of the last four
+  epics were self-reviewed and they found real, reproduced defects.
+- A self-review **may not** close a CR3 or CR4 story on its own, and may not be the sole basis for
+  a Safety Verdict.
+- A self-review record is committed as `<EPIC>-SELF-REVIEW.md`, never under a `VERIFIER-REVIEW`
+  name. This is a rule, not a habit: `scripts/process_metrics.py` classifies rounds by that
+  filename, and a misnamed record silently inflates the independent-review statistic that the rest
+  of the measurement rests on.
+- A self-review record states its own limitation on its first page, so a later reader cannot mistake
+  it for the gate the contract names.
+
 ## Context isolation
 
 Verifier input should include:

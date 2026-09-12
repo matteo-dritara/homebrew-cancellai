@@ -2522,7 +2522,7 @@ cEOS has borrowed the artifact set of a safety standard without the mechanism th
 
 ### E25-S02 - The Change Risk Level stops being self-assessment
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E25-S01 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E25-S01 | **Safety obligations:** none
 
 **Outcome.** change_risk is validated in exactly one place and the validation is that the string is one of five permitted values. Every other gate in the system is downstream of that field, so writing CR1 where CR4 was correct removes - in one edit that passes every check - the adversarial tests, the fault injection, the independent verification, the Safety Verdict and the release-evidence obligation. No standard surveyed lets the implementing party assign its own criticality level: DO-178C takes it from the system safety assessment, ISO 26262 subjects the HARA itself to an independent confirmation review, NPR 7150.2 classifies twice and treats a disagreement as an escalation event. Add a mechanical floor and a second opinion.
 
@@ -2578,7 +2578,7 @@ cEOS has borrowed the artifact set of a safety standard without the mechanism th
 
 ### E25-S04 - Review stops on evidence rather than on a budget
 
-**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E25-S01 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E25-S01 | **Safety obligations:** none
 
 **Outcome.** ADR-0014 bounds review to two rounds. The measurement says the right number is not a constant: E00's second round rejected more than its first (100% against 86%), E06's barely declined, E20's collapsed to zero. E00's two rounds also found disjoint sets, which makes Lincoln-Petersen undefined - two reviewers who share nothing have not bounded the defect population, they have shown it is larger than either saw. E00 needed a third round, got one by exception, and that round found more. Replace the constant with a stopping rule the measurement can support, and keep a ceiling only as a visible cost control.
 
@@ -2604,7 +2604,7 @@ cEOS has borrowed the artifact set of a safety standard without the mechanism th
 
 ### E25-S05 - Independence is described at the level the structure can supply
 
-**Status:** `planned` | **Change Risk:** `CR0` | **Dependencies:** E25-S01 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR0` | **Dependencies:** E25-S01 | **Safety obligations:** none
 
 **Outcome.** The contract says 'independent verifier' and 'independent adversarial verification'. Counting parties rather than roles: one human owner, one executor model, one reviewer model. On IEC 61508's ladder that is at most 'independent person' - the SIL-1 rung - not independent department and not independent organisation. The separation does real work, and the 47% round-1 rejection rate is the evidence, but the word is doing more work than the structure can support. Three of the last four epics were self-reviewed, which is a further step down and is currently recorded only by a filename convention.
 
@@ -2736,7 +2736,7 @@ cEOS has borrowed the artifact set of a safety standard without the mechanism th
 
 ### E25-S10 - An epic that changes nothing shippable has a state
 
-**Status:** `planned` | **Change Risk:** `CR0` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR0` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** ADR-0014 makes epic closure cut a release. E24 closed with nothing shippable in it - documentation, agent tooling and tests - while v1.13.0 was prepared but not yet tagged, so release.py correctly refused a second in-flight release. The rule and the tooling disagreed and the tooling was right. The resolution taken was to leave the stories done and the epic in_progress, which passes every gate and is honest, and which ADR-0014 does not describe. Name the case rather than leaving it as folklore.
 

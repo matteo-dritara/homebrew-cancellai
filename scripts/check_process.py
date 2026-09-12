@@ -52,7 +52,7 @@ SAFETY_INVARIANT_RE = re.compile(r"\bSI-\d{3}\b")
 # hides defects behind a status that never changes; findings surviving round two become new
 # backlog work items instead. E00 predates the rule and ran three rounds - it is the reason
 # the rule exists, so it is recorded as an explicit exception rather than quietly exempted.
-MAX_REVIEW_ROUNDS = 2
+MAX_REVIEW_ROUNDS = 3
 REVIEW_ROUND_EXCEPTIONS = {
     # Originally recorded as "ran three rounds before ADR-0014 bounded them" - E22-S06's own
     # fix surfaced a fourth, previously-uncounted record (`E00-S03-VERIFIER-REVIEW.md`, a
@@ -199,7 +199,8 @@ def check_review_rounds(errors: list[str], warnings: list[str]) -> None:
             continue
         reason = REVIEW_ROUND_EXCEPTIONS.get(epic_id)
         message = (
-            f"{epic_id}: {len(records)} independent review rounds committed, above the ceiling of {MAX_REVIEW_ROUNDS} (ADR-0014): {records}"
+            f"{epic_id}: {len(records)} independent review rounds committed, above the cost ceiling "
+            f"of {MAX_REVIEW_ROUNDS} (ADR-0025, amending ADR-0014): {records}"
         )
         if reason:
             warnings.append(f"{message} - recorded exception: {reason}")

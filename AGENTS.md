@@ -121,9 +121,22 @@ Executor:
 
 `ready_for_review` is the executor's exit state. Never mark your own work `verification` or `done`, and never write your own CR4 Safety Verdict. Claude is the standing executor; Codex performs the independent review.
 
-Review runs at **epic** scope, once every story in the epic is `ready_for_review`, and **at most twice per epic**. Findings that survive the second round become new backlog work items, not a third round.
+Review runs at **epic** scope, once every story in the epic is `ready_for_review`. It stops on
+**measured yield**, not on a round count: another round is required while a round rejects 10% or
+more of the stories it judges, and a zero overlap between two rounds' findings escalates to the
+owner rather than closing (ADR-0025, amending ADR-0014). Three rounds is a cost ceiling, and
+reaching it is an owner decision recorded as such - not an automatic close. Findings that survive
+become new backlog work items.
 
-**Closing an epic cuts a release.** `scripts/release.py check` fails when a closed epic has no release evidence, and it runs in `pre-commit` and CI. See `docs/development/WORK_ITEM_MODEL.md` and ADR-0014.
+A review by the agent that executed the work is a **self-review**: it may find and repair defects,
+it may not close a CR3/CR4 story on its own, and it is committed as `<EPIC>-SELF-REVIEW.md`. See
+`docs/development/AGENT_PROTOCOL.md`'s "What \"independent\" can mean here".
+
+**Closing an epic cuts a release**, unless the epic changed nothing in the shipped artifact, in
+which case it closes as `done_no_release` (ADR-0025). `scripts/release.py check` fails when a
+closed epic has no release evidence, and it runs in `pre-commit` and CI. An epic whose stories are
+all `done` but whose release is blocked by an in-flight release train stays `in_progress`. See
+`docs/development/WORK_ITEM_MODEL.md`, ADR-0014 and ADR-0025.
 
 Verifier:
 

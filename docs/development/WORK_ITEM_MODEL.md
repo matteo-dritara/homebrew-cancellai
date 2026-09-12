@@ -71,7 +71,17 @@ force a review round per story and contradict "review is per epic, not story by 
 `scripts/project_os.py check` enforces exactly this distinction, not a uniform "done" rule
 across every dependency edge.
 
-## Review is per epic, and bounded to two rounds
+## Review is per epic, and stops on measured yield
+
+**Amended by ADR-0025.** The rule below described a fixed ceiling of two rounds, decided before any
+measurement of review yield existed. `scripts/process_metrics.py` now computes that yield, and it
+says the right number of rounds is not a constant: E00's second round rejected 100% where its first
+rejected 86%, while E20's second round rejected nothing. Review now continues while a round rejects
+10% or more of what it judges, escalates to the owner when two rounds' findings do not overlap at
+all, and treats three rounds as a cost ceiling whose use is an owner decision recorded in the review
+record. Everything else below stands.
+
+## Review is per epic, and bounded (historical text, amended above)
 
 An epic is reviewed when **all** of its stories are `ready_for_review`, not story by story.
 The reviewer receives one coherent change with one contract to falsify, rather than a
