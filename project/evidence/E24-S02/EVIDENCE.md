@@ -14,9 +14,9 @@ PASS
 
 | AC | Evidence | Result |
 | --- | --- | --- |
-| AC1 - generated planning documents are refused with the right instruction | `tests/test_agent_hooks.py::GuardRefusesGeneratedDocumentsTests::test_the_generated_planning_documents_are_refused` (subtests for `DECISION_REGISTER.md`, `ROADMAP.md`, `BACKLOG.md`) and `::test_anything_under_project_generated_is_refused`. Each asserts exit 2 and that stderr names `python3 scripts/project_os.py generate`. `::test_the_refusal_names_the_source_to_edit_instead` asserts the source file is named too. | PASS |
+| AC1 - generated planning documents are refused with the right instruction (**corrected after review**: the original row was certified by tests that fed one canonical, correctly-cased absolute spelling per document, so five spellings resolving to the same inode were invisible to the suite that certified it - see `project/evidence/E24-VERIFIER-REVIEW.md`. The guard now matches on the real, project-relative, case-folded path, and `test_every_spelling_of_the_same_file_is_refused` pins seven spellings.) | `tests/test_agent_hooks.py::GuardRefusesGeneratedDocumentsTests::test_the_generated_planning_documents_are_refused` (subtests for `DECISION_REGISTER.md`, `ROADMAP.md`, `BACKLOG.md`) and `::test_anything_under_project_generated_is_refused`. Each asserts exit 2 and that stderr names `python3 scripts/project_os.py generate`. `::test_the_refusal_names_the_source_to_edit_instead` asserts the source file is named too. | PASS |
 | AC2 - docs/CLI.md names its own generator | `::test_the_generated_cli_reference_names_its_own_generator` - exit 2, stderr names `scripts/gen_docs.py`. | PASS |
-| AC3 - every other path is unaffected | `GuardAllowsEverythingElseTests` - a Rust source file, the hand-written JSON sources of the generated documents, and `docs/CLI_RUST.md`, whose name deliberately resembles the generated `docs/CLI.md`. All exit 0. | PASS |
+| AC3 - every other path is unaffected | `GuardAllowsEverythingElseTests` - a Rust source file, the hand-written JSON sources, `docs/CLI_RUST.md`, a lookalike directory inside the project, and paths outside the project directory entirely. All exit 0. **Corrected after review:** the original row claimed this without qualification while the packet's own residual risks conceded that any path on the machine ending `/docs/BACKLOG.md` was refused - including the synthetic temp trees `AGENTS.md` requires tests to use. Matching on a project-relative path removed the over-blocking rather than the row being softened. | PASS after repair |
 | AC4 - registered in `.claude/settings.json` | `.claude/settings.json` registers the `PreToolUse` hook on `Edit\|Write\|NotebookEdit`. `.gitignore` was changed to `.claude/*` plus negations so this file is versioned, while `settings.local.json`, worktrees, caches and locks stay ignored - verified with `git status --short --untracked-files=all .claude/`, which lists exactly the ten intended files and no session state. | PASS |
 | AC5 - fails open on anything it cannot parse | `GuardFailsOpenTests` - malformed JSON, empty input, a payload with no `file_path`, a payload that is not an object, and a null `file_path`. All exit 0. | PASS |
 
@@ -60,13 +60,16 @@ implemented and gated together.
 
 ## Residual risks
 
-- **Path matching is textual, by suffix.** A checkout whose path happens to contain
-  `/docs/BACKLOG.md` elsewhere would be refused. Accepted: the failure mode is a refused edit
-  with a clear message, not a wrong edit.
+- ~~Path matching is textual, by suffix.~~ **Repaired after review.** Matching is on
+  `os.path.realpath`, made relative to the project directory and compared case-insensitively -
+  the rule `README.md` already states for protected provider names. Seven spellings of one inode
+  are pinned as refused; three paths outside the project are pinned as allowed.
 - **The guard covers the harness's own file tools only.** A write through `Bash` (`sed -i`,
-  a heredoc, `python3 -c`) is not intercepted. Matching `Bash` would mean parsing shell, which
-  is not something a guard should attempt; the CI drift check remains the backstop. This is the
-  main reason the story insists the hook is not a safety boundary.
+  a heredoc, `python3 -c`) is not intercepted - review round 1 raised this as a matcher gap, and
+  it is accepted rather than closed: matching `Bash` would mean parsing shell, which is not
+  something a guard should attempt. The limit is now stated in the hook's header and in
+  `.claude/skills/README.md`, and pinned by `GuardCoverageIsHonestlyBoundedTests`, so it cannot
+  be quietly forgotten. The CI drift check remains the backstop and catches every path.
 - **It is per-repository configuration, so it does not apply to an agent run from elsewhere**
   (a different `--add-dir` root, or CI). Again: backstop, not boundary.
 - **`.gitignore` now uses negation.** If someone later re-adds a broad `.claude/` rule, the

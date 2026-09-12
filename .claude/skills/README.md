@@ -43,7 +43,17 @@ and labels its own output accordingly.
 ## Hook
 
 `.claude/hooks/guard-generated-docs.sh` refuses a hand-edit to a generated document at the moment
-it is attempted, instead of at CI time. Opt in by adding to `.claude/settings.json`:
+it is attempted, instead of at CI time. It matches on the real path, made relative to the project
+directory and compared case-insensitively, because `docs/BACKLOG.md`, `docs/backlog.md` and
+`docs/adrs/../BACKLOG.md` are one file on an APFS volume.
+
+Two limits are deliberate. It sees only the structured file-writing tools its matcher names, so a
+write through Bash (`sed -i`, a heredoc) never reaches it - matching those would mean parsing
+shell, which a guard should not attempt. And it fails **open**: any input it cannot interpret is
+allowed through. `scripts/project_os.py check` and `scripts/gen_docs.py --check` remain the
+authority on drift and catch every path, including the ones this guard cannot see.
+
+Wire it up in `.claude/settings.json`:
 
 ```json
 { "hooks": { "PreToolUse": [ { "matcher": "Edit|Write|NotebookEdit",

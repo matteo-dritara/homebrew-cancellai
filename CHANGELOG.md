@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The engineering contract is now loadable by the agent harness that is supposed to execute it
+  (E24, CR0). `.claude/skills/` carries seven Agent Skills in the open
+  [Agent Skills](https://agentskills.io) format - `orient`, `story-executor`, `epic-verifier`,
+  `adversarial-cases`, `risk-gate`, `rust-kernel-guard`, `evidence-packet` - so the same pack
+  loads for the executor and for the independent reviewer, which `AGENTS.md` assigns to a
+  different agent. A skill is a runner over the contract and never a second copy of it;
+  `scripts/check_agent_skills.py` enforces that by requiring every repository path and every
+  `scripts/*.py` command a skill names to resolve.
+- A `PreToolUse` hook refuses a hand-edit to a generated document at the moment it is attempted,
+  returning the regeneration command, instead of letting CI discover it after the work is done.
+  It matches on the real, project-relative, case-folded path - `docs/BACKLOG.md`,
+  `docs/backlog.md` and `docs/adrs/../BACKLOG.md` are one file on APFS - and fails open on any
+  input it cannot interpret. It covers the structured file-writing tools only; the CI drift
+  check remains the authority.
+
+### Changed
+
+- `AGENTS.md` states **diff discipline** alongside story discipline: no unrelated reformatting,
+  no removal of pre-existing dead code (a safety rule here, since code that looks unreachable may
+  be a barrier whose reachability is what is in dispute), removal limited to what a change
+  orphaned, and flagging rather than fixing what is found outside the story.
+
+No user-visible product behavior changes from E24.
+
 ## [1.13.0] - 2026-09-12
 
 ### Added

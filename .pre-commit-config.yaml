@@ -79,11 +79,15 @@ repos:
         files: ^(Formula/cancellai\.rb|scripts/release\.py|docs/RELEASING\.md|scripts/check_repository_topology\.py)$
         pass_filenames: false
 
+      # always_run, not a `files:` scope: the drift this catches is a cited file being
+      # DELETED or MOVED somewhere else in the tree, and pre-commit never passes deleted paths
+      # to a hook - so any scope keyed on the skill pack would stay silent for exactly the
+      # event the checker exists to catch. It reads seven files; it can afford to always run.
       - id: agent-skills-check
         name: agent skill pack frontmatter is valid and every path it cites resolves
         entry: python3 scripts/check_agent_skills.py check
         language: system
-        files: ^(\.claude/skills/.*|scripts/check_agent_skills\.py)$
+        always_run: true
         pass_filenames: false
 
       - id: characterization-check

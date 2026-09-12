@@ -2403,7 +2403,7 @@ Make the cEOS contract executable by the agent harness that is supposed to execu
 
 ### E24-S01 - The agent skill pack is version-controlled and drift-checked
 
-**Status:** `ready_for_review` | **Change Risk:** `CR0` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR0` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** Commit an Agent Skills pack under .claude/skills/ that runs the procedures AGENTS.md and docs/development/AGENT_PROTOCOL.md already define, and add a checker that fails when a skill names a repository path or a scripts/*.py command that no longer exists. The pack's governing rule is that a skill points at the contract and never restates it: a skill that copies a rule into its own prose creates a second source of truth, which is the same defect this repository already refuses for generated documentation. The checker is what makes that rule enforced rather than aspirational.
 
@@ -2434,7 +2434,7 @@ Make the cEOS contract executable by the agent harness that is supposed to execu
 
 ### E24-S02 - Generated documents refuse a hand-edit at the moment it is attempted
 
-**Status:** `ready_for_review` | **Change Risk:** `CR0` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR0` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** AGENTS.md says the generated planning documents must not be edited by hand, and scripts/gen_docs.py --check plus scripts/project_os.py check discover a violation in CI - that is, after the work is finished and the wrong file is already written. Add a PreToolUse hook that refuses the edit when it is attempted and returns the regeneration command instead, so the failure mode costs one refused tool call rather than one discarded work session. The hook is a convenience guard, not a safety boundary: the CI drift check stays the authority and is not weakened by it.
 
@@ -2461,7 +2461,7 @@ Make the cEOS contract executable by the agent harness that is supposed to execu
 
 ### E24-S03 - Diff discipline is stated where the contract lives
 
-**Status:** `ready_for_review` | **Change Risk:** `CR0` | **Dependencies:** E24-S01 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR0` | **Dependencies:** E24-S01 | **Safety obligations:** none
 
 **Outcome.** AGENTS.md constrains what an agent builds - one story, no silent product scope - and says nothing about what the diff may contain. Those are different constraints, and the second does not follow from the first: a change can be correct at the story level and still arrive as a diff a reviewer cannot read, because unrelated lines were reformatted, or because pre-existing dead code was tidied away. The second case is a safety problem here rather than a style one, since code that looks unreachable may be a barrier whose reachability is exactly what is in dispute, and removing it is a CR3/CR4 act arriving inside a CR0/CR1 diff. State the rule where the contract lives, with the cleanup-story exception, and have story-executor point at it rather than restate it.
 

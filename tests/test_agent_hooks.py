@@ -69,6 +69,31 @@ class GuardRefusesGeneratedDocumentsTests(unittest.TestCase):
         result = run_hook(edit_of(str(ROOT / "docs" / "BACKLOG.md")))
         self.assertIn("project/epics/*.json", result.stderr)
 
+    def test_every_spelling_of_the_same_file_is_refused(self):
+        """Reproductions from the independent review of E24-S02.
+
+        `docs/BACKLOG.md`, `docs/backlog.md`, `DOCS/BACKLOG.md`, `docs//BACKLOG.md` and
+        `docs/adrs/../BACKLOG.md` are one inode on an APFS volume. README.md states the same
+        rule for protected provider names, and for the same reason: a barrier must not depend
+        on how a name happens to be spelled. The first implementation matched a `case` glob on
+        the raw string and let four of these through.
+        """
+        spellings = (
+            str(ROOT / "docs" / "BACKLOG.md"),
+            str(ROOT / "docs" / "backlog.md"),
+            str(ROOT / "DOCS" / "BACKLOG.md"),
+            f"{ROOT}/docs//BACKLOG.md",
+            f"{ROOT}/docs/adrs/../BACKLOG.md",
+            "docs/BACKLOG.md",
+            "./docs/BACKLOG.md",
+        )
+        for spelling in spellings:
+            with self.subTest(spelling=spelling):
+                self.assertEqual(REFUSED, run_hook(edit_of(spelling)).returncode)
+
+    def test_the_generated_cli_reference_is_refused_case_insensitively(self):
+        self.assertEqual(REFUSED, run_hook(edit_of(str(ROOT / "docs" / "cli.md"))).returncode)
+
 
 class GuardAllowsEverythingElseTests(unittest.TestCase):
     def setUp(self):
@@ -87,6 +112,25 @@ class GuardAllowsEverythingElseTests(unittest.TestCase):
     def test_a_document_whose_name_merely_resembles_a_generated_one_is_allowed(self):
         # docs/CLI_RUST.md is hand-maintained; only docs/CLI.md is generated.
         self.assertEqual(ALLOWED, run_hook(edit_of(str(ROOT / "docs" / "CLI_RUST.md"))).returncode)
+
+    def test_a_path_outside_the_project_is_never_refused(self):
+        """AGENTS.md requires tests to build synthetic trees. A guard that refuses any path on
+        the machine ending in `/docs/BACKLOG.md` would block the repository's own test policy -
+        which the first implementation did, because it matched a suffix rather than a
+        project-relative path."""
+        outside = (
+            "/tmp/pytest-of-someone/test_tree0/docs/BACKLOG.md",
+            "/tmp/t/project/generated/PROJECT_STATUS.md",
+            "/var/folders/x/T/tmpabc/docs/ROADMAP.md",
+        )
+        for path in outside:
+            with self.subTest(path=path):
+                self.assertEqual(ALLOWED, run_hook(edit_of(path)).returncode)
+
+    def test_a_lookalike_directory_inside_the_project_is_allowed(self):
+        for path in (ROOT / "rust" / "docs" / "BACKLOG.md", ROOT / "my-docs" / "BACKLOG.md"):
+            with self.subTest(path=str(path)):
+                self.assertEqual(ALLOWED, run_hook(edit_of(str(path))).returncode)
 
 
 class GuardFailsOpenTests(unittest.TestCase):
@@ -110,6 +154,34 @@ class GuardFailsOpenTests(unittest.TestCase):
 
     def test_a_null_file_path_is_allowed(self):
         self.assertEqual(ALLOWED, run_hook(json.dumps({"tool_input": {"file_path": None}})).returncode)
+
+    def test_a_non_string_file_path_is_allowed(self):
+        for value in (42, ["docs/BACKLOG.md"], {"path": "docs/BACKLOG.md"}, ""):
+            with self.subTest(value=value):
+                self.assertEqual(ALLOWED, run_hook(json.dumps({"tool_input": {"file_path": value}})).returncode)
+
+    def test_a_large_payload_naming_a_generated_document_still_refuses(self):
+        payload = json.dumps({"pad": "x" * 1_000_000, "tool_input": {"file_path": str(ROOT / "docs" / "BACKLOG.md")}})
+        self.assertEqual(REFUSED, run_hook(payload).returncode)
+
+
+class GuardCoverageIsHonestlyBoundedTests(unittest.TestCase):
+    """The matcher covers structured file-writing tools only.
+
+    A write performed through Bash never reaches this hook, and matching those would mean
+    parsing shell. The limit is real, so it is pinned here and stated in the hook's own header
+    and in `.claude/skills/README.md` rather than left for a reader to discover.
+    """
+
+    def test_the_matcher_names_the_structured_writing_tools(self):
+        settings = json.loads((ROOT / ".claude" / "settings.json").read_text(encoding="utf-8"))
+        matchers = [entry["matcher"] for entry in settings["hooks"]["PreToolUse"]]
+        self.assertIn("Edit|Write|NotebookEdit", matchers)
+
+    def test_the_hook_documents_that_bash_writes_are_not_covered(self):
+        header = (ROOT / ".claude" / "hooks" / "guard-generated-docs.sh").read_text(encoding="utf-8")
+        self.assertIn("Bash", header)
+        self.assertIn("remain the", header.replace("\n#     ", " ").replace("\n#   ", " "))
 
 
 class GuardDoesNotReplaceTheDriftCheckTests(unittest.TestCase):

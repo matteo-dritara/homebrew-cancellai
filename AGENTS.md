@@ -91,7 +91,9 @@ level can still arrive as a diff a reviewer cannot read.
   silently is scope expansion with a helpful motive, and it is still scope expansion.
 
 The exception is a change whose story *is* the cleanup. Then the cleanup is the diff, and behavior
-change stays out of it - the same rule from the other side.
+change stays out of it - the same rule from the other side. The exception does not reach
+`cancellai.py`: the Python reference freeze above bars a cleanup-only change there outright, and
+a cleanup story cannot grant what the freeze withholds.
 
 ## Change Risk Levels
 

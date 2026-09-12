@@ -15,7 +15,7 @@ PASS
 | AC | Evidence | Result |
 | --- | --- | --- |
 | AC1 - pack is in the Agent Skills format | Seven directories under `.claude/skills/`, each with a `SKILL.md` carrying `name` and `description` frontmatter. `tests/test_agent_skills.py::RealPackTests` parses the committed pack through the same code path the checker uses. Format per <https://agentskills.io>; no Claude-Code-only field is required for a skill to load. | PASS |
-| AC2 - checker rejects each drift | `tests/test_agent_skills.py::DriftTests` - 16 cases, one per rejection path: name/directory disagreement, missing frontmatter, unterminated frontmatter, missing description, description with no activation clause, oversized description, missing cited path, missing named script, pattern under a missing directory, missing `SKILL.md`, deleted pack, empty pack. | PASS |
+| AC2 - checker rejects each drift | `tests/test_agent_skills.py` - `DriftTests` covers frontmatter, name, description and pack-level rejections; `CitationRegressionTests` covers sixteen citation shapes, seven of which must be rejected; `FrontmatterShapeTests` covers the YAML shapes a skill author actually writes. **Corrected after review:** the first version of this row claimed one case per rejection path. It was not true - a mutation replacing `SCRIPT_COMMAND` with a regex matching nothing left the whole suite green, because the assertion used the substring `"does not exist"`, which the *path* error also produces. The assertion is now `"names a script that does not exist"` and the same mutant fails the suite. See `project/evidence/E24-VERIFIER-REVIEW.md`. | PASS after repair |
 | AC3 - runs in pre-commit and CI | `.pre-commit-config.yaml` hook `agent-skills-check`; `.github/workflows/tests.yml` step `python3 scripts/check_agent_skills.py check`. `scripts/check_workflows.py check` passes, which is what enforces that a `repo: local` pre-commit gate is also present in `release.yml`'s `verify` job - so the command was added there too, and to `AGENTS.md`'s "Current Python checks" block, which that checker parses as the single source `release.yml` is compared against. | PASS |
 | AC4 - AGENTS.md points at the pack and states the rule | `AGENTS.md`, new "Agent skill pack" section: "A skill is a runner over this contract, never a second copy of it." Links `.claude/skills/README.md`. | PASS |
 | AC5 - adds no product capability and never blocks a story | The change touches no runtime code: `cancellai.py`, `rust/crates/**` and every product path are unmodified (see the commit diff). `AGENTS.md` states the pack is developer convenience, not authority, and that a skill never decides what is permitted. | PASS |
@@ -101,6 +101,17 @@ directory_that_does_not_exist_is_rejected` pins it.
 - **The checker validates that a pointer resolves, not that it is the right pointer.** A skill
   citing `docs/CONSTITUTION.md` where `docs/security/SAFETY_INVARIANTS.md` was meant passes.
   Only review catches that.
+- **A pattern is checked by expansion, so it is only as strong as what the tree happens to hold.**
+  `project/epics/*.json` passes because twenty-five files match. A pattern that would be broken
+  in a fresh checkout but matches one stale file here still passes. Review round 1 found that the
+  first implementation did not check patterns *at all* - it validated `docs/*totally/fake/path.md`
+  as `docs` - which is the stronger version of this same limitation and is now repaired.
+- **A citation with no file extension that does not resolve to a directory is skipped**, because
+  `docs/metadata` is prose in `AGENTS.md`, not a path. A genuinely deleted directory cited without
+  an extension is therefore not caught.
+- **Anchors are not validated.** `docs/X.md#gone` passes, while `scripts/check_docs.py` validates
+  anchors for `docs/`. Carried forward as E25-S05 rather than fixed here, per the diff-discipline
+  rule: it is a new capability, not a repair.
 - **Prose drift is not detected.** The rule "a skill points at the contract, never restates it"
   is enforced only at the level of paths and commands. A skill that paraphrases a rule in its
   own words still passes. Making that mechanical would require semantic comparison; it is

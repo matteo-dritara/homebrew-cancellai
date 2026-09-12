@@ -10,9 +10,8 @@ Epics: **25** | Stories: **113**
 
 - `blocked`: 2
 - `cancelled`: 1
-- `done`: 81
+- `done`: 84
 - `planned`: 26
-- `ready_for_review`: 3
 
 ## Change risk distribution
 
@@ -28,6 +27,4 @@ Epics: **25** | Stories: **113**
 
 ## Awaiting independent review
 
-- **E24-S01** - The agent skill pack is version-controlled and drift-checked (CR0)
-- **E24-S02** - Generated documents refuse a hand-edit at the moment it is attempted (CR0)
-- **E24-S03** - Diff discipline is stated where the contract lives (CR0)
+- none
