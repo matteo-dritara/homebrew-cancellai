@@ -1,0 +1,321 @@
+{
+  "schema_version": 1,
+  "id": "E25",
+  "phase": "P1",
+  "title": "Engineering System Falsification",
+  "objective": "cEOS has borrowed the artifact set of a safety standard without the mechanism that makes it work. In DO-178C, ISO 26262, IEC 61508 and NPR 7150.2 that mechanism is independence applied to the act of classification, and measurement applied to the process itself; cEOS has neither. This epic closes the gap the 2026-09-12 methodology review found, in the order the review prioritised: make the risk classification something other than self-assessment, prove the gates can catch a planted violation, make the evidence ledger checkable, and replace the fixed review ceiling with a rule the measurement can support. See docs/audits/2026-09-12-METHODOLOGY_REVIEW.md.",
+  "dependencies": [],
+  "status": "in_progress",
+  "stories": [
+    {
+      "id": "E25-S01",
+      "title": "The process measures itself",
+      "status": "ready_for_review",
+      "outcome": "Eighteen checkers measure the code and none measured the process, so cEOS could say at any moment whether a gate passed and never whether the gates work. A process that has never caught a defect and a process with no defects to catch produce identical evidence. scripts/process_metrics.py computes, from artifacts the repository already commits: review yield per round, first-pass rejection rate split by whether the reviewer was the executor, a Lincoln-Petersen residual estimate from the overlap between two rounds, evidence-ledger integrity, Change Risk distribution, and a rework proxy from git history. The first result is the number the rest of this epic rests on: 47% of round-1 independent verdicts are FAIL on work whose executor ran every gate green.",
+      "change_risk": "CR0",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "scripts/process_metrics.py generates project/generated/PROCESS_METRICS.md from project/evidence/*, project/epics/*.json and git history, and a check subcommand fails when the committed report is stale or missing.",
+        "The report distinguishes an independent review round from a self-review, and distinguishes an epic round from a pre-ADR-0014 story-scoped record, because counting either wrongly corrupts every number below it.",
+        "A review record whose verdict table the tool cannot parse is reported as not machine-readable rather than as zero findings - a measurement tool may fail, but it may never report a confident wrong number.",
+        "The gate runs in .pre-commit-config.yaml, .github/workflows/tests.yml and .github/workflows/release.yml, and the report carries the generated-file banner scripts/check_process.py enforces.",
+        "The report states what each number cannot support as well as what it shows, so a small sample is not read as a result."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Lincoln-Petersen returns the textbook value on a known case, collapses to one reviewer's count on total overlap, and is undefined rather than zero on disjoint findings.",
+        "A verdict table whose second column holds a Change Risk Level rather than a verdict is not read as three passing verdicts - the regression that produced a confident wrong number during development.",
+        "A story-scoped review record is distinguished from an epic round by filename.",
+        "check fails on a stale report and on a missing one.",
+        "Rendering twice produces identical output, so the drift check cannot fire spuriously."
+      ],
+      "documentation_impact": [
+        "docs/INDEX.md",
+        "AGENTS.md",
+        ".pre-commit-config.yaml",
+        ".github/workflows/tests.yml",
+        "docs/audits/2026-09-12-METHODOLOGY_REVIEW.md"
+      ]
+    },
+    {
+      "id": "E25-S02",
+      "title": "The Change Risk Level stops being self-assessment",
+      "status": "planned",
+      "outcome": "change_risk is validated in exactly one place and the validation is that the string is one of five permitted values. Every other gate in the system is downstream of that field, so writing CR1 where CR4 was correct removes - in one edit that passes every check - the adversarial tests, the fault injection, the independent verification, the Safety Verdict and the release-evidence obligation. No standard surveyed lets the implementing party assign its own criticality level: DO-178C takes it from the system safety assessment, ISO 26262 subjects the HARA itself to an independent confirmation review, NPR 7150.2 classifies twice and treats a disagreement as an escalation event. Add a mechanical floor and a second opinion.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E25-S01"
+      ],
+      "acceptance_criteria": [
+        "A checker derives a risk floor from the paths a story's change touches - cancellai-safety, cancellai-sealedfs, cancellai-platform, cancellai-model, protected-name lists, root resolution, provider trust, release signing - and fails when a story's declared change_risk is below that floor without a recorded, named argument.",
+        "A second classification is produced without sight of the first, and the two are recorded and compared; a disagreement is an escalation to the owner rather than a silent resolution.",
+        "The disagreement rate is reported by scripts/process_metrics.py, because a rate of exactly zero over many stories is evidence that the second classification is not independent - the mechanism must be able to detect its own failure.",
+        "An argument for a level below the floor names the specific reason the floor does not apply, and is refused if it merely asserts a lower level."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "A story declaring CR1 while touching cancellai-safety fails the gate.",
+        "A story declaring CR4 while touching only documentation passes - the floor is a floor, not a target.",
+        "A recorded override with a named reason passes; an override with no reason fails.",
+        "Two classifications that agree produce no escalation; two that disagree produce one, and the disagreement is visible in the metrics report."
+      ],
+      "documentation_impact": [
+        "AGENTS.md",
+        "docs/development/WORK_ITEM_MODEL.md",
+        "docs/development/AGENT_PROTOCOL.md",
+        "docs/audits/2026-09-12-METHODOLOGY_REVIEW.md"
+      ]
+    },
+    {
+      "id": "E25-S03",
+      "title": "The evidence ledger is checked against the story it discharges",
+      "status": "planned",
+      "outcome": "check_process.py verifies that an evidence file names a real work item. Nothing compares the packet against the story it claims to discharge, and the convention has already decayed without anyone noticing: fifteen story packets past ready_for_review carry no acceptance-criteria rows at all, including all five E20 stories, two of them CR4. Worse than a missing row is a wrong one - the E24 review found two rows claiming PASS on the strength of tests that could not have detected the defects present, both sitting in ready_for_review with every gate green.",
+      "change_risk": "CR1",
+      "dependencies": [
+        "E25-S01"
+      ],
+      "acceptance_criteria": [
+        "scripts/check_evidence.py requires one row per acceptance criterion in the story contract, with the criterion quoted rather than paraphrased, because paraphrasing an acceptance criterion is how one quietly gets easier.",
+        "A CR3 or CR4 packet with an empty residual-risk section fails - an empty residual section at those levels is itself a finding.",
+        "A CR4 story at done without a Safety Verdict recording a pass fails.",
+        "Every target named in a packet's Verification Commands section exists.",
+        "Pre-convention packets are grandfathered explicitly with the reason recorded, the way REVIEW_ROUND_EXCEPTIONS already does, rather than by weakening the rule."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "A packet missing a row for one of the story's criteria fails.",
+        "A packet that paraphrases a criterion rather than quoting it fails.",
+        "A CR4 packet with 'Residual risks: none' fails; a CR1 packet with the same text passes.",
+        "Every currently committed packet either passes or appears in the grandfathering list with a reason.",
+        "A mutant that neuters the AC-row comparison fails the test suite."
+      ],
+      "documentation_impact": [
+        "AGENTS.md",
+        "docs/development/WORK_ITEM_MODEL.md",
+        "project/templates/EVIDENCE_PACKET.md",
+        "docs/audits/2026-09-12-METHODOLOGY_REVIEW.md"
+      ]
+    },
+    {
+      "id": "E25-S04",
+      "title": "Review stops on evidence rather than on a budget",
+      "status": "planned",
+      "outcome": "ADR-0014 bounds review to two rounds. The measurement says the right number is not a constant: E00's second round rejected more than its first (100% against 86%), E06's barely declined, E20's collapsed to zero. E00's two rounds also found disjoint sets, which makes Lincoln-Petersen undefined - two reviewers who share nothing have not bounded the defect population, they have shown it is larger than either saw. E00 needed a third round, got one by exception, and that round found more. Replace the constant with a stopping rule the measurement can support, and keep a ceiling only as a visible cost control.",
+      "change_risk": "CR1",
+      "dependencies": [
+        "E25-S01"
+      ],
+      "acceptance_criteria": [
+        "A round's yield and the residual estimate determine whether another round is required, against a stated threshold recorded in an ADR that supersedes or amends ADR-0014.",
+        "A review that ends because the ceiling was reached rather than because the evidence allowed it is visibly distinguished in the review record and in the metrics report.",
+        "A zero overlap between two rounds is treated as an unbounded population and escalates to the owner rather than resolving as 'both rounds passed'.",
+        "The ceiling remains, so an epic cannot consume unbounded review, but reaching it is an owner decision rather than an automatic close."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Replaying E00's recorded rounds against the new rule requires a third round, which is what actually happened.",
+        "Replaying E20's rounds against the new rule stops after round 2.",
+        "A synthetic epic with disjoint round findings escalates rather than closing."
+      ],
+      "documentation_impact": [
+        "docs/development/WORK_ITEM_MODEL.md",
+        "docs/development/AGENT_PROTOCOL.md",
+        "docs/adrs/0014-epic-closure-is-a-release-and-review-is-bounded.md",
+        "docs/audits/2026-09-12-METHODOLOGY_REVIEW.md"
+      ]
+    },
+    {
+      "id": "E25-S05",
+      "title": "Independence is described at the level the structure can supply",
+      "status": "planned",
+      "outcome": "The contract says 'independent verifier' and 'independent adversarial verification'. Counting parties rather than roles: one human owner, one executor model, one reviewer model. On IEC 61508's ladder that is at most 'independent person' - the SIL-1 rung - not independent department and not independent organisation. The separation does real work, and the 47% round-1 rejection rate is the evidence, but the word is doing more work than the structure can support. Three of the last four epics were self-reviewed, which is a further step down and is currently recorded only by a filename convention.",
+      "change_risk": "CR0",
+      "dependencies": [
+        "E25-S01"
+      ],
+      "acceptance_criteria": [
+        "AGENT_PROTOCOL.md states the achievable independence level in the standards' own vocabulary, and says plainly what it is not.",
+        "A self-review is defined: what it may certify, what it may not, and that it may never close a CR3 or CR4 story on its own.",
+        "The naming rule is a rule rather than a habit - a self-review is committed as <EPIC>-SELF-REVIEW.md, because scripts/process_metrics.py classifies rounds by that name and a misnamed record silently inflates the independent-review statistics.",
+        "A self-review record states its own limitation on its first page."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "A self-review record committed under a VERIFIER-REVIEW name fails a checker.",
+        "A CR4 story moved to done with only a self-review fails.",
+        "The metrics report's independent/self split matches a hand count of the committed records."
+      ],
+      "documentation_impact": [
+        "docs/development/AGENT_PROTOCOL.md",
+        "AGENTS.md",
+        "project/templates/VERIFIER_PROMPT.md",
+        "docs/audits/2026-09-12-METHODOLOGY_REVIEW.md"
+      ]
+    },
+    {
+      "id": "E25-S06",
+      "title": "The gates are shown to catch a planted violation",
+      "status": "planned",
+      "outcome": "Nothing has ever deliberately introduced a safety-invariant violation to find out whether the gate set catches it, so every claim about what the gates prevent is untested. The technique is already in this repository, applied twice and never generalised: scripts/rust_python_parity.py self-test injects a catalogue of known divergence classes and asserts the comparator catches each; scripts/diff_harness.py check does the same. That is Mills' defect seeding, correctly implemented, in production - on two comparators, and never on the thing that guards the product. Generalise it to the Safety Invariants, and use the same run to classify each gate as structural or behavioural, which answers the separate question of which half of the gate set is doing the safety work.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E25-S01"
+      ],
+      "acceptance_criteria": [
+        "For each Safety Invariant, a mutant that violates it is applied to a scratch working tree, the full gate set runs, and the result is recorded: which gate caught it, or that none did.",
+        "The output is a per-invariant sensitivity table, and an invariant with no killing gate is reported as asserted rather than verified.",
+        "Every gate in docs/development/RELEASE_GATES.md is classified as structural or behavioural, and the classification is checked rather than asserted.",
+        "The harness never mutates the committed tree, and proves the tree is clean when it finishes.",
+        "A gate that has never failed in the history available is reported, because a gate with no observed failure is of unknown strength."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "A mutant that removes a protected name from the enforcement list is caught, and the report names the gate that caught it.",
+        "A mutant that makes an unreadable directory read as empty is caught, or the absence of a killing gate is reported as a finding.",
+        "Running the harness twice leaves the tree byte-identical.",
+        "Deliberately weakening a gate makes its own mutant survive, so the harness is shown to be able to fail."
+      ],
+      "documentation_impact": [
+        "docs/development/VERIFICATION_STRATEGY.md",
+        "docs/development/RELEASE_GATES.md",
+        "docs/security/SAFETY_INVARIANTS.md",
+        "docs/audits/2026-09-12-METHODOLOGY_REVIEW.md"
+      ]
+    },
+    {
+      "id": "E25-S07",
+      "title": "The highest-risk behaviours get an oracle that is not the implementation",
+      "status": "planned",
+      "outcome": "NORMATIVE fixtures are generated from cancellai.py's observed behaviour, so 'the implementation matches its characterization' proves the implementation matches itself - an acceptability fallacy, and where the recorded behaviour was wrong the defect is in the oracle. The KNOWN_DEFECT class is a real and uncommon mitigation for the defects somebody noticed; it cannot help with the ones nobody did, which are recorded as NORMATIVE and become requirements. AWS's ShardStore work answered the same problem on 40,000 lines of Rust with an independent executable reference model rather than golden files. Do that for the three behaviours where being wrong is unrecoverable, and be explicit everywhere else that the fixtures are regression detectors rather than correctness oracles.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E25-S06"
+      ],
+      "acceptance_criteria": [
+        "Root resolution, protected-name enforcement and the age/keep-latest eligibility rule are each stated as a predicate derived from docs/security/SAFETY_INVARIANTS.md rather than from either implementation.",
+        "Both engines are checked against that predicate, not only against each other.",
+        "docs/development/VERIFICATION_STRATEGY.md states plainly which fixture classes are regression detectors and which evidence is a correctness oracle.",
+        "A disagreement between an engine and the predicate is a failure even when the two engines agree with each other - agreement between two implementations of the same misunderstanding is not evidence."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "A deliberate change making both engines agree on a wrong protected-name result fails the predicate check.",
+        "The predicate is derived from the invariant text and cites it, so a change to the invariant forces a change to the predicate.",
+        "Property-based tests exercise the predicate across generated inputs rather than a fixed corpus."
+      ],
+      "documentation_impact": [
+        "docs/development/VERIFICATION_STRATEGY.md",
+        "docs/development/MIGRATION_PYTHON_RUST.md",
+        "docs/security/SAFETY_INVARIANTS.md",
+        "docs/audits/2026-09-12-METHODOLOGY_REVIEW.md"
+      ]
+    },
+    {
+      "id": "E25-S08",
+      "title": "Acceptance criteria are written in a constrained syntax",
+      "status": "planned",
+      "outcome": "Acceptance criteria are free English. Many are excellent, none is classified, and nothing links a criterion to the check that discharges it. EARS constrains a requirement to five patterns - ubiquitous, state-driven (While), event-driven (When), optional (Where) and unwanted behaviour (If/Then). The value here is not tidiness: the unwanted-behaviour pattern forces failure triggers to be written as first-class requirements rather than left as error handling, and for a tool whose defining risk is deleting the wrong thing, the ratio of If/Then criteria to happy-path criteria measures whether the requirements describe the feature or the hazard.",
+      "change_risk": "CR0",
+      "dependencies": [
+        "E25-S03"
+      ],
+      "acceptance_criteria": [
+        "The story schema carries an EARS pattern per acceptance criterion for CR2 and above.",
+        "A criterion that cannot be classified into one of the five patterns fails the gate, because an unclassifiable criterion usually has an unstated precondition and unstated preconditions are where a destructive tool deletes the wrong thing.",
+        "scripts/process_metrics.py reports the unwanted-behaviour ratio per epic.",
+        "Closed epics are not retrofitted; the rule applies to stories written after it."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "A criterion with no identifiable trigger, precondition or observable response fails classification.",
+        "A CR4 epic whose unwanted-behaviour ratio is zero is reported, since that is a requirement set describing only the happy path.",
+        "The schema change does not invalidate any existing epic file."
+      ],
+      "documentation_impact": [
+        "project/schemas/epic.schema.json",
+        "docs/development/WORK_ITEM_MODEL.md",
+        "project/templates/STORY.md",
+        "docs/audits/2026-09-12-METHODOLOGY_REVIEW.md"
+      ]
+    },
+    {
+      "id": "E25-S09",
+      "title": "One STPA pass over the mutation control loop",
+      "status": "planned",
+      "outcome": "The threat model is adversary-shaped and good at that. STPA addresses the other half - hazards arising from interactions between components that each did what they were told - and its characteristic finding is a controller acting on a stale or wrong process model. For this product that is the central hazard rather than an abstract one: every serious defect in the E00 audit was a process-model defect, a protected name believed enforced that was not, a root believed validated that was accepted on path depth, an unreadable directory believed empty. No adversary, no failed component, and the tool deletes the wrong thing.",
+      "change_risk": "CR2",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "The control structure of the mutation loop is drawn: controllers, controlled process, control actions, feedback.",
+        "For each mutating control action, the four Unsafe Control Actions are enumerated - not provided when needed, provided when unsafe, wrong timing or order, wrong duration.",
+        "Each UCA is mapped to an existing Safety Invariant, and a UCA with no invariant is recorded as a gap in the invariant set rather than as an accepted risk.",
+        "Loss scenarios include process-model inconsistency in the controller, which is the class the threat model structurally cannot reach."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Each of the E00 P0 defects maps to a UCA the analysis would have produced, or the analysis is incomplete and is reported as such.",
+        "Every UCA with no invariant produces a named follow-up work item.",
+        "The analysis is reviewed against docs/security/THREAT_MODEL.md for overlap, so the two documents do not duplicate or contradict each other."
+      ],
+      "documentation_impact": [
+        "docs/security/THREAT_MODEL.md",
+        "docs/security/SAFETY_INVARIANTS.md",
+        "docs/architecture/DOMAIN_MODEL.md",
+        "docs/audits/2026-09-12-METHODOLOGY_REVIEW.md"
+      ]
+    },
+    {
+      "id": "E25-S10",
+      "title": "An epic that changes nothing shippable has a state",
+      "status": "planned",
+      "outcome": "ADR-0014 makes epic closure cut a release. E24 closed with nothing shippable in it - documentation, agent tooling and tests - while v1.13.0 was prepared but not yet tagged, so release.py correctly refused a second in-flight release. The rule and the tooling disagreed and the tooling was right. The resolution taken was to leave the stories done and the epic in_progress, which passes every gate and is honest, and which ADR-0014 does not describe. Name the case rather than leaving it as folklore.",
+      "change_risk": "CR0",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "An epic whose stories are all done but whose closure is blocked by the release train, or which changes nothing in the shipped artifact, has a named state.",
+        "That state is visible in project_os status rather than being indistinguishable from work in progress.",
+        "release.py check continues to refuse two in-flight releases, which is the behaviour that surfaced the gap and must not be weakened to accommodate it.",
+        "ADR-0014 is amended rather than contradicted."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "An epic in the new state does not require release evidence and does not read as incomplete.",
+        "A product epic in the new state fails, because the state applies only to an epic that changes nothing shippable.",
+        "The E24 situation replays cleanly against the amended rule."
+      ],
+      "documentation_impact": [
+        "docs/adrs/0014-epic-closure-is-a-release-and-review-is-bounded.md",
+        "docs/development/WORK_ITEM_MODEL.md",
+        "docs/RELEASING.md",
+        "docs/audits/2026-09-12-METHODOLOGY_REVIEW.md"
+      ]
+    },
+    {
+      "id": "E25-S11",
+      "title": "Documents record whether anyone read them",
+      "status": "planned",
+      "outcome": "Governance prose outweighs shipping code 1.14 to 1, which for a destructive local tool is defensible and for which no threshold in the literature says otherwise. What is missing is any evidence of readership across 260 reachable Markdown files. Haddon-Cave's list of what a safety case degenerates into ends at decorative shelf-ware, and the only way to know is to record what a review actually opened. Deliberately no restructuring: a documentation taxonomy has no empirical support behind it and would be churn.",
+      "change_risk": "CR0",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "A review record names the documents the review actually opened.",
+        "Once per phase, the documents no review has opened are listed for an owner decision.",
+        "No document is deleted by this story; the output is a list and a decision, not a purge.",
+        "Accepted ADRs remain undeletable regardless of readership, per existing policy."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "The unread list is reproducible from committed review records rather than from memory.",
+        "An ADR appearing on the unread list does not become deletable.",
+        "The list is small enough to act on, or the measurement is reported as not yet useful."
+      ],
+      "documentation_impact": [
+        "docs/development/AGENT_PROTOCOL.md",
+        "project/templates/VERIFIER_PROMPT.md",
+        "docs/INDEX.md",
+        "docs/audits/2026-09-12-METHODOLOGY_REVIEW.md"
+      ]
+    }
+  ]
+}

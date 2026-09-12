@@ -35,11 +35,15 @@ Anything it certifies rests on the reproductions recorded below, not on the revi
 
 ## Verdicts
 
-| Story | CR | Round-1 verdict | Verdict after repair | Concrete evidence |
+The `Verdict` column is the round's verdict, in the second column, because that is where
+`scripts/process_metrics.py` reads it from. Every story here was repaired after the round and
+re-verified; the repaired state is the third column.
+
+| Story | Verdict | After repair | CR | Concrete evidence |
 | --- | --- | --- | --- | --- |
-| E24-S01 | CR0 | **FAIL** | PASS_WITH_RESIDUALS | Ten findings; four classes of broken pointer passed the checker and one class of valid pointer was wrongly rejected. All ten reproduced. Repairs verified by a 16-case citation matrix and two killed mutants. |
-| E24-S02 | CR0 | **FAIL** | PASS_WITH_RESIDUALS | Five spellings resolving to the same inode as a generated document were allowed through, including the case variant `README.md` names as a mandatory matching rule on APFS. All reproduced with `stat -f %i`. |
-| E24-S03 | CR0 | PASS_WITH_RESIDUALS | PASS_WITH_RESIDUALS | All five AC1 clauses present; AC2's justification confirmed against a real instance in `cancellai.py`. One prose tension with the Python reference freeze, repaired. |
+| E24-S01 | FAIL | PASS_WITH_RESIDUALS | CR0 | Ten findings; four classes of broken pointer passed the checker and one class of valid pointer was wrongly rejected. All ten reproduced. Repairs verified by a 16-case citation matrix and two killed mutants. |
+| E24-S02 | FAIL | PASS_WITH_RESIDUALS | CR0 | Five spellings resolving to the same inode as a generated document were allowed through, including the case variant `README.md` names as a mandatory matching rule on APFS. All reproduced with `stat -f %i`. |
+| E24-S03 | PASS_WITH_RESIDUALS | PASS_WITH_RESIDUALS | CR0 | All five AC1 clauses present; AC2's justification confirmed against a real instance in `cancellai.py`. One prose tension with the Python reference freeze, repaired. |
 
 ## Findings and repairs
 

@@ -49,6 +49,7 @@ cancellAI treats documentation as part of the executable product system. This pa
 
 - [audits/2026-08-27-CODE_REVIEW.md](audits/2026-08-27-CODE_REVIEW.md) - baseline code review and P0 findings.
 - [audits/2026-09-03-CODE_REVIEW.md](audits/2026-09-03-CODE_REVIEW.md) - target-engine review: scan-completeness authority, gate integrity, and the CR-TE findings carried by E21/E22.
+- [audits/2026-09-12-METHODOLOGY_REVIEW.md](audits/2026-09-12-METHODOLOGY_REVIEW.md) - falsification of the engineering system itself against DO-178C, ISO 26262, IEC 61508, NPR 7150.2 and the measurement literature; the findings E25 carries.
 - [research/MARKET_AND_STANDARDS_2026-08.md](research/MARKET_AND_STANDARDS_2026-08.md) - market/standards research used to shape the system.
 - [adrs/](adrs/) - architecture decision records. Accepted ADRs are never deleted; superseded ADRs link forward.
 - [rfcs/README.md](rfcs/README.md) - when a design change requires an RFC before implementation.
@@ -61,6 +62,9 @@ The source of truth for project planning lives under [`project/`](../project/):
 - `project/roadmap.json` - phases and exit gates.
 - `project/epics/*.json` - story contracts.
 - [`project/generated/PROJECT_STATUS.md`](../project/generated/PROJECT_STATUS.md) - generated project summary.
+- [`project/generated/PROCESS_METRICS.md`](../project/generated/PROCESS_METRICS.md) - generated measurement of the
+  engineering process itself: review yield per round, first-pass rejection rate, residual-defect
+  estimate from reviewer overlap, evidence-ledger integrity.
 - `project/templates/` - see [the template index](../project/README.md#templates).
 
 Run:

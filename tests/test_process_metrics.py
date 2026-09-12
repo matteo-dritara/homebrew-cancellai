@@ -1,0 +1,147 @@
+"""Tests for the process-measurement tool (E25-S01).
+
+A tool that measures the process is held to a harder standard than one that measures the code:
+a wrong number here is not a failing gate, it is a confident claim about how well the process
+works, which nothing downstream will contradict. So the cases below concentrate on the ways it
+could report a plausible wrong number rather than fail.
+"""
+
+from __future__ import annotations
+
+import tempfile
+import unittest
+from pathlib import Path
+
+from scripts import process_metrics as metrics
+
+
+class LincolnPetersenTests(unittest.TestCase):
+    def test_the_textbook_case(self):
+        # Two reviewers find 4 and 3, sharing 2: N = 4*3/2 = 6, of which 5 were seen.
+        population, residual = metrics.lincoln_petersen({"a", "b", "c", "d"}, {"c", "d", "e"})
+        self.assertAlmostEqual(6.0, population)
+        self.assertAlmostEqual(1.0, residual)
+
+    def test_total_overlap_means_the_second_reviewer_added_nothing(self):
+        # The diagnostic case: identical findings estimate the population as what one found.
+        population, residual = metrics.lincoln_petersen({"a", "b"}, {"a", "b"})
+        self.assertAlmostEqual(2.0, population)
+        self.assertAlmostEqual(0.0, residual)
+
+    def test_disjoint_findings_are_undefined_rather_than_zero(self):
+        # Reporting 0 residual for disjoint reviewers would be the exact inversion of the truth.
+        self.assertIsNone(metrics.lincoln_petersen({"a"}, {"b"}))
+
+    def test_an_empty_round_is_undefined(self):
+        self.assertIsNone(metrics.lincoln_petersen(set(), {"a"}))
+
+
+class VerdictParsingTests(unittest.TestCase):
+    """The second column must be a verdict, not merely a capitalised word."""
+
+    def test_a_verdict_row_is_read(self):
+        row = "| E01-S01 | FAIL | reproduction |\n"
+        self.assertEqual([("E01-S01", "FAIL")], metrics.VERDICT_ROW.findall(row))
+
+    def test_a_bolded_verdict_is_read(self):
+        row = "| E01-S01 | **PASS_WITH_RESIDUALS** | note |\n"
+        self.assertEqual([("E01-S01", "PASS_WITH_RESIDUALS")], metrics.VERDICT_ROW.findall(row))
+
+    def test_a_change_risk_level_is_not_a_verdict(self):
+        # Regression: an earlier version accepted any capitalised token, so a record whose second
+        # column held the CR level was read as three passing verdicts.
+        row = "| E24-S01 | CR0 | FAIL | evidence |\n"
+        self.assertEqual([], metrics.VERDICT_ROW.findall(row))
+
+    def test_prose_mentioning_a_story_is_not_a_verdict(self):
+        self.assertEqual([], metrics.VERDICT_ROW.findall("E01-S01 was rejected, see FAIL above\n"))
+
+
+class ReviewRecordClassificationTests(unittest.TestCase):
+    def parse(self, name: str):
+        return metrics.REVIEW_FILE.match(name)
+
+    def test_an_epic_round_is_recognised(self):
+        match = self.parse("E22-VERIFIER-REVIEW.md")
+        self.assertIsNotNone(match)
+        self.assertIsNone(match.group("story"))
+        self.assertIsNone(match.group("round"))
+
+    def test_a_numbered_round_is_recognised(self):
+        match = self.parse("E06-VERIFIER-REVIEW-ROUND2.md")
+        self.assertEqual("2", match.group("round"))
+
+    def test_a_story_scoped_record_is_distinguished_from_an_epic_round(self):
+        # Counting a pre-ADR-0014 story-scoped record as an epic round invents rounds that never
+        # happened, which corrupts the yield table and the residual estimate below it.
+        match = self.parse("E07-S07-VERIFIER-REVIEW.md")
+        self.assertEqual("-S07", match.group("story"))
+
+    def test_a_self_review_is_named_so_it_cannot_be_mistaken_for_an_independent_one(self):
+        self.assertTrue(metrics.SELF_REVIEW.search("E24-SELF-REVIEW.md"))
+        self.assertFalse(metrics.SELF_REVIEW.search("E22-VERIFIER-REVIEW.md"))
+
+    def test_an_unrelated_evidence_file_is_not_a_review_record(self):
+        self.assertIsNone(self.parse("RELEASE-v1.9.0.md"))
+        self.assertIsNone(self.parse("E00-EXECUTOR-SUMMARY.md"))
+
+
+class RealRepositoryTests(unittest.TestCase):
+    def test_the_committed_report_is_current(self):
+        self.assertEqual(0, metrics.main(["check"]))
+
+    def test_every_epic_round_carries_a_reviewer_classification(self):
+        for epic, records in metrics.load_rounds().items():
+            for record in records:
+                with self.subTest(epic=epic, round=record.number):
+                    self.assertIsInstance(record.independent, bool)
+
+    def test_evidence_coverage_counts_only_stories_that_owe_a_packet(self):
+        stories = metrics.load_stories()
+        _covered, considered, _gaps = metrics.evidence_coverage(stories)
+        owed = sum(1 for story in stories.values() if story["status"] in metrics.ACCEPTED_STATUSES)
+        self.assertEqual(owed, considered)
+
+    def test_the_report_names_the_generator_and_forbids_hand_editing(self):
+        report = metrics.render(metrics.load_stories(), metrics.load_rounds())
+        self.assertIn("Generated by scripts/process_metrics.py", report)
+        self.assertIn("Do not edit by hand", report)
+
+    def test_the_report_ends_with_exactly_one_newline(self):
+        # pre-commit's end-of-file-fixer rewrites a file ending in a blank line, which would put
+        # the committed report permanently at odds with its own generator and fail every commit.
+        report = metrics.render(metrics.load_stories(), metrics.load_rounds())
+        self.assertTrue(report.endswith("\n"))
+        self.assertFalse(report.endswith("\n\n"))
+
+    def test_generate_is_idempotent(self):
+        first = metrics.render(metrics.load_stories(), metrics.load_rounds())
+        second = metrics.render(metrics.load_stories(), metrics.load_rounds())
+        self.assertEqual(first, second)
+
+
+class StaleReportTests(unittest.TestCase):
+    def test_check_fails_when_the_committed_report_is_stale(self):
+        # The drift check is the only thing keeping the numbers honest between runs.
+        original = metrics.OUTPUT
+        with tempfile.TemporaryDirectory() as tmp:
+            stale = Path(tmp) / "PROCESS_METRICS.md"
+            stale.write_text("# Process Metrics\n\nout of date\n", encoding="utf-8")
+            metrics.OUTPUT = stale
+            try:
+                self.assertEqual(2, metrics.main(["check"]))
+            finally:
+                metrics.OUTPUT = original
+
+    def test_check_fails_when_the_report_is_missing_entirely(self):
+        original = metrics.OUTPUT
+        with tempfile.TemporaryDirectory() as tmp:
+            metrics.OUTPUT = Path(tmp) / "absent.md"
+            try:
+                self.assertEqual(2, metrics.main(["check"]))
+            finally:
+                metrics.OUTPUT = original
+
+
+if __name__ == "__main__":
+    unittest.main()

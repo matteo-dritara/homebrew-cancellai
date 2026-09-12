@@ -4,20 +4,21 @@
 
 Current phase: **P1**
 
-Epics: **25** | Stories: **113**
+Epics: **26** | Stories: **124**
 
 ## Story status
 
 - `blocked`: 2
 - `cancelled`: 1
 - `done`: 84
-- `planned`: 26
+- `planned`: 36
+- `ready_for_review`: 1
 
 ## Change risk distribution
 
-- `CR0`: 5
-- `CR1`: 23
-- `CR2`: 37
+- `CR0`: 10
+- `CR1`: 25
+- `CR2`: 41
 - `CR3`: 21
 - `CR4`: 27
 
@@ -27,4 +28,4 @@ Epics: **25** | Stories: **113**
 
 ## Awaiting independent review
 
-- none
+- **E25-S01** - The process measures itself (CR0)
