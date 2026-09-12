@@ -24,7 +24,7 @@ commands shown.
 
 ---
 
-## M-01 The Change Risk Level is assigned by the party whose work it governs — **critical**
+## M-01 The Change Risk Level is assigned by the party whose work it governs — **critical, half repaired**
 
 **The claim.** "The higher risk level determines verification depth even if the diff is tiny"
 (`AGENTS.md`). CR0-CR4 selects the gate set, the need for adversarial tests, the need for
@@ -81,7 +81,7 @@ misjudgement is indistinguishable from an honest one because nothing ever looks.
 
 ---
 
-## M-02 The evidence packet is prose that nothing validates — **high**
+## M-02 The evidence packet is prose that nothing validates — **high, repaired**
 
 **The claim.** The evidence ledger is one of six owner-visible artifacts cEOS promises to keep
 stable, and `project_os.py check` "refuses a `ready_for_review` story that has no committed
@@ -144,7 +144,7 @@ gate that has never caught anything is a candidate for deletion, and the burden 
 
 ---
 
-## M-04 The two-round review ceiling is a budget, not a stopping rule — **high**
+## M-04 The two-round review ceiling is a budget, not a stopping rule — **high, repaired**
 
 **The claim.** ADR-0014 / PD-022 bound review to two rounds per epic; findings surviving round 2
 become backlog items.
@@ -245,7 +245,7 @@ check both engines against *it*. Everywhere else, keep the fixtures and be expli
 
 ---
 
-## M-07 Independence is claimed at a level the structure cannot supply — **medium**
+## M-07 Independence is claimed at a level the structure cannot supply — **medium, repaired**
 
 **The claim.** "Executor / verifier separation", "independent adversarial verifier", "independent
 verification" as a CR3/CR4 gate.
@@ -357,7 +357,7 @@ existing Safety Invariants. Where a UCA has no invariant, that is a gap in the i
 
 ---
 
-## M-11 "Closing an epic cuts a release" collides with reality — **low-medium**
+## M-11 "Closing an epic cuts a release" collides with reality — **low-medium, repaired**
 
 **The claim.** ADR-0014: closing an epic cuts a release, enforced by `scripts/release.py check`.
 
@@ -443,17 +443,30 @@ better than standard practice and two are better than the standards:
 
 ## Priority
 
-| Order | Finding | Why now |
+| Order | Finding | State |
 | --- | --- | --- |
-| 1 | M-01 risk classification | Every other gate is downstream of one unverified field. |
-| 2 | M-05 gate sensitivity | Until a planted violation is caught, nothing the gates claim is tested. The technique is already in-tree. |
-| 3 | M-02 evidence validation | The ledger is the system's memory, and it has already decayed unnoticed. |
-| 4 | M-04 stopping rule | The measurement now exists; the rule can stop being a guess. |
-| 5 | M-07 independence honesty | Cheap, and it stops the word doing work it cannot support. |
-| 6+ | M-06, M-08, M-09, M-10, M-11, M-12 | Real, none urgent. |
+| 1 | M-01 risk classification | **Half repaired** (E25-S02). The mechanical floor exists and is gated: `project/risk_floors.json` plus `scripts/check_risk_classification.py`. It found five stories already below their floor, one of them - E20-S04, declared CR2 while touching the only crate exempt from `forbid(unsafe_code)` - exactly the case this finding predicted. The second half, an independent second classification, is structurally supported and **has never been produced**, so the strongest part of the standards' mechanism is present in form only. |
+| 2 | M-05 gate sensitivity | **Open** (E25-S06), and now the highest-priority open finding. Until a planted invariant violation has been shown to be caught, nothing the gates claim is tested. |
+| 3 | M-02 evidence validation | **Repaired** (E25-S03). `scripts/check_evidence.py` requires a row per criterion, a real residual-risk section at CR3+, a Safety Verdict for a CR4 story at `done`, and that claimed commands exist. Fifteen pre-convention packets are a printed baseline that can only shrink. |
+| 4 | M-04 stopping rule | **Repaired** (E25-S04, ADR-0025). Review continues while a round rejects 10% or more, escalates on zero overlap, and treats three rounds as a cost control whose use is an owner decision. |
+| 5 | M-07 independence honesty | **Repaired** (E25-S05). `AGENT_PROTOCOL.md` states the achievable rung in the standards' vocabulary and defines what a self-review may and may not certify. |
+| — | M-11 epic with nothing shippable | **Repaired** (E25-S10, ADR-0025). `done_no_release` names the state; it is an epic status only. |
+| — | M-03 process measurement | **Repaired** (E25-S01). |
+| 6+ | M-06, M-08, M-09, M-12 | Open, real, none urgent. E25-S07, S08, S09, S11. |
 
-M-03 is repaired: `scripts/process_metrics.py` and
-[`project/generated/PROCESS_METRICS.md`](../../project/generated/PROCESS_METRICS.md).
+## What the repairs found
+
+Two things worth recording, because both are the mechanisms working on their authors:
+
+**The risk floor caught its own commit.** One commit after being written, it flagged E25-S04 for
+touching `scripts/release.py`, which E25-S04 never touched. This repository writes several stories
+in one subject as `E25-S04/S05/S10`, and a story-id regex finds exactly one id in that string - so
+a three-story commit read as *unambiguous* and every file in it was attributed to the first story.
+That is precisely the confident wrong attribution the design refuses to make, arriving through a
+commit convention nobody had considered.
+
+**The evidence gate found a decayed convention, not a hypothetical one.** The fifteen packets were
+not a risk; they were already there, two of them CR4, and no gate had ever said so.
 
 ## Method and limits
 
