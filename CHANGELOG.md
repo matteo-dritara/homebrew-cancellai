@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-09-12
+
 ### Added
 
 - Added a real peak-memory regression gate for the shipped discovery path (E10-S02, CR1). New
@@ -34,7 +36,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   result `Verified` only when every size was known and the filesystem is `NotKnownToShare` -
   any clone-capable or undetermined filesystem, or any excluded file, downgrades the estimate to
   `Estimated` with a named reason (this story's AC2: unknown APFS/reflink/shared-block effects
-  are never presented as guaranteed savings).
+  are never presented as guaranteed savings). A self-review found and this same story's own fix
+  closed a real Windows CI break before release: the classifier and its backing constants
+  carried no `cfg` gate, so they were dead code on Windows (nothing there called them) and broke
+  the mandatory `cargo clippy -D warnings` gate on `windows-latest` - now gated to
+  `cfg(any(test, target_os = "macos", target_os = "linux"))`, the precedent this crate's own
+  `wsl::classify_fstype` already set for the identical shape of gap.
+
 - Added a real Atlas TUI shell and keyboard-first navigation to `cancellai-tui` (E09-S01, CR1,
   observational only), replacing the E02-S01 placeholder skeleton: `Tab`/`Shift+Tab`/`1`-`4`
   cycle four screens (`Home`, and stubs for `Atlas`/`Explain`/`Plan` pending E09-S02/S03/S04),
@@ -78,7 +86,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `cancellai-platform`, so nothing in it can construct a plan or execute a mutation - the
   confirmed state names `cancellai-cli clean` as the real, separate execution path rather than
   claiming to execute anything itself. `docs/architecture/TARGET.md` and
-  `docs/security/SAFETY_INVARIANTS.md` (SI-016) record this scope decision explicitly.
+  `docs/security/SAFETY_INVARIANTS.md` (SI-016) record this scope decision explicitly. A
+  self-review found and this same story's own fix closed a real input-handling gap before
+  release: the confirmation guard matched `c` regardless of modifiers, so a real terminal's
+  Ctrl+C (delivered as `Char('c')` + `CONTROL` once raw mode disables `ISIG`) could complete a
+  pending irreversible confirmation instead of cancelling it - now a shared `is_plain_c` check
+  makes any modified `c`, Ctrl+C included, always cancel and never arm/confirm.
 
 ## [1.12.0] - 2026-09-11
 

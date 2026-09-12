@@ -1001,13 +1001,13 @@ Map provider state into the multidimensional AgentArtifact model and evidence-ba
 
 ## E09 - Atlas TUI
 
-**Phase:** `P2` | **Status:** `ready_for_review` | **Epic dependencies:** E08
+**Phase:** `P2` | **Status:** `done` | **Epic dependencies:** E08
 
 Deliver the first rich exploratory interface without duplicating engine logic.
 
 ### E09-S01 - TUI shell and navigation
 
-**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E08-S04 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** E08-S04 | **Safety obligations:** none
 
 **Outcome.** Build keyboard-first terminal UI over engine query APIs.
 
@@ -1027,7 +1027,7 @@ Deliver the first rich exploratory interface without duplicating engine logic.
 
 ### E09-S02 - Machine and project atlas
 
-**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E09-S01 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** E09-S01 | **Safety obligations:** none
 
 **Outcome.** Show total footprint, reclaimable estimates, providers, projects, unattributed state, and top contributors.
 
@@ -1046,7 +1046,7 @@ Deliver the first rich exploratory interface without duplicating engine logic.
 
 ### E09-S03 - Artifact explain view
 
-**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E09-S01, E08-S01 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** E09-S01, E08-S01 | **Safety obligations:** none
 
 **Outcome.** Expose why an artifact exists, classification, evidence, risk, reversibility, allowed authority, and policy outcome.
 
@@ -1065,7 +1065,7 @@ Deliver the first rich exploratory interface without duplicating engine logic.
 
 ### E09-S04 - Plan review workflow
 
-**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E09-S03 | **Safety obligations:** SI-016
+**Status:** `done` | **Change Risk:** `CR3` | **Dependencies:** E09-S03 | **Safety obligations:** SI-016
 
 **Outcome.** Allow select/inspect/plan handoff while execution remains in the shared safety engine.
 
@@ -1084,13 +1084,13 @@ Deliver the first rich exploratory interface without duplicating engine logic.
 
 ## E10 - Storage Accounting and Performance
 
-**Phase:** `P2` | **Status:** `in_progress` | **Epic dependencies:** E08
+**Phase:** `P2` | **Status:** `done` | **Epic dependencies:** E08
 
 Make storage numbers trustworthy and the scanner inexpensive enough for continuous use.
 
 ### E10-S01 - Reclaimability estimator
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E04-S01, E20-S03 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E04-S01, E20-S03 | **Safety obligations:** none
 
 **Outcome.** Distinguish logical size, allocated size, shared/clone uncertainty, and expected reclaim on supported filesystems.
 
@@ -1109,7 +1109,7 @@ Make storage numbers trustworthy and the scanner inexpensive enough for continuo
 
 ### E10-S02 - Performance guardrails
 
-**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E04-S04 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** E04-S04 | **Safety obligations:** none
 
 **Outcome.** Enforce latency/memory/self-footprint regression budgets.
 

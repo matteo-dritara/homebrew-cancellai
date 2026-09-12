@@ -7,12 +7,12 @@
   "dependencies": [
     "E08"
   ],
-  "status": "ready_for_review",
+  "status": "done",
   "stories": [
     {
       "id": "E09-S01",
       "title": "TUI shell and navigation",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Build keyboard-first terminal UI over engine query APIs.",
       "change_risk": "CR1",
       "dependencies": [
@@ -34,7 +34,7 @@
     {
       "id": "E09-S02",
       "title": "Machine and project atlas",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Show total footprint, reclaimable estimates, providers, projects, unattributed state, and top contributors.",
       "change_risk": "CR1",
       "dependencies": [
@@ -55,7 +55,7 @@
     {
       "id": "E09-S03",
       "title": "Artifact explain view",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Expose why an artifact exists, classification, evidence, risk, reversibility, allowed authority, and policy outcome.",
       "change_risk": "CR1",
       "dependencies": [
@@ -77,7 +77,7 @@
     {
       "id": "E09-S04",
       "title": "Plan review workflow",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Allow select/inspect/plan handoff while execution remains in the shared safety engine.",
       "change_risk": "CR3",
       "dependencies": [

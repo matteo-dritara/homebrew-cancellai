@@ -7,12 +7,12 @@
   "dependencies": [
     "E08"
   ],
-  "status": "in_progress",
+  "status": "done",
   "stories": [
     {
       "id": "E10-S01",
       "title": "Reclaimability estimator",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Distinguish logical size, allocated size, shared/clone uncertainty, and expected reclaim on supported filesystems.",
       "change_risk": "CR2",
       "dependencies": [
@@ -34,7 +34,7 @@
     {
       "id": "E10-S02",
       "title": "Performance guardrails",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Enforce latency/memory/self-footprint regression budgets.",
       "change_risk": "CR1",
       "dependencies": [
