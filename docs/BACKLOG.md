@@ -803,6 +803,32 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 - `CHANGELOG.md`
 - `docs/development/RELEASE_GATES.md`
 
+### E06-S05 - The Rust quality gate stays green against current stable clippy
+
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
+
+**Outcome.** The v1.13.0 release workflow failed on all three platforms with `error: consider using sort_by_key` in cancellai-policy, and the same failure was live on main. The cause is toolchain drift, not a defect in the code: `atlas.rs` wrote a descending sort as a hand-rolled comparator, which the clippy this workspace was developed against accepted and current stable denies. It is presentation ordering for the atlas summary's top-contributor list - it decides no eligibility and holds no authority - and the fix is the idiomatic `sort_by_key(Reverse(..))`, which sorts identically and is stable in the same way. The story exists because a lint that denies on CI and not locally will recur every time stable moves, and because a red quality gate makes main unreleasable regardless of how small the cause is. The commit-msg gate then refused the fix itself, because the message explained which earlier story had added the override mechanism and prose cannot distinguish a story a commit cites from the one it belongs to. A `Story:` trailer now says which, and the gate reads it when present - the repair an independent review had already asked for, arriving when the gate blocked correct work rather than when it was merely predicted.
+
+**Acceptance criteria**
+
+- The system shall produce the same top-contributor ordering as before, largest first, with ties keeping the stable input order.
+- If current stable clippy denies a lint this workspace's pinned toolchain accepts, then the release workflow shall fail rather than publish, which is the behaviour that surfaced this and must not be weakened.
+- The system shall pass `cargo clippy --workspace --all-targets --all-features -- -D warnings` on the CI toolchain, and `cargo fmt --check` and `cargo test --workspace` alongside it.
+- Where the declared Change Risk Level is below the floor project/risk_floors.json sets for cancellai-policy, the change shall record an override naming the specific reason the floor does not apply.
+- If a commit message names a story it merely cites rather than the one it belongs to, then the risk-floor gate shall read the `Story:` trailer instead of the prose, so a correct commit is not refused for explaining itself.
+
+**Verification**
+
+- The atlas summary tests pass unchanged, which is what pins the ordering.
+- cargo clippy on the workspace is clean with warnings denied.
+- The release workflow reaches `publish` on the next tag rather than failing at `verify-rust`.
+- If the override were removed, scripts/check_risk_classification.py would refuse the story, so the exemption is recorded rather than assumed.
+
+**Documentation impact**
+
+- `CHANGELOG.md`
+- `project/risk_floors.json`
+
 ## E07 - Unix Cross-Platform Hardening
 
 **Phase:** `P2` | **Status:** `done` | **Epic dependencies:** none

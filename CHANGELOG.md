@@ -42,6 +42,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   about storage. `scripts/check_agent_toolchain.py` also compares pins against upstream and records
   which components are actually used. **No agent installs, updates or removes a component.**
 
+### Fixed
+
+- The Rust quality gate is green against current stable clippy again (E06-S05, CR1). A descending
+  sort in `cancellai-policy`'s atlas summary was written as a hand-rolled comparator, which the
+  toolchain this workspace was developed against accepted and current stable denies - the v1.13.0
+  release workflow failed at `verify-rust` on all three platforms because of it, and `publish` was
+  correctly skipped. The ordering is unchanged. Recorded with the first use of the risk-floor
+  override mechanism, since `cancellai-policy/src` carries a CR3 floor and this is presentation
+  ordering downstream of every eligibility decision.
+
 ### Changed
 
 - Review stops on **measured yield** rather than a fixed round count, and an epic that changes

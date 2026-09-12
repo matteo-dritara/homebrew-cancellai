@@ -165,6 +165,21 @@ class StoryIdExtractionTests(unittest.TestCase):
             risk.story_ids("body mentions E24-S01 and the subject says (E25-S02/S03)"),
         )
 
+    def test_a_trailer_is_authoritative_over_prose(self):
+        # A commit mentioning another story is not a commit belonging to it. This gate refused a
+        # correct commit whose body explained which earlier story added the mechanism it used.
+        message = "fix(policy): a thing\n\nThis uses the override E25-S02 added.\n\nStory: E06-S05\n"
+        self.assertEqual({"E06-S05"}, risk.story_ids(message))
+
+    def test_a_trailer_may_name_several_stories(self):
+        self.assertEqual({"E25-S04", "E25-S05"}, risk.story_ids("subject\n\nStory: E25-S04, E25-S05\n"))
+
+    def test_shorthand_in_a_trailer_expands(self):
+        self.assertEqual({"E25-S04", "E25-S05", "E25-S10"}, risk.story_ids("subject\n\nStory: E25-S04/S05/S10\n"))
+
+    def test_without_a_trailer_prose_is_still_read(self):
+        self.assertEqual({"E25-S04"}, risk.story_ids("feat(x): thing (E25-S04)"))
+
     def test_a_message_naming_nothing_yields_nothing(self):
         self.assertEqual(set(), risk.story_ids("chore: tidy up"))
 

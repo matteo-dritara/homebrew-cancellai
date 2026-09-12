@@ -303,6 +303,19 @@ Keep a Changelog and Semantic Versioning remain the public release conventions. 
 
 Use Conventional Commit prefixes (`feat:`, `fix:`, `docs:`, `chore:`, `test:`, `refactor:`, `style:`, `ci:`).
 
+End a commit that belongs to a story with a **`Story:` trailer**:
+
+```text
+Story: E06-S05
+```
+
+The trailer says which story *owns* the change, which prose cannot: a message that explains which
+earlier story added the mechanism it uses is citing that story, not belonging to it. The
+`commit-msg` risk-floor gate reads the trailer when there is one and falls back to every id in the
+message when there is not - which is safe for a historical audit and over-eager for a gate, and is
+why the trailer exists. It was added after the gate refused a correct commit on exactly that
+confusion.
+
 Prefer small, short-lived branches/PRs and squash merges. Separate large refactors from behavior changes when practical.
 
 ## Security reporting

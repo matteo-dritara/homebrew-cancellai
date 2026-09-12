@@ -8,6 +8,7 @@
 //! directly (`cancellai-tui`'s own AC1: no direct filesystem/provider access, and by extension
 //! no direct authority computation either) - both stay behind this module.
 
+use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
 use cancellai_model::{ActionClass, ArtifactId};
@@ -148,9 +149,11 @@ pub fn summarize<'a>(resolutions: &'a [ProviderResolution], top_n: usize) -> Atl
             logical_bytes: classified.size_bytes,
         })
         .collect();
-    // Largest first; a tie keeps the stable input order (`sort_by`, not `sort_unstable_by`) so
-    // this function's own output is deterministic across otherwise-equal-size artifacts.
-    top_contributors.sort_by(|a, b| b.logical_bytes.cmp(&a.logical_bytes));
+    // Largest first; a tie keeps the stable input order (`sort_by_key`, not `sort_unstable_by_key`)
+    // so this function's own output is deterministic across otherwise-equal-size artifacts.
+    // `Reverse` rather than a comparator: current clippy denies the hand-written descending
+    // `sort_by`, and the toolchain this was written against did not.
+    top_contributors.sort_by_key(|contributor| Reverse(contributor.logical_bytes));
     top_contributors.truncate(top_n);
 
     AtlasSummary {

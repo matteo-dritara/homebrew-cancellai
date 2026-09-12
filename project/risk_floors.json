@@ -107,7 +107,16 @@
       "reason": "As above, for the unsafe seam."
     }
   ],
-  "overrides": [],
+  "overrides": [
+    {
+      "story": "E06-S05",
+      "declared": "CR1",
+      "floor": "CR3",
+      "reason": "A mechanical lint rewrite of one descending sort into sort_by_key(Reverse(..)) in atlas.rs's top-contributor list. That list is presentation ordering for the atlas summary: it decides no eligibility, grants no authority, and reaches no mutation. The floor on cancellai-policy/src exists because policy decides what may be deleted, and this edit is downstream of every such decision. The ordering it produces is pinned by the atlas tests, which pass unchanged.",
+      "decided_by": "owner",
+      "date": "2026-09-12"
+    }
+  ],
   "baseline": [
     {
       "story": "E06-S01",

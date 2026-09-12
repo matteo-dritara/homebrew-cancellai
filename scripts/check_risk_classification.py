@@ -57,6 +57,11 @@ STORY_ID = re.compile(r"E\d{2}-S\d{2}")
 # first story - which is exactly the confident wrong attribution this checker refuses to make. This
 # was found by the checker itself, on its own commit.
 STORY_SHORTHAND = re.compile(r"E(\d{2})-S(\d{2})((?:/S\d{2})+)")
+# A commit *mentioning* another story is not a commit *belonging* to it. Prose extraction cannot
+# tell the difference, and it refused a correct commit whose message explained which earlier story
+# had added the mechanism now being used. A `Story:` trailer says which story owns the change; when
+# one is present it is authoritative and prose is ignored.
+STORY_TRAILER = re.compile(r"^Story:\s*(.+)$", re.MULTILINE)
 # A level at or above this requires a second, independent classification before the story closes.
 INDEPENDENT_CLASSIFICATION_REQUIRED_AT = "CR4"
 
@@ -196,7 +201,21 @@ def attributable_paths() -> tuple[dict[str, set[str]], int]:
 
 
 def story_ids(message: str) -> set[str]:
-    """Every story a commit message names, expanding `E25-S04/S05/S10` shorthand."""
+    """The stories a commit belongs to.
+
+    A `Story:` trailer is authoritative: it distinguishes the story a change belongs to from the
+    stories its message merely cites, which prose cannot. Without one, every id in the message is
+    taken, `E25-S04/S05/S10` shorthand expanded - which is safe for the historical audit and
+    over-eager for the commit gate, and is why the trailer exists.
+    """
+    trailer = STORY_TRAILER.search(message)
+    if trailer:
+        declared = set(STORY_ID.findall(trailer.group(1)))
+        for epic, first, rest in STORY_SHORTHAND.findall(trailer.group(1)):
+            declared.add(f"E{epic}-S{first}")
+            declared.update(f"E{epic}-{part}" for part in rest.strip("/").split("/") if part)
+        if declared:
+            return declared
     found = set(STORY_ID.findall(message))
     for epic, first, rest in STORY_SHORTHAND.findall(message):
         found.add(f"E{epic}-S{first}")

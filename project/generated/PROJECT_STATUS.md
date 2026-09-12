@@ -4,7 +4,7 @@
 
 Current phase: **P1**
 
-Epics: **27** | Stories: **127**
+Epics: **27** | Stories: **128**
 
 ## Story status
 
@@ -12,11 +12,12 @@ Epics: **27** | Stories: **127**
 - `cancelled`: 1
 - `done`: 98
 - `planned`: 26
+- `ready_for_review`: 1
 
 ## Change risk distribution
 
 - `CR0`: 10
-- `CR1`: 28
+- `CR1`: 29
 - `CR2`: 41
 - `CR3`: 21
 - `CR4`: 27
@@ -27,4 +28,4 @@ Epics: **27** | Stories: **127**
 
 ## Awaiting independent review
 
-- none
+- **E06-S05** - The Rust quality gate stays green against current stable clippy (CR1)
