@@ -149,3 +149,43 @@ Ruff/mypy were not re-run for this change (no Python source touched).
 - `docs/architecture/PLATFORM_MODEL.md`: new "Filesystem clone/reflink capability
   (reclaimability estimator, E10-S01)" section, placed before "Boundary rules".
 - `CHANGELOG.md`: `Unreleased`/`Added` entry.
+
+## Addendum - Windows CI break found by self-review and repaired
+
+A self-review (`project/evidence/E10-SELF-REVIEW.md` - explicitly not the independent Codex
+review this document originally deferred to) found that this story's own claim above ("no new
+dependency... reuses `wsl::longest_matching_mount_fstype`'s existing `/proc/mounts` parsing")
+was true but incomplete: `classify_filesystem_name` and its two backing constants
+(`KNOWN_NOT_SHARING`, `KNOWN_SHARING`) carried no `cfg` gate at all, and production code only
+calls `classify_filesystem_name` from the macOS and Linux branches of
+`observe_system_filesystem_kind` - so on Windows (falling through to the third,
+`Unsupported`-only branch), all three items were genuine dead code, and `cargo clippy
+--workspace --all-targets --all-features -- -D warnings` - the exact command
+`.github/workflows/rust.yml`'s `quality` job runs on `windows-latest` - failed with three
+`dead_code` errors. This is a real, reproduced regression this story's own verification missed:
+the "Verification Commands" section above cross-compile-checked Linux for E10-S02's files but
+never actually exercised the `x86_64-pc-windows-gnu` target for this story's own
+`filesystem_kind.rs`, despite that target having been available in this session the whole time
+(confirmed present via `rustup target list --installed` after the fact).
+
+Repaired by gating `KNOWN_NOT_SHARING`, `KNOWN_SHARING`, and `classify_filesystem_name` as
+`#[cfg(any(test, target_os = "macos", target_os = "linux"))]` - the exact precedent
+`crate::wsl::classify_fstype`/`longest_matching_mount_fstype` already set in this same crate for
+the identical shape of gap. This keeps the pure classification logic exhaustively unit-tested on
+every host (including Windows, via the `test` arm) while removing it entirely from a genuinely
+non-macOS/non-Linux production build, where nothing calls it.
+
+Re-verified on all three targets this time:
+
+```text
+$ cargo clippy -p cancellai-platform --all-targets --all-features -- -D warnings                                    (macOS)   PASS
+$ cargo clippy -p cancellai-platform --all-targets --all-features --target x86_64-unknown-linux-gnu -- -D warnings            PASS
+$ cargo clippy -p cancellai-platform --all-targets --all-features --target x86_64-pc-windows-gnu -- -D warnings               PASS
+$ cargo clippy --workspace --all-targets --all-features --target x86_64-pc-windows-gnu -- -D warnings                         PASS
+$ cargo clippy --workspace --all-targets --all-features --target x86_64-unknown-linux-gnu -- -D warnings                      PASS
+$ cargo fmt --check && cargo clippy --workspace --all-targets --all-features -- -D warnings \
+  && cargo test --workspace && cargo deny check                                     (macOS)   all PASS
+```
+
+This story remains `ready_for_review`, not `done` - the genuine independent review this
+addendum does not substitute for has not yet run.

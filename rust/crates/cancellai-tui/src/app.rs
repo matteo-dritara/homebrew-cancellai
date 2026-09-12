@@ -133,9 +133,15 @@ impl App {
     /// (`data::EngineData::plan_context`) - the only engine-derived fact this reducer ever sees,
     /// and only as plain `bool`s (`PlanContext`'s own doc).
     pub fn handle_key(&mut self, key: KeyEvent, plan: PlanContext) {
-        // Any key but a second `c` cancels a pending irreversible-action confirmation - one
-        // general rule rather than special-casing every other branch below.
-        if self.plan_confirm_armed && key.code != KeyCode::Char('c') {
+        // Any key but a second unmodified `c` cancels a pending irreversible-action
+        // confirmation - one general rule rather than special-casing every other branch below.
+        // Modifiers matter here: raw mode disables the terminal's own `ISIG` handling, so a
+        // real terminal delivers Ctrl+C as `KeyCode::Char('c')` with `KeyModifiers::CONTROL`
+        // rather than a signal - matching on the bare `KeyCode` alone would make the universal
+        // "abort" keystroke complete an irreversible confirmation instead of cancelling it
+        // (found during self-review, not the independent Codex review). `is_plain_c` is what both this disarm
+        // rule and the confirm arm below key on, so the two can never drift apart.
+        if self.plan_confirm_armed && !is_plain_c(key) {
             self.plan_confirm_armed = false;
         }
         match key.code {
@@ -174,7 +180,9 @@ impl App {
             // any other key cancels that arming instead of letting it linger). Idempotent once
             // confirmed: a further `c` press is a no-op rather than re-arming, so repeatedly
             // pressing the same key never un-confirms and re-demands a second press.
-            KeyCode::Char('c') if self.screen == Screen::Plan && plan.can_confirm => {
+            KeyCode::Char('c')
+                if is_plain_c(key) && self.screen == Screen::Plan && plan.can_confirm =>
+            {
                 if self.plan_confirmed {
                     // already confirmed - nothing left for this key to do
                 } else if plan.requires_strong_confirmation && !self.plan_confirm_armed {
@@ -204,6 +212,14 @@ impl App {
     fn previous_screen(&self) -> Screen {
         SCREENS[(self.screen.index() + SCREENS.len() - 1) % SCREENS.len()]
     }
+}
+
+/// A `c` press carrying no modifier at all - deliberately not just `key.code ==
+/// KeyCode::Char('c')`, since that alone is also what a real terminal reports for Ctrl+C once
+/// raw mode has disabled `ISIG` (see `handle_key`'s own comment on the arming/disarming rule
+/// this backs).
+fn is_plain_c(key: KeyEvent) -> bool {
+    key.code == KeyCode::Char('c') && key.modifiers.is_empty()
 }
 
 #[cfg(test)]
@@ -359,6 +375,32 @@ mod tests {
         app.handle_key(key(KeyCode::Char('c')), plan(true, true));
         assert!(app.plan_confirmed, "the second press must confirm");
         assert!(!app.plan_confirm_armed);
+    }
+
+    #[test]
+    fn ctrl_c_never_completes_an_armed_irreversible_confirmation() {
+        // Found during E09's self-review (not the independent Codex review): raw mode disables the terminal's own `ISIG`
+        // handling, so a real terminal delivers Ctrl+C as `KeyCode::Char('c')` with
+        // `KeyModifiers::CONTROL` - matching the bare `KeyCode` alone (the pre-fix behavior)
+        // would let the universal "abort" gesture complete a pending irreversible confirmation
+        // instead of cancelling it.
+        let mut app = on_plan_screen();
+        app.handle_key(key(KeyCode::Char('c')), plan(true, true));
+        assert!(
+            app.plan_confirm_armed,
+            "the first plain press must still arm"
+        );
+
+        let ctrl_c = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
+        app.handle_key(ctrl_c, plan(true, true));
+        assert!(
+            !app.plan_confirmed,
+            "Ctrl+C must never complete an irreversible confirmation"
+        );
+        assert!(
+            !app.plan_confirm_armed,
+            "Ctrl+C must cancel the pending confirmation, like any other non-plain-c key"
+        );
     }
 
     #[test]

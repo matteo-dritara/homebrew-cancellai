@@ -130,6 +130,30 @@ though both `data.rs`'s own suite and `app.rs`'s consume the same `PlanContext` 
 - This story completes epic E09's story set. Epic-level review (Codex, once per
   `WORK_ITEM_MODEL.md`'s "review is per epic") has not yet run.
 
+## Addendum - defect found by self-review and repaired
+
+A self-review (`project/evidence/E09-SELF-REVIEW.md` - explicitly not the independent Codex
+review this document's own residual above still awaits) found that `App::handle_key`'s
+confirmation guard matched `KeyCode::Char('c')` without checking `KeyModifiers`. Raw mode
+disables the terminal's own `ISIG` handling, so a real terminal delivers Ctrl+C as
+`KeyCode::Char('c')` with `KeyModifiers::CONTROL` rather than a signal - the universal "abort"
+gesture could therefore complete a pending irreversible confirmation instead of cancelling it.
+Repaired by requiring `is_plain_c(key)` (code is `Char('c')` *and* no modifier) for both the arm
+and the disarm rule, so a modified `c` (Ctrl+C included) now always disarms and never
+arms/confirms, pinned by a new regression test
+(`ctrl_c_never_completes_an_armed_irreversible_confirmation`). This does not change AC1
+(SI-016's line - no mutation capability in this crate - is unaffected) or AC2's own one-vs-two-
+press semantics for a plain `c`; it closes a gap neither covered. `cargo test -p cancellai-tui`:
+63 passed (was 62), 0 failed.
+
+The self-review's other two findings (`draw_explanation_detail` renders only the first
+relationship when an artifact has several - E09-S03; and the TUI's confirmation gate keys on
+`Reversibility::Irreversible` rather than asserting `reversibility_allowed(action_class,
+reversibility)` the way `mutation_executor` does, an emergent rather than type-checked coupling)
+were left as disclosed residuals rather than fixed here, per the self-review's own
+recommendation that they are cheap but non-blocking - not silently dropped, but not treated as
+having the same severity as a safety-adjacent input-handling gap on a CR3/SI-016 story.
+
 ## Verifier verdict
 
 PASS | PASS_WITH_RESIDUALS | FAIL

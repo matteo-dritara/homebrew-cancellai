@@ -53,6 +53,16 @@ impl FilesystemKindObserver for SystemFilesystemKindObserver {
 /// not exhaustive. A name absent from *both* lists below falls through to
 /// [`CloneSemantics::PossiblyShared`] rather than this one, so an unrecognized filesystem is
 /// disclosed as uncertain, never silently trusted (C-12 cross-platform truthfulness).
+///
+/// `cfg`-gated like [`crate::wsl::classify_fstype`]'s own backing lists: real production code
+/// only calls [`classify_filesystem_name`] from the macOS/Linux branches below, so on a
+/// genuinely exotic target (Windows included, pending its own real detection) an unconditional
+/// definition would be dead code under `-D warnings` in a non-test build - reproduced for real
+/// during this story's self-review (not the independent Codex review), cross-compiled to
+/// `x86_64-pc-windows-gnu`. `test` is
+/// included so the pure classification logic stays exhaustively unit-tested on every host
+/// regardless of that host's own production capability.
+#[cfg(any(test, target_os = "macos", target_os = "linux"))]
 const KNOWN_NOT_SHARING: &[&str] = &[
     "ext2", "ext3", "ext4", "vfat", "msdos", "exfat", "fat32", "ntfs", "hfs", "tmpfs",
 ];
@@ -60,11 +70,13 @@ const KNOWN_NOT_SHARING: &[&str] = &[
 /// Filesystem type names with real, documented clone/reflink/dedup capability: APFS
 /// (`clonefile(2)`), Btrfs and XFS (`FICLONE`/reflink, XFS's on by default since `xfsprogs`
 /// enabled it years ago), and ZFS (dataset clones and block-level dedup).
+#[cfg(any(test, target_os = "macos", target_os = "linux"))]
 const KNOWN_SHARING: &[&str] = &["apfs", "btrfs", "xfs", "zfs", "refs"];
 
 /// Pure classification of a real filesystem type name, independently testable without any
 /// filesystem access (mirrors [`crate::wsl::classify_fstype`]'s observation/classification
 /// split).
+#[cfg(any(test, target_os = "macos", target_os = "linux"))]
 fn classify_filesystem_name(name: &str) -> CloneSemantics {
     let lower = name.to_ascii_lowercase();
     if KNOWN_SHARING.contains(&lower.as_str()) {
