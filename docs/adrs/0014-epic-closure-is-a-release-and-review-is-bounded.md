@@ -4,6 +4,7 @@
 - Date: 2026-08-28
 - Decision owners: project owner / cEOS
 - Related: PD-021, PD-022, PD-018, C-16, C-17, E00
+- **Amended by [ADR-0025](0025-review-stops-on-yield-and-a-shippable-nothing-does-not-cut-a-release.md)**: review now stops on measured yield rather than at a fixed round count, the ceiling rose to three and became a cost control, and an epic that changes nothing in the shipped artifact closes as `done_no_release` instead of cutting an empty version. Both decisions below stand; only the stopping rule and the missing case changed.
 
 ## Context
 
@@ -63,7 +64,7 @@ Positive:
 
 Costs:
 
-- **A second round can miss what a third would have caught.** E00's third round found a real defect that rounds 1 and 2 did not. This decision accepts that risk explicitly: the alternative was an unbounded process, and an unbounded process ships nothing. The mitigation is that surviving findings become backlog items rather than being dismissed.
+- **A second round can miss what a third would have caught.** E00's third round found a real defect that rounds 1 and 2 did not. This decision accepts that risk explicitly: the alternative was an unbounded process, and an unbounded process ships nothing. The mitigation is that surviving findings become backlog items rather than being dismissed. *(ADR-0025 revisited this once the yield was measured: E00's second round rejected more than its first, so the constant was wrong in that direction too.)*
 - Releases become more frequent, so version numbers move faster than the product's user-visible surface changes. That is the correct direction for SemVer, but it means the changelog carries internal work more visibly.
 - Batching review to epic scope makes each round larger. A reviewer must budget for the whole epic rather than one story.
 

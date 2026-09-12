@@ -134,7 +134,7 @@ Executor:
 Review runs at **epic** scope, once every story in the epic is `ready_for_review`. It stops on
 **measured yield**, not on a round count: another round is required while a round rejects 10% or
 more of the stories it judges, and a zero overlap between two rounds' findings escalates to the
-owner rather than closing (ADR-0025, amending ADR-0014). Three rounds is a cost ceiling, and
+owner rather than closing ([ADR-0025](docs/adrs/0025-review-stops-on-yield-and-a-shippable-nothing-does-not-cut-a-release.md), amending ADR-0014). Three rounds is a cost ceiling, and
 reaching it is an owner decision recorded as such - not an automatic close. Findings that survive
 become new backlog work items.
 

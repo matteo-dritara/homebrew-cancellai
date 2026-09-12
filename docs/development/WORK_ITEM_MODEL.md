@@ -73,7 +73,7 @@ across every dependency edge.
 
 ## Review is per epic, and stops on measured yield
 
-**Amended by ADR-0025.** The rule below described a fixed ceiling of two rounds, decided before any
+**Amended by [ADR-0025](../adrs/0025-review-stops-on-yield-and-a-shippable-nothing-does-not-cut-a-release.md).** The rule below described a fixed ceiling of two rounds, decided before any
 measurement of review yield existed. `scripts/process_metrics.py` now computes that yield, and it
 says the right number of rounds is not a constant: E00's second round rejected 100% where its first
 rejected 86%, while E20's second round rejected nothing. Review now continues while a round rejects
