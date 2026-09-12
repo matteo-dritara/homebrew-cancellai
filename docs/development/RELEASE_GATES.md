@@ -71,11 +71,24 @@ release-evidence item below, once a release references it. Latency/throughput th
 recorded in that file's `THRESHOLDS` table, generously bounded (regression detection, not a
 tight SLA) given shared-runner variance.
 
-Only latency and throughput are actually measured today. Peak memory, CPU, and cancellAI's
-own runtime self-footprint are recorded here as forward-looking budgets, not yet measured:
-- **Peak memory**: target is O(one `FileFacts` per observed path) for a single scope scan - no
-  profiling/memory-accounting dependency exists in this workspace yet to verify this
-  automatically (AGENTS.md: do not add a dependency merely to reduce implementation effort).
+Latency and throughput were, until E10-S02, the only dimensions actually measured. Peak memory
+is now measured too, on one tier-1 platform; CPU and cancellAI's own runtime self-footprint
+remain forward-looking budgets, not yet measured, for the reasons recorded below:
+- **Peak memory - measured on Linux, disclosed-unmeasured elsewhere (E10-S02).**
+  `tests/performance_memory.rs`'s `the_shipped_discovery_path_stays_within_a_peak_memory_budget`
+  runs on every `cargo test` on Linux and asserts real peak RSS (`/proc/self/status`'s `VmHWM`,
+  a plain file read - no profiling/memory-accounting dependency added, per AGENTS.md's "do not
+  add a dependency merely to reduce implementation effort") against a 128 MiB regression budget
+  for the same `SESSIONS_PER_PROVIDER = 2_000` synthetic tree the latency gate uses. macOS and
+  Windows have no equivalent without a new dependency; the gate's own module is
+  `#[cfg(target_os = "linux")]` and simply does not exist on those platforms rather than
+  reporting a fabricated or skipped-silently result. `tests/performance_scheduled_shipped.rs`'s
+  `BenchResult` gained a `peak_rss_bytes: Option<u64>` field (`None` off Linux) published to the
+  same trend artifact for the heavy 10k/100k datasets - informational only, not gated, matching
+  this story's own AC2 ("scheduled deep benchmarks publish trends without blocking ordinary PRs
+  on noisy metrics"). Cross-compile-`clippy`-verified for `x86_64-unknown-linux-gnu` by this
+  story's own executor (no Linux runtime available in that session to execute it for real);
+  first real execution is on Linux tier-1 CI.
 - **CPU**: target is single-threaded, I/O-bound traversal dominated by syscall latency, not
   CPU-bound work - no concurrency exists yet to budget separately.
 - **Self-footprint**: cancellAI's own on-disk/runtime footprint budget (C-11) is a Guardian
@@ -101,26 +114,29 @@ fabricated here.
 E06-S04's own outcome is "promote Rust to stable only after functional, safety, compatibility,
 and operability gates pass" - a gate, not a feature to implement. This section is the living
 checklist that gate is evaluated against; it is updated as later work closes a gap, not
-rewritten from scratch each time. As of E06-S03 (E06-S01/S02/S03 committed, `ready_for_review`,
-not yet independently verified):
+rewritten from scratch each time. As of 2026-09-12, since the previous update E06-S01/S02/S03
+have closed `done` and E20, E21, E22, and E23 have all closed as well:
 
-**G1 Functional - not ready.** Core `status`/`inspect`/`plan`/`clean`/`configure`/`version`
-surface exists with matching JSON schemas and exit-code taxonomy (E06-S01), and a differential
-gate confirms parity with the Python reference on the full `NORMATIVE` fixture corpus
-(E06-S02). Disclosed gaps, tracked in `docs/CLI_RUST.md`'s "Known gaps" section: no
-`--aggressive` (legacy/cache category widening), no `status --paths/--coverage/--top`, no
-`clean --keep-claude-history`/`--verbose`, no deletion of a session's companion payload
-directory (only the session file itself - `mutation_executor` has no directory-tree deletion
-path yet), no `--help`/`-h`/`--version` surface at all (each exits `2` with `unrecognized
-flag`, while the reference has a full `argparse` surface and the Homebrew formula's own smoke
-test asserts `cancellai --version`), and the detected Codex native delete backend is
-implemented in the adapter but never wired to `clean`, so the Rust engine always deletes at the
-filesystem level where the reference prefers `codex delete --force`.
+**G1 Functional - substantially ready, with disclosed permanent gaps.** Core
+`status`/`inspect`/`plan`/`clean`/`configure`/`version` surface exists with matching JSON
+schemas and exit-code taxonomy (E06-S01), and a differential gate confirms parity with the
+Python reference on the full `NORMATIVE` fixture corpus (E06-S02). `cancellai-cli --help`/`-h`/
+`--version` now work at both the top level and per-subcommand (`CR-TE-07`, closing the gap this
+section used to list), matching the reference CLI's own surface and the Homebrew formula's
+smoke test. The detected Codex native delete backend is no longer an open gap to close: E22-S05
+evaluated wiring it and explicitly declined, because doing so safely would require a second
+production mutation primitive in the kernel's own boundary (`cancellai-safety::mutation_executor`)
+rather than a CR3 side effect of closing a documentation gap - this is now a permanent, disclosed
+divergence (`docs/CLI_RUST.md`'s "Known gaps"), not a pending item. Remaining disclosed gaps,
+tracked in the same section: no `--aggressive` (legacy/cache category widening - fail-closed,
+never a superset of the reference's candidates), no `status --paths/--coverage/--top`, no
+`clean --keep-claude-history`/`--verbose`. Whether a session's companion payload directory
+itself (versus the session file) has a deletion path was not re-verified for this update.
 
-The incomplete-scan gap that used to be listed here has moved to G2. It was recorded as a
-missing feature; the 2026-09-03 target-engine review reproduced it deleting an artifact the
-frozen reference withholds, which makes it a safety-invariant violation rather than a
-functional shortfall. See G2 below.
+The incomplete-scan gap that used to be listed here moved to G2 in the prior update. It was
+recorded as a missing feature; the 2026-09-03 target-engine review reproduced it deleting an
+artifact the frozen reference withholds, which makes it a safety-invariant violation rather than
+a functional shortfall. See G2 below.
 
 **G2 Safety - the blocking defect is repaired; the gate still awaits its independent pass.**
 `docs/audits/2026-09-03-CODE_REVIEW.md` (`CR-TE-01`) reproduced, end to end on a synthetic
@@ -145,38 +161,60 @@ issued through `cancellai-sealedfs`'s handle-relative `unlinkat`, so a path-leve
 validation cannot redirect it, and the two unconfirmed `MutationOperation` variants no caller
 requested were removed rather than left armed for E12 to inherit.
 
-**What still blocks this gate is the process, not the defect**: every claim above is executor
-self-assessment, and `AGENT_PROTOCOL.md` is explicit that a verifier does not treat executor
-tests as proof. E21 has had no independent review round yet, and its two CR4 stories
-(`E21-S03`, `E21-S07`) require an owner-visible Safety Verdict that this document cannot
-substitute for.
+**What still blocks this gate is independent re-verification of the repair, not an open
+defect**: E21 did have an independent review round - round 1 (`project/evidence/
+E21-VERIFIER-REVIEW.md`, Codex, 2026-09-03) returned `FAIL` on five of its seven stories,
+including both CR4 stories (`E21-S03`, `E21-S07` was `PASS_WITH_RESIDUALS`). Every round-1
+finding was repaired and pinned by regressions written against the verifier's own
+reproductions, and the owner then directed epic closure **without spending the second review
+round** on those repairs (`project/evidence/E21-CLOSURE.md`, 2026-09-03) - ADR-0014 permits
+this as an owner decision. That closure file is explicit about what it does and does not mean:
+"one independent adversarial round, all of whose findings were reproduced, repaired, and pinned
+by regression tests written against the verifier's own reproductions - and no independent
+confirmation of those repairs," and states plainly, "Closing E21 does not make E06-S04 ready."
+So this gate's remaining blocker is narrower than before but still real: the repairs to
+`E21-S03`/`E21-S07` (the two CR4 stories, both now carrying an owner-visible Safety Verdict at
+the *story* level in `project/evidence/E21-S0{3,7}/SAFETY_VERDICT.md`) have not had their own
+independent verifier confirmation, and E21-CLOSURE.md's own residual-risk list (the
+`fstatat`/`unlinkat` TOCTOU window, bounded reason retention, and a self-audit written by the
+same agent that implemented the fix) stands as accepted risk, not closed risk.
 
 Separately, SI-007/SI-008/SI-009/SI-019/SI-020/SI-021/SI-022 are exercised by
-targeted unit/integration tests (E06-S01/S02 evidence packets). Missing for CR4: the
-independent verifier's own adversarial pass (this section, and every claim in it, is executor
-self-assessment - `AGENT_PROTOCOL.md` is explicit that a verifier does not treat executor
-tests as proof), and the owner-visible Safety Verdict itself, which this document cannot
-substitute for.
+targeted unit/integration tests (E06-S01/S02/E21 evidence packets). Missing for CR4: an
+independent verifier's own adversarial pass over the E21 repairs specifically (as opposed to the
+round-1 pass that found the original defects), and the cutover-level owner-visible Safety
+Verdict itself, which this document cannot substitute for.
 
-**G3 Compatibility - not ready.** The tier-1 CI matrix (`rust.yml`) reached this crate's
-mutation-path integration tests on Windows for the first time on 2026-09-01 (an unrelated
-pre-existing clippy failure had aborted the quality job before them on every prior run, the
-same pattern E07-S05/E20-S04 already document) and found a real, concrete blocker, not merely
-missing confirmation: `cancellai-platform::identity::SystemIdentityObserver` reports
-`IdentityObservation::Unsupported` unconditionally on non-Unix platforms (E03-S01's own
-disclosed residual risk), so `ApprovedRoot::establish`/`bind` fails closed and a real deletion
-can never succeed on Windows today - correctly, not silently, but it does mean `clean --yes`
-cannot pass tier-1 Windows CI until E20-S01 ("Windows native backend", moved from E07 into a
-dedicated Windows/WSL epic pending real environment access) lands. The affected tests are now
-`#[cfg(unix)]`-scoped rather than left red, and `docs/PROVIDERS.md`'s generated compatibility
-matrix covers the provider adapters' own capabilities, not the CLI command surface E06-S01-S03
-added. **This is a concrete addition to E06-S04's own blocker list, beyond the G4/E17
-prerequisite cycle already recorded below**: tier-1-clean cutover requires E20-S01, not only
-E17's packaging work.
+**G3 Compatibility - ready.** The Windows blocker this section used to record -
+`cancellai-platform::identity::SystemIdentityObserver` reporting `IdentityObservation::
+Unsupported` unconditionally on non-Unix platforms, so `ApprovedRoot::establish`/`bind` failed
+closed and no deletion could ever succeed on Windows - is repaired. E20-S01 (ADR-0020) gave
+Windows a real `#[cfg(windows)]` identity observer backed by `cancellai_sealedfs::
+observe_identity` (volume serial/file index/reparse classification); E20-S05 completed the rest
+of the mutation path natively - process observation (`CreateToolhelp32Snapshot`), allocated size
+(`GetFileInformationByHandleEx(FileStandardInfo)`), and handle-relative deletion
+(`NtCreateFile` with a retained `RootDirectory` handle, rejecting target swaps and reparse
+points). Both closed with an independent `PASS` verdict
+(`project/evidence/E20-VERIFIER-REVIEW-ROUND2.md`, Codex, 2026-09-08) against real native
+Windows CI runs (`rust.yml` runs 33904582262 and 33905293698) exercising the full quality
+matrix - format, clippy, workspace tests, `cargo deny` - plus native reparse/symlink/junction,
+identity-mismatch, and target-swap fixtures, and a CR4 Safety Verdict at
+`project/evidence/E20-S05/SAFETY_VERDICT.md`. Only a genuinely unsupported non-Unix,
+non-Windows target still reports `Unsupported`; that is outside the tier-1 platform contract.
+The prior E06-S04 dependency on E20 as a whole was also corrected to remove a stale cycle (E20's
+own round-2 review, same evidence file): E06-S04 depends on E20's work, but E20 does not need
+E06 to close.
 
-**G4 Operability - not ready.** No packaged installer exists (Epic E17 scope, `docs/RELEASING.md`
-"Target Rust release factory"); no performance/self-budget measurement exists for the CLI's
-own command paths. The benchmark that does exist measures `cancellai-inventory`'s `scan_scope`,
+**G4 Operability - not ready, narrower than before.** Packaged installers for macOS/Linux/
+Windows now exist (E17-S02, `done`, `docs/RELEASING.md` "Target Rust release factory"), with
+provenance/SBOM/signing (E17-S03) and installation-source-aware upgrade guidance (E17-S04) on
+top. What remains open in E17 is **E17-S07** (safety incident containment and capability
+downgrade), `blocked` on `E16-S05`, which is itself blocked because epic E16 depends on `E15`
+(Guardian runtime, phase P4, not yet started) - so this leg of G4 will not close until Guardian
+work begins, unless the owner instead accepts a scoped cutover perimeter by ADR per E06-S04's
+own acceptance criteria. Independent of E17, no performance/self-budget measurement exists for
+the CLI's own command paths, and no crash/recovery testing beyond unit tests. The benchmark
+that does exist measures `cancellai-inventory`'s `scan_scope`,
 which the 2026-09-03 review found (`CR-TE-02`) is not reachable from the shipped binary at all -
 so the performance gate is not merely narrow, it is pointed at code the CLI never executes.
 `E21-S05` retargeted it: `cancellai-cli/tests/performance_shipped_path.rs` now measures
@@ -186,8 +224,7 @@ instead of reporting an excellent number. The same review measured `CR-TE-04`: p
 303 MB against the reference's 27.8 MB on a single 287 MB rollout, because rollout metadata
 reading buffered the whole file despite documenting a 512 KiB bound. `E21-S06` made the read
 streaming and bounded; the same measurement now reads **2.9 MB**, an order of magnitude below
-the reference itself. There is still no crash/recovery testing beyond what unit tests exercise,
-and no self-budget measurement.
+the reference itself.
 
 The release workflow used to be weaker than it stated (`CR-TE-06`): it claimed to re-run every
 gate at the tagged commit and ran fewer than half, omitting the differential parity gate and
@@ -215,11 +252,20 @@ GitHub release itself was never published. `E23-S01` gives the `verify` job's ch
 reversion to a shallow checkout on that job fails statically instead of only at the next tag
 push.
 
-**Conclusion**: cutover is not recommended at this time, and as of 2026-09-03 the reason is no longer only packaging and platform coverage - G2 carries a reproduced authority defect. Closing E06-S04 (and E06 as a whole)
-requires this checklist to read "ready" against real evidence, an independent CR4 verifier
-pass, and the owner's own Safety Verdict acceptance - none of which the executor grants itself
-(`AGENT_PROTOCOL.md`: "an executor's work is finished at `ready_for_review`... it does not
-write its own Safety Verdict").
+**Conclusion**: cutover is still not recommended, but the shape of the blocker has changed since
+the 2026-09-03 update. G1 is substantially ready with permanently disclosed gaps, and G3 is now
+ready with independent verification behind it. What remains is: (a) G2 - the reproduced
+authority defect is repaired and pinned by regressions, but repaired-by-executor is not the same
+claim as independently-confirmed-repaired, and no verifier has taken a second adversarial pass
+at `E21-S03`/`E21-S07` specifically; and (b) G4 - `E17-S07` sits behind a real dependency chain
+into Guardian (`E16-S05` → `E16` → `E15`, phase P4, not yet started), plus the still-unaddressed
+performance self-budget and crash/recovery gaps. Closing E06-S04 (and E06 as a whole) requires
+either this checklist to read "ready" against real evidence with an independent CR4 verifier
+pass and the owner's own Safety Verdict acceptance, or an explicit ADR narrowing the cutover
+perimeter per E06-S04's own acceptance criteria ("a scoped cutover perimeter decided by ADR") so
+that the Guardian-dependent leg of G4 is not required for an initial cutover. Neither path is
+something the executor grants itself (`AGENT_PROTOCOL.md`: "an executor's work is finished at
+`ready_for_review`... it does not write its own Safety Verdict").
 
 ## Epic closure
 

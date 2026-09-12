@@ -122,6 +122,45 @@ POSIX-standard convention `du` relies on) on Unix, and `GetFileInformationByHand
 on Windows; it reports `Unsupported` only on a genuinely exotic non-Unix, non-Windows target -
 the same fail-closed posture as `IdentityObserver` for such a target.
 
+## Filesystem clone/reflink capability (reclaimability estimator, E10-S01)
+
+Summing `AllocationObserver`'s per-file allocated size across many files is a further claim
+beyond any single file's own fact: "deleting these files would free approximately this many
+bytes." That claim is only as trustworthy as the filesystem underneath it. APFS clones
+(`clonefile(2)`, what every `cp` on macOS uses by default), Btrfs/XFS reflinks, and ZFS
+clones/dedup all let two files reference the same disk blocks - deleting one file may free none
+of its "allocated" bytes if a surviving clone still references them. `cancellai-platform::
+filesystem_kind::CloneSemantics` (`NotKnownToShare`/`PossiblyShared`/`Unsupported`) makes this
+explicit as its own typed fact rather than folding it silently into `AllocationObserver`, the
+same split this document's other capabilities already use.
+
+This module does not attempt to detect whether two *specific* files actually share blocks
+(that needs extent-level introspection, e.g. Linux's `FS_IOC_FIEMAP`, out of this story's
+scope) - only whether the filesystem type could support it at all. `SystemFilesystemKindObserver`
+resolves the real filesystem type name once per scope root (not once per file - a scan scope is
+bounded to one device, SI-018): on macOS via `libc::statfs`'s `f_fstypename` field
+(`cancellai-sealedfs::observe_filesystem_name`, a single syscall giving the same string
+`mount`/`df -T` report), and on Linux by reusing the same `/proc/mounts` longest-matching-mount
+parse `wsl::FilesystemContextObserver` already implements, this time reading the raw `fstype`
+field it discards after its own coarser Linux/WindowsMounted/Other classification. A name found
+in neither an explicit "no known sharing" nor "known sharing" allow-list is classified
+`PossiblyShared`, never `NotKnownToShare` - an unrecognized filesystem is disclosed as
+uncertain, never silently trusted (C-12). Real Windows filesystem-name detection
+(`GetVolumeInformationW`) is not implemented yet; Windows reports `Unsupported`, the same
+disclosed-residual posture this document's other capabilities used before their own Windows
+story landed.
+
+`cancellai-inventory::reclaim::estimate_reclaim` is the pure aggregator consuming both facts: it
+sums known allocated sizes, excludes (and counts, never substitutes with logical size -
+`AllocationObserver`'s own "never a fabricated zero or a silent copy of the logical size"
+contract, generalized) any file whose allocated size was itself `Unsupported`, and labels the
+whole result `ReclaimConfidence::Verified` only when every size was known *and* the filesystem
+is `NotKnownToShare`. A `PossiblyShared` or `Unsupported` filesystem, or any excluded file,
+downgrades the result to `Estimated` with a named reason - this is the story's own AC2: unknown
+APFS/reflink/shared-block effects are never presented as guaranteed savings. No CLI/TUI surface
+consumes this yet (library-level capability only, matching this document's existing WSL
+capabilities' own "no CLI-facing surface yet" scoping).
+
 ## Boundary rules
 
 - Never mutate the provider root itself.

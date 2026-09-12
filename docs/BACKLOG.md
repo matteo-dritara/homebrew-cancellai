@@ -1084,13 +1084,13 @@ Deliver the first rich exploratory interface without duplicating engine logic.
 
 ## E10 - Storage Accounting and Performance
 
-**Phase:** `P2` | **Status:** `planned` | **Epic dependencies:** E08
+**Phase:** `P2` | **Status:** `in_progress` | **Epic dependencies:** E08
 
 Make storage numbers trustworthy and the scanner inexpensive enough for continuous use.
 
 ### E10-S01 - Reclaimability estimator
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E04-S01, E20-S03 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E04-S01, E20-S03 | **Safety obligations:** none
 
 **Outcome.** Distinguish logical size, allocated size, shared/clone uncertainty, and expected reclaim on supported filesystems.
 
@@ -1109,7 +1109,7 @@ Make storage numbers trustworthy and the scanner inexpensive enough for continuo
 
 ### E10-S02 - Performance guardrails
 
-**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E04-S04 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E04-S04 | **Safety obligations:** none
 
 **Outcome.** Enforce latency/memory/self-footprint regression budgets.
 

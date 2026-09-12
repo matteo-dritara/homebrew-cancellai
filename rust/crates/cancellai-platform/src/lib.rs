@@ -50,6 +50,7 @@
 
 pub mod allocation;
 pub mod clock;
+pub mod filesystem_kind;
 pub mod fs_observer;
 pub mod identity;
 pub mod mutation;
@@ -63,6 +64,10 @@ pub use allocation::{
     SystemAllocationObserver,
 };
 pub use clock::{Clock, FrozenClock, SystemClock, Timestamp};
+pub use filesystem_kind::{
+    CloneSemantics, FilesystemKindObserver, SyntheticFilesystemKindObserver,
+    SystemFilesystemKindObserver,
+};
 pub use fs_observer::{FsMetadata, FsObserver, Observation, SyntheticFsObserver, SystemFsObserver};
 pub use identity::{
     FileKind, IdentityObservation, IdentityObserver, IdentityToken, SyntheticIdentityObserver,

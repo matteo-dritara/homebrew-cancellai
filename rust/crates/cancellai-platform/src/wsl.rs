@@ -196,7 +196,7 @@ fn classify_fstype(fstype: &str) -> FilesystemContext {
 /// kernel actually produces decodes to a single ASCII byte (32/9/10/92), always valid as a
 /// `char` on its own, so this never needs to reason about UTF-8 continuation bytes.
 #[cfg(any(test, target_os = "linux"))]
-fn unescape_proc_mounts_field(field: &str) -> String {
+pub(crate) fn unescape_proc_mounts_field(field: &str) -> String {
     let chars: Vec<char> = field.chars().collect();
     let mut out = String::with_capacity(field.len());
     let mut i = 0;
@@ -225,7 +225,7 @@ fn unescape_proc_mounts_field(field: &str) -> String {
 /// with fabricated WSL2 mount tables on any host. A malformed line (fewer than three
 /// whitespace-separated fields) is skipped rather than aborting the whole parse.
 #[cfg(any(test, target_os = "linux"))]
-fn longest_matching_mount_fstype<'a>(mounts: &'a str, path: &Path) -> Option<&'a str> {
+pub(crate) fn longest_matching_mount_fstype<'a>(mounts: &'a str, path: &Path) -> Option<&'a str> {
     let path_str = path.to_str()?;
     let mut best: Option<(String, &str)> = None; // (unescaped mountpoint, fstype)
     for line in mounts.lines() {

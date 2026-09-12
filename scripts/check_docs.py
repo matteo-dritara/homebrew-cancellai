@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import argparse
 import re
+import shutil
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -50,8 +52,38 @@ class LocalLink:
 IGNORED_DIRECTORIES = {".git", ".pytest_cache", ".mypy_cache", ".ruff_cache", "__pycache__", ".venv", "node_modules"}
 
 
+def gitignored(paths: list[Path]) -> set[Path]:
+    """Which of `paths` Git ignores, via `git check-ignore --stdin`. A local, un-tracked file
+    that happens to sit under the repository root - this machine's own `.claude/` skill/state
+    cache is the concrete case that motivated this - is not part of the versioned documentation
+    graph; a fresh clone or CI checkout never has it, so this checker must not treat it as a
+    document nobody links to. Soft-fails to "nothing is ignored" if `git` is unavailable or the
+    call otherwise fails, rather than raising: this is a filtering refinement, not something a
+    missing `git` binary should be able to break the whole check over.
+    """
+    git = shutil.which("git")
+    if git is None or not paths:
+        return set()
+    try:
+        result = subprocess.run(  # noqa: S603
+            [git, "check-ignore", "--stdin"],
+            cwd=ROOT,
+            input="\n".join(str(path) for path in paths),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except OSError:
+        return set()
+    if result.returncode not in (0, 1):
+        return set()
+    return {Path(line) for line in result.stdout.splitlines() if line}
+
+
 def markdown_files() -> list[Path]:
-    return sorted(path for path in ROOT.rglob("*.md") if not IGNORED_DIRECTORIES.intersection(path.parts))
+    candidates = [path for path in ROOT.rglob("*.md") if not IGNORED_DIRECTORIES.intersection(path.parts)]
+    ignored = gitignored(candidates)
+    return sorted(path for path in candidates if path not in ignored)
 
 
 def _link_destination(raw: str) -> str:

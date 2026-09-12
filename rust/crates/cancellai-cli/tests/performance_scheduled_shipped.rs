@@ -26,6 +26,8 @@ use cancellai_policy::{
 use cancellai_provider_claude::ClaudeProvider;
 use cancellai_provider_codex::CodexProvider;
 
+mod perf_support;
+
 /// `(sessions per provider, max wall-clock seconds for the resolve pass alone)`. Generous, like
 /// the inventory thresholds: this is a regression gate for a shared runner, not an SLA. Tree
 /// creation is excluded from the measurement - it is setup, not the path being measured.
@@ -40,6 +42,16 @@ struct BenchResult {
     files_per_second: f64,
     threshold_seconds: f64,
     within_threshold: bool,
+    /// Peak RSS in bytes at the point this dataset size finished resolving, `/proc/self/status`'s
+    /// `VmHWM` (E10-S02). A running high-water-mark, not an isolated per-size figure - later,
+    /// larger datasets in the same process will not read lower than an earlier one even if they
+    /// used less memory individually - but the trend across sizes is still the signal this
+    /// publishes, and this field is `None`, not a fabricated number, on a platform
+    /// `perf_support::peak_rss_bytes` cannot measure (every non-Linux platform today). Published
+    /// for trend visibility only - no threshold in `THRESHOLDS` above gates on it, matching this
+    /// story's AC2 ("scheduled deep benchmarks publish trends without blocking ordinary PRs on
+    /// noisy metrics").
+    peak_rss_bytes: Option<u64>,
 }
 
 fn requested_sizes() -> Vec<usize> {
@@ -188,6 +200,7 @@ fn the_shipped_discovery_path_meets_latency_thresholds_on_synthetic_datasets() {
             },
             threshold_seconds: threshold,
             within_threshold: elapsed < threshold,
+            peak_rss_bytes: perf_support::peak_rss_bytes(),
         };
         println!(
             "cancellai-cli shipped-path bench: {observed} artifacts in {:.2}s ({:.0} artifacts/sec), threshold {:.0}s",

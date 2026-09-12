@@ -11,8 +11,8 @@ Epics: **24** | Stories: **110**
 - `blocked`: 2
 - `cancelled`: 1
 - `done`: 75
-- `planned`: 28
-- `ready_for_review`: 4
+- `planned`: 26
+- `ready_for_review`: 6
 
 ## Change risk distribution
 
@@ -32,3 +32,5 @@ Epics: **24** | Stories: **110**
 - **E09-S02** - Machine and project atlas (CR1)
 - **E09-S03** - Artifact explain view (CR1)
 - **E09-S04** - Plan review workflow (CR3)
+- **E10-S01** - Reclaimability estimator (CR2)
+- **E10-S02** - Performance guardrails (CR1)

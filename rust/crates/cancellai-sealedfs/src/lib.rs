@@ -207,6 +207,12 @@ pub use windows_process::list_running_process_names;
 #[cfg(windows)]
 mod windows_sealed;
 
+#[cfg(target_os = "macos")]
+mod macos_filesystem;
+
+#[cfg(target_os = "macos")]
+pub use macos_filesystem::observe_filesystem_name;
+
 #[cfg(unix)]
 mod unix_impl {
     use super::{SealError, validate_child_name};

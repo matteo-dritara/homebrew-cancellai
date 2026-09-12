@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added a real peak-memory regression gate for the shipped discovery path (E10-S02, CR1). New
+  `cancellai-cli/tests/performance_memory.rs` runs on every `cargo test` on Linux and asserts
+  real peak RSS (`/proc/self/status`'s `VmHWM`, no new dependency) against a 128 MiB regression
+  budget for the same synthetic tree `performance_shipped_path.rs`'s latency gate already uses;
+  the gate's own module does not exist on macOS/Windows rather than reporting a fabricated
+  number there. `performance_scheduled_shipped.rs`'s heavy-dataset trend artifact gained a
+  `peak_rss_bytes` field (published for trend visibility, `None` off Linux, never gated) so the
+  10k/100k/1M scheduled runs report memory alongside latency without blocking ordinary PRs on a
+  noisy metric.
+- Added a reclaimability estimator distinguishing logical size, allocated size, and clone/
+  reflink-sharing uncertainty (E10-S01, CR2, library-level, no CLI/TUI surface yet). New
+  `cancellai-platform::filesystem_kind::CloneSemantics` classifies a scope root's filesystem as
+  `NotKnownToShare`, `PossiblyShared` (APFS, Btrfs, XFS, ZFS, ReFS - real, documented clone/
+  reflink capability that can make a naive allocated-size sum overstate what deleting files
+  actually frees), or `Unsupported` - real detection ships for macOS (`libc::statfs`'s
+  `f_fstypename`, `cancellai-sealedfs::observe_filesystem_name`) and Linux (reusing `wsl::
+  FilesystemContextObserver`'s `/proc/mounts` parsing for the raw fstype), with Windows
+  disclosed as `Unsupported` pending its own story. An unrecognized filesystem name defaults to
+  `PossiblyShared`, never the more confident label, so a future/unrecognized clone-capable
+  filesystem is never silently trusted. New `cancellai-inventory::reclaim::estimate_reclaim`
+  aggregates `FileFacts` into a `ReclaimEstimate`, excluding (and counting, never substituting
+  with logical size) any file whose allocated size was itself unobservable, and labeling the
+  result `Verified` only when every size was known and the filesystem is `NotKnownToShare` -
+  any clone-capable or undetermined filesystem, or any excluded file, downgrades the estimate to
+  `Estimated` with a named reason (this story's AC2: unknown APFS/reflink/shared-block effects
+  are never presented as guaranteed savings).
 - Added a real Atlas TUI shell and keyboard-first navigation to `cancellai-tui` (E09-S01, CR1,
   observational only), replacing the E02-S01 placeholder skeleton: `Tab`/`Shift+Tab`/`1`-`4`
   cycle four screens (`Home`, and stubs for `Atlas`/`Explain`/`Plan` pending E09-S02/S03/S04),

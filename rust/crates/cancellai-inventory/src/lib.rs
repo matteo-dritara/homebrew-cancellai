@@ -18,6 +18,7 @@
 
 pub mod completeness;
 pub mod file_facts;
+pub mod reclaim;
 pub mod scan;
 #[cfg(test)]
 mod test_doubles;
@@ -29,6 +30,7 @@ pub use completeness::{
 pub use file_facts::{
     FactConfidence, FactObservation, FileFacts, ScopeBoundary, SizeMetric, observe_file_facts,
 };
+pub use reclaim::{ReclaimConfidence, ReclaimEstimate, estimate_reclaim};
 pub use scan::{
     DirectoryError, DirectoryErrorKind, FactError, FactErrorKind, InventorySnapshot, StatusSummary,
     scan_scope,
