@@ -71,6 +71,28 @@ Every change must identify a story ID. Generate a role-specific repository brief
 
 Do not silently create product scope in code.
 
+### Diff discipline
+
+Working one story at a time constrains *what* you build. These constrain *what the diff contains*,
+which is a different thing and is not implied by the first. A change that is correct at the story
+level can still arrive as a diff a reviewer cannot read.
+
+- **Do not improve unrelated code or formatting.** A reformatted line the story did not require
+  costs a reviewer the same attention as a real change and earns none of it.
+- **Do not remove pre-existing dead code.** In this repository that is a safety rule, not a style
+  one: code that looks unreachable may be a barrier whose reachability is the thing under dispute,
+  and removing it is a CR3/CR4 act arriving inside a CR0/CR1 diff. Report it instead.
+- **Remove only what your own edits orphaned** - the import, variable or function that your change,
+  and no earlier change, made unused.
+- **Follow the conventions already in the file**, including where you would have chosen otherwise.
+  A file with two styles is harder to review than a file with one style you dislike.
+- **Flag what you find; do not fix it.** A defect outside the current story becomes a backlog item
+  with the story ID that will carry it, recorded in the evidence packet's residual risks. Fixing it
+  silently is scope expansion with a helpful motive, and it is still scope expansion.
+
+The exception is a change whose story *is* the cleanup. Then the cleanup is the diff, and behavior
+change stays out of it - the same rule from the other side.
+
 ## Change Risk Levels
 
 Follow `docs/development/WORK_ITEM_MODEL.md` and `docs/development/RELEASE_GATES.md`.

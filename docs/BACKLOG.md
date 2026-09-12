@@ -2458,3 +2458,28 @@ Make the cEOS contract executable by the agent harness that is supposed to execu
 - `AGENTS.md`
 - `.claude/skills/README.md`
 - `.claude/settings.json`
+
+### E24-S03 - Diff discipline is stated where the contract lives
+
+**Status:** `ready_for_review` | **Change Risk:** `CR0` | **Dependencies:** E24-S01 | **Safety obligations:** none
+
+**Outcome.** AGENTS.md constrains what an agent builds - one story, no silent product scope - and says nothing about what the diff may contain. Those are different constraints, and the second does not follow from the first: a change can be correct at the story level and still arrive as a diff a reviewer cannot read, because unrelated lines were reformatted, or because pre-existing dead code was tidied away. The second case is a safety problem here rather than a style one, since code that looks unreachable may be a barrier whose reachability is exactly what is in dispute, and removing it is a CR3/CR4 act arriving inside a CR0/CR1 diff. State the rule where the contract lives, with the cleanup-story exception, and have story-executor point at it rather than restate it.
+
+**Acceptance criteria**
+
+- AGENTS.md carries a 'Diff discipline' subsection under 'Work one story at a time' covering: no unrelated improvement or reformatting; no removal of pre-existing dead code; removal limited to what this change orphaned; conformity to the conventions already in the file; and flagging rather than fixing what is found outside the story.
+- The dead-code rule is stated as a safety rule with its reason, not as a style preference - a reviewer must be able to see why it is not negotiable in this repository.
+- The rule names its own exception, so a story whose purpose is cleanup is not blocked by it, and behavior change is excluded from that diff in turn.
+- The skill pack points at the section rather than restating it, per the rule E24-S01 established, and scripts/check_agent_skills.py continues to pass.
+
+**Verification**
+
+- scripts/check_docs.py check passes: the new section introduces no broken local link and nothing becomes unreachable.
+- scripts/check_agent_skills.py check passes: story-executor's new pointer resolves.
+- The section states an exception, so the rule cannot be read as forbidding a cleanup story - confirmed by reading the committed text.
+- No generated document is touched by this change, and scripts/project_os.py check confirms the control plane and generated documents stay consistent.
+
+**Documentation impact**
+
+- `AGENTS.md`
+- `.claude/skills/story-executor/SKILL.md`

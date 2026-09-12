@@ -21,6 +21,9 @@ These are not negotiable by a story, a shortcut, or a user request phrased as ur
   `python3 scripts/project_os.py generate`.
 - **Never** widen scope. A defect you find outside this story becomes a backlog item, not a
   silent fix. A refactor for cleanliness alone is out of scope by itself.
+- **Never** let the diff carry more than the story. `AGENTS.md`'s "Diff discipline" is the rule:
+  no unrelated reformatting, no removal of pre-existing dead code (a safety rule here, not a
+  style one), removal limited to what your own edits orphaned. Read it before the first edit.
 - **Never** touch `cancellai.py` outside the four accepted categories in `AGENTS.md`
   ("Python reference freeze"). New product capability targets Rust.
 - A conflict between the story and `docs/CONSTITUTION.md` / `docs/security/SAFETY_INVARIANTS.md`

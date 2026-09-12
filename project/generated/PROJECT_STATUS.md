@@ -4,7 +4,7 @@
 
 Current phase: **P1**
 
-Epics: **25** | Stories: **112**
+Epics: **25** | Stories: **113**
 
 ## Story status
 
@@ -12,11 +12,11 @@ Epics: **25** | Stories: **112**
 - `cancelled`: 1
 - `done`: 81
 - `planned`: 26
-- `ready_for_review`: 2
+- `ready_for_review`: 3
 
 ## Change risk distribution
 
-- `CR0`: 4
+- `CR0`: 5
 - `CR1`: 23
 - `CR2`: 37
 - `CR3`: 21
@@ -30,3 +30,4 @@ Epics: **25** | Stories: **112**
 
 - **E24-S01** - The agent skill pack is version-controlled and drift-checked (CR0)
 - **E24-S02** - Generated documents refuse a hand-edit at the moment it is attempted (CR0)
+- **E24-S03** - Diff discipline is stated where the contract lives (CR0)
