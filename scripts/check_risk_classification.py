@@ -89,6 +89,24 @@ def load_floors() -> dict[str, Any]:
     return data
 
 
+def normalise(path: str) -> str:
+    """A repository-relative path, whatever form it arrived in.
+
+    `./x`, `x/../x` and an absolute path inside the repository are the same file, and a floor that
+    matched only one spelling would be a barrier that depends on how a name happens to be typed -
+    the thing this repository's own README refuses for protected provider names.
+    """
+    candidate = Path(path)
+    if candidate.is_absolute():
+        try:
+            return candidate.resolve().relative_to(ROOT.resolve()).as_posix()
+        except ValueError:
+            return candidate.as_posix()
+    import posixpath
+
+    return posixpath.normpath(path).lstrip("./") if path.startswith("./") else posixpath.normpath(path)
+
+
 def floor_for(paths: list[str], floors: list[dict[str, Any]]) -> Floor | None:
     """The highest floor any path triggers.
 
@@ -97,7 +115,8 @@ def floor_for(paths: list[str], floors: list[dict[str, Any]]) -> Floor | None:
     adding a narrow low-level pattern next to a broad high-level one.
     """
     best: Floor | None = None
-    for path in paths:
+    for raw in paths:
+        path = normalise(raw)
         for entry in floors:
             if fnmatch.fnmatch(path, entry["pattern"]):
                 candidate = Floor(entry["level"], entry["pattern"], path, entry["reason"])
@@ -194,12 +213,29 @@ def evaluate(stories: dict[str, dict[str, Any]], attributed: dict[str, set[str]]
                 errors.append(f"{story_id}: override records no reason; 'it is a small change' is not a reason")
             else:
                 warnings.append(f"{message} [override: {override['reason']}]")
-        elif story_id in baseline:
+        elif story_id in baseline and rank(floor.level) <= rank(baseline[story_id].get("floor", "CR4")):
             warnings.append(f"{message} [baseline, owner decision pending: {baseline[story_id].get('note', '')}]")
+        elif story_id in baseline:
+            # A baselined story that later reaches a *higher* surface is a new violation, not the
+            # recorded one. Keying the exemption on the story alone made it permanent and made the
+            # printed note stale - an independent review demonstrated exactly that.
+            errors.append(
+                f"{message} - this story is in the baseline at floor "
+                f"{baseline[story_id].get('floor')}, which does not cover a floor of {floor.level}"
+            )
         else:
             errors.append(message)
 
     classifications = {entry["story"]: entry for entry in data.get("independent_classifications", [])}
+    for story_id, story in sorted(stories.items()):
+        if story.get("change_risk") != INDEPENDENT_CLASSIFICATION_REQUIRED_AT:
+            continue
+        if story.get("status") in {"ready_for_review", "verification", "done"} and story_id not in classifications:
+            warnings.append(
+                f"{story_id}: {INDEPENDENT_CLASSIFICATION_REQUIRED_AT} story past ready_for_review with no independent "
+                "classification - the floor is the only thing checking this level"
+            )
+
     for story_id, entry in sorted(classifications.items()):
         story = stories.get(story_id)
         if story is None:
@@ -280,12 +316,48 @@ def cmd_check() -> int:
     return 0
 
 
+def cmd_commit_msg(message_path: Path) -> int:
+    """Gate the change being committed, which is the only moment the floor can still influence it.
+
+    `check` reads history: by the time it can see a story's paths, the change is already made. This
+    runs from the `commit-msg` hook, where the staged diff and the story ids are both available -
+    the floor stops being an audit and becomes a constraint.
+    """
+    data = load_floors()
+    stories = load_stories()
+    message = message_path.read_text(encoding="utf-8")
+    named = story_ids(message)
+    staged = [path for path in git("diff", "--name-only", "--cached").splitlines() if path]
+    floor = floor_for(staged, data["floors"])
+    if floor is None or not named:
+        return 0
+
+    overrides = {entry["story"]: entry for entry in data.get("overrides", [])}
+    for story_id in sorted(named):
+        story = stories.get(story_id)
+        if story is None or story_id in overrides:
+            continue
+        if rank(story["change_risk"]) < rank(floor.level):
+            print(
+                f"REFUSED: {story_id} declares {story['change_risk']}, but this commit touches "
+                f"{floor.path}, which sets a floor of {floor.level}.\n\n{floor.reason}\n\n"
+                "Raise the story's change_risk, or record an override in project/risk_floors.json "
+                "naming the specific reason the floor does not apply. 'It is a small change' is not "
+                "such a reason.",
+                file=sys.stderr,
+            )
+            return 1
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Check declared Change Risk Levels against the floor their paths set.")
     sub = parser.add_subparsers(dest="command")
     floor = sub.add_parser("floor", help="the risk floor for a change (default: the working tree)")
     floor.add_argument("paths", nargs="*", help="paths to classify instead of the working tree")
     sub.add_parser("check", help="validate declared levels against their floors")
+    commit = sub.add_parser("commit-msg", help="gate the staged change against the floor its paths set")
+    commit.add_argument("message", type=Path)
     parser.set_defaults(command="check")
     return parser
 
@@ -295,6 +367,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "floor":
             return cmd_floor(list(args.paths) or None)
+        if args.command == "commit-msg":
+            return cmd_commit_msg(args.message)
         return cmd_check()
     except (RiskClassificationError, OSError, ValueError, KeyError) as exc:
         print(f"RISK CLASSIFICATION ERROR: {exc}", file=sys.stderr)

@@ -58,15 +58,31 @@ OUTPUT = PROJECT / "generated" / "PROCESS_METRICS.md"
 # as three PASS verdicts - a measurement tool reporting a confident wrong number, which is the
 # one failure mode it may never have.
 VERDICTS = ("PASS_WITH_RESIDUALS", "PASS", "FAIL")
+FENCED = re.compile(r"^```.*?^```", re.MULTILINE | re.DOTALL)
+
+
+def prose_only(text: str) -> str:
+    """The document with fenced blocks removed.
+
+    A review record that shows the verdict-table *format* in a fenced example had its example rows
+    counted as real verdicts, which inflated the judged count and deflated the yield. A template is
+    not a finding.
+    """
+    return FENCED.sub("", text)
+
+
 VERDICT_ROW = re.compile(r"^\|\s*(E\d{2}-S\d{2})\s*\|\s*\**(" + "|".join(VERDICTS) + r")\**\s*\|", re.MULTILINE)
 AC_ROW = re.compile(r"^\|\s*AC\s*(\d+)", re.MULTILINE | re.IGNORECASE)
 # `E22-VERIFIER-REVIEW-ROUND2.md` is an epic round; `E07-S07-VERIFIER-REVIEW.md` is a
 # story-scoped record from before ADR-0014 made review epic-scoped. Counting the second as an
 # epic round would invent rounds that never happened and corrupt every number below it.
-REVIEW_FILE = re.compile(r"^(E\d{2})(?P<story>-S\d{2})?-(?:VERIFIER|SELF)-REVIEW(?:-ROUND(?P<round>\d+))?\.md$")
-SELF_REVIEW = re.compile(r"SELF-REVIEW")
+REVIEW_FILE = re.compile(r"^(E\d{2})(?P<story>-S\d{2})?-(?:VERIFIER|SELF)-REVIEW(?:-ROUND(?P<round>\d+))?\.md$", re.IGNORECASE)
+SELF_REVIEW = re.compile(r"SELF-REVIEW", re.IGNORECASE)
 REJECTING_VERDICTS = {"FAIL"}
 ACCEPTED_STATUSES = {"ready_for_review", "verification", "done"}
+# Review records under `project/evidence/` whose filename this tool cannot classify. Reported, not
+# dropped: a record that vanishes is worse than one that fails to parse, because nothing says so.
+UNCLASSIFIABLE: list[str] = []
 
 
 @dataclass
@@ -91,6 +107,22 @@ def load_stories() -> dict[str, dict[str, Any]]:
     return stories
 
 
+def parse_verdicts(text: str) -> dict[str, str]:
+    """Story -> verdict, or nothing at all when the record is ambiguous.
+
+    A story appearing twice with different verdicts used to take the last one silently, so a record
+    whose summary said FAIL and whose detail table said PASS read as a clean round. Ambiguity is
+    reported as unparseable rather than resolved by position.
+    """
+    rows = VERDICT_ROW.findall(prose_only(text))
+    verdicts: dict[str, str] = {}
+    for story, verdict in rows:
+        if story in verdicts and verdicts[story] != verdict:
+            return {}
+        verdicts[story] = verdict
+    return verdicts
+
+
 def load_rounds() -> dict[str, list[Round]]:
     """Review records per epic, ordered by round.
 
@@ -99,9 +131,14 @@ def load_rounds() -> dict[str, list[Round]]:
     self-review is committed under a different name precisely so it cannot be mistaken for one.
     """
     rounds: dict[str, list[Round]] = {}
-    for path in sorted(EVIDENCE.glob("*REVIEW*.md")):
+    unclassifiable: list[str] = []
+    for path in sorted(EVIDENCE.rglob("*REVIEW*.md")):
         match = REVIEW_FILE.match(path.name)
         if not match:
+            # Dropped silently, this hid a review record entirely - including a self-review named
+            # with different capitalisation, which is precisely the case the independence split
+            # depends on getting right.
+            unclassifiable.append(str(path.relative_to(ROOT)))
             continue
         if match.group("story"):
             continue
@@ -109,11 +146,13 @@ def load_rounds() -> dict[str, list[Round]]:
             number=int(match.group("round") or 1),
             path=path,
             independent=not SELF_REVIEW.search(path.name),
-            verdicts=dict(VERDICT_ROW.findall(path.read_text(encoding="utf-8"))),
+            verdicts=parse_verdicts(path.read_text(encoding="utf-8")),
         )
         rounds.setdefault(match.group(1), []).append(record)
     for records in rounds.values():
         records.sort(key=lambda record: record.number)
+    UNCLASSIFIABLE.clear()
+    UNCLASSIFIABLE.extend(sorted(unclassifiable))
     return rounds
 
 
@@ -141,8 +180,10 @@ def evidence_coverage(stories: dict[str, dict[str, Any]]) -> tuple[int, int, lis
             continue
         considered += 1
         packet = EVIDENCE / story_id / "EVIDENCE.md"
-        rows = len(set(AC_ROW.findall(packet.read_text(encoding="utf-8")))) if packet.is_file() else 0
-        if rows >= len(story["acceptance_criteria"]):
+        found = set(AC_ROW.findall(prose_only(packet.read_text(encoding="utf-8")))) if packet.is_file() else set()
+        expected = {str(n) for n in range(1, len(story["acceptance_criteria"]) + 1)}
+        rows = len(found & expected)
+        if expected <= found:
             covered += 1
         else:
             gaps.append(f"{story_id} ({story['change_risk']}): {rows} rows for {len(story['acceptance_criteria'])} criteria")
@@ -184,6 +225,35 @@ def rework_ratio(limit: int = 300) -> tuple[int, int]:
     fixes = sum(1 for subject in subjects if subject.startswith(("fix:", "fix(")))
     feats = sum(1 for subject in subjects if subject.startswith(("feat:", "feat(")))
     return fixes, feats
+
+
+def risk_summary() -> str:
+    """The independent-classification disagreement rate, which E25-S02's AC3 says is reported here.
+
+    A rate of exactly zero over many stories is evidence that the second classification is not
+    independent, so the number is only useful next to its denominator.
+    """
+    floors = PROJECT / "risk_floors.json"
+    if not floors.is_file():
+        return "- No risk-floor configuration; classification is unchecked."
+    data = json.loads(floors.read_text(encoding="utf-8"))
+    entries = data.get("independent_classifications", [])
+    baseline = data.get("baseline", [])
+    if not entries:
+        return (
+            f"- Independent classifications recorded: **0**. {len(baseline)} stories are recorded below their "
+            "floor, owner decision pending.\n"
+            "- With no second classification the level is still self-assessed everywhere a floor does not reach."
+        )
+    stories = load_stories()
+    disagreements = [e for e in entries if stories.get(e["story"], {}).get("change_risk") != e.get("level")]
+    rate = 100 * len(disagreements) / len(entries)
+    tail = (
+        " A rate of zero over this many stories is evidence the second opinion is not independent."
+        if (len(entries) >= 10 and not disagreements)
+        else ""
+    )
+    return f"- Independent classifications recorded: **{len(entries)}**; disagreements: **{len(disagreements)}** ({rate:.0f}%).{tail}"
 
 
 def render(stories: dict[str, dict[str, Any]], rounds: dict[str, list[Round]]) -> str:
@@ -239,6 +309,10 @@ def render(stories: dict[str, dict[str, Any]], rounds: dict[str, list[Round]]) -
         f"- **Self-review (same agent as executor):** {self_rejected} of {self_judged} round-1 verdicts were `FAIL`"
         f"{f' - **{100 * self_rejected / self_judged:.0f}%**' if self_judged else ''}.",
         "",
+        f"- **Round-1 records excluded as unreadable:** {len([r for rs in rounds.values() for r in rs if r.number == 1 and not r.verdicts])}."
+        " Their verdicts are in neither denominator above, so both rates are computed over the"
+        " subset of records that use a machine-readable verdict table.",
+        "",
         "Read this split with care, and do not read a conclusion into it. The self-review sample is",
         "tiny, its composition differs from the independent one, and the published work on",
         "self-preference bias in model-as-judge evaluation reports a wide range of effects rather",
@@ -253,19 +327,20 @@ def render(stories: dict[str, dict[str, Any]], rounds: dict[str, list[Round]]) -
         "the diagnostic is the **overlap**. Near-total overlap means the two rounds were not",
         "independent samples, and the population estimate collapses to what one round already found.",
         "",
-        "| Epic | Round 1 found | Round 2 found | Overlap | Estimated population | Estimated residual |",
-        "| --- | --- | --- | --- | --- | --- |",
+        "| Epic | Rounds compared | First found | Second found | Overlap | Estimated population | Estimated residual |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
     ]
     two_round = [(epic, records) for epic, records in sorted(rounds.items()) if len([record for record in records if record.verdicts]) >= 2]
     if not two_round:
-        lines.append("| - | - | - | - | - | - |")
+        lines.append("| - | - | - | - | - | - | - |")
     for epic, records in two_round:
         parsed = [record for record in records if record.verdicts]
         first, second = parsed[0].rejected, parsed[1].rejected
         estimate = lincoln_petersen(first, second)
         if estimate is None:
             lines.append(
-                f"| {epic} | {len(first)} | {len(second)} | 0 | undefined - disjoint findings | at least {len(first | second)} were present |"
+                f"| {epic} | {parsed[0].number} and {parsed[1].number} | {len(first)} | {len(second)} | 0 "
+                f"| undefined - disjoint findings | at least {len(first | second)} were present |"
             )
         else:
             population, residual = estimate
@@ -297,6 +372,14 @@ def render(stories: dict[str, dict[str, Any]], rounds: dict[str, list[Round]]) -
         f"{risks['CR3'] + risks['CR4']} of {sum(risks.values())} stories are CR3 or CR4, the levels whose gates require",
         "independent verification. That share is what makes the reviewer-independence question above",
         "load-bearing rather than academic.",
+        "",
+        "## Risk classification",
+        "",
+        risk_summary(),
+        "",
+        "## Review records this tool could not classify",
+        "",
+        *([f"- `{path}`" for path in UNCLASSIFIABLE] or ["- none"]),
         "",
         "## Rework proxy",
         "",

@@ -10,7 +10,7 @@
     {
       "id": "E26-S01",
       "title": "The agent toolchain has a manifest and a gate",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "project/agent_toolchain.json records every skill, hook, plugin, MCP server and language server this project carries, with its source, pinned version, trust tier, capability surface, always-on token cost, purpose, and a dated decision with a rationale - plus what was considered and rejected, so a rejection is a decision rather than folklore. scripts/check_agent_toolchain.py refuses anything installed and unmanaged, refuses a privileged capability held on trust nobody granted, reports a decision past its review cadence, and fails when the always-on context cost exceeds its budget. The toolchain skill turns it into a session-start ritual that proposes install, update and removal to the owner and installs nothing itself, because installing executes third-party code and changes what every future session is told.",
       "change_risk": "CR1",
       "dependencies": [],

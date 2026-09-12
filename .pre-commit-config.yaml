@@ -181,6 +181,12 @@ repos:
         files: ^(cancellai\.py|pyproject\.toml|CHANGELOG\.md|Formula/|project/(epics/|roadmap\.json|evidence/RELEASE-)|scripts/release\.py)
         pass_filenames: false
 
+      - id: risk-floor-commit-gate
+        name: the staged change is at or above the risk floor its paths set
+        entry: python3 scripts/check_risk_classification.py commit-msg
+        language: system
+        stages: [commit-msg]
+
       - id: conventional-commit
         name: commit message follows Conventional Commits
         entry: python3 scripts/check_process.py commit-msg

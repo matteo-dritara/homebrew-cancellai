@@ -30,7 +30,7 @@ owner's waiver of the independent round covered E24 only).
 ## Verification Commands
 
 ```text
-python3 -m pytest tests/test_process_metrics.py -q -> 20 passed, 22 subtests passed
+python3 -m pytest tests/test_process_metrics.py -q -> 23 passed (the count was 20 when written; a later commit added tests and the packet was not refreshed - found by review)
 python3 scripts/process_metrics.py check          -> process metrics OK
 python3 scripts/check_process.py check            -> process OK (banner enforced)
 python3 scripts/check_docs.py check               -> docs OK, the report is reachable from docs/INDEX.md
@@ -70,6 +70,14 @@ python3 -m ruff check . / format --check .        -> clean
   unanimous that both assumptions fail in software and the estimate is a systematic under-estimate.
   The tool reports the overlap alongside the estimate for exactly this reason; the overlap is the
   signal.
+- **Repaired after review**, which found five ways the tool could report a confident wrong number:
+  a verdict table inside a fenced example was parsed as real verdicts; a story appearing in two
+  tables silently took the last value, so a record saying FAIL then PASS read as a clean round; a
+  record whose filename could not be parsed vanished with no diagnostic at all, including a
+  self-review named with different capitalisation; acceptance-criteria rows were counted rather
+  than matched, so AC5-AC9 satisfied a three-criterion story; and the headline rate's denominator
+  silently excluded unreadable records. All five are repaired and the report now names the excluded
+  count and lists any record it cannot classify.
 - **This tool measures the process and is part of it.** Nothing measures whether the measurement
   is any good, and a metric that becomes a target stops measuring - the report says so, which is
   not the same as preventing it.

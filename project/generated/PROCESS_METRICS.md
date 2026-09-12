@@ -45,6 +45,8 @@ already been declared `ready_for_review` by an executor who ran the full gate se
 - **Independent reviewer:** 32 of 68 round-1 verdicts were `FAIL` - **47%**.
 - **Self-review (same agent as executor):** 3 of 9 round-1 verdicts were `FAIL` - **33%**.
 
+- **Round-1 records excluded as unreadable:** 1. Their verdicts are in neither denominator above, so both rates are computed over the subset of records that use a machine-readable verdict table.
+
 Read this split with care, and do not read a conclusion into it. The self-review sample is
 tiny, its composition differs from the independent one, and the published work on
 self-preference bias in model-as-judge evaluation reports a wide range of effects rather
@@ -59,11 +61,11 @@ Lincoln-Petersen over the two rounds' rejection sets. The estimate is a known un
 the diagnostic is the **overlap**. Near-total overlap means the two rounds were not
 independent samples, and the population estimate collapses to what one round already found.
 
-| Epic | Round 1 found | Round 2 found | Overlap | Estimated population | Estimated residual |
-| --- | --- | --- | --- | --- | --- |
+| Epic | Rounds compared | First found | Second found | Overlap | Estimated population | Estimated residual |
+| --- | --- | --- | --- | --- | --- | --- |
 | E00 | 6 | 7 | 6 | 7.0 | 0.0 |
 | E06 | 3 | 2 | 2 | 3.0 | 0.0 |
-| E20 | 3 | 0 | 0 | undefined - disjoint findings | at least 3 were present |
+| E20 | 1 and 2 | 3 | 0 | 0 | undefined - disjoint findings | at least 3 were present |
 
 ## Evidence-ledger integrity
 
@@ -94,6 +96,15 @@ independent samples, and the population estimate collapses to what one round alr
 48 of 127 stories are CR3 or CR4, the levels whose gates require
 independent verification. That share is what makes the reviewer-independence question above
 load-bearing rather than academic.
+
+## Risk classification
+
+- Independent classifications recorded: **0**. 5 stories are recorded below their floor, owner decision pending.
+- With no second classification the level is still self-assessed everywhere a floor does not reach.
+
+## Review records this tool could not classify
+
+- `project/evidence/E25-E26-SELF-REVIEW.md`
 
 ## Rework proxy
 

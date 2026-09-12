@@ -82,7 +82,7 @@ def validate_component(component: dict[str, Any]) -> list[str]:
     """Structural and policy problems with one manifest entry."""
     errors: list[str] = []
     identifier = component.get("id", "<unnamed>")
-    for field in ("id", "kind", "scope", "source", "version", "trust", "capabilities", "purpose", "decision"):
+    for field in ("id", "kind", "scope", "source", "version", "trust", "capabilities", "always_on_tokens", "purpose", "decision"):
         if field not in component:
             errors.append(f"{identifier}: missing required field {field!r}")
     if errors:
@@ -107,6 +107,10 @@ def validate_component(component: dict[str, Any]) -> list[str]:
         errors.append(f"{identifier}: decision records no rationale")
     if not decision.get("by"):
         errors.append(f"{identifier}: decision records no decider")
+    if not decision.get("date"):
+        # Omitting the date exempted a component from expiry forever, because `stale_decisions`
+        # skipped an entry with no date rather than refusing it.
+        errors.append(f"{identifier}: decision records no date; a decision with no date never expires")
 
     privileged = [c for c in component["capabilities"] if c in PRIVILEGED]
     if privileged and component["trust"] not in TRUSTED_FOR_PRIVILEGE:
@@ -117,24 +121,100 @@ def validate_component(component: dict[str, Any]) -> list[str]:
     return errors
 
 
+# Per-machine state that lives under `.claude/` and is not a component. Everything else directly
+# under `.claude/` is reported as unrecognised rather than ignored, so a component kind this
+# enumerator has never heard of fails closed instead of arriving unseen.
+LOCAL_STATE = {"settings.local.json", "scheduled_tasks.lock", "worktrees", "shell-snapshots", "todos"}
+COMPONENT_DIRECTORIES = {"skills", "hooks", "agents", "commands", "output-styles"}
+SETTINGS_FILES = ("settings.json", "settings.local.json")
+
+
+def _settings_components(path: Path, present: dict[str, str]) -> None:
+    """MCP servers, inline hook commands and a status line declared in a settings file.
+
+    An inline hook is the case that matters most: `"command": "curl … | sh"` with no file in
+    `.claude/hooks/` is the most direct code-execution path there is, and an enumerator that only
+    looks at files never sees it.
+    """
+    try:
+        settings = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        present[f"unreadable:{path.name}"] = str(path)
+        return
+    where = str(path.relative_to(ROOT))
+    for name in settings.get("mcpServers", {}):
+        present[f"mcp:{name}"] = where
+    if settings.get("statusLine"):
+        present["statusline"] = where
+    for event, matchers in (settings.get("hooks") or {}).items():
+        for matcher in matchers if isinstance(matchers, list) else []:
+            for hook in matcher.get("hooks", []) if isinstance(matcher, dict) else []:
+                command = str(hook.get("command", "")).strip()
+                if not command:
+                    continue
+                # A hook whose command is one of this repository's own hook files is already
+                # enumerated as that file. Anything else is an inline command in its own right.
+                if ".claude/hooks/" in command:
+                    continue
+                present[f"hook-command:{event}:{command.split()[0]}"] = where
+
+
 def installed_project_components() -> dict[str, str]:
-    """What is actually present in the repository, by manifest id.
+    """Every component present in the repository, by manifest id.
 
     Only project scope is inspected. User-scoped plugins live outside the repository and are not
     present in CI, so the manifest records them as declared intent and this checker reports them
     rather than enforcing them - claiming to verify what it cannot see would be worse than
     admitting the boundary.
+
+    Within project scope the enumeration is deliberately exhaustive and fails closed. An
+    independent review installed seven unmanaged components of six kinds at once - an
+    extensionless hook, a `.py` hook, a subagent, a slash command, an eighth skill, a nested
+    `.claude/skills/`, an output style - and the first version of this function reported
+    "nothing unmanaged". The control's entire purpose is that an addition becomes visible.
     """
     present: dict[str, str] = {}
-    if SKILLS_DIR.is_dir() and any(p.is_dir() and not p.name.startswith((".", "_")) for p in SKILLS_DIR.iterdir()):
-        present["cancellai-skill-pack"] = ".claude/skills"
-    if HOOKS_DIR.is_dir():
-        for hook in sorted(HOOKS_DIR.glob("*.sh")):
-            present[hook.stem] = str(hook.relative_to(ROOT))
-    if SETTINGS.is_file():
-        settings = json.loads(SETTINGS.read_text(encoding="utf-8"))
-        for name in settings.get("mcpServers", {}):
-            present[f"mcp:{name}"] = ".claude/settings.json"
+    claude = ROOT / ".claude"
+    if not claude.is_dir():
+        return present
+
+    for entry in sorted(claude.iterdir()):
+        if entry.name in LOCAL_STATE or entry.name.startswith("."):
+            continue
+        if entry.is_dir() and entry.name in COMPONENT_DIRECTORIES:
+            continue
+        if entry.is_file() and entry.name in SETTINGS_FILES:
+            continue
+        present[f"unrecognised:{entry.name}"] = str(entry.relative_to(ROOT))
+
+    # Skills, at any depth: a nested `<subdir>/.claude/skills/` loads for sessions under that
+    # directory and is exactly as unmanaged as one at the root.
+    for skills_dir in sorted(ROOT.rglob(".claude/skills")):
+        if not skills_dir.is_dir() or "worktrees" in skills_dir.parts:
+            continue
+        for skill in sorted(skills_dir.iterdir()):
+            if skill.is_dir() and not skill.name.startswith((".", "_")):
+                present[f"skill:{skill.relative_to(ROOT).as_posix()}"] = str(skill.relative_to(ROOT))
+
+    for directory, prefix, pattern in (
+        (claude / "hooks", "hook", "*"),
+        (claude / "agents", "subagent", "*.md"),
+        (claude / "commands", "command", "**/*.md"),
+        (claude / "output-styles", "output-style", "*"),
+    ):
+        if not directory.is_dir():
+            continue
+        for item in sorted(directory.glob(pattern)):
+            if item.is_file() and not item.name.startswith("."):
+                present[f"{prefix}:{item.stem}"] = str(item.relative_to(ROOT))
+
+    for name in SETTINGS_FILES:
+        path = claude / name
+        if path.is_file():
+            _settings_components(path, present)
+    project_mcp = ROOT / ".mcp.json"
+    if project_mcp.is_file():
+        _settings_components(project_mcp, present)
     return present
 
 
@@ -161,19 +241,36 @@ def evaluate(data: dict[str, Any], installed: dict[str, str], today: dt.date) ->
         errors.extend(validate_component(component))
 
     declared = {component["id"] for component in components if "id" in component}
+    # A component may declare `members`, so a pack of skills is one decision rather than eight
+    # entries - but every member is named, so an eighth skill appearing in the pack is unmanaged.
+    members = {member for component in components for member in component.get("members", [])}
     duplicates = [item for item in declared if sum(1 for c in components if c.get("id") == item) > 1]
     if duplicates:
         errors.append(f"duplicate component ids: {sorted(set(duplicates))}")
 
     for identifier, where in sorted(installed.items()):
-        if identifier not in declared:
+        if identifier not in declared and identifier not in members:
             errors.append(
                 f"{identifier} is installed at {where} but is not in the manifest - an unmanaged component is one nobody decided to carry"
             )
 
-    project_scoped = {c["id"] for c in components if c.get("scope") == "project" and c.get("decision", {}).get("status") != "retired"}
-    for identifier in sorted(project_scoped - set(installed)):
-        errors.append(f"{identifier} is in the manifest with project scope but is not installed")
+    # A component that declares members is present when its members are: the pack is one decision,
+    # and `cancellai-skill-pack` is not itself a path on disk.
+    for component in components:
+        if component.get("scope") != "project" or component.get("decision", {}).get("status") == "retired":
+            continue
+        declared_members = component.get("members", [])
+        present = any(member in installed for member in declared_members) if declared_members else component["id"] in installed
+        if not present:
+            errors.append(f"{component['id']} is in the manifest with project scope but is not installed")
+
+    retired = {c["id"] for c in components if c.get("decision", {}).get("status") == "retired"}
+    retired_members = {m for c in components if c.get("decision", {}).get("status") == "retired" for m in c.get("members", [])}
+    for identifier in sorted((retired | retired_members) & set(installed)):
+        errors.append(
+            f"{identifier} is marked retired but is still present at {installed[identifier]} - "
+            "a retired component leaves the budget and the expiry accounting while continuing to run"
+        )
 
     cadence = int(data.get("review_cadence_days", 90))
     for identifier, age in stale_decisions(components, cadence, today):

@@ -171,7 +171,34 @@ class RealManifestTests(unittest.TestCase):
     def test_the_skill_pack_is_a_managed_component(self):
         ids = {c["id"] for c in toolchain.load_manifest()["components"]}
         self.assertIn("cancellai-skill-pack", ids)
-        self.assertIn("guard-generated-docs", ids)
+        self.assertIn("hook:guard-generated-docs", ids)
+
+    def test_every_skill_in_the_pack_is_named_as_a_member(self):
+        # The pack is one decision, but each skill is named: an independent review added a ninth
+        # skill and the first enumerator reported "nothing unmanaged".
+        pack = next(c for c in toolchain.load_manifest()["components"] if c["id"] == "cancellai-skill-pack")
+        installed = {i for i in toolchain.installed_project_components() if i.startswith("skill:")}
+        self.assertEqual(installed, set(pack["members"]))
+
+    def test_the_enumerator_sees_every_component_kind(self):
+        # Each of these was invisible to the first version, which reported nothing unmanaged while
+        # seven unmanaged components of six kinds were installed.
+        import inspect
+
+        source = inspect.getsource(toolchain.installed_project_components) + inspect.getsource(toolchain._settings_components)
+        for expected in (
+            "agents",
+            "commands",
+            "output-styles",
+            ".mcp.json",
+            "statusLine",
+            "hook-command",
+            "unrecognised",
+        ):
+            with self.subTest(kind=expected):
+                self.assertIn(expected, source)
+        # settings.local.json is read too: an MCP server declared there was invisible.
+        self.assertIn("settings.local.json", toolchain.SETTINGS_FILES)
 
 
 if __name__ == "__main__":

@@ -45,6 +45,66 @@
       "pattern": "rust/crates/cancellai-provider-*/src/*",
       "level": "CR2",
       "reason": "Adapters produce the capability results planning consumes."
+    },
+    {
+      "pattern": "rust/crates/cancellai-safety/Cargo.toml",
+      "level": "CR4",
+      "reason": "A dependency added to a kernel-ring crate is an authority decision requiring its own reviewed ADR (ADR-0019). The manifest is where that happens, so it carries the crate's floor."
+    },
+    {
+      "pattern": "rust/crates/cancellai-sealedfs/Cargo.toml",
+      "level": "CR4",
+      "reason": "Kernel ring, and the only crate exempt from forbid(unsafe_code) (ADR-0017)."
+    },
+    {
+      "pattern": "rust/crates/cancellai-platform/Cargo.toml",
+      "level": "CR4",
+      "reason": "Kernel ring (ADR-0019)."
+    },
+    {
+      "pattern": "rust/crates/cancellai-model/Cargo.toml",
+      "level": "CR4",
+      "reason": "Kernel ring (ADR-0019)."
+    },
+    {
+      "pattern": "rust/deny.toml",
+      "level": "CR4",
+      "reason": "The licence allow-list and advisory policy for every crate in the workspace."
+    },
+    {
+      "pattern": "rust/crates/cancellai-model/src/*",
+      "level": "CR3",
+      "reason": "The domain model defines what an artifact, an authority and a plan are. It cannot mutate, but every decision downstream is expressed in its types."
+    },
+    {
+      "pattern": "rust/crates/cancellai-platform/src/mutation*",
+      "level": "CR4",
+      "reason": "SI-019: the only seam permitted to call std::fs::remove_*. This is the mutation boundary itself."
+    },
+    {
+      "pattern": "rust/crates/cancellai-platform/src/*root*",
+      "level": "CR4",
+      "reason": "Root resolution decides which directory may be acted on at all."
+    },
+    {
+      "pattern": "rust/crates/cancellai-platform/src/*path*",
+      "level": "CR4",
+      "reason": "Path resolution is where a name becomes a target; a wrong answer here defeats every check upstream of it."
+    },
+    {
+      "pattern": "rust/crates/cancellai-platform/src/*",
+      "level": "CR3",
+      "reason": "Platform behaviour is where identity, links and process observation are decided. Narrower CR4 patterns above take precedence, because the highest floor wins."
+    },
+    {
+      "pattern": "rust/crates/cancellai-safety/tests/*",
+      "level": "CR3",
+      "reason": "A test cannot grant authority, but weakening the kernel's own tests removes the evidence its authority rests on."
+    },
+    {
+      "pattern": "rust/crates/cancellai-sealedfs/tests/*",
+      "level": "CR3",
+      "reason": "As above, for the unsafe seam."
     }
   ],
   "overrides": [],

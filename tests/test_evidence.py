@@ -81,12 +81,27 @@ class CriterionCoverageTests(unittest.TestCase):
     def test_fewer_rows_than_criteria_fails(self):
         # The failure that had already happened fifteen times before anything looked.
         problems = self.run_check(FULL_PACKET.format(risk="CR1", residual="- x"), acceptance_criteria=["a", "b", "c"])
-        self.assertTrue(any("2 acceptance-criteria rows for 3 criteria" in p for p in problems))
+        self.assertTrue(any("no evidence row for AC3" in p for p in problems))
 
     def test_duplicated_row_numbers_do_not_inflate_the_count(self):
         text = FULL_PACKET.format(risk="CR1", residual="- x").replace("| AC2 | another test | PASS |", "| AC1 | again | PASS |")
         problems = self.run_check(text)
-        self.assertTrue(any("1 acceptance-criteria rows for 2 criteria" in p for p in problems))
+        self.assertTrue(any("no evidence row for AC2" in p for p in problems))
+
+    def test_rows_inside_a_fenced_example_do_not_count_as_coverage(self):
+        # A packet whose only AC rows sat in a fenced template was counted as fully covered.
+        text = FULL_PACKET.format(risk="CR1", residual="- x")
+        fenced = text.replace(
+            "| AC1 | a test | PASS |\n| AC2 | another test | PASS |", "```\n| AC1 | example | PASS |\n| AC2 | example | PASS |\n```"
+        )
+        problems = self.run_check(fenced)
+        self.assertTrue(any("no evidence row for AC1, AC2" in p for p in problems))
+
+    def test_rows_numbered_beyond_the_criteria_do_not_satisfy_them(self):
+        # AC5-AC9 satisfied a three-criterion story under a count comparison.
+        text = FULL_PACKET.format(risk="CR1", residual="- x").replace("| AC1 |", "| AC8 |").replace("| AC2 |", "| AC9 |")
+        problems = self.run_check(text)
+        self.assertTrue(any("no evidence row for AC1, AC2" in p for p in problems))
 
     def test_more_rows_than_criteria_is_not_an_error(self):
         # Over-documenting is not the failure mode this guards against.

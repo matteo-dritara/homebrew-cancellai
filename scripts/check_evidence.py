@@ -51,6 +51,17 @@ RESIDUAL_REQUIRED_AT = {"CR3", "CR4"}
 AC_ROW = re.compile(r"^\|\s*AC\s*(\d+)", re.MULTILINE | re.IGNORECASE)
 RESIDUAL_SECTION = re.compile(r"##\s*Residual risks?\s*\n(.*?)(?=\n##|\Z)", re.DOTALL | re.IGNORECASE)
 SCRIPT_COMMAND = re.compile(r"python3\s+(scripts/[\w./-]+\.py)")
+FENCED = re.compile(r"^```.*?^```", re.MULTILINE | re.DOTALL)
+
+
+def prose_only(text: str) -> str:
+    """The packet with fenced blocks removed.
+
+    A packet whose only acceptance-criteria rows sat inside a fenced example was counted as fully
+    covered. A template is not evidence.
+    """
+    return FENCED.sub("", text)
+
 
 # Packets written before the convention existed. Listed one by one rather than as a rule, so the
 # list can only shrink: a new story cannot fall into it without someone adding a line here.
@@ -92,7 +103,7 @@ def residual_body(text: str) -> str:
     A section whose first item is "none" counts as empty: at CR3 and above the honest answer is
     almost never none, and writing it is how the section stops being read.
     """
-    match = RESIDUAL_SECTION.search(text)
+    match = RESIDUAL_SECTION.search(prose_only(text))
     if not match:
         return ""
     body = match.group(1).strip()
@@ -118,12 +129,13 @@ def check_story(story: dict[str, Any], root: Path) -> list[str]:
     text = packet.read_text(encoding="utf-8")
     problems: list[str] = []
 
-    rows = len(set(AC_ROW.findall(text)))
-    expected = len(story["acceptance_criteria"])
-    if rows < expected:
-        problems.append(
-            f"{story_id}: {rows} acceptance-criteria rows for {expected} criteria - a criterion with no row was not discharged, it was omitted"
-        )
+    # The *set* of criterion numbers, not the count: AC5-AC9 satisfied a three-criterion story
+    # under a count comparison, and rows inside a fenced example counted as coverage.
+    found = set(AC_ROW.findall(prose_only(text)))
+    expected = {str(number) for number in range(1, len(story["acceptance_criteria"]) + 1)}
+    missing = sorted(expected - found, key=int)
+    if missing:
+        problems.append(f"{story_id}: no evidence row for AC{', AC'.join(missing)} - a criterion with no row was not discharged, it was omitted")
 
     if risk in RESIDUAL_REQUIRED_AT and not residual_body(text):
         problems.append(

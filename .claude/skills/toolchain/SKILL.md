@@ -1,7 +1,7 @@
 ---
 name: toolchain
 description: Review the agent toolchain - skills, hooks, subagents, plugins, MCP servers, language servers - against its manifest, check for updates and newly relevant tools, and put install / update / remove proposals to the owner. Use at the start of a session, when a component looks stale or unused, before adding any plugin, and when asked what tooling this project has or should have.
-allowed-tools: Bash(python3 scripts/check_agent_toolchain.py:*), Bash(claude plugin:*), Bash(gh api:*), Read, Glob, Grep
+allowed-tools: Bash(python3 scripts/check_agent_toolchain.py:*), Bash(claude plugin list:*), Bash(claude plugin details:*), Read, Glob, Grep
 ---
 
 # Toolchain
@@ -13,6 +13,11 @@ before `project/agent_toolchain.json` existed nothing recorded what was carried 
 This skill reviews it. **It never installs, updates or removes anything** - that executes third
 party code on the owner's machine and changes what every future session is told. The output is a
 proposal.
+
+That is enforced by the `allowed-tools` line above and not only by this paragraph. An independent
+review found the first version granting `Bash(claude plugin:*)`, which covers `install`,
+`uninstall`, `update`, `enable`, `disable` and `prune` - the capability the prose forbade, handed
+over in the frontmatter. It now grants `list` and `details` and nothing else, and reads no network.
 
 ## Current state
 
@@ -47,10 +52,11 @@ questions that actually decide it:
 ### 3. Check for drift and updates
 
 For a `github:` source, compare the pinned version against the current release and read what
-changed:
+changed. This skill holds no network tool, deliberately - ask the owner to run the comparison, or
+invoke it from a session that has one:
 
 ```sh
-gh api repos/OWNER/NAME --jq '"\(.stargazers_count)★ pushed \(.pushed_at)"'
+gh api repos/OWNER/NAME --jq '"\(.stargazers_count) pushed \(.pushed_at)"'
 gh api repos/OWNER/NAME/releases/latest --jq '.tag_name'
 ```
 
