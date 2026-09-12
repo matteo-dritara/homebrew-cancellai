@@ -187,6 +187,13 @@ def rework_ratio(limit: int = 300) -> tuple[int, int]:
 
 
 def render(stories: dict[str, dict[str, Any]], rounds: dict[str, list[Round]]) -> str:
+    """The committed report.
+
+    Deliberately a pure function of committed artifacts. The rework proxy is computed from git
+    history and therefore lives in `report` only: a generated file that describes the commit log
+    is stale the instant it is committed, because committing it is a commit. A drift check over a
+    self-referential artifact can never pass, so the artifact must not be self-referential.
+    """
     lines = [
         "# Process Metrics",
         "",
@@ -266,7 +273,6 @@ def render(stories: dict[str, dict[str, Any]], rounds: dict[str, list[Round]]) -
 
     covered, considered, gaps = evidence_coverage(stories)
     risks = Counter(story["change_risk"] for story in stories.values())
-    fixes, feats = rework_ratio()
 
     lines += [
         "",
@@ -294,10 +300,10 @@ def render(stories: dict[str, dict[str, Any]], rounds: dict[str, list[Round]]) -
         "",
         "## Rework proxy",
         "",
-        f"- Last 300 commits: **{feats}** `feat:`, **{fixes}** `fix:`.",
-        "- Read as a trend, not a level: a `fix:` that repairs a review finding is the process working.",
-        "  A rising ratio against a flat review yield is the shape to worry about.",
-        "",
+        "Computed from git history by `python3 scripts/process_metrics.py report`, and deliberately",
+        "not committed here: a generated file that describes the commit log is stale the instant it",
+        "is committed, because committing it is a commit. Its drift check could then never pass.",
+        "Run the command when you want the number.",
     ]
     # One trailing newline, no blank line before it: pre-commit's end-of-file-fixer would
     # otherwise strip it and leave the committed report permanently at odds with its generator.
@@ -329,7 +335,14 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if command == "report":
-        print(report)
+        fixes, feats = rework_ratio()
+        history = (
+            f"\n## Rework proxy (history-derived, not committed)\n\n"
+            f"- Last 300 commits: **{feats}** `feat:`, **{fixes}** `fix:`.\n"
+            "- Read as a trend, not a level: a `fix:` that repairs a review finding is the process\n"
+            "  working. A rising ratio against a flat review yield is the shape to worry about.\n"
+        )
+        print(report + history)
         return 0
     if command == "generate":
         OUTPUT.parent.mkdir(parents=True, exist_ok=True)

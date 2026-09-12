@@ -114,6 +114,12 @@ class RealRepositoryTests(unittest.TestCase):
         self.assertTrue(report.endswith("\n"))
         self.assertFalse(report.endswith("\n\n"))
 
+    def test_the_committed_report_does_not_depend_on_git_history(self):
+        # A generated file that describes the commit log is stale the instant it is committed,
+        # because committing it is a commit - so its drift check could never pass.
+        report = metrics.render(metrics.load_stories(), metrics.load_rounds())
+        self.assertNotIn("Last 300 commits", report)
+
     def test_generate_is_idempotent(self):
         first = metrics.render(metrics.load_stories(), metrics.load_rounds())
         second = metrics.render(metrics.load_stories(), metrics.load_rounds())

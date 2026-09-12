@@ -97,6 +97,7 @@ load-bearing rather than academic.
 
 ## Rework proxy
 
-- Last 300 commits: **50** `feat:`, **41** `fix:`.
-- Read as a trend, not a level: a `fix:` that repairs a review finding is the process working.
-  A rising ratio against a flat review yield is the shape to worry about.
+Computed from git history by `python3 scripts/process_metrics.py report`, and deliberately
+not committed here: a generated file that describes the commit log is stale the instant it
+is committed, because committing it is a commit. Its drift check could then never pass.
+Run the command when you want the number.
