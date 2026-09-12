@@ -2785,3 +2785,90 @@ cEOS has borrowed the artifact set of a safety standard without the mechanism th
 - `project/templates/VERIFIER_PROMPT.md`
 - `docs/INDEX.md`
 - `docs/audits/2026-09-12-METHODOLOGY_REVIEW.md`
+
+## E26 - Agent Toolchain Governance
+
+**Phase:** `P1` | **Status:** `in_progress` | **Epic dependencies:** none
+
+Skills, hooks, subagents, plugins, MCP servers and language servers are third-party code and third-party prompt content entering the agent that writes this repository's code. They arrive by one command with no review, no pin, no expiry and no record of why. Every other dependency here is governed - cargo deny for crates, provider trust for manifests, dependabot for updates - and this class was governed by nobody. This epic makes the agent toolchain a managed dependency with a manifest, a trust bar set by capability, decisions that expire, a context budget, and a session-start review that proposes to the owner and never installs. See docs/development/AGENT_TOOLCHAIN.md. Depends on the skill pack E24-S01 committed, not on E24 closing - E24's closure is blocked by the release train, and an epic dependency would make that block propagate for no engineering reason.
+
+### E26-S01 - The agent toolchain has a manifest and a gate
+
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
+
+**Outcome.** project/agent_toolchain.json records every skill, hook, plugin, MCP server and language server this project carries, with its source, pinned version, trust tier, capability surface, always-on token cost, purpose, and a dated decision with a rationale - plus what was considered and rejected, so a rejection is a decision rather than folklore. scripts/check_agent_toolchain.py refuses anything installed and unmanaged, refuses a privileged capability held on trust nobody granted, reports a decision past its review cadence, and fails when the always-on context cost exceeds its budget. The toolchain skill turns it into a session-start ritual that proposes install, update and removal to the owner and installs nothing itself, because installing executes third-party code and changes what every future session is told.
+
+**Acceptance criteria**
+
+- A component present in the repository and absent from the manifest fails the gate, and a project-scoped component in the manifest but not installed fails too - reconciliation runs in both directions.
+- A component whose capabilities include executes-code, network, credentials or writes-files must be FirstParty or Vendor; Community or Unknown trust with any of those is refused, while Community trust for prompt-only content is accepted.
+- A decision older than review_cadence_days is reported until it is renewed or the component retired, and a retired component neither expires nor consumes budget.
+- The total always-on token cost of live components is checked against context_budget_tokens, by the same argument C-11 makes about storage: a governance tool may not become an unbounded producer of the resource it governs.
+- User-scoped components are declared intent rather than enforced presence, and the checker states that boundary rather than claiming to verify what CI cannot see.
+- The toolchain skill installs, updates and removes nothing; it produces an owner proposal and stops.
+
+**Verification**
+
+- An unmanaged hook in .claude/hooks fails check.
+- A Community-trust component declaring executes-code fails; the same component declaring only prompt passes.
+- A decision dated beyond the cadence produces a warning; a retired one does not.
+- Four components of 400 always-on tokens against a 1000-token budget fail.
+- A malformed decision date raises rather than being treated as current - a date the checker cannot read must never read as fresh.
+- The committed manifest passes, every committed component validates, and every privileged component is trusted for its privilege.
+
+**Documentation impact**
+
+- `docs/development/AGENT_TOOLCHAIN.md`
+- `docs/INDEX.md`
+- `AGENTS.md`
+- `.claude/skills/README.md`
+
+### E26-S02 - Update and abandonment signals are checked, not assumed
+
+**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E26-S01 | **Safety obligations:** none
+
+**Outcome.** The manifest pins a version; nothing compares the pin against upstream. A component whose upstream has not been pushed to in a year is an abandonment signal and belongs in the review as a removal candidate, not only as a stale pin - and a new release that adds a hook or an MCP server turns prompt content into software with a shell, which is a new decision rather than an update. Make the comparison mechanical for the sources that support it, and honest about the ones that do not.
+
+**Acceptance criteria**
+
+- For a github: source, the pinned version and the upstream latest release and last-push date are compared, and a drift or an abandonment signal is reported.
+- A component whose capability surface has grown since the recorded decision is reported as requiring a new decision rather than an update.
+- The check degrades truthfully with no network: it reports that it could not compare, never that nothing changed.
+- Nothing is fetched from an upstream not already named in the manifest.
+
+**Verification**
+
+- A pinned version behind upstream is reported.
+- An upstream with an old last-push date is reported as an abandonment candidate.
+- With the network unavailable the check exits zero and says it could not compare.
+- A manifest naming an unreachable source does not fail the whole run.
+
+**Documentation impact**
+
+- `docs/development/AGENT_TOOLCHAIN.md`
+- `.claude/skills/toolchain/SKILL.md`
+
+### E26-S03 - Usage is recorded, so retirement is evidence-based
+
+**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E26-S01 | **Safety obligations:** none
+
+**Outcome.** The review asks whether a component has been used since the last decision, and today that question is answered from memory. A component nobody invoked is paying always-on context in every session for nothing, and retiring it should be the default rather than an argument. Record invocations and report them alongside the cost, so the renewal decision is made against evidence rather than against whoever remembers advocating for it.
+
+**Acceptance criteria**
+
+- Component invocations are recorded in a form that survives a session and is committed with the project rather than living on one machine.
+- The report shows, per component, invocations since its last decision date alongside its always-on cost.
+- A component with zero invocations since its last decision is named as a retirement candidate.
+- The record contains no transcript content, no prompts and no paths from the developer's machine - only component identity and a count.
+
+**Verification**
+
+- A component invoked since its decision is not listed as a retirement candidate; one that was not, is.
+- The record survives a fresh clone and contains nothing identifying.
+- The absence of a usage record degrades to 'unknown', never to 'unused'.
+
+**Documentation impact**
+
+- `docs/development/AGENT_TOOLCHAIN.md`
+- `.claude/skills/toolchain/SKILL.md`
+- `docs/security/THREAT_MODEL.md`

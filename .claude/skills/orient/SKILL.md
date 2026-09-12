@@ -1,7 +1,7 @@
 ---
 name: orient
 description: Orient a session inside the cancellAI control plane before any work. Loads live project state (check/status/next/review), the working-tree delta, and the reading order AGENTS.md mandates. Use at the start of any session, when asked "what should I work on", "where are we", "cosa c'è da fare", or before touching code in this repository.
-allowed-tools: Bash(python3 scripts/project_os.py:*), Bash(git status:*), Bash(git log:*), Read, Glob, Grep
+allowed-tools: Bash(python3 scripts/project_os.py:*), Bash(python3 scripts/check_agent_toolchain.py:*), Bash(git status:*), Bash(git log:*), Read, Glob, Grep
 ---
 
 # Orient
@@ -35,6 +35,10 @@ Recent checkpoints:
 
 !`git log --oneline -8 2>&1`
 
+The agent toolchain this session is carrying, and whether it still matches its manifest:
+
+!`python3 scripts/check_agent_toolchain.py check 2>&1 | tail -6`
+
 ## What to do with this
 
 1. **Read before concluding.** The state above is an index, not the contract. The contract is
@@ -48,7 +52,11 @@ Recent checkpoints:
    which. Do not create product scope in code.
 4. **Generate the brief, do not paraphrase it:**
    `python3 scripts/project_os.py brief <STORY-ID> --role executor`
-5. **Then hand off** to `story-executor` (implementation) or `epic-verifier` (review).
+5. **Reconcile the toolchain.** If the check above reports anything unmanaged, missing or past
+   its review date, invoke the `toolchain` skill before starting work - a session whose tooling
+   nobody decided to carry is a session whose output nobody can account for. If it is clean, say
+   so in one line and move on.
+6. **Then hand off** to `story-executor` (implementation) or `epic-verifier` (review).
 
 ## Reporting
 

@@ -34,6 +34,12 @@ python3 .claude/skills/_lint_skills.py
 | [`risk-gate`](risk-gate/SKILL.md) | CR0-CR4 -> the exact gate commands, run honestly | the check lists in `AGENTS.md` |
 | [`rust-kernel-guard`](rust-kernel-guard/SKILL.md) | dependency rings, `forbid(unsafe_code)`, one mutation boundary | ADR-0019 / ADR-0017 read by hand |
 | [`evidence-packet`](evidence-packet/SKILL.md) | evidence written from real command output | `project/templates/EVIDENCE_PACKET.md` |
+| [`toolchain`](toolchain/SKILL.md) | the agent toolchain reviewed as a dependency, with an owner proposal | nothing - this class of dependency was governed by nobody |
+
+`toolchain` is the session-start half of [`docs/development/AGENT_TOOLCHAIN.md`](../../docs/development/AGENT_TOOLCHAIN.md):
+skills, hooks, plugins and MCP servers are third-party code and third-party prompt content entering
+the agent that writes this repository, so they carry a manifest, a trust bar set by capability,
+decisions that expire, and a context budget. The skill proposes; it installs nothing.
 
 `epic-verifier` runs with `context: fork` so it does not inherit executor reasoning - the context
 isolation `AGENT_PROTOCOL.md` requires, enforced by the harness rather than by good intentions.

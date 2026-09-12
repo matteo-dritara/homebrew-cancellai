@@ -37,7 +37,8 @@
         "E22",
         "E23",
         "E24",
-        "E25"
+        "E25",
+        "E26"
       ]
     },
     {
@@ -141,6 +142,7 @@
     "project/epics/E22.json",
     "project/epics/E23.json",
     "project/epics/E24.json",
-    "project/epics/E25.json"
+    "project/epics/E25.json",
+    "project/epics/E26.json"
   ]
 }

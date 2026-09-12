@@ -4,20 +4,20 @@
 
 Current phase: **P1**
 
-Epics: **26** | Stories: **124**
+Epics: **27** | Stories: **127**
 
 ## Story status
 
 - `blocked`: 2
 - `cancelled`: 1
 - `done`: 84
-- `planned`: 36
-- `ready_for_review`: 1
+- `planned`: 38
+- `ready_for_review`: 2
 
 ## Change risk distribution
 
 - `CR0`: 10
-- `CR1`: 25
+- `CR1`: 28
 - `CR2`: 41
 - `CR3`: 21
 - `CR4`: 27
@@ -29,3 +29,4 @@ Epics: **26** | Stories: **124**
 ## Awaiting independent review
 
 - **E25-S01** - The process measures itself (CR0)
+- **E26-S01** - The agent toolchain has a manifest and a gate (CR1)

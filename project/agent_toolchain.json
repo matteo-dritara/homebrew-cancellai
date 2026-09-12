@@ -1,0 +1,166 @@
+{
+  "schema_version": 1,
+  "review_cadence_days": 90,
+  "context_budget_tokens": 6000,
+  "components": [
+    {
+      "id": "cancellai-skill-pack",
+      "kind": "skill",
+      "scope": "project",
+      "source": ".claude/skills",
+      "version": "tracked-in-repo",
+      "trust": "FirstParty",
+      "capabilities": ["prompt"],
+      "always_on_tokens": 900,
+      "purpose": "The cEOS contract as loadable Agent Skills: orient, story-executor, epic-verifier, adversarial-cases, risk-gate, rust-kernel-guard, evidence-packet. Written here, reviewed here, drift-checked by scripts/check_agent_skills.py.",
+      "decision": {"status": "approved", "by": "owner", "date": "2026-09-12", "rationale": "Authored in this repository under E24. Carries no code and no credentials; a skill is prompt text the agent may load."}
+    },
+    {
+      "id": "guard-generated-docs",
+      "kind": "hook",
+      "scope": "project",
+      "source": ".claude/hooks/guard-generated-docs.sh",
+      "version": "tracked-in-repo",
+      "trust": "FirstParty",
+      "capabilities": ["executes-code"],
+      "always_on_tokens": 0,
+      "purpose": "PreToolUse guard refusing a hand-edit to a generated document at the moment it is attempted. Fails open on anything it cannot parse.",
+      "decision": {"status": "approved", "by": "owner", "date": "2026-09-12", "rationale": "Authored here, executes only this repository's own shell script, and the CI drift check remains the authority regardless of whether it runs."}
+    },
+    {
+      "id": "variant-analysis@trailofbits",
+      "kind": "plugin",
+      "scope": "user",
+      "source": "github:trailofbits/skills",
+      "version": "2.0.2",
+      "trust": "Vendor",
+      "capabilities": ["prompt"],
+      "always_on_tokens": 193,
+      "purpose": "Given one defect, find its variants across the codebase. Automates the lesson of the E00 review history: close the class, not the reported case.",
+      "decision": {"status": "approved", "by": "owner", "date": "2026-09-12", "rationale": "Trail of Bits is a named security vendor with a public track record. Ships one skill, no hooks, no MCP server: prompt content only."}
+    },
+    {
+      "id": "rust-review@trailofbits",
+      "kind": "plugin",
+      "scope": "user",
+      "source": "github:trailofbits/skills",
+      "version": "1.6.0",
+      "trust": "Vendor",
+      "capabilities": ["prompt", "subagent"],
+      "always_on_tokens": 405,
+      "purpose": "Rust security review with a worker/judge pipeline, including a false-positive judge. The highest-value component for this project: review throughput is bounded by rounds, and filtering false positives buys more than another reviewer would.",
+      "decision": {"status": "approved", "by": "owner", "date": "2026-09-12", "rationale": "Vendor trust. Ships three subagents and no hooks or MCP servers, so it can read and reason but cannot install anything or reach the network on its own."}
+    },
+    {
+      "id": "differential-review@trailofbits",
+      "kind": "plugin",
+      "scope": "user",
+      "source": "github:trailofbits/skills",
+      "version": "2.0.0",
+      "trust": "Vendor",
+      "capabilities": ["prompt", "subagent"],
+      "always_on_tokens": 258,
+      "purpose": "Security-focused review of a diff, with an adversarial-modeler subagent. Directly relevant to the Python-to-Rust migration, where every change is a differential change.",
+      "decision": {"status": "approved", "by": "owner", "date": "2026-09-12", "rationale": "Vendor trust; prompt and subagents only."}
+    },
+    {
+      "id": "mutation-testing@trailofbits",
+      "kind": "plugin",
+      "scope": "user",
+      "source": "github:trailofbits/skills",
+      "version": "1.1.0",
+      "trust": "Vendor",
+      "capabilities": ["prompt"],
+      "always_on_tokens": 104,
+      "purpose": "Mutation-testing campaigns. The mechanical answer to the question the verifier asks by hand: would these tests have failed against the pre-fix code? E25-S06 depends on this technique.",
+      "decision": {"status": "approved", "by": "owner", "date": "2026-09-12", "rationale": "Vendor trust; prompt only."}
+    },
+    {
+      "id": "property-based-testing@trailofbits",
+      "kind": "plugin",
+      "scope": "user",
+      "source": "github:trailofbits/skills",
+      "version": "1.2.0",
+      "trust": "Vendor",
+      "capabilities": ["prompt"],
+      "always_on_tokens": 319,
+      "purpose": "Property-based tests. Most of the eleven falsification axes are properties rather than examples: unknown never becomes absent, dry-run has no effect, a protected name resists every spelling.",
+      "decision": {"status": "approved", "by": "owner", "date": "2026-09-12", "rationale": "Vendor trust; prompt only."}
+    },
+    {
+      "id": "static-analysis@trailofbits",
+      "kind": "plugin",
+      "scope": "user",
+      "source": "github:trailofbits/skills",
+      "version": "1.4.3",
+      "trust": "Vendor",
+      "capabilities": ["prompt", "executes-code"],
+      "always_on_tokens": 692,
+      "purpose": "CodeQL, Semgrep and SARIF parsing. Complements the repository's own codeql.yml by making the same analyses runnable locally during review.",
+      "decision": {"status": "approved", "by": "owner", "date": "2026-09-12", "rationale": "Vendor trust. Runs scanner binaries, which is code execution, so it carries the highest capability of the set and the largest always-on cost. Reconsider at the next review if it is not being used."}
+    },
+    {
+      "id": "supply-chain-risk-auditor@trailofbits",
+      "kind": "plugin",
+      "scope": "user",
+      "source": "github:trailofbits/skills",
+      "version": "2.0.2",
+      "trust": "Vendor",
+      "capabilities": ["prompt"],
+      "always_on_tokens": 145,
+      "purpose": "Dependency supply-chain risk. Serves ADR-0009 and docs/security/SUPPLY_CHAIN.md, and the dependency-ring rules of ADR-0019.",
+      "decision": {"status": "approved", "by": "owner", "date": "2026-09-12", "rationale": "Vendor trust; prompt only."}
+    },
+    {
+      "id": "spec-to-code-compliance@trailofbits",
+      "kind": "plugin",
+      "scope": "user",
+      "source": "github:trailofbits/skills",
+      "version": "2.0.0",
+      "trust": "Vendor",
+      "capabilities": ["prompt", "subagent"],
+      "always_on_tokens": 190,
+      "purpose": "Checks code against the documents that specify it. This repository has 260 specifying documents and no mechanical link from a requirement to the code that implements it.",
+      "decision": {"status": "approved", "by": "owner", "date": "2026-09-12", "rationale": "Vendor trust; prompt and one subagent."}
+    },
+    {
+      "id": "rust-analyzer-lsp@claude-plugins-official",
+      "kind": "lsp",
+      "scope": "user",
+      "source": "marketplace:claude-plugins-official",
+      "version": "unpinned",
+      "trust": "FirstParty",
+      "capabilities": ["executes-code"],
+      "always_on_tokens": 0,
+      "purpose": "Language-server intelligence for the Rust workspace.",
+      "decision": {"status": "approved", "by": "owner", "date": "2026-09-12", "rationale": "First-party marketplace. Runs rust-analyzer, which the developer already runs."}
+    }
+  ],
+  "rejected": [
+    {
+      "id": "github/spec-kit",
+      "reason": "Duplicates project/*.json as a second source of truth for planning, without Change Risk Levels or safety gates. A second definition of Done in one repository is the class of defect the E00 review took three rounds to close.",
+      "date": "2026-09-12"
+    },
+    {
+      "id": "bmad-code-org/BMAD-METHOD",
+      "reason": "Named personas passing context through files. The executor/verifier split here is stricter because it is bounded and because a CR4 verdict is not the executor's to write. Personas add theatre, not guarantees.",
+      "date": "2026-09-12"
+    },
+    {
+      "id": "eyaltoledano/claude-task-master",
+      "reason": "Duplicates scripts/project_os.py without the risk model or the gates.",
+      "date": "2026-09-12"
+    },
+    {
+      "id": "obra/superpowers",
+      "reason": "Not rejected as worthless - four of its patterns were harvested into .claude/skills. Rejected as an installation, because it defines Done its own way and this repository already defines Done more strictly and ties it to safety invariants.",
+      "date": "2026-09-12"
+    },
+    {
+      "id": "multica-ai/andrej-karpathy-skills",
+      "reason": "Rule 3 (surgical changes) was harvested into AGENTS.md's Diff discipline. The package is rejected: it is a CLAUDE.md, so it is always resident rather than progressively disclosed, and its rule 2 forbids 'error handling for unrealistic edge cases' - in this product the unrealistic edge cases are the product.",
+      "date": "2026-09-12"
+    }
+  ]
+}

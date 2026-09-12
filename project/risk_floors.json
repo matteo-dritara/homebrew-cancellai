@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "floors": [
+    {
+      "pattern": "rust/crates/cancellai-safety/src/*",
+      "level": "CR4",
+      "reason": "The safety kernel decides what is permitted. Every mutation passes through it (C-07)."
+    },
+    {
+      "pattern": "rust/crates/cancellai-sealedfs/src/*",
+      "level": "CR4",
+      "reason": "The workspace's only exception to forbid(unsafe_code) (ADR-0017), and the seam through which every filesystem mutation is performed."
+    },
+    {
+      "pattern": "rust/crates/cancellai-platform/src/identity*",
+      "level": "CR4",
+      "reason": "Identity decides whether the thing acted on at mutation time is the thing that was planned. A wrong answer here defeats every check upstream of it."
+    },
+    {
+      "pattern": "rust/crates/cancellai-provider-api/src/trust*",
+      "level": "CR4",
+      "reason": "Provider trust is an authority boundary: a manifest must never be able to grant itself a capability (C-05)."
+    },
+    {
+      "pattern": "cancellai.py",
+      "level": "CR3",
+      "reason": "The Python reference still performs real deletion. It is frozen, not inert."
+    },
+    {
+      "pattern": "rust/crates/cancellai-policy/src/*",
+      "level": "CR3",
+      "reason": "Policy resolution decides eligibility. It cannot mutate, but it decides what may be."
+    },
+    {
+      "pattern": "scripts/release.py",
+      "level": "CR3",
+      "reason": "Release authority: what is cut, and on what evidence."
+    },
+    {
+      "pattern": "rust/crates/cancellai-inventory/src/*",
+      "level": "CR2",
+      "reason": "Classification and scan completeness. An incomplete scan reported as complete is how unknown becomes absent (C-02)."
+    },
+    {
+      "pattern": "rust/crates/cancellai-provider-*/src/*",
+      "level": "CR2",
+      "reason": "Adapters produce the capability results planning consumes."
+    }
+  ],
+  "overrides": [],
+  "baseline": [
+    {
+      "story": "E06-S01",
+      "declared": "CR3",
+      "floor": "CR4",
+      "note": "Touched cancellai-safety/src/sealed_plan.rs. Recorded when the floor was introduced (E25-S02); the work is closed and was reviewed independently. Owner decision pending on whether the classification was wrong or the floor is too wide here."
+    },
+    {
+      "story": "E08-S02",
+      "declared": "CR2",
+      "floor": "CR3",
+      "note": "Touched cancellai-policy/src/retention.rs. Recorded at floor introduction; owner decision pending."
+    },
+    {
+      "story": "E08-S03",
+      "declared": "CR2",
+      "floor": "CR3",
+      "note": "Touched cancellai-policy/src/retention.rs. Recorded at floor introduction; owner decision pending."
+    },
+    {
+      "story": "E20-S04",
+      "declared": "CR2",
+      "floor": "CR4",
+      "note": "Touched cancellai-sealedfs/src/lib.rs, the only crate exempt from forbid(unsafe_code). This is the clearest candidate misclassification the floor found and the case M-01 predicted: a CR2 declaration removes the adversarial-test, fault-injection and Safety Verdict obligations from a change to the unsafe seam. Owner decision required."
+    },
+    {
+      "story": "E22-S04",
+      "declared": "CR2",
+      "floor": "CR3",
+      "note": "Touched cancellai-policy/src/retention.rs. Recorded at floor introduction; owner decision pending."
+    }
+  ],
+  "independent_classifications": []
+}

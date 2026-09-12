@@ -1,0 +1,156 @@
+"""Tests for the risk-classification floor (E25-S02).
+
+The floor exists because `change_risk` is the one field every gate is downstream of, so the
+cases below are about the ways a floor can fail to bind: a pattern that is defeated by adding a
+narrower one, an attribution that guesses, a baseline that quietly becomes permanent, and an
+override that asserts rather than argues.
+"""
+
+from __future__ import annotations
+
+import unittest
+
+from scripts import check_risk_classification as risk
+
+FLOORS = [
+    {"pattern": "kernel/src/*", "level": "CR4", "reason": "decides what is permitted"},
+    {"pattern": "policy/src/*", "level": "CR3", "reason": "decides eligibility"},
+    {"pattern": "kernel/src/notes.md", "level": "CR0", "reason": "a narrow low pattern next to a broad high one"},
+]
+
+
+class FloorSelectionTests(unittest.TestCase):
+    def test_a_matching_path_sets_its_floor(self):
+        floor = risk.floor_for(["kernel/src/lib.rs"], FLOORS)
+        self.assertEqual("CR4", floor.level)
+        self.assertEqual("kernel/src/lib.rs", floor.path)
+
+    def test_the_highest_floor_wins_not_the_most_specific(self):
+        # A most-specific rule could be defeated by adding a narrow low-level pattern beside a
+        # broad high-level one, which is the cheapest way to weaken a floor without touching it.
+        floor = risk.floor_for(["kernel/src/notes.md"], FLOORS)
+        self.assertEqual("CR4", floor.level)
+
+    def test_the_highest_floor_across_several_paths_wins(self):
+        floor = risk.floor_for(["docs/x.md", "policy/src/a.rs", "kernel/src/b.rs"], FLOORS)
+        self.assertEqual("CR4", floor.level)
+
+    def test_a_change_touching_no_authority_surface_has_no_floor(self):
+        self.assertIsNone(risk.floor_for(["docs/x.md", "README.md"], FLOORS))
+
+    def test_ranking_is_ordered_and_rejects_nonsense(self):
+        self.assertLess(risk.rank("CR1"), risk.rank("CR4"))
+        self.assertEqual(-1, risk.rank("CR9"))
+
+
+class ConfigValidationTests(unittest.TestCase):
+    def test_the_real_configuration_loads(self):
+        data = risk.load_floors()
+        self.assertTrue(data["floors"])
+
+    def test_every_real_floor_states_a_reason(self):
+        for entry in risk.load_floors()["floors"]:
+            with self.subTest(pattern=entry["pattern"]):
+                self.assertTrue(entry["reason"].strip())
+
+    def test_every_baseline_entry_names_a_real_story(self):
+        stories = risk.load_stories()
+        for entry in risk.load_floors().get("baseline", []):
+            with self.subTest(story=entry["story"]):
+                self.assertIn(entry["story"], stories)
+
+
+EVAL_STORIES = {
+    "E01-S01": {"id": "E01-S01", "change_risk": "CR1"},
+    "E01-S02": {"id": "E01-S02", "change_risk": "CR4"},
+}
+EVAL_ATTRIBUTED = {"E01-S01": {"kernel/src/lib.rs"}, "E01-S02": {"kernel/src/lib.rs"}}
+SUMMARY_STORIES = {"E01-S01": {"change_risk": "CR1"}, "E01-S02": {"change_risk": "CR4"}}
+
+
+class EvaluationTests(unittest.TestCase):
+    def evaluate(self, **extra):
+        data = {"floors": FLOORS, "overrides": [], "baseline": [], "independent_classifications": [], **extra}
+        return risk.evaluate(EVAL_STORIES, EVAL_ATTRIBUTED, data)
+
+    def test_a_declaration_below_the_floor_is_an_error(self):
+        errors, warnings = self.evaluate()
+        self.assertTrue(any("E01-S01" in e for e in errors))
+        self.assertEqual([], warnings)
+
+    def test_a_declaration_at_or_above_the_floor_passes(self):
+        errors, _ = self.evaluate()
+        self.assertFalse(any("E01-S02" in e for e in errors))
+
+    def test_a_baseline_entry_demotes_the_error_to_a_visible_warning(self):
+        # Demoted, never removed: a baseline printed on every run is a decision the owner still
+        # owes, where a silent exemption is a decision nobody will ever make.
+        errors, warnings = self.evaluate(baseline=[{"story": "E01-S01", "note": "recorded at introduction"}])
+        self.assertEqual([], errors)
+        self.assertTrue(any("E01-S01" in w and "baseline" in w for w in warnings))
+
+    def test_an_override_with_a_reason_is_accepted_and_still_reported(self):
+        errors, warnings = self.evaluate(overrides=[{"story": "E01-S01", "reason": "the file is a doc comment only"}])
+        self.assertEqual([], errors)
+        self.assertTrue(any("override" in w for w in warnings))
+
+    def test_an_override_with_no_reason_is_refused(self):
+        errors, _ = self.evaluate(overrides=[{"story": "E01-S01", "reason": ""}])
+        self.assertTrue(any("records no reason" in e for e in errors))
+
+    def test_an_independent_classification_must_name_its_classifier(self):
+        errors, _ = self.evaluate(independent_classifications=[{"story": "E01-S02", "level": "CR4", "classifier": ""}])
+        self.assertTrue(any("records no classifier" in e for e in errors))
+
+    def test_an_independent_classification_of_an_unknown_story_is_refused(self):
+        errors, _ = self.evaluate(independent_classifications=[{"story": "E99-S99", "level": "CR4", "classifier": "codex"}])
+        self.assertTrue(any("unknown story" in e for e in errors))
+
+
+class DisagreementSummaryTests(unittest.TestCase):
+    def test_no_classifications_says_so_rather_than_reporting_agreement(self):
+        # Zero recorded classifications and zero disagreements are not the same fact, and a
+        # summary that conflated them would read as "the second opinion always agrees".
+        summary = risk.disagreement_summary(SUMMARY_STORIES, {"independent_classifications": []})
+        self.assertIn("recorded: 0", summary)
+        self.assertIn("No story has been classified twice", summary)
+
+    def test_a_disagreement_is_named_with_both_levels(self):
+        data = {"independent_classifications": [{"story": "E01-S01", "level": "CR4", "classifier": "codex"}]}
+        summary = risk.disagreement_summary(SUMMARY_STORIES, data)
+        self.assertIn("declared CR1, independently classified CR4", summary)
+
+    def test_a_zero_disagreement_rate_over_many_stories_is_itself_flagged(self):
+        stories = {f"E01-S{n:02d}": {"change_risk": "CR2"} for n in range(1, 13)}
+        data = {"independent_classifications": [{"story": sid, "level": "CR2", "classifier": "codex"} for sid in stories]}
+        summary = risk.disagreement_summary(stories, data)
+        self.assertIn("is not independent", summary)
+
+
+class AttributionTests(unittest.TestCase):
+    def test_attribution_reports_what_it_could_not_attribute(self):
+        attributed, ambiguous = risk.attributable_paths()
+        # This repository batches stories into commits routinely; a checker that hid that would
+        # report a clean run over a third of the backlog as if it covered all of it.
+        self.assertGreater(ambiguous, 0)
+        self.assertGreater(len(attributed), 0)
+
+    def test_every_attributed_story_id_has_the_expected_shape(self):
+        for story_id in risk.attributable_paths()[0]:
+            with self.subTest(story=story_id):
+                self.assertRegex(story_id, r"^E\d{2}-S\d{2}$")
+
+
+class CommandTests(unittest.TestCase):
+    def test_check_passes_on_the_committed_state(self):
+        self.assertEqual(0, risk.main(["check"]))
+
+    def test_floor_reports_a_kernel_path(self):
+        self.assertEqual(0, risk.main(["floor", "rust/crates/cancellai-safety/src/lib.rs"]))
+
+    def test_floor_reports_no_floor_for_documentation(self):
+        self.assertEqual(0, risk.main(["floor", "docs/INDEX.md"]))
+
+
+if __name__ == "__main__":
+    unittest.main()

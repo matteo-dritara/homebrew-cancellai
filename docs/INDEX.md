@@ -40,6 +40,7 @@ cancellAI treats documentation as part of the executable product system. This pa
 - [development/VERIFICATION_STRATEGY.md](development/VERIFICATION_STRATEGY.md) - test pyramid, adversarial and differential verification.
 - [development/MIGRATION_PYTHON_RUST.md](development/MIGRATION_PYTHON_RUST.md) - spec-first migration sequence and cutover gates.
 - [development/RELEASE_GATES.md](development/RELEASE_GATES.md) - Definition of Done/Safe and release gate matrix.
+- [development/AGENT_TOOLCHAIN.md](development/AGENT_TOOLCHAIN.md) - skills, hooks, plugins and MCP servers governed as a dependency: manifest, trust bar set by capability, expiring decisions, context budget.
 - [development/REPOSITORY_GOVERNANCE.md](development/REPOSITORY_GOVERNANCE.md) - GitHub rulesets, Actions permissions, tag/release controls, and settings drift policy.
 - [RELEASING.md](RELEASING.md) - the release runbook and versioning scheme.
 - [CLI.md](CLI.md) - generated command reference for the current Python CLI.
