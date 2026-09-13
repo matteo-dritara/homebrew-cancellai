@@ -609,4 +609,56 @@ mod tests {
         store.apply(&other_bundle, &policy, 5_002).unwrap();
         assert_eq!(store.current().unwrap().publisher_id, "other");
     }
+    #[test]
+    fn verifier_expiry_matrix_and_refused_rollback_preserve_all_current_fields() {
+        let policy = policy_for(1, "acme", promoted_tier());
+        for expires in [None, Some(0), Some(1), Some(1500), Some(u64::MAX)] {
+            for now in [0, 1, 1499, 1500, 1501, u64::MAX] {
+                let bundle = signed_bundle(1, "acme", 1, 0, expires, "candidate");
+                let expected_expired = match expires {
+                    None => false,
+                    Some(exp) => now >= exp,
+                };
+                let result = verify_bundle(&bundle, &policy, now);
+                assert_eq!(result.is_err(), expected_expired, "{expires:?} at {now}");
+                if expected_expired {
+                    assert_eq!(result.unwrap_err(), KnowledgeBundleError::Expired);
+                }
+            }
+        }
+        let mut empty = KnowledgeStore::empty();
+        assert_eq!(
+            empty.rollback(0).unwrap_err(),
+            KnowledgeBundleError::NoPriorBundle
+        );
+        assert_eq!(empty.current(), None);
+        let first = signed_bundle(1, "acme", 1, 0, Some(1500), "first");
+        empty.apply(&first, &policy, 0).unwrap();
+        let before = empty.current().cloned();
+        for now in [0, 1500, u64::MAX] {
+            assert_eq!(
+                empty.rollback(now).unwrap_err(),
+                KnowledgeBundleError::NoPriorBundle
+            );
+            assert_eq!(empty.current(), before.as_ref());
+        }
+        let second = signed_bundle(1, "acme", 2, 0, None, "second");
+        empty.apply(&second, &policy, 0).unwrap();
+        let before = empty.current().cloned();
+        for now in [1500, 1501, u64::MAX] {
+            assert_eq!(
+                empty.rollback(now).unwrap_err(),
+                KnowledgeBundleError::Expired
+            );
+            assert_eq!(empty.current(), before.as_ref());
+        }
+        empty.rollback(1499).unwrap();
+        assert_eq!(empty.current().unwrap().payload, "first");
+        let before = empty.current().cloned();
+        assert_eq!(
+            empty.rollback(1499).unwrap_err(),
+            KnowledgeBundleError::NoPriorBundle
+        );
+        assert_eq!(empty.current(), before.as_ref());
+    }
 }

@@ -31,6 +31,15 @@ IMPLEMENTED - awaiting independent verification
 | Authority | An expired bundle verifying because the rewrite weakened the comparison | Both directions of the boundary are pinned at both sites: reject at `now == expires_at`, accept at `now == expires_at - 1`. | PASS |
 | Authority | A bundle from an untrusted publisher gaining authority through the staleness path | Unchanged by this edit - the staleness check runs *after* `verify_bundle`, which is where signature and publisher trust are decided. The rewrite does not move it. | PASS |
 
+## Independent regression addition (2026-09-13)
+
+Codex added `verifier_expiry_matrix_and_refused_rollback_preserve_all_current_fields`: 30
+signed verification cases spanning absent expiry, zero, one, the boundary and `u64::MAX`,
+plus empty-store, single-current, expired-prior and repeated-rollback refusal. It compares the
+complete `current()` value after each refusal and proves an expired rollback refusal retains
+the prior slot by retrying with an earlier supplied clock. This is a test-only addition; the
+three production predicates are unchanged.
+
 ## Verification Commands
 
 ```text
