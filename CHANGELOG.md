@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.1] - 2026-09-13
+
 ### Added
 
 - **The engineering system is now measured and falsifiable, not only documented** (E25, E26; CR0-CR2,
@@ -87,6 +89,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   run it fetch full history. The same defect pointing the other way is a silent pass, which is the
   version nobody would have found - and this is the second instance of the class, after the one
   that broke the v1.10.0 tag.
+- A release packet's embedded links resolve from where the packet lives (E22-S09, CR3). A packet
+  embeds the changelog section it ships, and a changelog link is written from the repository root
+  while the packet sits two directories down - so `prepare` produced one pointing at `docs/adrs/...`
+  from inside `project/evidence/`, and the documentation gate refused it. v1.13.0's packet carries
+  the right form because someone rewrote it by hand, which is precisely the failure `release.py`'s
+  own docstring warns about.
 - The documents state the review rule that is actually in force (E25-S13, CR0). ADR-0025 replaced
   the two-round ceiling with a yield-based stopping rule, and three surfaces still said "at most
   twice": `AGENT_PROTOCOL.md` in two places, the `story-executor` skill, and PD-022 in the decision
