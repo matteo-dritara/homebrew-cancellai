@@ -1735,6 +1735,30 @@ Scale provider coverage through manifests, native adapters, signed knowledge bun
 - `.github/CONTRIBUTING.md`
 - `docs/development/ENGINEERING_SYSTEM.md`
 
+### E16-S07 - The knowledge-bundle verifier compiles on the promised toolchain
+
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E16-S02, E09-S05 | **Safety obligations:** SI-029
+
+**Outcome.** E16-S02 wrote three let-chains in the bundle verifier. Let-chains are stable from Rust 1.88 and this workspace promises 1.85.0 (ADR-0015), so the MSRV leg of rust.yml has been unable to compile cancellai-safety since 2026-09-09 - through v1.12.0 and v1.13.0, both of which failed to publish for other reasons that masked this one. Fixing the dependency side of the MSRV break (E09-S05) removed the error that stopped cargo before it compiled anything, and this one appeared underneath it. The conditions are rewritten with `is_some_and`, which is stable well below the promised version, leaving the promise intact rather than renegotiating it. Raising the MSRV is the alternative and is an owner decision about a published compatibility promise, not an executor's.
+
+**Acceptance criteria**
+
+- The rewritten conditions shall accept and reject exactly what the let-chains did.
+- If a bundle's expiry time has been reached exactly, then verification shall reject it, and rollback shall refuse to reinstate it.
+- If a bundle carries no expiry, then it shall not be treated as expired.
+- A bundle from a publisher other than the current one shall not be refused as stale on sequence alone.
+- The workspace shall compile on the promised minimum toolchain on all three tier-1 platforms.
+
+**Verification**
+
+- The boundary is pinned in both places the comparison appears: verification already had it, rollback did not and now does.
+- The different-publisher case is covered by an existing test that applies a lower sequence from a second publisher over a current bundle and expects it to succeed.
+- The MSRV legs of rust.yml are the only proof available here that 1.85 compiles: no 1.85 toolchain is installed on the executor's machine, and installing one is not an executor decision.
+
+**Documentation impact**
+
+- `CHANGELOG.md`
+
 ## E17 - Verifiable Supply Chain and Distribution
 
 **Phase:** `P5` | **Status:** `planned` | **Epic dependencies:** E06

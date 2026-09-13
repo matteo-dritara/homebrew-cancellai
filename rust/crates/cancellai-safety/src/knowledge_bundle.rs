@@ -250,8 +250,13 @@ pub fn verify_bundle(
         .verify(&bundle.signing_bytes(), &signature)
         .map_err(|_| KnowledgeBundleError::InvalidSignature)?;
 
-    if let Some(expires_at) = bundle.expires_at
-        && now_unix >= expires_at
+    // `is_some_and` rather than a let-chain: let-chains are stable from Rust 1.88 and this
+    // workspace promises 1.85.0 (ADR-0015). The condition is unchanged - absent `expires_at`
+    // means no expiry, and the comparison is still `>=`, so expiring exactly at the boundary
+    // still rejects.
+    if bundle
+        .expires_at
+        .is_some_and(|expires_at| now_unix >= expires_at)
     {
         return Err(KnowledgeBundleError::Expired);
     }
@@ -293,10 +298,11 @@ impl KnowledgeStore {
         now_unix: u64,
     ) -> Result<&VerifiedKnowledgeBundle, KnowledgeBundleError> {
         let verified = verify_bundle(bundle, policy, now_unix)?;
-        if let Some(current) = &self.current
-            && current.publisher_id == verified.publisher_id
-            && verified.sequence <= current.sequence
-        {
+        // Same rewrite, same semantics: the publisher check still guards the sequence check, so
+        // a bundle from a *different* publisher is never stale on sequence alone.
+        if self.current.as_ref().is_some_and(|current| {
+            current.publisher_id == verified.publisher_id && verified.sequence <= current.sequence
+        }) {
             return Err(KnowledgeBundleError::Stale);
         }
         self.previous = self.current.take();
@@ -316,8 +322,9 @@ impl KnowledgeStore {
             .previous
             .as_ref()
             .ok_or(KnowledgeBundleError::NoPriorBundle)?;
-        if let Some(expires_at) = candidate.expires_at
-            && now_unix >= expires_at
+        if candidate
+            .expires_at
+            .is_some_and(|expires_at| now_unix >= expires_at)
         {
             return Err(KnowledgeBundleError::Expired);
         }
@@ -543,6 +550,38 @@ mod tests {
         store.apply(&first, &policy, 5_001).unwrap();
         let error = store.apply(&replay, &policy, 5_002).unwrap_err();
         assert_eq!(error, KnowledgeBundleError::Stale);
+    }
+
+    #[test]
+    fn rollback_at_exactly_the_expiry_boundary_refuses() {
+        // The boundary the expiry condition is written on. `verify_bundle` already pins it
+        // (`expiry_a_bundle_past_its_expires_at_is_rejected` uses now == expires_at); rollback
+        // carries the same comparison in a second place, and it was rewritten at the same time
+        // as the first, so it is pinned in its own right rather than by resemblance.
+        let policy = policy_for(1, "acme", promoted_tier());
+        let mut store = KnowledgeStore::empty();
+        let first = signed_bundle(1, "acme", 1, 1_000, Some(1_500), "first");
+        let second = signed_bundle(1, "acme", 2, 1_200, None, "second");
+        store.apply(&first, &policy, 1_001).unwrap();
+        store.apply(&second, &policy, 1_201).unwrap();
+        assert_eq!(
+            store.rollback(1_500).unwrap_err(),
+            KnowledgeBundleError::Expired
+        );
+        // A refused rollback leaves the store as it was (SI-029).
+        assert_eq!(store.current().unwrap().payload, "second");
+    }
+
+    #[test]
+    fn rollback_just_before_the_expiry_boundary_succeeds() {
+        let policy = policy_for(1, "acme", promoted_tier());
+        let mut store = KnowledgeStore::empty();
+        let first = signed_bundle(1, "acme", 1, 1_000, Some(1_500), "first");
+        let second = signed_bundle(1, "acme", 2, 1_200, None, "second");
+        store.apply(&first, &policy, 1_001).unwrap();
+        store.apply(&second, &policy, 1_201).unwrap();
+        store.rollback(1_499).unwrap();
+        assert_eq!(store.current().unwrap().payload, "first");
     }
 
     #[test]

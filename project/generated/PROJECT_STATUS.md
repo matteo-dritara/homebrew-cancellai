@@ -4,7 +4,7 @@
 
 Current phase: **P1**
 
-Epics: **27** | Stories: **134**
+Epics: **27** | Stories: **135**
 
 ## Story status
 
@@ -12,6 +12,7 @@ Epics: **27** | Stories: **134**
 - `cancelled`: 1
 - `done`: 105
 - `planned`: 26
+- `ready_for_review`: 1
 
 ## Change risk distribution
 
@@ -19,7 +20,7 @@ Epics: **27** | Stories: **134**
 - `CR1`: 31
 - `CR2`: 43
 - `CR3`: 22
-- `CR4`: 27
+- `CR4`: 28
 
 ## Explicitly ready work
 
@@ -27,4 +28,4 @@ Epics: **27** | Stories: **134**
 
 ## Awaiting independent review
 
-- none
+- **E16-S07** - The knowledge-bundle verifier compiles on the promised toolchain (CR4)

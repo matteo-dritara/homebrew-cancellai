@@ -103,6 +103,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rather than on `steps:`, so all four steps collapsed into one block and the missing declaration
   was masked by a sibling that had one.
 
+- The knowledge-bundle verifier compiles on the promised toolchain again (E16-S07, CR4). Three
+  `let`-chains written in E16-S02 are stable only from Rust 1.88, while the workspace promises
+  1.85.0 (ADR-0015), so `cancellai-safety` has not compiled on the MSRV leg since 2026-09-09 -
+  through two releases that failed to publish for other reasons that masked this one. Fixing the
+  dependency side of the break removed the error that stopped cargo before it compiled anything,
+  and this appeared underneath it. The conditions are rewritten with `is_some_and`, which the
+  promised version supports, and the expiry boundary is now pinned in both places it appears.
+  **This story stays at `ready_for_review`:** it is a CR4 change to the safety kernel, and the
+  executor's own review cannot close one.
+
 ### Changed
 
 - Review stops on **measured yield** rather than a fixed round count, and an epic that changes
