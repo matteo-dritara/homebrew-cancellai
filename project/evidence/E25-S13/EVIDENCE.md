@@ -14,7 +14,8 @@ PASS
 
 | AC | Evidence | Result |
 | --- | --- | --- |
-| AC1 - every statement of the rule states the rule in force | `docs/development/AGENT_PROTOCOL.md` in two places (the standing assignment and the verifier procedure) and `.claude/skills/story-executor/SKILL.md`. A grep for "at most twice" and "two rounds" now matches only the audit document, the two ADRs, the generated backlog text quoting a story outcome, and PD-022's own superseded record - all of which are history and should say what the rule was. | PASS |
+| AC1 - every statement of the rule states the rule in force | **Incomplete when first claimed, and corrected.** The original verification was a grep for "at most twice" and "two rounds", which missed the numeral form: `project/templates/VERIFIER_PROMPT.md` said "at most 2" in two places and `.claude/skills/epic-verifier/SKILL.md` restated the rule a fourth time. Both were found a few hours later, by reading the template while preparing a review rather than by any check. Both now point at `AGENT_PROTOCOL.md` instead of carrying a copy. | PASS (after correction) |
+| AC1 - the surfaces found by the original grep | `docs/development/AGENT_PROTOCOL.md` in two places (the standing assignment and the verifier procedure) and `.claude/skills/story-executor/SKILL.md`. A grep for "at most twice" and "two rounds" now matches only the audit document, the two ADRs, the generated backlog text quoting a story outcome, and PD-022's own superseded record - all of which are history and should say what the rule was. | PASS |
 | AC2 - supersession rather than an edit | PD-022 moves to `superseded` with its decision text rewritten to the convention this register uses ("Superseded by PD-024. ..."), and PD-024 carries the rule in force with the measurement that justifies it. `scripts/check_process.py check` validates the lifecycle. | PASS |
 | AC3 - a skill links rather than restates | The skill now sends the reader to `docs/development/AGENT_PROTOCOL.md` instead of carrying its own copy of the count. `scripts/check_agent_skills.py check` confirms the path resolves. | PASS |
 
@@ -42,8 +43,10 @@ python3 scripts/check_agent_skills.py check  -> 8 skills, every cited path resol
 
 ## Residual risks
 
-- **Nothing enforces this.** No gate compares a rule's statements across documents; this was found
-  by grep while looking for something else. A checker that could would need to know what a rule
+- **Nothing enforces this, and the grep that stood in for enforcement was itself incomplete.** It
+  matched "at most twice" and "two rounds" and missed "at most 2" - two more surfaces, one of them
+  a second skill restating the rule. No gate compares a rule's statements across documents; this
+  was found by grep while looking for something else, and then the grep was wrong. A checker that could would need to know what a rule
   *is*, which is not a cheap thing to build, and the cheaper mitigation is the pack rule: do not
   restate.
 - **PD-022's text survives in generated documents** (`docs/BACKLOG.md` quotes a story outcome that

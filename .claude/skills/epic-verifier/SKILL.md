@@ -9,9 +9,10 @@ allowed-tools: Bash, Read, Glob, Grep, Write, Edit
 
 # Epic verifier
 
-Review runs at **epic** scope, once every story in the epic is `ready_for_review`, and **at most
-twice** (ADR-0014 / PD-022, enforced by `scripts/check_process.py`). Findings surviving round 2
-become new backlog items, never a third round.
+Review runs at **epic** scope, once every story in the epic is `ready_for_review`. How many rounds
+it takes is decided by what the rounds find, not by a constant - see
+`docs/development/AGENT_PROTOCOL.md`, which owns the rule. `scripts/check_process.py` enforces the
+cost ceiling. Findings surviving the last round become new backlog items.
 
 This skill runs forked: it does not inherit the executor's conversation. That is the point.
 `docs/development/AGENT_PROTOCOL.md` requires the verifier not be primed by executor reasoning.
