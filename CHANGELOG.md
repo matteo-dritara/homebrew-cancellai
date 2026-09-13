@@ -94,6 +94,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is that a skill points at the contract and never restates it, and the single rule it restated is
   the one that drifted.
 
+- The release workflow declares the shell for the step that broke v1.12.0 (E22-S08, CR1). That
+  release packaged macOS and Linux, then its CycloneDX SBOM step - the one step in the job without
+  `shell: bash` - ran under PowerShell on the Windows leg, where the backslashes continuing its
+  command line are not continuations, and the release never published. A new workflow gate requires
+  every multi-line `run:` in a job that can land on Windows to say which shell reads it. The gate's
+  own first version reported clean: the step splitter was splitting on the matrix `include:` list
+  rather than on `steps:`, so all four steps collapsed into one block and the missing declaration
+  was masked by a sibling that had one.
+
 ### Changed
 
 - Review stops on **measured yield** rather than a fixed round count, and an epic that changes

@@ -452,6 +452,79 @@ def required_check_names() -> list[str]:
     return REQUIRED_CHECK_RE.findall(block.group(1))
 
 
+BLOCK_RUN_RE = re.compile(r"^\s*-?\s*run:\s*[|>][-+]?\s*$", re.MULTILINE)
+SHELL_RE = re.compile(r"^\s*shell:\s*\S+", re.MULTILINE)
+RUNS_ON_RE = re.compile(r"^\s*runs-on:\s*(.+?)\s*$", re.MULTILINE)
+MATRIX_OS_RE = re.compile(r"^\s*-?\s*os:\s*(.+?)\s*$", re.MULTILINE)
+
+
+def steps_section(job_body_text: str) -> str:
+    """The job body from its `steps:` key onward.
+
+    `job_steps` splits at the first `- ` marker it finds, which in a job with a matrix is the
+    matrix's own `include:` list, not the steps - so every real step ended up inside one block
+    and a step missing `shell:` was hidden behind a sibling that had one. Scoping to `steps:`
+    first is the fix, and it is why this function exists rather than being inlined.
+    """
+    match = re.search(r"^\s*steps:\s*$", job_body_text, re.MULTILINE)
+    return job_body_text[match.end() :] if match else job_body_text
+
+
+def runs_on_windows(job_body_text: str) -> bool:
+    """Whether any leg of this job lands on a Windows runner.
+
+    Read from `runs-on` and, when that defers to the matrix, from the matrix's own `os` values -
+    not from the word appearing anywhere in the body. Two jobs here mention Windows in a comment
+    or in a target triple while running on macOS and Linux.
+    """
+    declared = [match.group(1) for match in RUNS_ON_RE.finditer(job_body_text)]
+    if any("windows" in value for value in declared):
+        return True
+    if not any("matrix." in value for value in declared):
+        return False
+    return any("windows" in match.group(1) for match in MATRIX_OS_RE.finditer(job_body_text))
+
+
+def windows_shell_errors() -> list[str]:
+    """A multi-line `run:` in a job that can land on Windows must name its shell.
+
+    GitHub's default shell there is PowerShell, where a trailing backslash is not a line
+    continuation and `--describe` parses as a unary minus. The v1.12.0 release died exactly
+    that way: `build-artifacts` packaged every other platform, then the CycloneDX SBOM step -
+    the one step in that job with no `shell: bash` - failed with "Missing expression after
+    unary operator '--'", and the release never published. Nothing in the repository could have
+    caught it before a tag was pushed, because that job's Windows leg only runs on a tag.
+
+    Conservative by design: it asks only that a step whose body spans lines says which shell
+    reads it, in jobs that can run on Windows. A step that genuinely wants PowerShell says so
+    and passes.
+    """
+    errors: list[str] = []
+    for path in workflow_files():
+        errors.extend(windows_shell_errors_in(display_path(path), path.read_text(encoding="utf-8")))
+    return errors
+
+
+def windows_shell_errors_in(rel: Path | str, text: str) -> list[str]:
+    """The same rule applied to one workflow's source, so it can be tested on a synthetic one."""
+    errors: list[str] = []
+    for job_id, body in _job_blocks(text):
+        if not runs_on_windows(body):
+            continue
+        for step in job_steps(steps_section(body)):
+            if BLOCK_RUN_RE.search(step) and not SHELL_RE.search(step):
+                name = next(
+                    (line.split("name:", 1)[1].strip() for line in step.splitlines() if line.strip().lstrip("- ").startswith("name:")),
+                    "<unnamed step>",
+                )
+                errors.append(
+                    f"{rel}: job {job_id!r} can run on Windows and step {name!r} has a multi-line "
+                    "`run:` with no `shell:`. The default there is PowerShell, where a trailing "
+                    "backslash is not a line continuation - this is what broke the v1.12.0 release"
+                )
+    return errors
+
+
 def validate_workflows() -> None:
     errors: list[str] = []
     for path in workflow_files():
@@ -475,6 +548,7 @@ def validate_workflows() -> None:
                 line = text.count("\n", 0, match.start()) + 1
                 errors.append(f"{rel}:{line}: action must be pinned to a full 40-hex commit SHA: {spec}")
     errors.extend(docker_only_action_errors())
+    errors.extend(windows_shell_errors())
     errors.extend(release_gate_drift_errors())
     errors.extend(release_history_gate_errors())
     required = required_check_names()

@@ -2441,6 +2441,28 @@ Close the gaps between what the engineering system claims to enforce and what it
 - `CHANGELOG.md`
 - `docs/development/WORK_ITEM_MODEL.md`
 
+### E22-S08 - A step that can land on Windows says which shell reads it
+
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** E22-S01 | **Safety obligations:** none
+
+**Outcome.** The v1.12.0 release failed and the diagnosis was never made, only the tag left behind. The cause: build-artifacts packaged macOS and Linux, then its CycloneDX SBOM step - the one step in that job without shell: bash - ran under PowerShell on the Windows leg, where the backslashes continuing its command line are not continuations. PowerShell reported 'Missing expression after unary operator' and the release never published. Nothing in the repository could have caught it before a tag was pushed, because that leg only runs on a tag. The step declares its shell, and a gate now requires every multi-line run: in a job that can land on Windows to say which shell reads it.
+
+**Acceptance criteria**
+
+- Every multi-line run: step in a job that can run on Windows shall declare its shell.
+- If a step that can land on Windows spans lines without declaring a shell, then the workflow gate shall refuse and name the step, rather than leaving it to be discovered by a failed release.
+- A job that merely names a Windows target or discusses a past Windows failure shall not be treated as running on Windows.
+
+**Verification**
+
+- The gate flags the real defect on the committed workflow before it is fixed, and passes after.
+- A synthetic matrix job exercises both directions: a step with a declared shell is accepted, one without is refused.
+- Steps are split from the steps: key, not from a matrix include list - the bug that hid this one.
+
+**Documentation impact**
+
+- `.github/workflows/release.yml`
+
 ## E23 - Release gate history availability
 
 **Phase:** `P1` | **Status:** `done` | **Epic dependencies:** E22

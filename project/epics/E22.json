@@ -187,6 +187,30 @@
         "CHANGELOG.md",
         "docs/development/WORK_ITEM_MODEL.md"
       ]
+    },
+    {
+      "id": "E22-S08",
+      "title": "A step that can land on Windows says which shell reads it",
+      "status": "done",
+      "outcome": "The v1.12.0 release failed and the diagnosis was never made, only the tag left behind. The cause: build-artifacts packaged macOS and Linux, then its CycloneDX SBOM step - the one step in that job without shell: bash - ran under PowerShell on the Windows leg, where the backslashes continuing its command line are not continuations. PowerShell reported 'Missing expression after unary operator' and the release never published. Nothing in the repository could have caught it before a tag was pushed, because that leg only runs on a tag. The step declares its shell, and a gate now requires every multi-line run: in a job that can land on Windows to say which shell reads it.",
+      "change_risk": "CR1",
+      "dependencies": [
+        "E22-S01"
+      ],
+      "acceptance_criteria": [
+        "Every multi-line run: step in a job that can run on Windows shall declare its shell.",
+        "If a step that can land on Windows spans lines without declaring a shell, then the workflow gate shall refuse and name the step, rather than leaving it to be discovered by a failed release.",
+        "A job that merely names a Windows target or discusses a past Windows failure shall not be treated as running on Windows."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "The gate flags the real defect on the committed workflow before it is fixed, and passes after.",
+        "A synthetic matrix job exercises both directions: a step with a declared shell is accepted, one without is refused.",
+        "Steps are split from the steps: key, not from a matrix include list - the bug that hid this one."
+      ],
+      "documentation_impact": [
+        ".github/workflows/release.yml"
+      ]
     }
   ]
 }

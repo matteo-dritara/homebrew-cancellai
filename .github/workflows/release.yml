@@ -194,8 +194,13 @@ jobs:
       # E17-S03: a CycloneDX SBOM for exactly what this leg compiled - built with --target so
       # target-conditional dependencies (e.g. windows-sys, Windows-only) are reflected
       # accurately rather than approximated from the host toolchain alone.
+      # `shell: bash` is load-bearing on the Windows leg, not a style choice: the default shell
+      # there is PowerShell, where the trailing backslashes below are not line continuations and
+      # `--describe` parses as a unary minus. This step is where the v1.12.0 release died, after
+      # every other platform had already packaged successfully (run 34545116539).
       - name: generate the CycloneDX SBOM for this target
         working-directory: rust
+        shell: bash
         run: |
           cargo install cargo-cyclonedx@0.5.9 --locked
           cargo cyclonedx --manifest-path crates/cancellai-cli/Cargo.toml \

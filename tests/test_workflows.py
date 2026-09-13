@@ -396,5 +396,72 @@ class ReleaseHistoryMultiCheckoutTests(unittest.TestCase):
         self.assertTrue(errors)
 
 
+class WindowsShellTests(unittest.TestCase):
+    """The v1.12.0 release died in a step whose shell nobody declared.
+
+    `build-artifacts` packaged macOS and Linux, then the CycloneDX SBOM step ran under
+    PowerShell - the default on Windows - where the backslashes continuing its command line are
+    not continuations. Nothing could catch it before a tag was pushed, because that leg only runs
+    on a tag.
+    """
+
+    MATRIX_JOB = """jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+          - os: windows-latest
+    steps:
+      - uses: actions/checkout@0000000000000000000000000000000000000000
+      - name: packaged with an explicit shell
+        shell: bash
+        run: |
+          echo one \\
+            two
+      - name: the one that broke the release
+        working-directory: rust
+        run: |
+          cargo cyclonedx --manifest-path crates/cancellai-cli/Cargo.toml \\
+            --describe binaries
+"""
+
+    def test_a_multiline_run_with_no_shell_on_a_windows_leg_is_an_error(self):
+        errors = check_workflows.windows_shell_errors_in("x.yml", self.MATRIX_JOB)
+        self.assertEqual(1, len(errors), errors)
+        self.assertIn("the one that broke the release", errors[0])
+
+    def test_a_step_that_declares_its_shell_is_accepted(self):
+        errors = check_workflows.windows_shell_errors_in("x.yml", self.MATRIX_JOB)
+        self.assertFalse(any("explicit shell" in error for error in errors))
+
+    def test_a_job_that_only_mentions_windows_is_not_a_windows_job(self):
+        # Two real jobs here name a Windows target triple or discuss a past Windows failure while
+        # running on macOS or Linux. Matching the word anywhere in the body flagged both.
+        body = """    runs-on: ubuntu-latest
+    steps:
+      - name: build for x86_64-pc-windows-msvc
+        run: |
+          echo one \\
+            two
+"""
+        self.assertFalse(check_workflows.runs_on_windows(body))
+
+    def test_a_matrix_leg_on_windows_is_a_windows_job(self):
+        self.assertTrue(check_workflows.runs_on_windows(self.MATRIX_JOB))
+        self.assertTrue(check_workflows.runs_on_windows("    runs-on: windows-latest\n"))
+
+    def test_steps_are_split_from_the_steps_key_not_the_matrix_list(self):
+        # The defect that hid the real one: `job_steps` splits at the first `- ` marker, which in
+        # a matrix job is the include list, so every step landed in one block and a missing
+        # `shell:` was masked by a sibling that had one.
+        body = self.MATRIX_JOB.split("  build:\n", 1)[1]
+        self.assertEqual(3, len(check_workflows.job_steps(check_workflows.steps_section(body))))
+
+    def test_the_committed_workflows_pass(self):
+        self.assertEqual([], check_workflows.windows_shell_errors())
+
+
 if __name__ == "__main__":
     unittest.main()
