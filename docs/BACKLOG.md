@@ -1108,6 +1108,30 @@ Deliver the first rich exploratory interface without duplicating engine logic.
 
 - `docs/security/SAFETY_INVARIANTS.md`
 
+### E09-S05 - The MSRV promise survives a dependency update
+
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** E09-S01 | **Safety obligations:** none
+
+**Outcome.** Adding ratatui in E09-S01 pulled in instability and darling, whose newest releases require rustc 1.88, and the workspace promises 1.85.0 (ADR-0015). The MSRV leg of rust.yml has failed on all three platforms on every push since, while every stable leg stayed green - so the workflow was red on main across two release attempts and nobody read it. The cause is that resolver 2 does not look at rust-version at all: a routine resolution is free to pick a dependency the declared toolchain cannot compile. Resolver 3, available since Cargo 1.84 and therefore available to a workspace requiring 1.85, will not.
+
+**Acceptance criteria**
+
+- The workspace shall resolve dependencies with the MSRV-aware resolver, so that a version above the declared rust-version is not selected.
+- No package in the lock file shall declare a rust-version above the workspace's own.
+- If a dependency has no version compatible with the declared MSRV, then the resolution shall fail visibly at update time rather than producing a lock file that only the MSRV job rejects.
+- The full Rust quality set shall pass unchanged: fmt, clippy with -D warnings, check, test and deny.
+
+**Verification**
+
+- cargo metadata reports no package whose rust_version exceeds 1.85.0.
+- cargo update reports the downgrades and names the constraint it applied.
+- cargo deny check accepts the new transitive dependency's license.
+
+**Documentation impact**
+
+- `CHANGELOG.md`
+- `rust/Cargo.toml`
+
 ## E10 - Storage Accounting and Performance
 
 **Phase:** `P2` | **Status:** `done` | **Epic dependencies:** E08

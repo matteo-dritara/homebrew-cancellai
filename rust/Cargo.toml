@@ -1,5 +1,10 @@
 [workspace]
-resolver = "2"
+# Resolver 3 (Cargo 1.84+, and this workspace requires 1.85) is MSRV-aware: it will not pick a
+# dependency version whose own `rust-version` is above the one declared below. Resolver 2 does not
+# look at `rust-version` at all, which is how a routine `cargo update` put `instability 0.3.13` and
+# `darling 0.24.1` - both requiring rustc 1.88 - into the lock file and broke the MSRV job on all
+# three platforms while every stable job stayed green (E09-S05).
+resolver = "3"
 members = ["crates/*"]
 
 [workspace.package]

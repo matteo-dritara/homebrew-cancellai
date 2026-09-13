@@ -61,6 +61,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   CI found it. The report is now byte-identical on both, SI-008 is seeded in `Scan.record`, and a
   stale report prints the rows that differ instead of only saying that something moved.
 
+- The MSRV promise holds again across a dependency update (E09-S05, CR1). Adding `ratatui` pulled in
+  `instability` and `darling` releases that require rustc 1.88 while this workspace promises 1.85.0
+  (ADR-0015), and the MSRV leg of `rust.yml` has failed on all three platforms on every push since -
+  red on `main` across two release attempts, while every stable leg stayed green. The workspace now
+  resolves with Cargo's MSRV-aware resolver (`resolver = "3"`), which will not select a version above
+  the declared `rust-version`; the affected crates are locked to versions that support it. The Rust
+  quality set passes unchanged.
 ### Changed
 
 - Review stops on **measured yield** rather than a fixed round count, and an epic that changes
