@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.2] - 2026-09-13
+
 ### Fixed
 
 - The publish-time checksum guard hashes the archive, not the file that sorts first (E17-S09, CR3).
