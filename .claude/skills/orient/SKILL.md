@@ -42,7 +42,7 @@ The agent toolchain this session is carrying, and whether it still matches its m
 Whether the default branch is green right now. Best effort: this needs `gh` and the network, and a
 blank or error line means **unknown**, which is not the same as green:
 
-!`gh run list --branch main --limit 5 --json name,conclusion,status --jq '.[]|"\(.conclusion // .status) \(.name)"' 2>&1 | head -6`
+!`gh run list --branch main --limit 5 --json name,conclusion,status --jq '.[]|"\(if .conclusion == "" then .status else .conclusion end) \(.name)"' 2>&1 | head -6`
 
 ## What to do with this
 
