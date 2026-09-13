@@ -78,7 +78,7 @@ fn highlight_style(capability: TerminalCapability) -> Style {
     }
 }
 
-fn draw_title_bar(frame: &mut Frame, area: Rect, border_set: border::Set) {
+fn draw_title_bar(frame: &mut Frame, area: Rect, border_set: border::Set<'static>) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_set(border_set)
@@ -91,7 +91,7 @@ fn draw_nav(
     area: Rect,
     app: &App,
     capability: TerminalCapability,
-    border_set: border::Set,
+    border_set: border::Set<'static>,
 ) {
     let items: Vec<ListItem> = SCREENS
         .iter()
@@ -118,7 +118,7 @@ fn draw_content(
     area: Rect,
     app: &App,
     capability: TerminalCapability,
-    border_set: border::Set,
+    border_set: border::Set<'static>,
     data: &EngineData,
 ) {
     let block = Block::default()
@@ -165,7 +165,7 @@ fn draw_content(
 fn draw_explain_content(
     frame: &mut Frame,
     area: Rect,
-    border_set: border::Set,
+    border_set: border::Set<'static>,
     capability: TerminalCapability,
     app: &App,
     views: &[cancellai_policy::ExplainView],
@@ -211,7 +211,7 @@ fn draw_explain_content(
 fn draw_explanation_detail(
     frame: &mut Frame,
     area: Rect,
-    border_set: border::Set,
+    border_set: border::Set<'static>,
     capability: TerminalCapability,
     view: &cancellai_policy::ExplainView,
 ) {
@@ -321,7 +321,7 @@ fn confidence_span(
 fn draw_plan_content(
     frame: &mut Frame,
     area: Rect,
-    border_set: border::Set,
+    border_set: border::Set<'static>,
     capability: TerminalCapability,
     app: &App,
     views: &[cancellai_policy::ExplainView],
@@ -511,7 +511,7 @@ fn attention_style(capability: TerminalCapability) -> Style {
     }
 }
 
-fn draw_footer(frame: &mut Frame, area: Rect, app: &App, border_set: border::Set) {
+fn draw_footer(frame: &mut Frame, area: Rect, app: &App, border_set: border::Set<'static>) {
     let hint = if app.show_help {
         "press ? to close help"
     } else {
@@ -525,7 +525,7 @@ fn draw_footer(frame: &mut Frame, area: Rect, app: &App, border_set: border::Set
     frame.render_widget(paragraph, area);
 }
 
-fn draw_help_overlay(frame: &mut Frame, area: Rect, border_set: border::Set) {
+fn draw_help_overlay(frame: &mut Frame, area: Rect, border_set: border::Set<'static>) {
     let lines: Vec<Line> = KEY_BINDINGS
         .iter()
         .map(|binding| Line::from(format!("{:<16} {}", binding.keys, binding.description)))

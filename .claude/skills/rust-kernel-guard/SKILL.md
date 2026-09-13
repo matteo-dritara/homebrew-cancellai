@@ -59,7 +59,7 @@ unknown-source denial in one command. A separate `cargo audit` is redundant and 
    mutation goes through one safety boundary.
 6. **Does cached or local DB state become destructive truth anywhere?** It must not.
 7. **Does network or provider knowledge directly authorize a local deletion?** It must not.
-8. **MSRV.** CI pins 1.85.0 alongside stable on macOS, Linux and Windows. A dependency or language
+8. **MSRV.** CI pins 1.88.0 alongside stable on macOS, Linux and Windows. A dependency or language
    feature that lifts MSRV is a visible decision, not a side effect.
 
 ## Verdict

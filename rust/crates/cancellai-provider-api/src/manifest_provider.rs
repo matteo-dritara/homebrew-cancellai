@@ -214,10 +214,10 @@ fn find_matching_files(root_path: &Path, relative_glob: &str) -> Vec<PathBuf> {
             if seen > MAX_ENTRIES {
                 return matches;
             }
-            if let Ok(relative) = path.strip_prefix(root_path) {
-                if matches_pattern(relative, relative_glob) {
-                    matches.push(path);
-                }
+            if let Ok(relative) = path.strip_prefix(root_path)
+                && matches_pattern(relative, relative_glob)
+            {
+                matches.push(path);
             }
         }
     }

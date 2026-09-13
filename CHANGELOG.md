@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The workspace minimum Rust version is 1.88.0** (E17-S08, CR4;
+  [ADR-0026](docs/adrs/0026-raise-the-workspace-msrv-to-1-88.md), accepted). 1.85.0 was inherited
+  from edition 2024 and never chosen on its own merits, and it had come to cost three things: an
+  open advisory in `lru` that only `ratatui 0.30` clears, an accepted `cargo deny` waiver for an
+  unmaintained `paste`, and a ban on let-chains in this workspace's own source that the safety
+  kernel had already broken without anyone noticing. Building from source now needs rustc 1.88
+  (mid-2025; current stable is 1.94). Nothing about the shipped binaries or the Homebrew formula
+  changes.
+  - **GHSA-rhfx-m35p-ff5j is closed.** `lru` 0.12.5 -> 0.18.4 through `ratatui` 0.29 -> 0.30.2,
+    and `paste` leaves the graph, so `rust/deny.toml`'s ignore list is now **empty** - a
+    supply-chain gate with no waivers.
+  - **Two copies of `crossterm` were being compiled** - 0.28 declared by `cancellai-tui`, 0.29 by
+    `ratatui 0.30` - which means two copies of the crate owning raw mode and the event stream in
+    one process. `cargo deny` only warns on duplicates. Now one.
+  - Filed as CR2 and executed as CR4: clippy reads `rust-version`, so raising it enabled lints
+    that had been silently skipped - four `collapsible_if` and one `manual_is_multiple_of`, two of
+    them in floored crates. The floor caught the story mid-flight and raised its own level. An
+    MSRV bump is a code change here, not a configuration change.
+
 ### Fixed
 
 - The branch check added in 1.13.2 prints a status instead of a blank column (E26-S04, CR0).

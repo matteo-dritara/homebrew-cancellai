@@ -955,7 +955,7 @@ mod tests {
 
     fn filetime_set(path: &Path, seconds_since_epoch: u64) {
         // std has no portable mtime setter without a new dependency; `File::set_modified` is
-        // stable since 1.75, well within this workspace's MSRV 1.85.
+        // stable since 1.75, well within this workspace's MSRV (1.88.0, ADR-0026).
         let file = std::fs::OpenOptions::new().write(true).open(path).unwrap();
         file.set_modified(
             std::time::UNIX_EPOCH + std::time::Duration::from_secs(seconds_since_epoch),

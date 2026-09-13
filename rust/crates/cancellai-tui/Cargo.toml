@@ -25,8 +25,8 @@ workspace = true
 # MIT-licensed, already on rust/deny.toml's allow-list, replacing what would otherwise be a
 # hand-rolled ANSI terminal renderer and raw-mode/input handling loop.
 [dependencies]
-ratatui = "0.29"
-crossterm = "0.28"
+ratatui = "0.30"
+crossterm = "0.29"
 cancellai-policy = { path = "../cancellai-policy", version = "0.1.0" }
 
 # Test-only: building an `AtlasSummary` fixture in ui.rs's own render tests needs to name

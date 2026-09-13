@@ -1,7 +1,7 @@
 [workspace]
-# Resolver 3 (Cargo 1.84+, and this workspace requires 1.85) is MSRV-aware: it will not pick a
-# dependency version whose own `rust-version` is above the one declared below. Resolver 2 does not
-# look at `rust-version` at all, which is how a routine `cargo update` put `instability 0.3.13` and
+# Resolver 3 (Cargo 1.84+, well below the version declared below) is MSRV-aware: it will not pick a
+# dependency version whose own `rust-version` is above ours. Resolver 2 does not look at
+# `rust-version` at all, which is how a routine `cargo update` put `instability 0.3.13` and
 # `darling 0.24.1` - both requiring rustc 1.88 - into the lock file and broke the MSRV job on all
 # three platforms while every stable job stayed green (E09-S05).
 resolver = "3"
@@ -10,7 +10,11 @@ members = ["crates/*"]
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85.0"
+# Raised from 1.85.0 by ADR-0026 (E17-S08). 1.85 was the minimum edition 2024 requires and was
+# never chosen on its own merits; holding it kept `ratatui 0.29` and with it an open advisory in
+# `lru`, an accepted `cargo deny` ignore for an unmaintained `paste`, and a ban on let-chains in
+# this workspace's own source.
+rust-version = "1.88.0"
 license = "MIT"
 publish = false
 

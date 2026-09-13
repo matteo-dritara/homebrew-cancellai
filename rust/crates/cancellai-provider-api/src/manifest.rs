@@ -253,15 +253,15 @@ pub fn parse_manifest(text: &str) -> Result<ProviderManifest, ManifestError> {
         if !seen_root_names.insert(root.name.as_str()) {
             return Err(ManifestError::DuplicateRootName(root.name.clone()));
         }
-        if let Some(env_var) = &root.env_var {
-            if env_var.trim().is_empty() {
-                return Err(ManifestError::EmptyEnvVarName);
-            }
+        if let Some(env_var) = &root.env_var
+            && env_var.trim().is_empty()
+        {
+            return Err(ManifestError::EmptyEnvVarName);
         }
-        if let Some(subdir) = &root.subdir {
-            if !is_safe_relative_path(subdir) {
-                return Err(ManifestError::PathEscapesRoot(subdir.clone()));
-            }
+        if let Some(subdir) = &root.subdir
+            && !is_safe_relative_path(subdir)
+        {
+            return Err(ManifestError::PathEscapesRoot(subdir.clone()));
         }
         // Empty is the one deliberate exception to is_safe_relative_path's "non-empty" rule:
         // it means "$HOME itself, no suffix" (e.g. Gemini CLI's GEMINI_CLI_HOME, which

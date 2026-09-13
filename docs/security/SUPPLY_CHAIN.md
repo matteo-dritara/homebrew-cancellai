@@ -64,8 +64,11 @@ check` locally and in `.github/workflows/rust.yml`'s `quality` job on macOS/Linu
   reviewed addition to the allow-list, not an implicit pass;
 - a wildcard (`*`) version requirement is denied (`[bans] wildcards = "deny"`), so a
   dependency version is always pinned to something explicit;
-- MSRV is pinned at 1.85.0 (`rust/Cargo.toml`'s `rust-version`), bumped only by deliberate,
-  reviewed decision - never implicitly by a dependency update (ADR-0015).
+- MSRV is pinned at 1.88.0 (`rust/Cargo.toml`'s `rust-version`), bumped only by deliberate,
+  reviewed decision - never implicitly by a dependency update (ADR-0015, raised from 1.85.0 by
+  [ADR-0026](../adrs/0026-raise-the-workspace-msrv-to-1-88.md)). The resolver is MSRV-aware
+  (`resolver = "3"`), so a routine update cannot select a dependency above the declared floor -
+  before that, one did, and the only thing that noticed was a CI leg nobody was reading (E09-S05).
 
 ## Canonical release evidence
 

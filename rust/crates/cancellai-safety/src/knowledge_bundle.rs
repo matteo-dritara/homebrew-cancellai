@@ -203,7 +203,7 @@ pub struct VerifiedKnowledgeBundle {
 }
 
 fn decode_hex(text: &str) -> Option<Vec<u8>> {
-    if text.len() % 2 != 0 || !text.bytes().all(|b| b.is_ascii_hexdigit()) {
+    if !text.len().is_multiple_of(2) || !text.bytes().all(|b| b.is_ascii_hexdigit()) {
         return None;
     }
     (0..text.len())
@@ -250,8 +250,10 @@ pub fn verify_bundle(
         .verify(&bundle.signing_bytes(), &signature)
         .map_err(|_| KnowledgeBundleError::InvalidSignature)?;
 
-    // `is_some_and` rather than a let-chain: let-chains are stable from Rust 1.88 and this
-    // workspace promises 1.85.0 (ADR-0015). The condition is unchanged - absent `expires_at`
+    // `is_some_and` rather than a let-chain. Written that way under MSRV 1.85, which could not
+    // compile a let-chain (E16-S07); kept after ADR-0026 raised the MSRV to 1.88, which can -
+    // reverting correct code for symmetry with the rest of the workspace would be churn on the
+    // one file where churn is most expensive. The condition is unchanged: absent `expires_at`
     // means no expiry, and the comparison is still `>=`, so expiring exactly at the boundary
     // still rejects.
     if bundle

@@ -35,10 +35,20 @@ raised implicitly by a dependency bump; raising it is its own reviewed change wi
 CHANGELOG entry, mirroring how `docs/development/MIGRATION_PYTHON_RUST.md` and this project's
 evidence-gated culture already treat every other durable constraint.
 
-**MSRV = 1.85.0** - the minimum Rust version edition 2024 itself requires. This is the widest
-compatible floor available under the edition already chosen, which matters for a tool
-distributed through Homebrew and (eventually) other system package managers whose bundled
-toolchain lags the latest stable release.
+**MSRV = 1.88.0**, raised from 1.85.0 by
+[ADR-0026](0026-raise-the-workspace-msrv-to-1-88.md) (E17-S08). The original reasoning is kept
+below because the decision to leave it was made against it:
+
+> **MSRV = 1.85.0** - the minimum Rust version edition 2024 itself requires. This is the widest
+> compatible floor available under the edition already chosen, which matters for a tool
+> distributed through Homebrew and (eventually) other system package managers whose bundled
+> toolchain lags the latest stable release.
+
+That floor was never chosen on its own merits - it was inherited from the edition - and by
+September 2026 it was buying nothing and costing three things: an open advisory in `lru` that only
+`ratatui 0.30` clears, an accepted `cargo deny` waiver for an unmaintained `paste`, and a ban on
+let-chains in this workspace's own source that the kernel had already broken without anyone
+noticing. ADR-0026 has the evidence and the options.
 
 ### `unsafe` policy: forbidden workspace-wide, exceptions live in a dedicated crate
 
@@ -163,8 +173,9 @@ knowledge bundles - SI-021, SI-022).
 
 ### Neutral / follow-up
 
-- MSRV 1.85 is a floor, not a ceiling; nothing here prevents bumping it later through the
-  explicit process this ADR itself establishes.
+- MSRV is a floor, not a ceiling; nothing here prevents bumping it later through the
+  explicit process this ADR itself establishes. That is exactly what ADR-0026 did, using this
+  process, eleven days later.
 - The `rust/` directory boundary is purely organizational; it does not by itself decide when
   (or whether) E17-S06's repository split happens.
 

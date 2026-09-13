@@ -42,9 +42,10 @@ We add `ed25519-dalek` v3.0.0 to `cancellai-safety`, **verification-only**:
   place where "the safe default already does the careful thing" is worth keeping even at some
   binary-size cost.
 - License is BSD-3-Clause, already in `rust/deny.toml`'s allow-list (`rust/deny.toml`'s comment
-  block above the license array lists it explicitly). `rust-version = "1.85"` matches this
-  workspace's pinned MSRV exactly - no MSRV bump (ADR-0015's "bumped only by deliberate,
-  reviewed decision" is not triggered).
+  block above the license array lists it explicitly). `rust-version = "1.85"` matched this
+  workspace's pinned MSRV exactly at the time - no MSRV bump (ADR-0015's "bumped only by
+  deliberate, reviewed decision" was not triggered; the MSRV has since moved to 1.88.0 under
+  [ADR-0026](0026-raise-the-workspace-msrv-to-1-88.md), which this crate is comfortably below).
 - `cargo deny check` passes with this dependency added: `advisories ok, bans ok, licenses ok,
   sources ok`. It adds one new duplicate-version instance (`syn` 2.0.119 already existed for
   `clap_derive`/`serde_derive`; `curve25519-dalek-derive` pulls a second, `syn` 3.0.4) -

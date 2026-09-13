@@ -203,12 +203,12 @@ pub(crate) fn unescape_proc_mounts_field(field: &str) -> String {
     while i < chars.len() {
         if chars[i] == '\\' && i + 3 < chars.len() {
             let octal: String = chars[i + 1..i + 4].iter().collect();
-            if octal.bytes().all(|b| (b'0'..=b'7').contains(&b)) {
-                if let Ok(value) = u8::from_str_radix(&octal, 8) {
-                    out.push(value as char);
-                    i += 4;
-                    continue;
-                }
+            if octal.bytes().all(|b| (b'0'..=b'7').contains(&b))
+                && let Ok(value) = u8::from_str_radix(&octal, 8)
+            {
+                out.push(value as char);
+                i += 4;
+                continue;
             }
         }
         out.push(chars[i]);

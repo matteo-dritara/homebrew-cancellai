@@ -1909,25 +1909,33 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 ### E17-S08 - The MSRV is decided on its cost, not inherited from edition 2024
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-021, SI-022, SI-029, SI-017
 
-**Outcome.** Blocked on an owner decision: ADR-0026 is proposed, not accepted. The workspace promises rustc 1.85.0 - the minimum edition 2024 requires - and that promise now holds back three things at once: a low-severity advisory in lru 0.12.5 that only ratatui 0.30 clears and that needs 1.88; the RUSTSEC-2024-0436 ignore for paste, accepted for the same reason; and the workspace's own kernel source, which had drifted to requiring 1.88 for four days without anyone noticing. This story carries the change if the owner accepts it: rust-version, the ratatui bump, the deny.toml ignore, ADR-0015's text and the CI matrix move together or not at all.
+**Outcome.** ADR-0026 accepted by the owner on 2026-09-13. The workspace MSRV moves from 1.85.0 - inherited from edition 2024 and never chosen on its own merits - to 1.88.0, which takes ratatui 0.30 and with it clears GHSA-rhfx-m35p-ff5j in lru and the RUSTSEC-2024-0436 waiver for an unmaintained paste, leaving deny.toml's ignore list empty. Filed as CR2 and executed as CR4: clippy reads rust-version, so raising it enabled MSRV-gated lints that had been silently skipped, two of them in floored crates - the floor caught the story mid-flight and raised its own level.
 
 **Acceptance criteria**
 
-- The declared rust-version, ADR-0015's text, the CI MSRV matrix and any build-from-source instruction shall state the same minimum.
-- Where the raised minimum makes a held-back dependency adoptable, the story shall adopt it and remove the ignore it justified, rather than raising the minimum and leaving the reason unaddressed.
-- If the owner rejects the raise, then the open advisory shall be recorded as accepted residual risk and its Dependabot update dismissed, rather than left failing daily where nobody can act on it.
+- The declared rust-version, ADR-0015's text, the CI MSRV matrix, the supply-chain document and the kernel-guard skill shall state the same minimum.
+- Where the raised minimum makes a held-back dependency adoptable, the story shall adopt it and remove the waiver it justified, rather than raising the minimum and leaving the reason unaddressed.
+- If the raised minimum enables a lint that was previously skipped, then the code shall be changed to satisfy it rather than the lint suppressed, because the lint was always applicable and only the declared version hid it.
+- Exactly one version of any crate owning terminal state shall be compiled, so that raw mode and the event stream are not split across two copies of the same crate.
+- If the owner had rejected the raise, then the open advisory would have been recorded as accepted residual risk and its Dependabot update dismissed - this branch is not taken and is recorded as not taken.
 
 **Verification**
 
-- The MSRV legs of rust.yml build the workspace at the declared minimum on all three tier-1 platforms.
-- cargo deny check passes without the ignore the raise was supposed to remove.
+- The MSRV legs of rust.yml build the workspace at 1.88.0 on all three tier-1 platforms.
+- cargo deny check passes with an empty ignore list.
+- The compiled dependency graph is measured with cargo tree rather than read off Cargo.lock, which counts optional dependencies that are never built.
+- The full Rust quality set passes: fmt, clippy -D warnings, check, test, deny.
+- Each lint-driven edit is checked against the invariant its file serves: signature hex validation (SI-022/SI-029), manifest root validation (SI-021), and /proc/mounts path unescaping on the platform identity seam (SI-017).
 
 **Documentation impact**
 
 - `docs/adrs/0026-raise-the-workspace-msrv-to-1-88.md`
 - `docs/adrs/0015-rust-workspace-toolchain-and-repository-layout.md`
+- `docs/adrs/0024-ed25519-dalek-for-knowledge-bundle-signatures.md`
+- `docs/security/SUPPLY_CHAIN.md`
+- `AGENTS.md`
 - `rust/deny.toml`
 
 ### E17-S09 - The publish guard hashes the archive, not the file that sorts first

@@ -1,6 +1,6 @@
 # ADR-0026: Raise the workspace MSRV to 1.88
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-09-13
 - Owners: project owner / cEOS
 - Related: [ADR-0015](0015-rust-workspace-toolchain-and-repository-layout.md), [ADR-0019](0019-dependency-rings-per-crate.md), E09-S01, E09-S05, E16-S07, E22-S08, E17-S08
@@ -51,12 +51,13 @@ said so was failing for an unrelated reason. A promise nothing can check is not 
 
 ## Decision
 
-**Proposed, not taken.** This ADR exists to put the decision in front of the owner with its
-evidence, because it changes a published compatibility promise and that is not an executor's call.
+**Accepted by the owner on 2026-09-13**, and carried by E17-S08. `rust-version` is **1.88.0**,
+`ratatui` is 0.30, `rust/deny.toml`'s ignore list is empty, and idiomatic 2024-edition code no
+longer has to be rewritten to avoid a version nobody was asking for.
 
-The proposal: raise `rust-version` to **1.88.0** in `rust/Cargo.toml`, adopt `ratatui 0.30`, remove
-the RUSTSEC-2024-0436 ignore from `rust/deny.toml` if 0.30 drops `paste`, and stop rewriting
-idiomatic 2024-edition code to avoid a version nobody is asking for.
+Option A, for the reasons in Options below: 1.88 was released in mid-2025 and current stable is
+1.94, so the compatibility being given up is a toolchain a year and a half old, against three
+concrete costs being paid for it today.
 
 ## Options
 
@@ -92,6 +93,38 @@ until then.
 - The `lru` advisory is accepted as a recorded residual risk with the reasoning above, and the
   Dependabot security update for it is dismissed rather than left failing every day - a failing
   job nobody can act on is how the MSRV break went unnoticed for four days.
+
+## What it actually cost
+
+Recorded after the fact, because two of these were not predicted above and a decision record that
+only lists the costs it guessed right is not worth keeping.
+
+- **`lru` went to 0.18.4 and `paste` left the graph**, as expected. GHSA-rhfx-m35p-ff5j is closed
+  and `rust/deny.toml` now has an empty `ignore` list - a supply-chain gate with no waivers.
+- **Clippy's MSRV-gated lints woke up.** Clippy reads `rust-version`, so raising it enabled lints
+  that had been silently skipped: four `collapsible_if` sites it now wants written as let-chains,
+  and one `manual_is_multiple_of`. Two of them are in floored crates
+  (`cancellai-platform/src/wsl.rs`, `cancellai-safety/src/knowledge_bundle.rs`), which is what
+  makes E17-S08 a CR4 story rather than the CR2 configuration change it was filed as. This is the
+  right direction - those lints were always applicable and the old MSRV was hiding them - but it
+  means an MSRV bump is not a configuration change here, it is a code change in the kernel.
+- **The dependency graph grew by 18 crates**, 99 to 117, from `ratatui 0.30`'s split into
+  `ratatui-core`/`ratatui-widgets`/`ratatui-crossterm` plus `kasuari` replacing the old layout
+  solver. `Cargo.lock` grew by 115 entries, which is the number a careless reading reports: most of
+  those are optional dependencies of the new crates - the `termwiz`, `termion` and `termina`
+  backends - that are never compiled, because `ratatui`'s default features select `crossterm`
+  only. The compiled graph is the number that matters and it is 18.
+- **`crossterm` had to be aligned.** `ratatui 0.30` uses `crossterm 0.29` while `cancellai-tui`
+  declared 0.28, so both were compiled: two versions of the crate that owns raw mode and the event
+  stream, in one process. `cargo deny` only warns on duplicates, so nothing would have stopped it.
+  `cancellai-tui` now declares 0.29 and one version is compiled.
+- **One API break**, in `cancellai-tui`: `border::Set` gained a lifetime parameter, so the four
+  functions taking it now say `border::Set<'static>`. The values were always `&'static str`
+  literals.
+- **E16-S07's rewrite stays.** It replaced three let-chains in the bundle verifier with
+  `is_some_and` to hold the old promise; clippy is content with it and reverting correct code for
+  symmetry would be churn. The two tests it added for the expiry boundary are worth keeping
+  regardless of which version this workspace compiles against.
 
 ## What this ADR does not decide
 

@@ -249,7 +249,7 @@ duplicate dependency bans, and unknown-registry/unknown-git source denial in one
 (`rust/deny.toml`); a separate `cargo audit` is redundant with it and is not used.
 
 CI (`.github/workflows/rust.yml`) runs `cargo check --workspace --all-targets` on macOS,
-Linux, and Windows against both MSRV (1.85.0) and current stable, and the full quality set
+Linux, and Windows against both MSRV (1.88.0, raised from 1.85.0 by ADR-0026) and current stable, and the full quality set
 above (`fmt`, `clippy -D warnings`, `cargo test`, `cargo deny check`) on all three platforms
 against stable (ADR-0015).
 
