@@ -51,6 +51,32 @@
       "documentation_impact": [
         "docs/development/RELEASE_GATES.md"
       ]
+    },
+    {
+      "id": "E10-S03",
+      "title": "Verifier repair: reclaim probe authority and risk correction",
+      "status": "done",
+      "outcome": "Independent review found E10-S01's CR2 declaration below the CR4 floor because its released batch added unsafe macOS statfs FFI to cancellai-sealedfs. Record the independent CR4 classification without rewriting shipped E10-S01, place the FFI authority in an ADR, and preserve the probe's conservative read-only behaviour.",
+      "change_risk": "CR4",
+      "dependencies": [
+        "E10-S01"
+      ],
+      "acceptance_criteria": [
+        "The independent CR4 classification of released E10-S01 is visible in the risk-classification control plane.",
+        "An accepted ADR authorizes the narrowly scoped statfs FFI in cancellai-sealedfs and names its safety and compatibility limits.",
+        "If a probe path contains an interior NUL, is missing, or yields a non-UTF-8 type name, then the system shall reject or downgrade the observation without granting mutation authority."
+      ],
+      "safety_obligations": [
+        "SI-016"
+      ],
+      "verification": [
+        "Native macOS sealedfs and platform tests exercise real and missing paths; Miri is attempted and any unavailable component is recorded.",
+        "The CR4 Safety Verdict names the FFI boundary, test evidence, residual platform limits, and owner-authorized acceptance."
+      ],
+      "documentation_impact": [
+        "docs/adrs/0027-macos-statfs-filesystem-observation-in-sealedfs.md",
+        "docs/architecture/PLATFORM_MODEL.md"
+      ]
     }
   ]
 }

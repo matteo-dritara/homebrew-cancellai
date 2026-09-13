@@ -1,5 +1,13 @@
 # Evidence Packet - E10-S01
 
+## Independent verifier correction (2026-09-13)
+
+The released story's CR2 declaration was below the CR4 floor because the batch added unsafe
+`statfs` FFI to `cancellai-sealedfs`. The historical declaration remains unchanged; the
+independent CR4 classification, ADR-0027 authority, and Safety Verdict are recorded by E10-S03.
+The estimator's conservative downgrade behaviour passed the verifier's focused reclaim and
+filesystem-kind tests.
+
 - Commit/PR: pending (this work item)
 - Executor: Claude
 - Independent verifier: pending - E10 epic review (to be run together with E10-S02, per user

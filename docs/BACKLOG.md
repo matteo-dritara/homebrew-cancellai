@@ -1176,6 +1176,28 @@ Make storage numbers trustworthy and the scanner inexpensive enough for continuo
 
 - `docs/development/RELEASE_GATES.md`
 
+### E10-S03 - Verifier repair: reclaim probe authority and risk correction
+
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** E10-S01 | **Safety obligations:** SI-016
+
+**Outcome.** Independent review found E10-S01's CR2 declaration below the CR4 floor because its released batch added unsafe macOS statfs FFI to cancellai-sealedfs. Record the independent CR4 classification without rewriting shipped E10-S01, place the FFI authority in an ADR, and preserve the probe's conservative read-only behaviour.
+
+**Acceptance criteria**
+
+- The independent CR4 classification of released E10-S01 is visible in the risk-classification control plane.
+- An accepted ADR authorizes the narrowly scoped statfs FFI in cancellai-sealedfs and names its safety and compatibility limits.
+- If a probe path contains an interior NUL, is missing, or yields a non-UTF-8 type name, then the system shall reject or downgrade the observation without granting mutation authority.
+
+**Verification**
+
+- Native macOS sealedfs and platform tests exercise real and missing paths; Miri is attempted and any unavailable component is recorded.
+- The CR4 Safety Verdict names the FFI boundary, test evidence, residual platform limits, and owner-authorized acceptance.
+
+**Documentation impact**
+
+- `docs/adrs/0027-macos-statfs-filesystem-observation-in-sealedfs.md`
+- `docs/architecture/PLATFORM_MODEL.md`
+
 ## E11 - Deterministic Policy Engine
 
 **Phase:** `P3` | **Status:** `planned` | **Epic dependencies:** E09
@@ -3104,6 +3126,28 @@ cEOS has borrowed the artifact set of a safety standard without the mechanism th
 
 - `.github/workflows/tests.yml`
 - `.github/workflows/governance.yml`
+
+### E25-S15 - Ambiguous history cannot erase a risk floor
+
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E25-S02, E25-S14 | **Safety obligations:** none
+
+**Outcome.** The historical risk audit counted multi-story commits as ambiguous and skipped their paths, allowing a second story ID to erase a higher-risk path from the audit. Keep per-story ownership unguessed, but check the shared commit against its highest path floor and lowest declared story level. Existing history is carried as explicit, reasoned baselines rather than silently omitted.
+
+**Acceptance criteria**
+
+- A multi-story historical commit reaching a risk floor fails unless its lowest declared named story meets that floor or an explicit historical baseline explains why it cannot be reconstructed.
+- The check does not invent per-story ownership for paths in a batched historical commit.
+- If a historical exception has no reason, then the checker shall refuse it; otherwise every surfaced exception shall show its commit identity and reason.
+
+**Verification**
+
+- Unit tests prove a CR1 plus CR4 batch fails at CR4, a reasoned baseline is printed, and an empty baseline reason fails.
+- The repository audit passes with all historical exceptions visible.
+
+**Documentation impact**
+
+- `project/risk_floors.json`
+- `docs/development/WORK_ITEM_MODEL.md`
 
 ## E26 - Agent Toolchain Governance
 

@@ -398,6 +398,31 @@
         ".github/workflows/tests.yml",
         ".github/workflows/governance.yml"
       ]
+    },
+    {
+      "id": "E25-S15",
+      "title": "Ambiguous history cannot erase a risk floor",
+      "status": "done",
+      "outcome": "The historical risk audit counted multi-story commits as ambiguous and skipped their paths, allowing a second story ID to erase a higher-risk path from the audit. Keep per-story ownership unguessed, but check the shared commit against its highest path floor and lowest declared story level. Existing history is carried as explicit, reasoned baselines rather than silently omitted.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E25-S02",
+        "E25-S14"
+      ],
+      "acceptance_criteria": [
+        "A multi-story historical commit reaching a risk floor fails unless its lowest declared named story meets that floor or an explicit historical baseline explains why it cannot be reconstructed.",
+        "The check does not invent per-story ownership for paths in a batched historical commit.",
+        "If a historical exception has no reason, then the checker shall refuse it; otherwise every surfaced exception shall show its commit identity and reason."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Unit tests prove a CR1 plus CR4 batch fails at CR4, a reasoned baseline is printed, and an empty baseline reason fails.",
+        "The repository audit passes with all historical exceptions visible."
+      ],
+      "documentation_impact": [
+        "project/risk_floors.json",
+        "docs/development/WORK_ITEM_MODEL.md"
+      ]
     }
   ]
 }

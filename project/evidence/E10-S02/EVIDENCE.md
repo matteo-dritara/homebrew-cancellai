@@ -1,5 +1,12 @@
 # Evidence Packet - E10-S02
 
+## Independent verifier review (2026-09-13)
+
+The Linux peak-RSS gate is a real assertion when compiled on Linux: it reads `VmHWM`, requires a
+non-empty discovery result, and fails above 128 MiB. The macOS review host compiles the honest
+non-Linux branch only; Linux CI is the executable platform evidence. The scheduled benchmark
+publishes its RSS value without applying a noisy threshold, matching the story contract.
+
 - Commit/PR: pending (this work item)
 - Executor: Claude
 - Independent verifier: pending - E10 epic review (to be run together with E10-S01, per user

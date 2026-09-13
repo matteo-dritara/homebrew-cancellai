@@ -153,8 +153,62 @@ class AttributionTests(unittest.TestCase):
             self.skipTest("no git history available; attribution has nothing to read")
         # This repository batches stories into commits routinely; a checker that hid that would
         # report a clean run over a third of the backlog as if it covered all of it.
-        self.assertGreater(ambiguous, 0)
+        self.assertGreater(len(ambiguous), 0)
         self.assertGreater(len(attributed), 0)
+
+
+class AmbiguousCommitTests(unittest.TestCase):
+    def test_a_multi_story_commit_must_meet_its_floor_at_the_lowest_named_level(self):
+        stories = {
+            "E01-S01": {"change_risk": "CR1"},
+            "E01-S02": {"change_risk": "CR4"},
+        }
+        ambiguous = [
+            risk.AmbiguousCommit(
+                commit="abc123",
+                stories=frozenset({"E01-S01", "E01-S02"}),
+                paths=frozenset({"kernel/src/lib.rs"}),
+            )
+        ]
+        errors, warnings = risk.evaluate_ambiguous(stories, ambiguous, {"floors": FLOORS})
+        self.assertEqual([], warnings)
+        self.assertEqual(1, len(errors))
+        self.assertIn("lowest named story E01-S01 declares CR1", errors[0])
+        self.assertIn("combined commit floor of CR4", errors[0])
+
+    def test_an_explicit_historical_baseline_is_visible_but_does_not_silently_pass(self):
+        stories = {"E01-S01": {"change_risk": "CR1"}, "E01-S02": {"change_risk": "CR4"}}
+        ambiguous = [
+            risk.AmbiguousCommit(
+                commit="abc123",
+                stories=frozenset({"E01-S01", "E01-S02"}),
+                paths=frozenset({"kernel/src/lib.rs"}),
+            )
+        ]
+        errors, warnings = risk.evaluate_ambiguous(
+            stories,
+            ambiguous,
+            {"floors": FLOORS, "ambiguous_baseline": [{"commit": "abc123", "reason": "historical audit"}]},
+        )
+        self.assertEqual([], errors)
+        self.assertEqual(1, len(warnings))
+        self.assertIn("historical ambiguous baseline", warnings[0])
+
+    def test_an_ambiguous_baseline_without_an_argument_is_refused(self):
+        stories = {"E01-S01": {"change_risk": "CR1"}, "E01-S02": {"change_risk": "CR4"}}
+        ambiguous = [
+            risk.AmbiguousCommit(
+                commit="abc123",
+                stories=frozenset({"E01-S01", "E01-S02"}),
+                paths=frozenset({"kernel/src/lib.rs"}),
+            )
+        ]
+        errors, _ = risk.evaluate_ambiguous(
+            stories,
+            ambiguous,
+            {"floors": FLOORS, "ambiguous_baseline": [{"commit": "abc123", "reason": ""}]},
+        )
+        self.assertTrue(any("records no reason" in error for error in errors))
 
     def test_every_attributed_story_id_has_the_expected_shape(self):
         skip_without_history(self)

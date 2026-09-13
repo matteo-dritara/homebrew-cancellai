@@ -27,7 +27,9 @@ distinguished by the next round, which is why the ceiling matters.
 | E07 | 1 | independent | - | - | **not machine-readable** |
 | E08 | 1 | independent | 4 | 1 | 25% |
 | E09 | 1 | **self** | 4 | 0 | 0% |
+| E09 | 1 | independent | 5 | 0 | 0% |
 | E10 | 1 | **self** | 2 | 1 | 50% |
+| E10 | 1 | independent | 3 | 1 | 33% |
 | E16 | 1 | independent | 6 | 0 | 0% |
 | E17 | 1 | independent | 6 | 0 | 0% |
 | E20 | 1 | independent | 3 | 3 | 100% |
@@ -42,7 +44,7 @@ distinguished by the next round, which is why the ceiling matters.
 The gap between *every gate passed* and *the work is right*. Each rejected story below had
 already been declared `ready_for_review` by an executor who ran the full gate set green.
 
-- **Independent reviewer:** 32 of 68 round-1 verdicts were `FAIL` - **47%**.
+- **Independent reviewer:** 33 of 76 round-1 verdicts were `FAIL` - **43%**.
 - **Self-review (same agent as executor):** 3 of 9 round-1 verdicts were `FAIL` - **33%**.
 
 - **Round-1 records excluded as unreadable:** 1. Their verdicts are in neither denominator above, so both rates are computed over the subset of records that use a machine-readable verdict table.
@@ -65,11 +67,13 @@ independent samples, and the population estimate collapses to what one round alr
 | --- | --- | --- | --- | --- | --- | --- |
 | E00 | 6 | 7 | 6 | 7.0 | 0.0 |
 | E06 | 3 | 2 | 2 | 3.0 | 0.0 |
+| E09 | 1 and 1 | 0 | 0 | 0 | undefined - disjoint findings | at least 0 were present |
+| E10 | 1 | 1 | 1 | 1.0 | 0.0 |
 | E20 | 1 and 2 | 3 | 0 | 0 | undefined - disjoint findings | at least 3 were present |
 
 ## Evidence-ledger integrity
 
-- **97 of 112** story packets past `ready_for_review` carry a row per acceptance criterion.
+- **99 of 114** story packets past `ready_for_review` carry a row per acceptance criterion.
 - Packets that do not:
   - E00-S01 (CR4): 0 rows for 3 criteria
   - E00-S02 (CR4): 0 rows for 3 criteria
@@ -91,20 +95,19 @@ independent samples, and the population estimate collapses to what one round alr
 
 | CR0 | CR1 | CR2 | CR3 | CR4 |
 | --- | --- | --- | --- | --- |
-| 12 | 32 | 43 | 25 | 29 |
+| 12 | 32 | 44 | 25 | 30 |
 
-54 of 141 stories are CR3 or CR4, the levels whose gates require
+55 of 143 stories are CR3 or CR4, the levels whose gates require
 independent verification. That share is what makes the reviewer-independence question above
 load-bearing rather than academic.
 
 ## Risk classification
 
-- Independent classifications recorded: **0**. 5 stories are recorded below their floor, owner decision pending.
-- With no second classification the level is still self-assessed everywhere a floor does not reach.
+- Independent classifications recorded: **2**; disagreements: **1** (50%).
 
 ## Requirements shape
 
-- Acceptance criteria describing **unwanted behaviour**: **33 of 412** (8%).
+- Acceptance criteria describing **unwanted behaviour**: **35 of 418** (8%).
 - Epics whose requirements describe the feature and not the hazard:
   - `E00` - 0 of 29
   - `E01` - 0 of 13
@@ -114,7 +117,7 @@ load-bearing rather than academic.
 
 ## Documentation readership
 
-- Documents a committed review record has named: **20**. Never named: **28**.
+- Documents a committed review record has named: **22**. Never named: **26**.
 - Never named is not the same as never read, and an unread document may still be the right
   document. This is a list for the owner once a phase, not a purge, and accepted ADRs are
   undeletable regardless of what it says.
@@ -132,8 +135,6 @@ load-bearing rather than academic.
 - `docs/architecture/AS_IS.md`
 - `docs/architecture/GUARDIAN_MODEL.md`
 - `docs/architecture/JSON_CONTRACTS.md`
-- `docs/architecture/PERSISTENCE_MODEL.md`
-- `docs/architecture/POLICY_MODEL.md`
 - `docs/audits/2026-08-27-CODE_REVIEW.md`
 - `docs/audits/2026-09-03-CODE_REVIEW.md`
 - `docs/development/MIGRATION_PYTHON_RUST.md`

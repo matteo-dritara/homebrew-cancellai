@@ -149,5 +149,98 @@
       "note": "Touched cancellai-policy/src/retention.rs. Recorded at floor introduction; owner decision pending."
     }
   ],
-  "independent_classifications": []
+  "ambiguous_baseline": [
+    {
+      "commit": "5b4eb0c356474b6fba65d21519d69b913cbc8abf",
+      "reason": "Pre-trailer historical batch surfaced by E25-S15; commit-level ownership cannot be reconstructed safely. Owner-visible audit record pending."
+    },
+    {
+      "commit": "9e65ccbc93df15c45422c5b133c41102a7b8e8cc",
+      "reason": "Pre-trailer historical batch surfaced by E25-S15; commit-level ownership cannot be reconstructed safely. Owner-visible audit record pending."
+    },
+    {
+      "commit": "b7fd88095fcc94e97a5abf5ea6c82ecd8b32a4b8",
+      "reason": "E10 independent review classified E10-S01 CR4 and records the unsafe-boundary authority in ADR-0027; the batch also names CR1 E10-S02, so per-story ownership remains unreconstructible."
+    },
+    {
+      "commit": "ce7713f176af203e1a494c6daaa88fa01e27250b",
+      "reason": "Pre-trailer historical batch surfaced by E25-S15; commit-level ownership cannot be reconstructed safely. Owner-visible audit record pending."
+    },
+    {
+      "commit": "539876cae6e68769ae40943182cc7c95ab10c993",
+      "reason": "Pre-trailer historical batch surfaced by E25-S15; commit-level ownership cannot be reconstructed safely. Owner-visible audit record pending."
+    },
+    {
+      "commit": "18bcd1912819cc69c6f91ff5596d3fd088dfe545",
+      "reason": "Pre-trailer historical batch surfaced by E25-S15; commit-level ownership cannot be reconstructed safely. Owner-visible audit record pending."
+    },
+    {
+      "commit": "7fc6cd2ead297ebbb3d91ffff149b3464dcbe366",
+      "reason": "Pre-trailer historical batch surfaced by E25-S15; commit-level ownership cannot be reconstructed safely. Owner-visible audit record pending."
+    },
+    {
+      "commit": "e2ac9f7d8ded97aced504400c90c126fdf1e9bcd",
+      "reason": "Pre-trailer historical batch surfaced by E25-S15; commit-level ownership cannot be reconstructed safely. Owner-visible audit record pending."
+    },
+    {
+      "commit": "4738813b74c7c9672be90624e02cd962fb7f41c8",
+      "reason": "Pre-trailer historical batch surfaced by E25-S15; commit-level ownership cannot be reconstructed safely. Owner-visible audit record pending."
+    },
+    {
+      "commit": "72742ada360ef7c206870b456540158c255552f5",
+      "reason": "Pre-trailer historical batch surfaced by E25-S15; commit-level ownership cannot be reconstructed safely. Owner-visible audit record pending."
+    },
+    {
+      "commit": "aaca5a0407d8731d837553e9bd7361cac63732b4",
+      "reason": "Pre-trailer historical batch surfaced by E25-S15; commit-level ownership cannot be reconstructed safely. Owner-visible audit record pending."
+    },
+    {
+      "commit": "a407917a763c2a322c2b0c9e7b8ba2e752def46b",
+      "reason": "Pre-trailer historical batch surfaced by E25-S15; commit-level ownership cannot be reconstructed safely. Owner-visible audit record pending."
+    },
+    {
+      "commit": "8651a97738e92b7c8e10418ae50131622a78c2a7",
+      "reason": "Pre-trailer historical batch surfaced by E25-S15; it names removed E07 story IDs and cannot be classified from current control-plane data."
+    },
+    {
+      "commit": "d7126cd206685d33de89b413d539b598c7504d87",
+      "reason": "Pre-trailer historical batch surfaced by E25-S15; commit-level ownership cannot be reconstructed safely. Owner-visible audit record pending."
+    },
+    {
+      "commit": "dbda04fad941dd5cdf6854941be9532a7b2393b3",
+      "reason": "Pre-trailer historical batch surfaced by E25-S15; commit-level ownership cannot be reconstructed safely. Owner-visible audit record pending."
+    },
+    {
+      "commit": "df91ff9988433902fab01e9c016175dec34007dc",
+      "reason": "Pre-trailer historical batch surfaced by E25-S15; commit-level ownership cannot be reconstructed safely. Owner-visible audit record pending."
+    },
+    {
+      "commit": "cdee59122eb83d15d4230929874ee7606bde9660",
+      "reason": "Pre-trailer historical batch surfaced by E25-S15; commit-level ownership cannot be reconstructed safely. Owner-visible audit record pending."
+    },
+    {
+      "commit": "2182ef77f1d64652bb49ceb9d1bbd55a45f00272",
+      "reason": "Pre-trailer historical batch surfaced by E25-S15; commit-level ownership cannot be reconstructed safely. Owner-visible audit record pending."
+    },
+    {
+      "commit": "870d064299f977b35ab021664a1570663afd6506",
+      "reason": "Pre-trailer historical batch surfaced by E25-S15; commit-level ownership cannot be reconstructed safely. Owner-visible audit record pending."
+    }
+  ],
+  "independent_classifications": [
+    {
+      "story": "E10-S01",
+      "level": "CR4",
+      "classifier": "Codex independent verifier",
+      "date": "2026-09-13",
+      "reason": "The released implementation added unsafe FFI to cancellai-sealedfs, the isolated unsafe authority boundary. The prior CR2 declaration was below the CR4 floor; ADR-0027 now authorizes the probe and E10-S03 records the correction without rewriting the shipped story."
+    },
+    {
+      "story": "E10-S03",
+      "level": "CR4",
+      "classifier": "Codex owner-authorized verifier repair",
+      "date": "2026-09-13",
+      "reason": "The follow-on record changes the documented authority of the only unsafe-code exception and therefore retains the CR4 floor."
+    }
+  ]
 }

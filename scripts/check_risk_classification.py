@@ -94,6 +94,20 @@ class Floor:
     reason: str
 
 
+@dataclass(frozen=True)
+class AmbiguousCommit:
+    """A historical commit whose paths cannot honestly be assigned to one story.
+
+    The individual assignments remain unavailable, but the commit-level floor is not.  A
+    multi-story commit must satisfy the floor at its least-risky named story; otherwise a second
+    story id is enough to erase a high-risk change from the audit.
+    """
+
+    commit: str
+    stories: frozenset[str]
+    paths: frozenset[str]
+
+
 def load_floors() -> dict[str, Any]:
     data: dict[str, Any] = json.loads(FLOORS_FILE.read_text(encoding="utf-8"))
     for entry in data.get("floors", []):
@@ -181,8 +195,8 @@ def is_shallow() -> bool:
     return git("rev-parse", "--is-shallow-repository").strip() == "true"
 
 
-def attributable_paths() -> tuple[dict[str, set[str]], int]:
-    """Story -> files, from commits naming exactly one story, plus the count that were ambiguous.
+def attributable_paths() -> tuple[dict[str, set[str]], list[AmbiguousCommit]]:
+    """Story -> files plus multi-story commits checked at their combined risk floor.
 
     The ambiguous count is returned rather than dropped: a checker whose coverage is a third of
     the backlog must say so, or a clean run reads as "nothing is below its floor" when it means
@@ -206,7 +220,7 @@ def attributable_paths() -> tuple[dict[str, set[str]], int]:
         )
     raw = git("log", "--format=%x02%H%x01%P%x01%s%x01%b%x01", "--name-only")
     attributed: dict[str, set[str]] = collections.defaultdict(set)
-    ambiguous = 0
+    ambiguous: list[AmbiguousCommit] = []
     for block in raw.split("\x02")[1:]:
         fields = block.split("\x01")
         if len(fields) < 5:
@@ -219,7 +233,7 @@ def attributable_paths() -> tuple[dict[str, set[str]], int]:
         if len(found) == 1:
             attributed[found.pop()] |= files
         elif len(found) > 1:
-            ambiguous += 1
+            ambiguous.append(AmbiguousCommit(commit=fields[0].strip(), stories=frozenset(found), paths=frozenset(files)))
     return dict(attributed), ambiguous
 
 
@@ -316,6 +330,58 @@ def evaluate(stories: dict[str, dict[str, Any]], attributed: dict[str, set[str]]
     return errors, warnings
 
 
+def evaluate_ambiguous(
+    stories: dict[str, dict[str, Any]], ambiguous: list[AmbiguousCommit], data: dict[str, Any]
+) -> tuple[list[str], list[str]]:
+    """Fail closed for a multi-story commit without inventing per-story path ownership.
+
+    A floor governs the commit's changed surface.  The lowest declared level among its named
+    stories is the only safe combined declaration: accepting a higher sibling would let a CR1
+    story hide a CR4 path simply by sharing a commit with that sibling.  Historical exceptions
+    are explicit commit baselines, never a silently dropped coverage count.
+    """
+    baselines = {entry["commit"]: entry for entry in data.get("ambiguous_baseline", [])}
+    errors: list[str] = []
+    warnings: list[str] = []
+    for entry in ambiguous:
+        floor = floor_for(sorted(entry.paths), data.get("floors", []))
+        if floor is None:
+            continue
+        baseline = baselines.get(entry.commit)
+        missing = sorted(entry.stories - stories.keys())
+        if missing:
+            if baseline and baseline.get("reason"):
+                warnings.append(
+                    f"ambiguous commit {entry.commit}: cannot classify unknown named stories "
+                    f"{', '.join(missing)} against its {floor.level} floor "
+                    f"[historical ambiguous baseline: {baseline['reason']}]"
+                )
+                continue
+            if baseline:
+                errors.append(f"{entry.commit}: ambiguous baseline records no reason")
+                continue
+            errors.append(
+                f"ambiguous commit {entry.commit}: cannot classify unknown named stories {', '.join(missing)} against its {floor.level} floor"
+            )
+            continue
+        lowest_story = min(entry.stories, key=lambda story_id: rank(stories[story_id]["change_risk"]))
+        lowest_level = stories[lowest_story]["change_risk"]
+        if rank(lowest_level) >= rank(floor.level):
+            continue
+        message = (
+            f"ambiguous commit {entry.commit}: lowest named story {lowest_story} declares "
+            f"{lowest_level}, but {floor.path} sets a combined commit floor of {floor.level} - "
+            f"{floor.reason}"
+        )
+        if baseline and baseline.get("reason"):
+            warnings.append(f"{message} [historical ambiguous baseline: {baseline['reason']}]")
+        elif baseline:
+            errors.append(f"{entry.commit}: ambiguous baseline records no reason")
+        else:
+            errors.append(message)
+    return errors, warnings
+
+
 def disagreement_summary(stories: dict[str, dict[str, Any]], data: dict[str, Any]) -> str:
     """How often the second classification differs from the declared one.
 
@@ -365,6 +431,9 @@ def cmd_check() -> int:
     stories = load_stories()
     attributed, ambiguous = attributable_paths()
     errors, warnings = evaluate(stories, attributed, data)
+    ambiguous_errors, ambiguous_warnings = evaluate_ambiguous(stories, ambiguous, data)
+    errors.extend(ambiguous_errors)
+    warnings.extend(ambiguous_warnings)
 
     for warning in warnings:
         print(f"warning: {warning}")
@@ -373,8 +442,8 @@ def cmd_check() -> int:
 
     checkable = sum(1 for story_id in attributed if story_id in stories)
     print(f"\nrisk classification: {checkable} of {len(stories)} stories had unambiguously attributable paths")
-    print(f"  {ambiguous} commits named more than one story and were not attributed - attribution is refused")
-    print("  rather than guessed, so this coverage is a floor on what was checked, not a claim about the rest.")
+    print(f"  {len(ambiguous)} commits named more than one story were checked at their combined floor")
+    print("  without guessing per-story ownership: the lowest declared story level must meet the highest path floor.")
     print(disagreement_summary(stories, data))
     if errors:
         print(f"\nRISK CLASSIFICATION ERROR: {len(errors)} stories declare a level below their floor", file=sys.stderr)
