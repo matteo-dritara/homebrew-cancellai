@@ -17,8 +17,10 @@ feature-depth = 1
 # unmaintained) from E09-S01, waived because `ratatui 0.29` pulled it in non-optionally and the
 # only way out was a workspace MSRV above what ADR-0015 promised. Raising the MSRV to 1.88 took
 # `ratatui 0.30`, which drops `paste` entirely, so the waiver is gone rather than renewed. A gate
-# with an empty ignore list is the only kind whose green means what it says.
+# with no waivers still needs explicit coverage of transitive unsoundness advisories.
 ignore = []
+# RUSTSEC-2026-0002 is transitive through ratatui; the default only covers direct dependencies.
+unsound = "all"
 
 # ADR-0015: strict permissive allow-list. Anything not listed here - including weak
 # copyleft (MPL-2.0) and strong copyleft (GPL-*, LGPL-*, AGPL-*) - is denied by default.

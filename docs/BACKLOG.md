@@ -1925,7 +1925,7 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 **Verification**
 
 - The MSRV legs of rust.yml build the workspace at 1.88.0 on all three tier-1 platforms.
-- cargo deny check passes with an empty ignore list.
+- cargo deny check passes with an empty ignore list and unsound = "all"; applying that scope to the old lru graph fails on RUSTSEC-2026-0002.
 - The compiled dependency graph is measured with cargo tree rather than read off Cargo.lock, which counts optional dependencies that are never built.
 - The full Rust quality set passes: fmt, clippy -D warnings, check, test, deny.
 - Each lint-driven edit is checked against the invariant its file serves: signature hex validation (SI-022/SI-029), manifest root validation (SI-021), and /proc/mounts path unescaping on the platform identity seam (SI-017).
@@ -1984,6 +1984,25 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 - `docs/RELEASING.md`
 - `scripts/release.py`
+
+### E17-S11 - The toolchain report recognizes approved pack members
+
+**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E26-S01 | **Safety obligations:** none
+
+**Outcome.** E17-S08 independent review found check_agent_toolchain.py report computes unmanaged components from top-level ids only, while check correctly includes explicit members. All eight approved repository skills are falsely reported unmanaged. Repair the reporting path without changing the approval boundary; implementation is outside E17-S08.
+
+**Acceptance criteria**
+
+- The report shall treat explicitly approved component members as managed, matching the check command.
+- If an undeclared skill is discovered, then both report and check shall identify it as unmanaged.
+
+**Verification**
+
+- Synthetic approved-pack and extra-member cases; report/check agreement.
+
+**Documentation impact**
+
+- `docs/development/AGENT_TOOLCHAIN.md`
 
 ## E18 - Remote Targets and Fleet Boundary
 

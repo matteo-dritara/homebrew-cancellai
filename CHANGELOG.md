@@ -7,12 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- Knowledge bundles now use the strict Ed25519 verification required by ADR-0024, rejecting
-  weak keys/signatures without replacing the last accepted bundle (E17-S08 independent review).
-
-
 ### Changed
 
 - **The workspace minimum Rust version is 1.88.0** (E17-S08, CR4;
@@ -21,20 +15,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   open advisory in `lru` that only `ratatui 0.30` clears, an accepted `cargo deny` waiver for an
   unmaintained `paste`, and a ban on let-chains in this workspace's own source that the safety
   kernel had already broken without anyone noticing. Building from source now needs rustc 1.88
-  (mid-2025; current stable is 1.94). Nothing about the shipped binaries or the Homebrew formula
+  (released mid-2025). Nothing about the shipped binaries or the Homebrew formula
   changes.
   - **GHSA-rhfx-m35p-ff5j is closed.** `lru` 0.12.5 -> 0.18.4 through `ratatui` 0.29 -> 0.30.2,
     and `paste` leaves the graph, so `rust/deny.toml`'s ignore list is now **empty** - a
     supply-chain gate with no waivers.
-  - **Two copies of `crossterm` were being compiled** - 0.28 declared by `cancellai-tui`, 0.29 by
+  - **An intermediate upgrade resolution compiled two copies of `crossterm`** - 0.28 declared by `cancellai-tui`, 0.29 by
     `ratatui 0.30` - which means two copies of the crate owning raw mode and the event stream in
     one process. `cargo deny` only warns on duplicates. Now one.
   - Filed as CR2 and executed as CR4: clippy reads `rust-version`, so raising it enabled lints
-    that had been silently skipped - four `collapsible_if` and one `manual_is_multiple_of`, two of
-    them in floored crates. The floor caught the story mid-flight and raised its own level. An
+    that had been silently skipped - five `collapsible_if` and one `manual_is_multiple_of`, three of
+    the six sites in floored crates. The floor caught the story mid-flight and raised its own level. An
     MSRV bump is a code change here, not a configuration change.
 
 ### Fixed
+
+- Knowledge bundles now use the strict Ed25519 verification required by ADR-0024, rejecting
+  weak keys/signatures without replacing the last accepted bundle (E17-S08 independent review).
+- Cargo-deny now checks transitive unsoundness advisories explicitly; its default scope had
+  missed `lru` even though RustSec already carried the advisory (E17-S08 independent review).
 
 - The branch check added in 1.13.2 prints a status instead of a blank column (E26-S04, CR0).
   `gh run list --json conclusion` returns `""` rather than `null` while a run is still going, and

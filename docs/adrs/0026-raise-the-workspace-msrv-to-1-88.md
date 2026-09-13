@@ -28,11 +28,14 @@ workspace calls `lru::IterMut` - it is ratatui's internal render cache, reached 
 crate this workspace forbids `unsafe` in. The finding is real; the exposure is not obviously
 anything.
 
-**2. An advisory the repository's own gate does not see.** `cargo deny check` reports
-`advisories ok` on this same lock file, because it reads the RustSec database and this advisory is
-in GitHub's. The gate is not broken, but its coverage is narrower than "we check advisories"
-suggests, and the only reason anyone knows about `lru` is a Dependabot run failing in a way nobody
-was reading.
+**2. An advisory the repository's own gate did not report.** Independent review corrected
+this explanation on 2026-09-13: GHSA-rhfx-m35p-ff5j also exists in RustSec as
+[RUSTSEC-2026-0002](https://rustsec.org/advisories/RUSTSEC-2026-0002.html). The omission was
+scope, not database coverage. `cargo-deny 0.20.2` defaults `advisories.unsound` to
+`"workspace"`, which only covers direct workspace dependencies. `lru` is transitive.
+Re-running the old graph returned success with the old configuration and failed specifically
+on this advisory with `unsound = "all"`. E17-S08 now sets that scope explicitly while
+keeping `ignore = []`. The updated graph passes the stronger check.
 
 **3. An unmaintained dependency already accepted for the same reason.**
 `rust/deny.toml` ignores RUSTSEC-2024-0436 (`paste`, unmaintained) with a comment that already
@@ -55,16 +58,15 @@ said so was failing for an unrelated reason. A promise nothing can check is not 
 `ratatui` is 0.30, `rust/deny.toml`'s ignore list is empty, and idiomatic 2024-edition code no
 longer has to be rewritten to avoid a version nobody was asking for.
 
-Option A, for the reasons in Options below: 1.88 was released in mid-2025 and current stable is
-1.94, so the compatibility being given up is a toolchain a year and a half old, against three
+Option A, for the reasons in Options below: 1.88 was released in mid-2025 and the executor's local compiler was
+1.94, so the compatibility being given up is the older 1.85 toolchain, against three
 concrete costs being paid for it today.
 
 ## Options
 
 **A. Raise the MSRV to 1.88.0.** Clears the `lru` advisory by making `ratatui 0.30` adoptable,
 probably clears the `paste` ignore, and lets the kernel use let-chains. Costs: anyone building from
-source needs 1.88 (released mid-2025; current stable is 1.94, so the ask is a toolchain a year and
-a half old), and the promise in ADR-0015 changes, which is a real thing to change rather than a
+source needs 1.88 (released mid-2025; the executor's local compiler was 1.94), and the promise in ADR-0015 changes, which is a real thing to change rather than a
 formality.
 
 **B. Keep 1.85.0.** Costs: the `lru` advisory stays open and Dependabot keeps failing on it; the
@@ -102,23 +104,29 @@ only lists the costs it guessed right is not worth keeping.
 - **`lru` went to 0.18.4 and `paste` left the graph**, as expected. GHSA-rhfx-m35p-ff5j is closed
   and `rust/deny.toml` now has an empty `ignore` list - a supply-chain gate with no waivers.
 - **Clippy's MSRV-gated lints woke up.** Clippy reads `rust-version`, so raising it enabled lints
-  that had been silently skipped: four `collapsible_if` sites it now wants written as let-chains,
-  and one `manual_is_multiple_of`. Two of them are in floored crates
-  (`cancellai-platform/src/wsl.rs`, `cancellai-safety/src/knowledge_bundle.rs`), which is what
+  that had been silently skipped: five `collapsible_if` sites it now wants written as let-chains,
+  and one `manual_is_multiple_of`. Three sites are in floored crates
+  (`cancellai-platform/src/wsl.rs`, `cancellai-platform/src/process.rs`,
+  `cancellai-safety/src/knowledge_bundle.rs`), which is what
   makes E17-S08 a CR4 story rather than the CR2 configuration change it was filed as. This is the
   right direction - those lints were always applicable and the old MSRV was hiding them - but it
   means an MSRV bump is not a configuration change here, it is a code change in the kernel.
-- **The dependency graph grew by 18 crates**, 99 to 117, from `ratatui 0.30`'s split into
-  `ratatui-core`/`ratatui-widgets`/`ratatui-crossterm` plus `kasuari` replacing the old layout
-  solver. `Cargo.lock` grew by 115 entries, which is the number a careless reading reports: most of
-  those are optional dependencies of the new crates - the `termwiz`, `termion` and `termina`
-  backends - that are never compiled, because `ratatui`'s default features select `crossterm`
-  only. The compiled graph is the number that matters and it is 18.
+- **The macOS normal dependency graph grew by 18 packages**, 98 to 116, measured with
+  `cargo tree --locked --offline --workspace --edges normal --prefix none --format '{p}'`,
+  excluding blank lines and deduplicating package identities. This includes the 13 workspace
+  packages and excludes build/dev edges; it is not a count of all rustc compilation units.
+  Linux is 100 to 118 and Windows GNU 98 to 115 under the same target-specific method.
+  `Cargo.lock` grew from 123 to 225 package entries: net +102, comprising 127 introduced
+  name/version pairs and 25 removed pairs. The earlier packet
+  reported 115, which is neither net growth nor the complete package-identity delta. Of the 127 new
+  pairs, 33 are reachable through normal/build edges across all targets; 94 are unselected
+  under those features. Reverse trees for every new pair and unchanged kernel-ring trees
+  confirm that selected new dependencies reach workspace consumers only through the TUI.
 - **`crossterm` had to be aligned.** `ratatui 0.30` uses `crossterm 0.29` while `cancellai-tui`
-  declared 0.28, so both were compiled: two versions of the crate that owns raw mode and the event
+  still declared 0.28 during the upgrade, so an intermediate resolution compiled both: two versions of the crate that owns raw mode and the event
   stream, in one process. `cargo deny` only warns on duplicates, so nothing would have stopped it.
   `cancellai-tui` now declares 0.29 and one version is compiled.
-- **One API break**, in `cancellai-tui`: `border::Set` gained a lifetime parameter, so the four
+- **One API break**, in `cancellai-tui`: `border::Set` gained a lifetime parameter, so the eight
   functions taking it now say `border::Set<'static>`. The values were always `&'static str`
   literals.
 - **E16-S07's rewrite stays.** It replaced three let-chains in the bundle verifier with
@@ -128,6 +136,14 @@ only lists the costs it guessed right is not worth keeping.
 
 ## What this ADR does not decide
 
-Whether `cargo deny` should be supplemented with a second advisory source that sees GitHub's
-database. That is a separate question with its own cost, and it is the reason this one was found
-late.
+Whether a second advisory source is useful remains a separate decision. It is not needed to
+see this particular advisory: the correction above demonstrates that RustSec already had it.
+
+## Independent safety repair
+
+The E17-S08 verifier also reproduced a pre-existing mismatch with ADR-0024 in the edited
+bundle module: permissive signature verification was called instead of the required strict
+method. The owner authorized repairs found during review; AC6 records this additional scope.
+The repair calls `verify_strict`, rejects weak local-policy keys/signatures and preserves the
+current bundle on refusal. This is an intentional security behavior correction, separate
+from the six behavior-preserving lint rewrites.

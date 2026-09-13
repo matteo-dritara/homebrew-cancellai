@@ -64,6 +64,8 @@ check` locally and in `.github/workflows/rust.yml`'s `quality` job on macOS/Linu
   reviewed addition to the allow-list, not an implicit pass;
 - a wildcard (`*`) version requirement is denied (`[bans] wildcards = "deny"`), so a
   dependency version is always pinned to something explicit;
+- transitive unsoundness advisories are included explicitly (`[advisories] unsound = "all"`);
+  the default direct-dependency scope missed `lru` through ratatui (E17-S08 review);
 - MSRV is pinned at 1.88.0 (`rust/Cargo.toml`'s `rust-version`), bumped only by deliberate,
   reviewed decision - never implicitly by a dependency update (ADR-0015, raised from 1.85.0 by
   [ADR-0026](../adrs/0026-raise-the-workspace-msrv-to-1-88.md)). The resolver is MSRV-aware
