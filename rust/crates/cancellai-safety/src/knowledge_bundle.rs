@@ -694,7 +694,7 @@ mod tests {
         let policy = policy_for(1, "acme", promoted_tier());
         for signature in [
             String::new(),
-            "0".repeat(1),
+            "0".to_string(),
             "0".repeat(127),
             "0".repeat(129),
             "gg".repeat(64),

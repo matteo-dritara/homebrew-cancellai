@@ -128,3 +128,7 @@ proof of the repairs.
 
 Independent verdict and final gate evidence are issued in the story-scoped review and
 `SAFETY_VERDICT.md` after the final rerun. Neither epic is closed by this review.
+
+Final-gate follow-up: clippy caught `repeat(1)` in the verifier's new signature fixture.
+It was replaced with `to_string()` without changing the test input; all gates are rerun after
+this test-only repair.
