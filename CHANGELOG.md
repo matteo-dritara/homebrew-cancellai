@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The branch check added in 1.13.2 prints a status instead of a blank column (E26-S04, CR0).
+  `gh run list --json conclusion` returns `""` rather than `null` while a run is still going, and
+  jq's `//` falls back only on `null` - so every in-progress workflow reported as an empty field,
+  which reads exactly like a clean sheet. A check whose failure mode is "looks fine" is worse than
+  no check, which is the argument the step was added on.
+
 ## [1.13.2] - 2026-09-13
 
 ### Fixed
