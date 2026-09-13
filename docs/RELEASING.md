@@ -13,6 +13,13 @@ A closed epic is at least a **minor** release. Safety and authority behaviour is
 public contract, so an epic that changes what the tool is willing to do is never a patch
 release even when the command spelling is unchanged.
 
+**A release can also carry a fix that closes no epic** (E22-S07). Substitute
+`--fix "<what the tagged version could not carry>"` for `--epic EXX` in step 2 below. Such a
+release takes the next **patch** number and its packet declares no epic, so it cannot satisfy
+PD-021 for one - the two shapes are mutually exclusive at the command line and in the packet.
+This exists because a published tag is immutable history: when the v1.12.0 and v1.13.0 workflows
+failed, the repair had nowhere to ship.
+
 ## Current Python v1 release process
 
 Until the Rust cutover the release artifact is the tagged source the Homebrew formula points

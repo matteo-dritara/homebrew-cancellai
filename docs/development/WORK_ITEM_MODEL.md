@@ -121,6 +121,22 @@ git tag -a vX.Y.Z -m "cancellAI X.Y.Z" && git push --follow-tags
 python3 scripts/release.py finalize --version X.Y.Z
 ```
 
+### A release that closes no epic
+
+Closing an epic is one reason to cut a version. It was the only one the tooling could express
+until E22-S07, and that became a problem the first time a release workflow failed: a published
+tag is immutable history here, so the fix can only reach users as a new version, and there was
+none to cut because every closed epic was already released.
+
+```sh
+python3 scripts/release.py prepare --version X.Y.Z --fix "what the tagged version could not carry"
+```
+
+Two constraints keep this from becoming a way around the rule above. It takes the **next patch
+number** - a version that closes nothing may not claim a feature number - and its evidence packet
+declares no epic at all, so it cannot satisfy PD-021 for one. The stated reason is required and is
+written into the packet, because it is the only record of why the version exists.
+
 `prepare` bumps the version in the source and the packaging metadata, cuts the changelog
 section, and writes the release evidence packet from the epic's contract. `finalize` writes
 the archive checksum into the Homebrew formula - a separate command because that checksum
