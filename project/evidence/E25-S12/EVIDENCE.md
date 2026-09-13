@@ -2,7 +2,7 @@
 
 - Commit/PR: the sensitivity-anchor repair on `main`
 - Executor: Claude
-- Independent verifier: the CI run that rejected the report (`tests` / `lint`, Python 3.14)
+- Independent verifier: the CI run on Python 3.14 that rejected the committed report; none - the owner waived the Codex round for this session's work
 - Change Risk: CR2
 - Spec version/commit: `project/epics/E25.json` at this commit
 
@@ -57,4 +57,4 @@ python3 -m pytest tests -q                                      -> pass
 
 ## Verifier verdict
 
-pending
+closed on the owner's waiver; no independent verdict

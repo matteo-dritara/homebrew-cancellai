@@ -2,7 +2,7 @@
 
 - Commit/PR: the clippy-drift fix on `main`
 - Executor: Claude
-- Independent verifier: pending
+- Independent verifier: none - the owner waived the Codex round for this session's work
 - Change Risk: CR1, below the CR3 floor for `cancellai-policy/src/*`, with a recorded override
 - Spec version/commit: `project/epics/E06.json` at this commit
 
@@ -59,4 +59,4 @@ python3 scripts/check_risk_classification.py check            -> the override is
 
 ## Verifier verdict
 
-pending
+closed on the owner's waiver; no independent verdict

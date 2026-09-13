@@ -2,7 +2,7 @@
 
 - Commit/PR: the fix-release shape on `main`
 - Executor: Claude
-- Independent verifier: pending
+- Independent verifier: none - the owner waived the Codex round for this session's work
 - Change Risk: CR3 (the floor `project/risk_floors.json` sets for `scripts/release.py`: release authority)
 - Spec version/commit: `project/epics/E22.json` at this commit
 
@@ -59,4 +59,4 @@ python3 -m mypy scripts/release.py           -> clean
 
 ## Verifier verdict
 
-pending
+closed on the owner's waiver; no independent verdict

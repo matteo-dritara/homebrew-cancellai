@@ -2,7 +2,7 @@
 
 - Commit/PR: the MSRV resolver fix on `main`
 - Executor: Claude
-- Independent verifier: the MSRV leg of `.github/workflows/rust.yml`, which had been failing since E09-S01
+- Independent verifier: the MSRV leg of `.github/workflows/rust.yml`, which had been failing since E09-S01; none - the owner waived the Codex round for this session's work
 - Change Risk: CR1
 - Spec version/commit: `project/epics/E09.json` at this commit
 
@@ -63,4 +63,4 @@ cargo deny check                         -> advisories ok, bans ok, licenses ok,
 
 ## Verifier verdict
 
-pending
+closed on the owner's waiver; no independent verdict

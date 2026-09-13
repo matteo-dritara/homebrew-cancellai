@@ -10,9 +10,8 @@ Epics: **27** | Stories: **133**
 
 - `blocked`: 2
 - `cancelled`: 1
-- `done`: 103
+- `done`: 104
 - `planned`: 26
-- `ready_for_review`: 1
 
 ## Change risk distribution
 
@@ -28,4 +27,4 @@ Epics: **27** | Stories: **133**
 
 ## Awaiting independent review
 
-- **E06-S05** - The Rust quality gate stays green against current stable clippy (CR1)
+- none
