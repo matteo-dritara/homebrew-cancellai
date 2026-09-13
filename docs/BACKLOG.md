@@ -2510,6 +2510,27 @@ Close the gaps between what the engineering system claims to enforce and what it
 
 - `.github/workflows/release.yml`
 
+### E22-S09 - A release packet's embedded links resolve from where the packet lives
+
+**Status:** `done` | **Change Risk:** `CR3` | **Dependencies:** E22-S07 | **Safety obligations:** none
+
+**Outcome.** A release packet embeds the changelog section it ships, and a changelog link is written from the repository root while the packet lives two directories down. So `prepare` produced a packet pointing at `docs/adrs/...` from inside `project/evidence/`, where that is nothing, and the documentation gate refused it. v1.13.0's packet carries the correct form because someone rewrote it by hand - which is the failure this file's own docstring warns about, arriving in the file that warns about it.
+
+**Acceptance criteria**
+
+- A repository-root-relative link in the embedded changelog shall be rewritten to resolve from the packet's own directory.
+- If a link is absolute, an anchor, or already relative, then it shall be left exactly as written, because rewriting it would break what currently works.
+- Every committed release packet's links shall resolve from where that packet lives.
+
+**Verification**
+
+- The rewrite is idempotent, so re-running it over an already-correct packet changes nothing.
+- A test walks every committed release packet and resolves every link against that packet's own directory.
+
+**Documentation impact**
+
+- `project/evidence/RELEASE-v1.13.1.md`
+
 ## E23 - Release gate history availability
 
 **Phase:** `P1` | **Status:** `done` | **Epic dependencies:** E22

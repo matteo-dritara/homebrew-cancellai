@@ -54,6 +54,10 @@ UNRELEASED_RE = re.compile(r"^## \[Unreleased\]\s*$", re.MULTILINE)
 # PD-021's gate satisfiable by a sentence, which is the failure mode this repository exists to
 # refuse elsewhere. Four epics were being credited that way (E06, E12, E16, E17); none was `done`,
 # so nothing was wrong yet, which is the only reason this was cheap to fix.
+# A changelog link is written from the repository root; a release packet lives two directories
+# down, so the same text embedded there points at nothing. v1.13.0's packet has the rewritten form
+# because someone did it by hand, which is the failure this file's own docstring warns about.
+BODY_LINK_RE = re.compile(r"\]\((?!https?://|#|/|\.\./)([^)]+)\)")
 EPIC_DECLARATION_RE = re.compile(r"^\s*- Epic:\s*(E\d{2})\b", re.MULTILINE)
 RELEASED_HEADING_RE = re.compile(r"^## \[(\d+\.\d+\.\d+)\] - (\d{4}-\d{2}-\d{2})\s*$", re.MULTILINE)
 
@@ -208,6 +212,11 @@ def included_work(epic_id: str | None, reason: str | None) -> str:
     return f"- Epic: {epic_id} - {epic['title']}\n- Stories: {story_ids}\n- CR4 Safety Verdicts: {', '.join(verdicts) if verdicts else 'none'}\n"
 
 
+def relocate_links(body: str) -> str:
+    """Rewrite repository-root-relative markdown links for a document under `project/evidence/`."""
+    return BODY_LINK_RE.sub(r"](../../\1)", body)
+
+
 def render_evidence(version: str, epic_id: str | None, body: str, reason: str | None = None) -> str:
     """Fill in `project/templates/RELEASE_EVIDENCE.md` from the epic's own contract.
 
@@ -276,7 +285,7 @@ python3 scripts/check_process.py check
 
 ## User-visible changes
 
-{body}
+{relocate_links(body)}
 
 ## Known residual risks
 

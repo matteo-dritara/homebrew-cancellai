@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import unittest
 
 from scripts import release
@@ -113,6 +114,30 @@ class EpicCoverageTests(unittest.TestCase):
                 text = path.read_text(encoding="utf-8")
                 declared = release.EPIC_DECLARATION_RE.findall(text)
                 self.assertTrue(declared or "closes no epic" in text.lower(), path.name)
+
+
+class EmbeddedLinkTests(unittest.TestCase):
+    """A packet embeds the changelog, and the changelog's links are written from the root."""
+
+    def test_a_root_relative_link_is_rewritten_for_the_packet_directory(self):
+        self.assertEqual("[a](../../docs/x.md)", release.relocate_links("[a](docs/x.md)"))
+
+    def test_absolute_anchor_and_already_relative_links_are_left_alone(self):
+        for text in ("[b](https://example.test/x)", "[c](#anchor)", "[d](../../docs/x.md)", "[e](/abs)"):
+            with self.subTest(text=text):
+                self.assertEqual(text, release.relocate_links(text))
+
+    def test_rewriting_is_idempotent(self):
+        once = release.relocate_links("[a](docs/x.md)")
+        self.assertEqual(once, release.relocate_links(once))
+
+    def test_every_committed_packet_link_resolves_from_where_it_lives(self):
+        # The defect this came from: `prepare` copied the changelog verbatim, so v1.13.1's packet
+        # pointed at `docs/adrs/...` from inside `project/evidence/`, where that is nothing.
+        for path in sorted(release.EVIDENCE.glob("RELEASE-v*.md")):
+            for target in re.findall(r"\]\((?!https?://|#|mailto:)([^)]+)\)", path.read_text(encoding="utf-8")):
+                with self.subTest(packet=path.name, target=target):
+                    self.assertTrue((path.parent / target.split("#")[0]).exists(), target)
 
 
 if __name__ == "__main__":
