@@ -135,7 +135,8 @@ this: `cancellai-safety::knowledge_bundle::KnowledgeBundle` carries `schema_vers
 Ed25519 `signature` - `parse_bundle` rejects a bundle missing any field (including one missing
 `signature` entirely - the literal "unsigned" case) before verification is ever attempted.
 `verify_bundle` checks schema version, publisher identity against a caller-supplied
-`LocalTrustPolicy`, the SHA-256 content digest, and the Ed25519 signature, then expiry; the
+`LocalTrustPolicy`, the SHA-256 content digest, and the Ed25519 signature using ADR-0024 strict verification (including rejection of weak
+keys/signatures), then expiry; the
 `VerifiedKnowledgeBundle` it returns carries the `TrustedTier` the local policy already assigned
 that publisher, never anything read from the bundle - a knowledge update cannot elevate trust
 because there is no field in the wire format that could assert one. `KnowledgeStore::apply`

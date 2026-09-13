@@ -313,9 +313,11 @@ Partially implemented at `rust/crates/cancellai-safety/src/trust_promotion.rs` (
 identifiers) with no command/code field for anything to execute, and raising authority through
 it requires passing through `TrustedTier::promote`'s fail-closed checks - the only public path
 from which a `TrustedTier` above `Untrusted` can be obtained (see SI-021 above for the round-1
-repair that made this actually true, not merely intended). Signature/provenance verification
-for a distributed knowledge bundle is a later story (E16 Provider Ecosystem and Federated
-Knowledge) - nothing that verifies a bundle's signature exists yet.
+repair that made this actually true, not merely intended). E16-S02 implemented bundle signature/provenance verification in
+`rust/crates/cancellai-safety/src/knowledge_bundle.rs`. E17-S08 independent review found that
+its call used permissive verification despite ADR-0024 requiring `verify_strict`; the repair
+uses strict Ed25519 verification and rejects weak local-policy keys/signatures before a bundle
+can replace the current store. A regression proves refusal preserves the full current value.
 
 ### SI-023 Attribution uncertainty cannot become cleanup confidence
 

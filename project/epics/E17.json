@@ -186,7 +186,8 @@
         "Where the raised minimum makes a held-back dependency adoptable, the story shall adopt it and remove the waiver it justified, rather than raising the minimum and leaving the reason unaddressed.",
         "If the raised minimum enables a lint that was previously skipped, then the code shall be changed to satisfy it rather than the lint suppressed, because the lint was always applicable and only the declared version hid it.",
         "Exactly one version of any crate owning terminal state shall be compiled, so that raw mode and the event stream are not split across two copies of the same crate.",
-        "If the owner had rejected the raise, then the open advisory would have been recorded as accepted residual risk and its Dependabot update dismissed - this branch is not taken and is recorded as not taken."
+        "If the owner had rejected the raise, then the open advisory would have been recorded as accepted residual risk and its Dependabot update dismissed - this branch is not taken and is recorded as not taken.",
+        "If a local publisher key or signature is weak, then bundle verification shall reject it using ADR-0024 strict Ed25519 verification, leaving the current store unchanged."
       ],
       "safety_obligations": [
         "SI-021",
@@ -199,7 +200,8 @@
         "cargo deny check passes with an empty ignore list.",
         "The compiled dependency graph is measured with cargo tree rather than read off Cargo.lock, which counts optional dependencies that are never built.",
         "The full Rust quality set passes: fmt, clippy -D warnings, check, test, deny.",
-        "Each lint-driven edit is checked against the invariant its file serves: signature hex validation (SI-022/SI-029), manifest root validation (SI-021), and /proc/mounts path unescaping on the platform identity seam (SI-017)."
+        "Each lint-driven edit is checked against the invariant its file serves: signature hex validation (SI-022/SI-029), manifest root validation (SI-021), and /proc/mounts path unescaping on the platform identity seam (SI-017).",
+        "Independent review reproduced a pre-existing mismatch with ADR-0024: permissive verification accepted a forged signature under a weak local-policy key. The owner-authorized repair adds strict verification and a regression that fails before the repair."
       ],
       "documentation_impact": [
         "docs/adrs/0026-raise-the-workspace-msrv-to-1-88.md",
@@ -207,7 +209,9 @@
         "docs/adrs/0024-ed25519-dalek-for-knowledge-bundle-signatures.md",
         "docs/security/SUPPLY_CHAIN.md",
         "AGENTS.md",
-        "rust/deny.toml"
+        "rust/deny.toml",
+        "docs/security/SAFETY_INVARIANTS.md",
+        "CHANGELOG.md"
       ]
     },
     {

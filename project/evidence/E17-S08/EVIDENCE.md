@@ -39,6 +39,21 @@ one rather than summarised, because "mechanical" is the word that precedes most 
 | n/a | A dependency reaching the kernel ring through `ratatui 0.30` | It does not. `ratatui`, `ratatui-core`, `ratatui-widgets`, `ratatui-crossterm`, `kasuari` and `crossterm` are reachable only from `cancellai-tui` (`cargo tree -i`), which is outer ring under ADR-0019. No kernel crate's dependency set changed. | PASS |
 | n/a | The graph growing more than the change warrants | 99 -> 117 compiled crates (`cargo tree --workspace --edges normal`). `Cargo.lock` grew by 115 entries, which is the number a careless reading reports: most are optional dependencies of the new crates - the `termwiz`, `termion` and `termina` backends - that are never compiled, because `ratatui`'s default features select `crossterm` only. | PASS |
 
+## Independent safety repair (2026-09-13)
+
+Codex reproduced a pre-existing ADR-0024 mismatch: the implementation used permissive
+`Verifier::verify`, and a synthetic weak local-policy key authenticated a forged bundle.
+Under the owner's explicit repair authorization, E17-S08 now includes AC6 and uses
+`VerifyingKey::verify_strict`. `verifier_local_policy_weak_key_is_rejected` fails on the
+review target and passes after the repair; it also asserts that refusal leaves all fields of
+`current()` unchanged. No dependency or new authority path is added. This repair intentionally
+narrows acceptance beyond the original lint-only diff; E16-S07's predicate equivalence claim
+is evaluated separately from this signature-policy correction.
+
+| AC | Evidence | Result |
+| --- | --- | --- |
+| AC6 - weak keys/signatures fail closed | Strict verification, with pre-fix failure and post-fix rejection plus full current-store equality. | PASS |
+
 ## Verification Commands
 
 ```text

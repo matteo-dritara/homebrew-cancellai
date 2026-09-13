@@ -1920,6 +1920,7 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 - If the raised minimum enables a lint that was previously skipped, then the code shall be changed to satisfy it rather than the lint suppressed, because the lint was always applicable and only the declared version hid it.
 - Exactly one version of any crate owning terminal state shall be compiled, so that raw mode and the event stream are not split across two copies of the same crate.
 - If the owner had rejected the raise, then the open advisory would have been recorded as accepted residual risk and its Dependabot update dismissed - this branch is not taken and is recorded as not taken.
+- If a local publisher key or signature is weak, then bundle verification shall reject it using ADR-0024 strict Ed25519 verification, leaving the current store unchanged.
 
 **Verification**
 
@@ -1928,6 +1929,7 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 - The compiled dependency graph is measured with cargo tree rather than read off Cargo.lock, which counts optional dependencies that are never built.
 - The full Rust quality set passes: fmt, clippy -D warnings, check, test, deny.
 - Each lint-driven edit is checked against the invariant its file serves: signature hex validation (SI-022/SI-029), manifest root validation (SI-021), and /proc/mounts path unescaping on the platform identity seam (SI-017).
+- Independent review reproduced a pre-existing mismatch with ADR-0024: permissive verification accepted a forged signature under a weak local-policy key. The owner-authorized repair adds strict verification and a regression that fails before the repair.
 
 **Documentation impact**
 
@@ -1937,6 +1939,8 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 - `docs/security/SUPPLY_CHAIN.md`
 - `AGENTS.md`
 - `rust/deny.toml`
+- `docs/security/SAFETY_INVARIANTS.md`
+- `CHANGELOG.md`
 
 ### E17-S09 - The publish guard hashes the archive, not the file that sorts first
 

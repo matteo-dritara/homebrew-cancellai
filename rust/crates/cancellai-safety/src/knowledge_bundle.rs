@@ -49,7 +49,7 @@
 
 use std::fmt;
 
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use ed25519_dalek::{Signature, VerifyingKey};
 use sha2::{Digest, Sha256};
 
 use crate::trust_promotion::TrustedTier;
@@ -247,7 +247,7 @@ pub fn verify_bundle(
     let verifying_key = VerifyingKey::from_bytes(&publisher.public_key)
         .map_err(|_| KnowledgeBundleError::UnknownSigner)?;
     verifying_key
-        .verify(&bundle.signing_bytes(), &signature)
+        .verify_strict(&bundle.signing_bytes(), &signature)
         .map_err(|_| KnowledgeBundleError::InvalidSignature)?;
 
     // `is_some_and` rather than a let-chain. Written that way under MSRV 1.85, which could not
@@ -660,5 +660,33 @@ mod tests {
             KnowledgeBundleError::NoPriorBundle
         );
         assert_eq!(empty.current(), before.as_ref());
+    }
+    #[test]
+    fn verifier_local_policy_weak_key_is_rejected() {
+        let mut public_key = [0; 32];
+        public_key[0] = 1;
+        let policy = LocalTrustPolicy::new(vec![TrustedPublisher {
+            publisher_id: "acme".into(),
+            public_key,
+            tier: promoted_tier(),
+        }]);
+        let mut bundle = signed_bundle(1, "acme", 1, 0, None, "synthetic");
+        let mut signature = [0; 64];
+        signature[0] = 1;
+        bundle.signature = encode_hex(&signature);
+        assert_eq!(
+            verify_bundle(&bundle, &policy, 0).unwrap_err(),
+            KnowledgeBundleError::InvalidSignature
+        );
+        let valid_policy = policy_for(1, "acme", promoted_tier());
+        let original = signed_bundle(1, "acme", 1, 0, None, "last good");
+        let mut store = KnowledgeStore::empty();
+        store.apply(&original, &valid_policy, 0).unwrap();
+        let before = store.current().cloned();
+        assert_eq!(
+            store.apply(&bundle, &policy, 0).unwrap_err(),
+            KnowledgeBundleError::InvalidSignature
+        );
+        assert_eq!(store.current(), before.as_ref());
     }
 }

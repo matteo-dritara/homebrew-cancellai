@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Knowledge bundles now use the strict Ed25519 verification required by ADR-0024, rejecting
+  weak keys/signatures without replacing the last accepted bundle (E17-S08 independent review).
+
+
 ### Changed
 
 - **The workspace minimum Rust version is 1.88.0** (E17-S08, CR4;
