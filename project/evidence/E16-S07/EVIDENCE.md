@@ -58,6 +58,10 @@ cargo deny check                                                      -> advisor
 - **Nothing prevents the next let-chain.** It is stable, idiomatic 2024-edition Rust, and the only
   thing that catches it is the MSRV leg - which is now working, and which is exactly how this was
   found. A lint would be better and does not exist here.
+- **The promise was in fact the wrong one, and was repealed hours later.** ADR-0026 raised the
+  MSRV to 1.88.0 (E17-S08), so let-chains are now legal here. This rewrite is kept: it is correct
+  at either version and the two boundary tests it added stand on their own. A reviewer should judge
+  it as code, not as a workaround for a constraint that no longer exists.
 - **The promise itself may be the wrong one.** The code has in fact required 1.88 since
   2026-09-09. Restoring 1.85 is the conservative reading; deciding that 1.88 is the real minimum
   is an owner decision about a published promise and is deliberately not taken here.
