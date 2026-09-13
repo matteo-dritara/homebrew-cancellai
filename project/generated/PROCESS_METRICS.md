@@ -104,7 +104,7 @@ load-bearing rather than academic.
 
 ## Requirements shape
 
-- Acceptance criteria describing **unwanted behaviour**: **26 of 398** (7%).
+- Acceptance criteria describing **unwanted behaviour**: **26 of 399** (7%).
 - Epics whose requirements describe the feature and not the hazard:
   - `E00` - 0 of 29
   - `E01` - 0 of 13

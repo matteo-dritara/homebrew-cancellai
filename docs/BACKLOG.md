@@ -3126,6 +3126,7 @@ Skills, hooks, subagents, plugins, MCP servers and language servers are third-pa
 - The session-start skill shall report the default branch's current workflow conclusions before a story is selected.
 - If the branch status cannot be determined, then the report shall say unknown rather than silent, because an absent answer must not read as a passing one.
 - If any workflow is failing, then that shall be reported to the owner as a finding before work begins, rather than noted and worked around.
+- Where the ritual is stated for agents that cannot load the skill pack, it shall state the same step, so an agent's obligations do not depend on which agent it is.
 
 **Verification**
 
@@ -3135,3 +3136,4 @@ Skills, hooks, subagents, plugins, MCP servers and language servers are third-pa
 **Documentation impact**
 
 - `.claude/skills/orient/SKILL.md`
+- `AGENTS.md`

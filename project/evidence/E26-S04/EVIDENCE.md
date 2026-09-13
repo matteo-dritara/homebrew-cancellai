@@ -16,6 +16,7 @@ PASS
 | --- | --- | --- |
 | AC1 - the branch's conclusions are reported | `.claude/skills/orient/SKILL.md` injects `gh run list --branch main --limit 5`, alongside the control-plane and toolchain state it already loaded, so it is read before a story is selected rather than after a push fails. | PASS |
 | AC2 - unknown is said, not implied | The line above the command says a blank or error result means unknown and that unknown is not green. This is the same rule `check_risk_classification.py` now enforces in code for its own missing evidence (E25-S14); here it is prose, because a skill cannot refuse. | PASS |
+| AC4 - the same step for every agent | `AGENTS.md`'s "Before any code change" block carries the command and the rule, because that document is what a non-Claude agent reads and the skill pack is Claude-only. Leaving it in the skill alone would have made an agent's obligations depend on which agent it is, which is the asymmetry E24-S01 exists to prevent. | PASS |
 | AC3 - a red branch is a finding | Step 6 of the skill says so, and says it is reported to the owner before work starts rather than worked around - with the four-day MSRV failure named as the reason the step exists. | PASS |
 
 ## Safety Evidence

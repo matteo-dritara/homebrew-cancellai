@@ -21,6 +21,7 @@ python3 scripts/project_os.py status
 python3 scripts/project_os.py next
 python3 scripts/project_os.py review
 python3 scripts/check_agent_toolchain.py report
+gh run list --branch main --limit 5   # or however this agent can see CI; unknown is not green
 ```
 
 Do not begin implementation from chat context alone. The repository contract is authoritative.
@@ -33,6 +34,14 @@ tooling nobody decided to carry produces work nobody can account for. Anything u
 or past its review date goes to the owner as a proposal before work begins. In Claude Code the
 `toolchain` skill does this; any other agent runs the command. **No agent installs, updates or
 removes a component** - see [`docs/development/AGENT_TOOLCHAIN.md`](docs/development/AGENT_TOOLCHAIN.md).
+
+The last command asks the other question that must be answered before work starts: **is the branch
+you are about to build on green?** Read every workflow's conclusion, not an aggregate, and treat an
+answer you cannot obtain as *unknown* rather than as passing. A failing workflow goes to the owner
+as a finding before a story is selected - not noted and worked around. This is here because it was
+not: the MSRV leg of `rust.yml` failed on every push for four days, across two attempted releases,
+while every other leg stayed green and every session read the green ones. A failure nobody reads is
+indistinguishable from a gate nobody has.
 
 ## Current transition state
 
