@@ -2891,6 +2891,30 @@ cEOS has borrowed the artifact set of a safety standard without the mechanism th
 - `project/generated/GATE_SENSITIVITY.md`
 - `CHANGELOG.md`
 
+### E25-S14 - A gate that cannot see its evidence refuses rather than guesses
+
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E25-S02 | **Safety obligations:** none
+
+**Outcome.** The risk-floor gate reasons over git history, and CI ran it against a depth-1 checkout. A shallow tip has no parent object, so `git log --name-only` reports the whole tree as its diff: all 539 tracked files were attributed to the last commit's story, and the gate refused a kernel crate's CR4 floor for a story that touched no Rust. The same defect pointing the other way is a silent pass, which is the version nobody would have found. The gate now refuses a shallow clone and names the fix; root commits attribute nothing; and the three CI jobs that run it fetch the history it needs. This is the second instance of the class - the first broke the v1.10.0 tag and is recorded in release.yml.
+
+**Acceptance criteria**
+
+- If the checkout is shallow, then the gate shall refuse and name the checkout option that fixes it, rather than attributing files it cannot see the provenance of.
+- A commit with no parent shall attribute no files, because a diff against nothing is the whole tree.
+- Every CI job that runs this gate shall fetch the full history.
+- If the suite runs where history is unavailable, then the tests that reason over it shall skip rather than fail, so a source export stays green.
+
+**Verification**
+
+- A depth-1 clone of this repository reproduces the original misattribution before the fix and refuses after it.
+- The refusal is asserted by a test that makes the repository look shallow, not by reading the message.
+- The committed state still passes the gate with full history.
+
+**Documentation impact**
+
+- `.github/workflows/tests.yml`
+- `.github/workflows/governance.yml`
+
 ## E26 - Agent Toolchain Governance
 
 **Phase:** `P1` | **Status:** `done_no_release` | **Epic dependencies:** none

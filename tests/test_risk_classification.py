@@ -127,8 +127,22 @@ class DisagreementSummaryTests(unittest.TestCase):
         self.assertIn("is not independent", summary)
 
 
+def skip_without_history(case: unittest.TestCase) -> None:
+    """Skip a test that reasons over git history when this checkout does not have it.
+
+    A shallow clone is not "no history": `git log` answers, and answers wrongly - a depth-1 tip
+    has no parent object, so its diff is the whole tree. The checker refuses that outright, and a
+    test asserting the committed state must skip rather than read the refusal as a defect. CI now
+    fetches full history for the jobs that run this gate; this keeps the suite honest anywhere
+    else it is run.
+    """
+    if risk.is_shallow():
+        case.skipTest("shallow clone; attribution needs the history it cannot see")
+
+
 class AttributionTests(unittest.TestCase):
     def test_attribution_reports_what_it_could_not_attribute(self):
+        skip_without_history(self)
         attributed, ambiguous = risk.attributable_paths()
         if not attributed and not ambiguous:
             # A source export has no `.git`, so there is nothing to attribute and the claim is
@@ -143,6 +157,7 @@ class AttributionTests(unittest.TestCase):
         self.assertGreater(len(attributed), 0)
 
     def test_every_attributed_story_id_has_the_expected_shape(self):
+        skip_without_history(self)
         for story_id in risk.attributable_paths()[0]:
             with self.subTest(story=story_id):
                 self.assertRegex(story_id, r"^E\d{2}-S\d{2}$")
@@ -186,7 +201,22 @@ class StoryIdExtractionTests(unittest.TestCase):
 
 class CommandTests(unittest.TestCase):
     def test_check_passes_on_the_committed_state(self):
+        skip_without_history(self)
         self.assertEqual(0, risk.main(["check"]))
+
+    def test_check_refuses_a_shallow_clone_rather_than_attributing_everything_to_one_story(self):
+        # The failure this came from: CI ran this gate against a depth-1 checkout, `git log`
+        # reported all 539 tracked files as the tip commit's diff, and the gate refused a kernel
+        # crate's CR4 floor for a story that touched no Rust at all. The same defect pointing the
+        # other way is a silent pass, which is why it refuses instead of degrading.
+        original = risk.git
+        try:
+            risk.git = lambda *args: "true" if args[:2] == ("rev-parse", "--is-shallow-repository") else original(*args)  # type: ignore[assignment]
+            with self.assertRaises(risk.RiskClassificationError) as caught:
+                risk.attributable_paths()
+        finally:
+            risk.git = original  # type: ignore[assignment]
+        self.assertIn("fetch-depth", str(caught.exception).lower())
 
     def test_floor_reports_a_kernel_path(self):
         self.assertEqual(0, risk.main(["floor", "rust/crates/cancellai-safety/src/lib.rs"]))

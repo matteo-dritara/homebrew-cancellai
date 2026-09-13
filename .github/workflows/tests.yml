@@ -19,6 +19,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # fetch-depth: 0 (full history) is required, not cosmetic: check_risk_classification.py
+          # attributes committed changes to the story that declared them, and against a depth-1
+          # checkout `git log --name-only` reports the whole tree as the tip commit's diff - there
+          # is no parent object to diff against. This gate then attributed all 539 tracked files to
+          # the last commit's story and refused a kernel crate's CR4 floor for a story that touched
+          # no Rust (run 34732117378). Same class as the v1.10.0 tag break recorded in release.yml's
+          # `verify` job. The checker now refuses a shallow clone outright rather than guessing.
+          fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
@@ -31,6 +39,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # fetch-depth: 0 (full history) is required, not cosmetic: check_risk_classification.py
+          # attributes committed changes to the story that declared them, and against a depth-1
+          # checkout `git log --name-only` reports the whole tree as the tip commit's diff - there
+          # is no parent object to diff against. This gate then attributed all 539 tracked files to
+          # the last commit's story and refused a kernel crate's CR4 floor for a story that touched
+          # no Rust (run 34732117378). Same class as the v1.10.0 tag break recorded in release.yml's
+          # `verify` job. The checker now refuses a shallow clone outright rather than guessing.
+          fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14"

@@ -78,6 +78,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `- Epic:` line. Four epics had been credited by prose; none was closed, so nothing had shipped
   wrongly.
 
+- The risk-floor gate refuses a checkout it cannot reason over (E25-S14, CR2). It attributes
+  committed changes to the story that declared them, and CI ran it against a depth-1 checkout: a
+  shallow tip has no parent object, so `git log --name-only` reports the whole tree as its diff.
+  All 539 tracked files were attributed to the last commit's story, and the gate refused a kernel
+  crate's CR4 floor for a story that touched no Rust. It now refuses a shallow clone and names the
+  checkout option that fixes it, a parentless commit attributes nothing, and the three CI jobs that
+  run it fetch full history. The same defect pointing the other way is a silent pass, which is the
+  version nobody would have found - and this is the second instance of the class, after the one
+  that broke the v1.10.0 tag.
 ### Changed
 
 - Review stops on **measured yield** rather than a fixed round count, and an epic that changes

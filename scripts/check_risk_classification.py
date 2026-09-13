@@ -176,22 +176,45 @@ def working_tree_paths() -> list[str]:
     return sorted({path for path in (*tracked, *staged, *untracked) if path})
 
 
+def is_shallow() -> bool:
+    """Whether this clone is missing history `git log` would otherwise walk."""
+    return git("rev-parse", "--is-shallow-repository").strip() == "true"
+
+
 def attributable_paths() -> tuple[dict[str, set[str]], int]:
     """Story -> files, from commits naming exactly one story, plus the count that were ambiguous.
 
     The ambiguous count is returned rather than dropped: a checker whose coverage is a third of
     the backlog must say so, or a clean run reads as "nothing is below its floor" when it means
     "most stories could not be checked".
+
+    Two commits are excluded from attribution, for the same reason. Against a commit with no
+    parent, `git log --name-only` reports the **entire tree** - that is what a diff against
+    nothing means - so a root commit would hand every file in the repository to whatever story
+    its message names. In a shallow clone the tip is exactly that: this gate ran in CI against a
+    depth-1 checkout and attributed all 539 tracked files to the last commit's story, which is
+    how it came to refuse `rust/crates/cancellai-model/Cargo.toml`'s CR4 floor for a story that
+    never touched Rust. A gate that cannot see the history it reasons over says so rather than
+    guessing, because the same defect pointing the other way is a silent pass.
     """
-    raw = git("log", "--format=%x02%H%x01%s%x01%b%x01", "--name-only")
+    if is_shallow():
+        raise RiskClassificationError(
+            "this is a shallow clone, so `git log` reports the whole tree as the tip commit's "
+            "diff and every file would be attributed to whatever story that commit names. Fetch "
+            "the full history (`actions/checkout` with `fetch-depth: 0`) - this gate reasons over "
+            "history and cannot be run without it"
+        )
+    raw = git("log", "--format=%x02%H%x01%P%x01%s%x01%b%x01", "--name-only")
     attributed: dict[str, set[str]] = collections.defaultdict(set)
     ambiguous = 0
     for block in raw.split("\x02")[1:]:
         fields = block.split("\x01")
-        if len(fields) < 4:
+        if len(fields) < 5:
             continue
-        message = f"{fields[1]} {fields[2]}"
-        files = {line.strip() for line in fields[3].splitlines() if line.strip() and "/" in line}
+        if not fields[1].strip():
+            continue  # a root commit's "diff" is the whole tree; it attributes nothing
+        message = f"{fields[2]} {fields[3]}"
+        files = {line.strip() for line in fields[4].splitlines() if line.strip() and "/" in line}
         found = story_ids(message)
         if len(found) == 1:
             attributed[found.pop()] |= files
