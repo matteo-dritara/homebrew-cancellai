@@ -248,6 +248,20 @@ cargo deny check
 duplicate dependency bans, and unknown-registry/unknown-git source denial in one command
 (`rust/deny.toml`); a separate `cargo audit` is redundant with it and is not used.
 
+**Clippy only sees the platform it runs on.** Code behind `cfg(windows)` or `cfg(target_os = ...)`
+is not compiled on your machine, so a lint inside it reaches CI unexamined - which is how E17-S08's
+sixth lint site was found by `quality (windows-latest)` rather than locally. When a change touches
+`cancellai-platform`, or when anything changes the lint surface workspace-wide (an MSRV bump does,
+because clippy reads `rust-version`), add:
+
+```sh
+cargo clippy --workspace --all-targets --all-features --target x86_64-pc-windows-gnu -- -D warnings
+cargo clippy --workspace --all-targets --all-features --target x86_64-unknown-linux-gnu -- -D warnings
+```
+
+They need `rustup target add` once. They lint the other platforms' code without running it, which
+is all clippy does anyway.
+
 CI (`.github/workflows/rust.yml`) runs `cargo check --workspace --all-targets` on macOS,
 Linux, and Windows against both MSRV (1.88.0, raised from 1.85.0 by ADR-0026) and current stable, and the full quality set
 above (`fmt`, `clippy -D warnings`, `cargo test`, `cargo deny check`) on all three platforms

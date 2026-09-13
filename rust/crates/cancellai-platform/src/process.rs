@@ -115,10 +115,10 @@ fn observe_system_processes(names: &[&str]) -> ProcessObservation {
             .strip_suffix(".exe")
             .or_else(|| exe_name.strip_suffix(".EXE"))
             .unwrap_or(&exe_name);
-        if let Some(&matched) = names.iter().find(|n| n.eq_ignore_ascii_case(base)) {
-            if !running_names.iter().any(|n: &String| n == matched) {
-                running_names.push(matched.to_string());
-            }
+        if let Some(&matched) = names.iter().find(|n| n.eq_ignore_ascii_case(base))
+            && !running_names.iter().any(|n: &String| n == matched)
+        {
+            running_names.push(matched.to_string());
         }
     }
     ProcessObservation {

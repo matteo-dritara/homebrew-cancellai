@@ -21,7 +21,7 @@ IMPLEMENTED - awaiting independent verification
 | --- | --- | --- |
 | AC1 - one minimum, stated everywhere | `rust/Cargo.toml` (`rust-version = "1.88.0"`), `.github/workflows/rust.yml` (`rust: ["1.88.0", "stable"]`), ADR-0015 (original text kept as a quote, because the decision to leave it was made against it), `docs/security/SUPPLY_CHAIN.md`, `AGENTS.md`, `.claude/skills/rust-kernel-guard/SKILL.md`, and ADR-0024's incidental reference. A grep for `1.85` outside the changelog, the generated backlog and the two ADRs that record history returns nothing - including two source comments that asserted the old promise, in `knowledge_bundle.rs` (E16-S07's own rationale, one hour old) and `retention.rs`. | PASS |
 | AC2 - the waiver goes with the reason | `ratatui` 0.29 -> 0.30.2 takes `lru` 0.12.5 -> 0.18.4, closing GHSA-rhfx-m35p-ff5j (patched in 0.16.3), and drops `paste` from the graph entirely. `rust/deny.toml`'s `ignore` list is now empty rather than carrying a renewed waiver. | PASS |
-| AC3 - enabled lints are satisfied, not suppressed | Five sites, no `#[allow]` anywhere: four `collapsible_if` (`manifest.rs` x2, `manifest_provider.rs`, `wsl.rs`) rewritten as let-chains, and one `manual_is_multiple_of` (`knowledge_bundle.rs`). These lints were always applicable; the old declared version was hiding them. | PASS |
+| AC3 - enabled lints are satisfied, not suppressed | **Six** sites, no `#[allow]` anywhere: four `collapsible_if` (`manifest.rs` x2, `manifest_provider.rs`, `wsl.rs`) rewritten as let-chains, and one `manual_is_multiple_of` (`knowledge_bundle.rs`). The sixth was invisible on the executor's machine: `process.rs:118` is inside a `#[cfg(windows)]` block, so macOS clippy never compiled it and CI's `quality (windows-latest)` found it. Enumerating the rest took `cargo clippy --target x86_64-pc-windows-gnu` and `--target x86_64-unknown-linux-gnu` locally; all three targets are now clean. These lints were always applicable; the old declared version was hiding them. | PASS |
 | AC4 - one crate owns terminal state | `ratatui 0.30` uses `crossterm 0.29` while `cancellai-tui` declared 0.28, so **both were compiled** - two copies of the crate owning raw mode and the event stream in one process. `cargo deny` only warns on duplicates and would not have stopped it. `cancellai-tui` now declares 0.29; `cargo tree` shows one version. | PASS |
 | AC5 - the rejected branch is recorded as not taken | The owner accepted. The advisory is closed rather than accepted as residual risk, and the Dependabot security update for `lru` should now be satisfiable rather than dismissed. | PASS |
 
@@ -75,6 +75,9 @@ python3 scripts/check_workflows.py check / check_docs.py check        -> clean
 - **The lint edits are the part worth reviewing.** Two are in floored crates and all five are the
   kind of change whose justification is "it is obviously the same" - which is exactly the
   justification this repository does not accept without an independent reader.
+- **The lint surface is platform-gated.** One of the six sites only exists under `cfg(windows)`,
+  and a single-platform clippy run cannot see it. Cross-target runs found no others, but they were
+  run *after* CI reported the miss, not before - nothing in the local check list asks for them.
 - **An MSRV bump is a code change here, not a configuration change.** Clippy is MSRV-aware, so the
   next bump will enable another set of lints inside the kernel. ADR-0026 records this; nothing
   prevents it.
