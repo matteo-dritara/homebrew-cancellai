@@ -114,7 +114,7 @@ load-bearing rather than academic.
 
 ## Documentation readership
 
-- Documents a committed review record has named: **10**. Never named: **38**.
+- Documents a committed review record has named: **19**. Never named: **29**.
 - Never named is not the same as never read, and an unread document may still be the right
   document. This is a list for the owner once a phase, not a purge, and accepted ADRs are
   undeletable regardless of what it says.
@@ -123,9 +123,7 @@ load-bearing rather than academic.
 
 - `docs/ARCHITECTURE.md`
 - `docs/CLI.md`
-- `docs/CONSTITUTION.md`
 - `docs/DECISION_REGISTER.md`
-- `docs/INDEX.md`
 - `docs/PLATFORMS.md`
 - `docs/PRODUCT.md`
 - `docs/PROVIDERS.md`
@@ -137,26 +135,19 @@ load-bearing rather than academic.
 - `docs/architecture/PERSISTENCE_MODEL.md`
 - `docs/architecture/PLATFORM_MODEL.md`
 - `docs/architecture/POLICY_MODEL.md`
-- `docs/architecture/PROVIDER_MODEL.md`
-- `docs/architecture/TARGET.md`
 - `docs/audits/2026-08-27-CODE_REVIEW.md`
 - `docs/audits/2026-09-03-CODE_REVIEW.md`
-- `docs/development/AGENT_TOOLCHAIN.md`
-- `docs/development/ENGINEERING_SYSTEM.md`
 - `docs/development/MIGRATION_PYTHON_RUST.md`
 - `docs/development/REPOSITORY_GOVERNANCE.md`
-- `docs/development/WORK_ITEM_MODEL.md`
 - `docs/research/MARKET_AND_STANDARDS_2026-08.md`
 - `docs/rfcs/README.md`
 - `docs/security/INCIDENT_RESPONSE.md`
-- `docs/security/THREAT_MODEL.md`
 - `project/README.md`
 - `project/templates/ADR.md`
 - `project/templates/EVIDENCE_PACKET.md`
 - `project/templates/EXECUTOR_PROMPT.md`
 - `project/templates/RELEASE_EVIDENCE.md`
 - `project/templates/RFC.md`
-- `project/templates/SAFETY_VERDICT.md`
 - `project/templates/STORY.md`
 - `project/templates/VERIFIER_PROMPT.md`
 

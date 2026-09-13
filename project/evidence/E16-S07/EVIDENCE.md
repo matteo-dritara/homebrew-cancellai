@@ -1,88 +1,65 @@
 # Evidence Packet - E16-S07
 
-- Commit/PR: the MSRV-compatible rewrite of the bundle verifier's conditions on `main`
-- Executor: Claude
-- Independent verifier: **required and not yet performed.** This is a CR4 change to the safety
-  kernel; `AGENTS.md` and `docs/development/AGENT_PROTOCOL.md` do not allow the executor's own
-  review to close one, and the owner's waiver of the Codex round for this session's work does not
-  reach a CR4 Safety Verdict. The story stays at `ready_for_review`.
-- Change Risk: CR4, the floor `project/risk_floors.json` sets for `rust/crates/cancellai-safety/src/*`
-- Spec version/commit: `project/epics/E16.json` at this commit
+- Original executor: Claude; implementation `9f739d6`, clarification `bbc0f9e`.
+- Independent verifier: Codex, 2026-09-13; test-only follow-up `69ab771`.
+- Change Risk: CR4; contract: `project/epics/E16.json`.
+- Final validated source: `ba30b42`, including the separately recorded E17-S08 security repair.
 
 ## Outcome
 
-IMPLEMENTED - awaiting independent verification
+VERIFIED - PASS. Story done; E16 remains blocked and no release is cut.
 
 ## Acceptance Criteria Evidence
 
 | AC | Evidence | Result |
 | --- | --- | --- |
-| AC1 - identical accept/reject behaviour | Three sites, each a mechanical de-sugaring. `if let Some(x) = opt && cond` becomes `opt.is_some_and(\|x\| cond)`; the staleness chain becomes `self.current.as_ref().is_some_and(\|current\| same_publisher && lower_or_equal_sequence)`. `is_some_and` is `false` on `None`, which is what the let-chain's failed pattern match produced, and the guard order inside the closure is the order the `&&` chain had. 101 tests in `cancellai-safety` pass, 2 more than before. | PASS |
-| AC2 - the exact boundary rejects | `expiry_a_bundle_past_its_expires_at_is_rejected` already ran with `now == expires_at`, so verification's `>=` was pinned before this change. Rollback's copy of the same comparison was not: `rollback_at_exactly_the_expiry_boundary_refuses` and `rollback_just_before_the_expiry_boundary_succeeds` now pin it, and the first also asserts the store is unchanged after a refused rollback (SI-029). | PASS |
-| AC3 - no expiry is not an expiry | `is_some_and` returns `false` for `None`. Exercised throughout: most bundles in these tests carry `None` and verify. | PASS |
-| AC4 - a different publisher is not stale | `a_first_bundle_from_a_different_publisher_is_never_stale` applies `acme` at sequence 100, then `other` at sequence 1 over it, and expects success. This is precisely the guard the `&&` chain provided, and it fails if the rewrite loses the publisher check. | PASS |
-| AC5 - compiles on the promised toolchain | **Not verified locally.** No 1.85 toolchain is installed here and installing one is not the executor's decision, so the only evidence is the MSRV legs of `.github/workflows/rust.yml` on ubuntu, macOS and Windows at this commit. Recorded as the CI result rather than claimed. | DEFERRED TO CI |
+| AC1 - identical predicates | Exact pre/post comparison: None returns false; Option<u64> is Copy; current.as_ref() preserves the shared borrow; publisher equality still precedes sequence comparison. | PASS |
+| AC2 - exact expiry rejects | Verification and rollback >= to > mutants both fail their own exact-boundary test. A one-second-early rollback mutant fails the before-boundary test. | PASS |
+| AC3 - no expiry never expires | Thirty signed cases cross None/zero/one/1500/u64::MAX expiry with six clocks. None verifies even at u64::MAX; existing no-expiry rollback succeeds. | PASS |
+| AC4 - publisher-local staleness | Another publisher's sequence 1 replaces sequence 100; deleting the publisher guard fails that test. Swapping the two pure comparisons survives as an equivalent mutation. | PASS |
+| AC5 - operative promised toolchain | ADR-0026 superseded the historical 1.85.0 promise with 1.88.0. Rust CI run 34774901899 at repaired source ba30b42 passes all nine jobs, including native macOS/Linux/Windows MSRV checks. No local 1.88 execution is claimed. | PASS |
 
 ## Safety Evidence
 
-| Invariant | Counterexample tested | Evidence | Result |
+| Invariant | Counterexample | Evidence | Result |
 | --- | --- | --- | --- |
-| SI-029 | A failed rollback bricking offline inspection by clearing `current` | `rollback_at_exactly_the_expiry_boundary_refuses` asserts `current` still holds the newer bundle after the refusal, and `rollback_fails_closed_with_no_prior_bundle` covers the other refusal path. | PASS |
-| Authority | An expired bundle verifying because the rewrite weakened the comparison | Both directions of the boundary are pinned at both sites: reject at `now == expires_at`, accept at `now == expires_at - 1`. | PASS |
-| Authority | A bundle from an untrusted publisher gaining authority through the staleness path | Unchanged by this edit - the staleness check runs *after* `verify_bundle`, which is where signature and publisher trust are decided. The rewrite does not move it. | PASS |
-
-## Independent regression addition (2026-09-13)
-
-Codex added `verifier_expiry_matrix_and_refused_rollback_preserve_all_current_fields`: 30
-signed verification cases spanning absent expiry, zero, one, the boundary and `u64::MAX`,
-plus empty-store, single-current, expired-prior and repeated-rollback refusal. It compares the
-complete `current()` value after each refusal and proves an expired rollback refusal retains
-the prior slot by retrying with an earlier supplied clock. This is a test-only addition; the
-three production predicates are unchanged.
+| SI-029 | Refused rollback destroys accepted state | Independent empty/current-only/expired/repeated rollback cases compare complete current values after every refusal; earlier-clock retry proves previous was retained. | PASS |
+| SI-029 | Expiry boundary weakens or another publisher becomes stale | Targeted mutations fail the appropriate tests; same-publisher equal/lower replay still refuses. | PASS |
 
 ## Verification Commands
 
-```text
-cargo fmt --check                                                     -> clean
-cargo clippy --workspace --all-targets --all-features -- -D warnings  -> clean
-cargo check --workspace --all-targets                                 -> clean
-cargo test --workspace                                                -> 0 failed; cancellai-safety 101 passed
-cargo deny check                                                      -> advisories ok, bans ok, licenses ok, sources ok
-```
+The verifier independently ran every command in AGENTS.md's Current Python checks and all seven
+requested Rust commands after the last repair. Python used the already installed repository
+virtual environment; local Rust was 1.94.0. Pytest: 483 tests and 444 subtests; Rust: 598 tests,
+two existing ignored scheduled benchmarks. Formatting, lint/type checks, all repository
+checkers and both cross-target clippy commands passed. Cargo-deny passed all four checks after
+permission to lock its advisory database, with ignore=[] and unsound=all.
 
-## Compatibility
+Full commands, failures encountered before repair, mutation results and CI identities are in
+[the independent review](../E16-S07-VERIFIER-REVIEW.md). The new
+`verifier_expiry_matrix_and_refused_rollback_preserve_all_current_fields` test was authored by
+the verifier and passed before any change to these three production predicates.
 
-- No behaviour change intended and none observed. No public API, schema or wire-format change.
-- The compatibility promise this restores is ADR-0015's MSRV of 1.85.0.
+## Compatibility and operability
 
-## Performance / operability
-
-- `is_some_and` on a `Copy` option is the same comparison the let-chain performed. Not measured;
-  not material.
+The reason for the original rewrite was historical 1.85 compatibility; the accepted current
+minimum is 1.88.0. Keep the correct is_some_and code and boundary tests. No API, wire format,
+filesystem operation or persistent migration changed in E16-S07. Predicate cost is unchanged;
+no new performance measurement is claimed.
 
 ## Residual risks
 
-- **The MSRV is not verifiable on the executor's machine.** Local `rustc` is 1.94 and no 1.85
-  toolchain is installed. Every claim about 1.85 in this packet rests on CI.
-- **Nothing prevents the next let-chain.** It is stable, idiomatic 2024-edition Rust, and the only
-  thing that catches it is the MSRV leg - which is now working, and which is exactly how this was
-  found. A lint would be better and does not exist here.
-- **The promise was in fact the wrong one, and was repealed hours later.** ADR-0026 raised the
-  MSRV to 1.88.0 (E17-S08), so let-chains are now legal here. This rewrite is kept: it is correct
-  at either version and the two boundary tests it added stand on their own. A reviewer should judge
-  it as code, not as a workaround for a constraint that no longer exists.
-- **The promise itself may be the wrong one.** The code has in fact required 1.88 since
-  2026-09-09. Restoring 1.85 is the conservative reading; deciding that 1.88 is the real minimum
-  is an owner decision about a published promise and is deliberately not taken here.
-- **This packet has no independent verdict.** It is a CR4 change to the safety kernel and the
-  story stays at `ready_for_review` until one exists.
+- Local 1.88 execution is unavailable; actual tier-1 CI is the evidence, not local stable.
+- The broad review found a pre-existing strict-signature mismatch and repaired it explicitly
+  under E17-S08. That deliberate security narrowing is not part of E16-S07's equivalence claim.
+- This scope does not certify the complete future knowledge distribution/revocation service.
+- E17-S11 tracks the unrelated report-only toolchain false positive; approvals already exist
+  and the enforcing toolchain check recognizes them correctly.
 
 ## Safety Verdict
 
-**Not issued.** A CR4 Safety Verdict requires an independent verifier, and this repository's
-executor may not write its own. What the executor can state is what was checked and what was not,
-which is above.
+Independent [Safety Verdict](SAFETY_VERDICT.md): PASS.
 
 ## Verifier verdict
 
-pending - genuinely pending, unlike the other packets in this session, which record a waiver
+PASS

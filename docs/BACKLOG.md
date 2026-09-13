@@ -1737,7 +1737,7 @@ Scale provider coverage through manifests, native adapters, signed knowledge bun
 
 ### E16-S07 - The knowledge-bundle verifier compiles on the promised toolchain
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E16-S02, E09-S05 | **Safety obligations:** SI-029
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** E16-S02, E09-S05 | **Safety obligations:** SI-029
 
 **Outcome.** E16-S02 wrote three let-chains in the bundle verifier. Let-chains are stable from Rust 1.88 and this workspace promises 1.85.0 (ADR-0015), so the MSRV leg of rust.yml has been unable to compile cancellai-safety since 2026-09-09 - through v1.12.0 and v1.13.0, both of which failed to publish for other reasons that masked this one. Fixing the dependency side of the MSRV break (E09-S05) removed the error that stopped cargo before it compiled anything, and this one appeared underneath it. The conditions are rewritten with `is_some_and`, which is stable well below the promised version, leaving the promise intact rather than renegotiating it. Raising the MSRV is the alternative and is an owner decision about a published compatibility promise, not an executor's. Read this against the MSRV in force at the time, 1.85.0: ADR-0026 raised it to 1.88.0 a few hours later (E17-S08), which would have made the let-chains legal. The rewrite is kept deliberately - it is correct at either version, the two boundary tests it added are worth keeping regardless, and reverting correct kernel code for symmetry is churn on the one file where churn is most expensive.
 

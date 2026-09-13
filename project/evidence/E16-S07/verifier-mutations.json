@@ -1,0 +1,80 @@
+{
+  "target": "4c2801b",
+  "baseline": [
+    {
+      "name": "E16-verify-expiry-gt",
+      "status": "caught",
+      "exit": 101,
+      "failures": [
+        "test knowledge_bundle::tests::expiry_a_bundle_past_its_expires_at_is_rejected ... FAILED",
+        "test result: FAILED. 100 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s"
+      ]
+    },
+    {
+      "name": "E16-rollback-expiry-gt",
+      "status": "caught",
+      "exit": 101,
+      "failures": [
+        "test knowledge_bundle::tests::rollback_at_exactly_the_expiry_boundary_refuses ... FAILED",
+        "test result: FAILED. 100 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s"
+      ]
+    },
+    {
+      "name": "E16-swap-publisher-sequence",
+      "status": "survived",
+      "exit": 0,
+      "failures": []
+    },
+    {
+      "name": "E16-drop-publisher",
+      "status": "caught",
+      "exit": 101,
+      "failures": [
+        "test knowledge_bundle::tests::a_first_bundle_from_a_different_publisher_is_never_stale ... FAILED",
+        "test result: FAILED. 100 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+      ]
+    }
+  ],
+  "after_regressions": [
+    {
+      "name": "E16-verify-expiry-gt",
+      "status": "caught",
+      "exit": 101,
+      "failures": [
+        "test knowledge_bundle::tests::expiry_a_bundle_past_its_expires_at_is_rejected ... FAILED",
+        "test knowledge_bundle::tests::verifier_expiry_matrix_and_refused_rollback_preserve_all_current_fields ... FAILED",
+        "test result: FAILED. 103 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s"
+      ]
+    },
+    {
+      "name": "E16-rollback-expiry-gt",
+      "status": "caught",
+      "exit": 101,
+      "failures": [
+        "test knowledge_bundle::tests::rollback_at_exactly_the_expiry_boundary_refuses ... FAILED",
+        "test knowledge_bundle::tests::verifier_expiry_matrix_and_refused_rollback_preserve_all_current_fields ... FAILED",
+        "test result: FAILED. 103 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s"
+      ]
+    },
+    {
+      "name": "E16-swap-publisher-sequence",
+      "status": "survived",
+      "exit": 0,
+      "failures": []
+    },
+    {
+      "name": "E16-drop-publisher",
+      "status": "caught",
+      "exit": 101,
+      "failures": [
+        "test knowledge_bundle::tests::a_first_bundle_from_a_different_publisher_is_never_stale ... FAILED",
+        "test result: FAILED. 104 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s"
+      ]
+    }
+  ],
+  "additional": {
+    "mutation": "rollback rejects one second early",
+    "command": "cargo test -p cancellai-safety rollback_just_before_the_expiry_boundary_succeeds",
+    "exit": 101
+  }
+}

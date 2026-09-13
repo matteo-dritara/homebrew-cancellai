@@ -10,9 +10,9 @@ Epics: **27** | Stories: **141**
 
 - `blocked`: 2
 - `cancelled`: 1
-- `done`: 108
+- `done`: 109
 - `planned`: 28
-- `ready_for_review`: 2
+- `ready_for_review`: 1
 
 ## Change risk distribution
 
@@ -28,5 +28,4 @@ Epics: **27** | Stories: **141**
 
 ## Awaiting independent review
 
-- **E16-S07** - The knowledge-bundle verifier compiles on the promised toolchain (CR4)
 - **E17-S08** - The MSRV is decided on its cost, not inherited from edition 2024 (CR4)
