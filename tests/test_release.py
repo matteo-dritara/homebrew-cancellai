@@ -192,11 +192,15 @@ class ReleaseOutcomeTests(unittest.TestCase):
 
     def test_every_committed_packet_records_an_outcome(self):
         # The backfill is the corpus this story was written from; a packet without a marker would
-        # silently read as pending and make the report noisy rather than wrong.
+        # silently read as pending and make the report noisy rather than wrong. The newest cut
+        # version is exempt: `prepare` writes `pending` and nobody can know the answer until the
+        # release workflow has run. Anything older than that has had its chance.
+        newest = release.released_versions()[0]
         for version, (state, reason) in release.release_outcomes().items():
             with self.subTest(version=version):
                 self.assertIn(state, release.PUBLISHED_STATES)
-                self.assertNotEqual("pending", state, f"v{version} has no recorded outcome")
+                if version != newest:
+                    self.assertNotEqual("pending", state, f"v{version} has no recorded outcome")
                 if state == "no":
                     self.assertTrue(reason, f"v{version} says it failed and does not say why")
 
