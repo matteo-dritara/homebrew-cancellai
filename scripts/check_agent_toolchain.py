@@ -322,7 +322,14 @@ def render_report(data: dict[str, Any], installed: dict[str, str], today: dt.dat
     else:
         lines.append("  No decision is past its review date.")
 
-    unmanaged = sorted(set(installed) - {c["id"] for c in data.get("components", [])})
+    # Members count as managed, exactly as `check` counts them (E17-S11). Subtracting only
+    # top-level ids reported all eight approved skills in the pack as "decide or remove" - in the
+    # one report the owner reads at session start, where a false positive costs more than a silent
+    # pass: it asks the owner to re-decide something they already decided, and a report that cries
+    # wolf on its own repository is a report nobody finishes reading.
+    known = {c["id"] for c in data.get("components", [])}
+    known |= {member for c in data.get("components", []) for member in c.get("members", [])}
+    unmanaged = sorted(set(installed) - known)
     if unmanaged:
         lines += ["", "  Installed but unmanaged - decide or remove:", ""]
         lines += [f"    {identifier} at {installed[identifier]}" for identifier in unmanaged]

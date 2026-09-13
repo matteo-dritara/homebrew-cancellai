@@ -1987,7 +1987,7 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 ### E17-S11 - The toolchain report recognizes approved pack members
 
-**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E26-S01 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** E26-S01 | **Safety obligations:** none
 
 **Outcome.** E17-S08 independent review found check_agent_toolchain.py report computes unmanaged components from top-level ids only, while check correctly includes explicit members. All eight approved repository skills are falsely reported unmanaged. Repair the reporting path without changing the approval boundary; implementation is outside E17-S08.
 
@@ -1995,6 +1995,7 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 - The report shall treat explicitly approved component members as managed, matching the check command.
 - If an undeclared skill is discovered, then both report and check shall identify it as unmanaged.
+- The report and the check shall agree on the committed manifest, asserted against the real repository rather than a fixture alone.
 
 **Verification**
 

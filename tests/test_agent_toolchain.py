@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime as dt
 import unittest
+from typing import ClassVar
 
 from scripts import check_agent_toolchain as toolchain
 
@@ -199,6 +200,63 @@ class RealManifestTests(unittest.TestCase):
                 self.assertIn(expected, source)
         # settings.local.json is read too: an MCP server declared there was invisible.
         self.assertIn("settings.local.json", toolchain.SETTINGS_FILES)
+
+
+class ReportManagedMembersTests(unittest.TestCase):
+    """`report` and `check` must agree on what is managed.
+
+    They did not: `check` counted a component's declared `members`, `report` subtracted only
+    top-level ids, so all eight approved skills in the pack were listed as "decide or remove" -
+    in the one report the owner reads before work starts. A report that cries wolf on its own
+    repository is a report nobody finishes reading (E17-S11).
+    """
+
+    MANIFEST: ClassVar[dict] = {
+        "schema_version": 1,
+        "context_budget_tokens": 6000,
+        "review_cadence_days": 90,
+        "components": [
+            {
+                "id": "pack",
+                "kind": "skill",
+                "scope": "project",
+                "source": ".claude/skills",
+                "version": "tracked-in-repo",
+                "trust": "FirstParty",
+                "capabilities": ["prompt"],
+                "always_on_tokens": 100,
+                "purpose": "x",
+                "decision": {"status": "approved", "by": "owner", "date": "2026-09-01", "rationale": "y"},
+                "members": ["skill:.claude/skills/one", "skill:.claude/skills/two"],
+            }
+        ],
+    }
+
+    def test_an_approved_member_is_not_reported_unmanaged(self):
+        installed = {
+            "skill:.claude/skills/one": ".claude/skills/one",
+            "skill:.claude/skills/two": ".claude/skills/two",
+        }
+        text = toolchain.render_report(self.MANIFEST, installed, dt.date(2026, 9, 13))
+        self.assertNotIn("Installed but unmanaged", text)
+
+    def test_an_undeclared_member_is_still_reported(self):
+        installed = {
+            "skill:.claude/skills/one": ".claude/skills/one",
+            "skill:.claude/skills/three": ".claude/skills/three",
+        }
+        text = toolchain.render_report(self.MANIFEST, installed, dt.date(2026, 9, 13))
+        self.assertIn("Installed but unmanaged", text)
+        self.assertIn("skill:.claude/skills/three", text)
+        self.assertNotIn("skill:.claude/skills/one at", text)
+
+    def test_report_and_check_agree_on_the_real_repository(self):
+        # The property the defect broke, asserted against the committed manifest rather than a
+        # fixture: check passes, so report must find nothing unmanaged.
+        self.assertEqual(0, toolchain.main(["check"]))
+        data = toolchain.load_manifest()
+        text = toolchain.render_report(data, toolchain.installed_project_components(), dt.date.today())
+        self.assertNotIn("Installed but unmanaged", text)
 
 
 if __name__ == "__main__":

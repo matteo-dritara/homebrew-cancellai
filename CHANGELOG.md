@@ -28,6 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     the six sites in floored crates. The floor caught the story mid-flight and raised its own level. An
     MSRV bump is a code change here, not a configuration change.
 
+### Added
+
+- The toolchain report counts approved pack members as managed (E17-S11, CR1). It listed all eight
+  approved skills as "decide or remove" in the one report the session-start ritual puts in front of
+  the owner; `check` had always counted them correctly. Found by the E17-S08 independent review.
+
 ### Fixed
 
 - Knowledge bundles now use the strict Ed25519 verification required by ADR-0024, rejecting
