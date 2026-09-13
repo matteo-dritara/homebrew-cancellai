@@ -1930,6 +1930,27 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 - `docs/adrs/0015-rust-workspace-toolchain-and-repository-layout.md`
 - `rust/deny.toml`
 
+### E17-S09 - The publish guard hashes the archive, not the file that sorts first
+
+**Status:** `done` | **Change Risk:** `CR3` | **Dependencies:** E17-S01, E17-S03 | **Safety obligations:** none
+
+**Outcome.** The v1.13.1 release built all four platforms, verified every attestation, and then refused to publish because all four checksums mismatched. The guard globbed `<artifact name>.*` and took the first match alphabetically. E17-S03 had started dropping `<name>.cdx.json` beside `<name>.tar.gz`, and `.cdx.json` sorts first - so every declared checksum was compared against a JSON document describing the archive rather than against the archive. Latent since the SBOM landed on 2026-09-08: the two releases in between died before this job ever ran, which is how a defect this total stayed invisible for five days.
+
+**Acceptance criteria**
+
+- The publish-time guard shall hash the archive built for an artifact, identified by its archive suffix rather than by sort order.
+- If an artifact has no archive under the directory, then the guard shall refuse and name what it found instead, because the one time this fired for real the answer was 'an SBOM'.
+- If an artifact has more than one archive, then the guard shall refuse rather than choose, because whichever it chose the published checksum would describe the other one half the time.
+
+**Verification**
+
+- A directory holding the SBOM, the archive and the checksum sidecar together round-trips clean - the exact shape that failed.
+- Both refusal paths are exercised, and the no-archive message names the files that were present.
+
+**Documentation impact**
+
+- `CHANGELOG.md`
+
 ## E18 - Remote Targets and Fleet Boundary
 
 **Phase:** `P6` | **Status:** `planned` | **Epic dependencies:** E16, E17

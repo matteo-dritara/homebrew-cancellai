@@ -279,13 +279,36 @@ def build_manifest_from_files(
     )
 
 
-def verify_checksums_against_directory(doc: dict[str, Any], directory: Path) -> list[str]:
-    """Round-trip every artifact in `doc` against a real file named `<artifact name>.*` under
-    `directory` (E17-S02's publish-time guard: refuse to publish a manifest whose declared
-    checksums do not match the bytes actually built).
+# The archive is the artifact. Everything else the build leg drops beside it - the SBOM, the
+# checksum sidecar - shares the artifact's name and differs only in suffix, so "the file called
+# `<name>.*`" stopped identifying anything the moment E17-S03 added `<name>.cdx.json`. Sorted
+# alphabetically, the SBOM comes first, and every checksum in the manifest was then compared
+# against the bytes of a JSON document describing the archive rather than the archive.
+ARCHIVE_SUFFIXES = (".tar.gz", ".zip")
 
-    An artifact with no matching file under `directory` is an error - a manifest cannot be
-    trusted to describe a release whose artifacts are not all present to check.
+
+def archive_for(name: str, directory: Path) -> tuple[Path | None, str | None]:
+    """The one archive for `name` under `directory`, or the reason there is not exactly one."""
+    siblings = sorted(directory.glob(f"{name}.*"))
+    archives = [path for path in siblings if path.name.endswith(ARCHIVE_SUFFIXES)]
+    if not archives:
+        found = ", ".join(path.name for path in siblings) or "nothing"
+        return None, f"artifact {name!r}: no {' or '.join(ARCHIVE_SUFFIXES)} under {directory} (found: {found})"
+    if len(archives) > 1:
+        # Two archives for one artifact name is not a case to resolve by picking; whichever is
+        # chosen, half the time the published checksum describes the other one.
+        listed = ", ".join(path.name for path in archives)
+        return None, f"artifact {name!r}: {len(archives)} archives under {directory} ({listed}); cannot tell which is the artifact"
+    return archives[0], None
+
+
+def verify_checksums_against_directory(doc: dict[str, Any], directory: Path) -> list[str]:
+    """Round-trip every artifact in `doc` against the archive built for it under `directory`
+    (E17-S02's publish-time guard: refuse to publish a manifest whose declared checksums do not
+    match the bytes actually built).
+
+    An artifact with no archive under `directory` is an error - a manifest cannot be trusted to
+    describe a release whose artifacts are not all present to check.
     """
     errors: list[str] = []
     artifact_bytes: dict[str, bytes] = {}
@@ -295,11 +318,11 @@ def verify_checksums_against_directory(doc: dict[str, Any], directory: Path) -> 
         name = artifact.get("name")
         if not isinstance(name, str):
             continue
-        matches = sorted(directory.glob(f"{name}.*"))
-        if not matches:
-            errors.append(f"artifact {name!r}: no file matching {name}.* under {directory}")
+        archive, problem = archive_for(name, directory)
+        if archive is None:
+            errors.append(str(problem))
             continue
-        artifact_bytes[name] = matches[0].read_bytes()
+        artifact_bytes[name] = archive.read_bytes()
     errors.extend(verify_artifact_checksums(doc, artifact_bytes))
     return errors
 

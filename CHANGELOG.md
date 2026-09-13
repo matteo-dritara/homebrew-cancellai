@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The publish-time checksum guard hashes the archive, not the file that sorts first (E17-S09, CR3).
+  The v1.13.1 release built all four platforms, verified every attestation, then refused to publish
+  because all four checksums mismatched: the guard globbed `<artifact name>.*` and took the first
+  match alphabetically, and since E17-S03 that has been `<name>.cdx.json` - so every declared
+  checksum was compared against a JSON document describing the archive instead of the archive. It
+  failed closed, which is the only reason this is a defect and not an incident. Latent since
+  2026-09-08; the two releases in between died before this job ever ran.
+
 ### Changed
 
 - The session-start ritual reads the branch it is about to build on (E26-S04, CR0). `orient` now

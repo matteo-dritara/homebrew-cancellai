@@ -309,7 +309,10 @@ class VerifyChecksumsAgainstDirectoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             doc = copy.deepcopy(load_golden())
             errors = release_manifest.verify_checksums_against_directory(doc, Path(tmp))
-            self.assertTrue(any("no file matching" in e for e in errors), errors)
+            # The message names the suffixes it wanted and what it found instead, because the one
+            # time this fired for real the answer was "an SBOM", and "no file matching" would not
+            # have said so.
+            self.assertTrue(any(".tar.gz" in e and "found: nothing" in e for e in errors), errors)
 
     def test_flags_a_real_file_that_does_not_match_the_declared_checksum(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -397,6 +400,93 @@ class CliSubcommandTests(unittest.TestCase):
     def test_bare_command_still_checks_the_golden_corpus(self):
         self.assertEqual(0, release_manifest.main([]))
         self.assertEqual(0, release_manifest.main(["check"]))
+
+
+class ArchiveSelectionTests(unittest.TestCase):
+    """The publish-time checksum guard has to hash the archive, not whatever sorts first.
+
+    E17-S03 started dropping `<name>.cdx.json` beside `<name>.tar.gz`, and the guard globbed
+    `<name>.*` and took the first match alphabetically - the SBOM. Every checksum in the v1.13.1
+    manifest was then compared against a JSON document describing the archive, and all four
+    mismatched. The defect was latent from the day the SBOM landed: the two releases between then
+    and now failed before this job ever ran.
+    """
+
+    def artifact_dir(self, stack, files):
+        directory = Path(stack)
+        for name, payload in files.items():
+            (directory / name).write_bytes(payload)
+        return directory
+
+    def test_the_archive_is_chosen_over_the_sbom_that_sorts_before_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = self.artifact_dir(
+                tmp,
+                {
+                    "cancellai-cli-1.0.0-x86_64-apple-darwin.cdx.json": b'{"bomFormat":"CycloneDX"}',
+                    "cancellai-cli-1.0.0-x86_64-apple-darwin.tar.gz": b"archive bytes",
+                    "cancellai-cli-1.0.0-x86_64-apple-darwin.tar.gz.sha256": b"deadbeef\n",
+                },
+            )
+            archive, problem = release_manifest.archive_for("cancellai-cli-1.0.0-x86_64-apple-darwin", directory)
+            self.assertIsNone(problem)
+            self.assertIsNotNone(archive)
+            self.assertEqual(b"archive bytes", archive.read_bytes())
+
+    def test_a_zip_archive_is_recognised(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = self.artifact_dir(
+                tmp,
+                {"a-b.cdx.json": b"{}", "a-b.zip": b"zip bytes", "a-b.zip.sha256": b"x\n"},
+            )
+            archive, problem = release_manifest.archive_for("a-b", directory)
+            self.assertIsNone(problem)
+            self.assertEqual(b"zip bytes", archive.read_bytes())
+
+    def test_no_archive_is_an_error_that_says_what_was_there(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = self.artifact_dir(tmp, {"a-b.cdx.json": b"{}"})
+            archive, problem = release_manifest.archive_for("a-b", directory)
+            self.assertIsNone(archive)
+            self.assertIn("a-b.cdx.json", problem)
+
+    def test_two_archives_are_refused_rather_than_resolved_by_picking(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = self.artifact_dir(tmp, {"a-b.tar.gz": b"one", "a-b.zip": b"two"})
+            archive, problem = release_manifest.archive_for("a-b", directory)
+            self.assertIsNone(archive)
+            self.assertIn("cannot tell which", problem)
+
+    def test_the_round_trip_passes_with_the_sbom_present(self):
+        # The end-to-end shape of the v1.13.1 failure: generate from the archive, verify against a
+        # directory that also holds the SBOM and the checksum sidecar.
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = self.artifact_dir(
+                tmp,
+                {
+                    "cancellai-cli-1.0.0-x86_64-unknown-linux-gnu.cdx.json": b'{"bomFormat":"CycloneDX"}',
+                    "cancellai-cli-1.0.0-x86_64-unknown-linux-gnu.tar.gz": b"real archive",
+                    "cancellai-cli-1.0.0-x86_64-unknown-linux-gnu.tar.gz.sha256": b"stale\n",
+                },
+            )
+            doc = release_manifest.build_manifest_from_files(
+                version="1.0.0",
+                channel="stable",
+                source_sha="a" * 40,
+                repository="owner/repo",
+                workflow="release.yml",
+                run_id="1",
+                knowledge_min=1,
+                knowledge_max=1,
+                artifact_files=[
+                    (
+                        "cancellai-cli-1.0.0-x86_64-unknown-linux-gnu",
+                        "x86_64-unknown-linux-gnu",
+                        directory / "cancellai-cli-1.0.0-x86_64-unknown-linux-gnu.tar.gz",
+                    )
+                ],
+            )
+            self.assertEqual([], release_manifest.verify_checksums_against_directory(doc, directory))
 
 
 if __name__ == "__main__":
