@@ -48,6 +48,13 @@ PYPROJECT_VERSION_RE = re.compile(r'^version = "([^"]+)"$', re.MULTILINE)
 FORMULA_URL_RE = re.compile(r'^  url "https://github\.com/[^/]+/[^/]+/archive/refs/tags/v([^"]+)\.tar\.gz"$', re.MULTILINE)
 FORMULA_SHA_RE = re.compile(r'^  sha256 "([0-9a-f]{64})"$', re.MULTILINE)
 UNRELEASED_RE = re.compile(r"^## \[Unreleased\]\s*$", re.MULTILINE)
+# The declared epic line a release packet's "Included work" section carries, and the only thing
+# that counts as a release covering an epic. Reading every `E\d\d` in the prose credited an epic
+# for being *mentioned* - and a packet embeds the changelog, which mentions plenty. That made
+# PD-021's gate satisfiable by a sentence, which is the failure mode this repository exists to
+# refuse elsewhere. Four epics were being credited that way (E06, E12, E16, E17); none was `done`,
+# so nothing was wrong yet, which is the only reason this was cheap to fix.
+EPIC_DECLARATION_RE = re.compile(r"^\s*- Epic:\s*(E\d{2})\b", re.MULTILINE)
 RELEASED_HEADING_RE = re.compile(r"^## \[(\d+\.\d+\.\d+)\] - (\d{4}-\d{2}-\d{2})\s*$", re.MULTILINE)
 
 
@@ -123,11 +130,11 @@ def release_evidence_path(version: str) -> Path:
 
 
 def released_epics() -> dict[str, str]:
-    """Epic id -> the release version whose evidence names it."""
+    """Epic id -> the release version whose evidence *declares* it closed."""
     mapping: dict[str, str] = {}
     for path in sorted(EVIDENCE.glob("RELEASE-v*.md")):
         version = path.stem.removeprefix("RELEASE-v")
-        for epic_id in re.findall(r"\bE\d{2}\b", read(path)):
+        for epic_id in EPIC_DECLARATION_RE.findall(read(path)):
             mapping.setdefault(epic_id, version)
     return mapping
 
@@ -170,13 +177,25 @@ def suggest_version(current: str) -> str:
     return f"{major}.{minor + 1}.0"
 
 
-def render_evidence(version: str, epic_id: str, body: str) -> str:
-    """Fill in `project/templates/RELEASE_EVIDENCE.md` from the epic's own contract.
+def is_patch_of(version: str, current: str) -> bool:
+    major, minor, patch = parse(version)
+    c_major, c_minor, c_patch = parse(current)
+    return (major, minor) == (c_major, c_minor) and patch == c_patch + 1
 
-    The template is the shape; everything it asks for that the repository already knows -
-    stories, CR4 verdict paths, gate commands - is read rather than retyped, because a
-    packet assembled by hand is a packet that drifts from the epic it claims to describe.
+
+def included_work(epic_id: str | None, reason: str | None) -> str:
+    """The "Included work" section: the epic this release closes, or why there is none.
+
+    A fix release is not an epic closure and must not read like one. It names no epic - which is
+    also what keeps `released_epics()` from crediting one - and states instead what the already
+    tagged version could not carry, because that is the whole reason the version exists.
     """
+    if epic_id is None:
+        return (
+            "This release closes no epic. It exists because an already tagged version could not\n"
+            "carry the fix below, and a published tag is immutable history:\n\n"
+            f"{reason}\n"
+        )
     epic = load_epic(epic_id)
     stories = list(epic["stories"])  # type: ignore[call-overload]
     cr4 = [s["id"] for s in stories if s["change_risk"] == "CR4"]
@@ -186,6 +205,16 @@ def render_evidence(version: str, epic_id: str, body: str) -> str:
             if "verdict" in path.name.lower():
                 verdicts.append(f"`{path.relative_to(ROOT)}`")
     story_ids = ", ".join(str(s["id"]) for s in stories)
+    return f"- Epic: {epic_id} - {epic['title']}\n- Stories: {story_ids}\n- CR4 Safety Verdicts: {', '.join(verdicts) if verdicts else 'none'}\n"
+
+
+def render_evidence(version: str, epic_id: str | None, body: str, reason: str | None = None) -> str:
+    """Fill in `project/templates/RELEASE_EVIDENCE.md` from the epic's own contract.
+
+    The template is the shape; everything it asks for that the repository already knows -
+    stories, CR4 verdict paths, gate commands - is read rather than retyped, because a
+    packet assembled by hand is a packet that drifts from the epic it claims to describe.
+    """
     today = dt.date.today().isoformat()
     return f"""# Release Evidence - v{version}
 
@@ -198,10 +227,7 @@ def render_evidence(version: str, epic_id: str, body: str) -> str:
 
 ## Included work
 
-- Epic: {epic_id} - {epic["title"]}
-- Stories: {story_ids}
-- CR4 Safety Verdicts: {", ".join(verdicts) if verdicts else "none"}
-
+{included_work(epic_id, reason)}
 ## Gates
 
 Re-run at the tag by `.github/workflows/release.yml`; run locally before tagging:
@@ -264,15 +290,35 @@ and are never deleted.
 """
 
 
-def prepare(version: str, epic_id: str) -> None:
+def prepare(version: str, epic_id: str | None = None, reason: str | None = None) -> None:
+    """Write everything a release needs that can be known before the tag exists.
+
+    Two shapes, and the second exists because this repository could not express it. A release
+    marked a closed epic and nothing else, so when the v1.12.0 and v1.13.0 release workflows both
+    failed - a Windows packaging error, then a clippy denial - there was no way to cut the version
+    that carried the fix. A published tag is immutable history and is never deleted, so the only
+    honest route is a new version, and the tool has to be able to say that a release closes no
+    epic. It stays a *patch*: a version that closes nothing may not claim a feature number.
+    """
     versions = current_versions()
+    if (epic_id is None) == (reason is None):
+        raise ReleaseError("a release closes an epic (--epic) or carries a fix (--fix); give exactly one")
     if parse(version) <= parse(versions.source):
         raise ReleaseError(f"{version} does not advance the current version {versions.source}")
     if versions.source != versions.packaging:
         raise ReleaseError(f"source and packaging versions disagree ({versions.source} vs {versions.packaging}); fix that first")
-    epic = load_epic(epic_id)
-    if epic["status"] != "done":
-        raise ReleaseError(f"epic {epic_id} is {epic['status']}, not done; a release marks a closed epic")
+    if epic_id is None:
+        if not is_patch_of(version, versions.source):
+            raise ReleaseError(
+                f"{version} is not the patch after {versions.source}; a release that closes no epic "
+                "is a fix release and takes the next patch number"
+            )
+        if not (reason or "").strip():
+            raise ReleaseError("--fix needs a reason: what the already tagged version could not carry")
+    else:
+        epic = load_epic(epic_id)
+        if epic["status"] != "done":
+            raise ReleaseError(f"epic {epic_id} is {epic['status']}, not done; a release marks a closed epic")
     body = unreleased_body()
     if not body.strip():
         raise ReleaseError("CHANGELOG.md has nothing under Unreleased; there is nothing to release")
@@ -289,9 +335,9 @@ def prepare(version: str, epic_id: str) -> None:
     CHANGELOG.write_text(text[: start.start()] + cut + text[start.end() :], encoding="utf-8")
 
     path = release_evidence_path(version)
-    path.write_text(render_evidence(version, epic_id, body), encoding="utf-8")
+    path.write_text(render_evidence(version, epic_id, body, reason), encoding="utf-8")
 
-    print(f"prepared v{version} for {epic_id}")
+    print(f"prepared v{version} for {epic_id if epic_id else 'a fix that no epic closure carries'}")
     print(f"  cancellai.py, pyproject.toml -> {version}")
     print(f"  CHANGELOG.md  -> cut [{version}] - {today}")
     print(f"  {path.relative_to(ROOT)} -> written")
@@ -346,7 +392,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("check", help="Report version drift and epics closed without a release.")
     prepare_cmd = sub.add_parser("prepare", help="Bump versions, cut the changelog, write release evidence.")
     prepare_cmd.add_argument("--version", required=True)
-    prepare_cmd.add_argument("--epic", required=True, help="the epic this release closes")
+    shape = prepare_cmd.add_mutually_exclusive_group(required=True)
+    shape.add_argument("--epic", help="the epic this release closes")
+    shape.add_argument("--fix", help="cut a patch that closes no epic; say what the tagged version could not carry")
     finalize_cmd = sub.add_parser("finalize", help="Point the Homebrew formula at the pushed tag.")
     finalize_cmd.add_argument("--version", required=True)
     finalize_cmd.add_argument("--sha256", help="skip the download and use this digest")
@@ -358,7 +406,7 @@ def main(argv: list[str] | None = None) -> int:
     command = args.command or "check"
     try:
         if command == "prepare":
-            prepare(args.version, args.epic)
+            prepare(args.version, args.epic, args.fix)
         elif command == "finalize":
             finalize(args.version, args.sha256)
         else:

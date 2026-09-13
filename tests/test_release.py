@@ -45,5 +45,75 @@ class ReleaseConsistencyTests(unittest.TestCase):
         release.unreleased_body()
 
 
+class FixReleaseTests(unittest.TestCase):
+    """A release that closes no epic - the shape this repository could not express.
+
+    v1.12.0 and v1.13.0 both failed in the release workflow, and a published tag is immutable
+    history. The fix had to ship as a new version, and `prepare` could only cut a version that
+    closed an epic. These tests pin the shape that was added and the two ways it could be abused:
+    claiming a feature number for work that closed nothing, and crediting an epic by prose.
+    """
+
+    def test_a_fix_release_takes_the_next_patch_number(self) -> None:
+        self.assertTrue(release.is_patch_of("1.13.1", "1.13.0"))
+        for wrong in ("1.14.0", "2.0.0", "1.13.2", "1.13.0"):
+            with self.subTest(version=wrong):
+                self.assertFalse(release.is_patch_of(wrong, "1.13.0"))
+
+    def test_prepare_refuses_both_shapes_at_once(self) -> None:
+        with self.assertRaises(release.ReleaseError) as caught:
+            release.prepare("9.9.9", epic_id="E22", reason="also a fix")
+        self.assertIn("exactly one", str(caught.exception))
+
+    def test_prepare_refuses_neither_shape(self) -> None:
+        with self.assertRaises(release.ReleaseError) as caught:
+            release.prepare("9.9.9")
+        self.assertIn("exactly one", str(caught.exception))
+
+    def test_a_fix_release_may_not_claim_a_feature_number(self) -> None:
+        current = release.current_versions().source
+        major, minor, _patch = release.parse(current)
+        with self.assertRaises(release.ReleaseError) as caught:
+            release.prepare(f"{major}.{minor + 1}.0", reason="a fix")
+        self.assertIn("closes no epic", str(caught.exception))
+
+    def test_a_fix_release_needs_a_stated_reason(self) -> None:
+        current = release.current_versions().source
+        major, minor, patch = release.parse(current)
+        with self.assertRaises(release.ReleaseError) as caught:
+            release.prepare(f"{major}.{minor}.{patch + 1}", reason="   ")
+        self.assertIn("needs a reason", str(caught.exception))
+
+    def test_a_fix_release_packet_declares_no_epic(self) -> None:
+        # The safety property: a packet that closes nothing must not be able to satisfy PD-021
+        # for some epic that happens to appear in the changelog text it embeds.
+        section = release.included_work(None, "the tagged release workflow failed at verify-rust")
+        self.assertEqual([], release.EPIC_DECLARATION_RE.findall(section))
+        self.assertIn("closes no epic", section.lower())
+
+    def test_an_epic_release_packet_declares_exactly_that_epic(self) -> None:
+        section = release.included_work("E22", None)
+        self.assertEqual(["E22"], release.EPIC_DECLARATION_RE.findall(section))
+
+
+class EpicCoverageTests(unittest.TestCase):
+    """Being mentioned is not being released."""
+
+    def test_an_epic_named_only_in_prose_is_not_credited(self) -> None:
+        prose = "This release fixes what E99 introduced, and mentions E98 in passing.\n"
+        self.assertEqual([], release.EPIC_DECLARATION_RE.findall(prose))
+
+    def test_a_declared_epic_is_credited_wherever_the_line_is_indented(self) -> None:
+        packet = "## Included work\n\n- Epic: E09 - Atlas TUI\n  - Epic: E10 - Storage\n"
+        self.assertEqual(["E09", "E10"], release.EPIC_DECLARATION_RE.findall(packet))
+
+    def test_every_committed_packet_declares_at_least_one_epic_or_says_it_closes_none(self) -> None:
+        for path in sorted(release.EVIDENCE.glob("RELEASE-v*.md")):
+            with self.subTest(packet=path.name):
+                text = path.read_text(encoding="utf-8")
+                declared = release.EPIC_DECLARATION_RE.findall(text)
+                self.assertTrue(declared or "closes no epic" in text.lower(), path.name)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

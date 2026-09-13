@@ -68,6 +68,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resolves with Cargo's MSRV-aware resolver (`resolver = "3"`), which will not select a version above
   the declared `rust-version`; the affected crates are locked to versions that support it. The Rust
   quality set passes unchanged.
+- A release can carry a fix that closes no epic (E22-S07, CR3). The release contract could express
+  only "this version closes an epic", so when the v1.12.0 and v1.13.0 workflows failed - a Windows
+  packaging error, then a clippy denial - there was no way to cut the version carrying the fix, a
+  published tag being immutable history. `release.py prepare` now takes `--fix <reason>` instead of
+  `--epic`, and such a release must take the next patch number. Found while fixing it: a release was
+  credited with covering an epic if the id appeared **anywhere** in the packet text, and a packet
+  embeds the changelog - so PD-021's gate was satisfiable by a sentence. It now reads the declared
+  `- Epic:` line. Four epics had been credited by prose; none was closed, so nothing had shipped
+  wrongly.
+
 ### Changed
 
 - Review stops on **measured yield** rather than a fixed round count, and an epic that changes

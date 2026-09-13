@@ -2415,6 +2415,32 @@ Close the gaps between what the engineering system claims to enforce and what it
 - `docs/development/WORK_ITEM_MODEL.md`
 - `docs/adrs/0014-epic-closure-is-a-release-and-review-is-bounded.md`
 
+### E22-S07 - A release can carry a fix that no epic closes
+
+**Status:** `done` | **Change Risk:** `CR3` | **Dependencies:** E22-S01 | **Safety obligations:** none
+
+**Outcome.** The release contract could express exactly one thing: a version closes an epic. That held while every release workflow succeeded. Two did not - v1.12.0 failed packaging the Windows artifact, v1.13.0 failed at verify-rust on a clippy denial - and a published tag is immutable history, so the fix can only ship as a new version. There was no way to cut one: prepare requires a done epic, and every done epic is already released. The second defect surfaced while fixing the first. A release was credited with covering an epic if the epic's id appeared anywhere in the packet text, and a packet embeds the changelog, so PD-021's gate was satisfiable by a sentence. Four epics were being credited that way.
+
+**Acceptance criteria**
+
+- The prepare command shall accept either the epic a release closes or the fix it carries, and shall require exactly one of the two.
+- A release that closes no epic shall take the next patch number, so that a version closing nothing cannot claim a feature number.
+- If a release packet names an epic anywhere other than its declared epic line, then the release gate shall not count that epic as released.
+- If a fix release is prepared without a stated reason, then the command shall refuse, because the reason is the only record of why the version exists.
+
+**Verification**
+
+- A fix release cannot become a route to closing an epic without the verification a closure requires: its packet declares no epic at all.
+- prepare refuses both shapes at once, neither shape, a minor version for a fix, and an empty reason.
+- A fix-release packet contains no declared epic line, checked against the same regular expression the gate uses.
+- Every committed release packet either declares an epic or says it closes none.
+- The set of epics credited by the declared line equals the set of done epics, with nothing credited that is not done.
+
+**Documentation impact**
+
+- `CHANGELOG.md`
+- `docs/development/WORK_ITEM_MODEL.md`
+
 ## E23 - Release gate history availability
 
 **Phase:** `P1` | **Status:** `done` | **Epic dependencies:** E22
