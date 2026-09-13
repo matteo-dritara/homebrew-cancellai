@@ -87,6 +87,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   run it fetch full history. The same defect pointing the other way is a silent pass, which is the
   version nobody would have found - and this is the second instance of the class, after the one
   that broke the v1.10.0 tag.
+- The documents state the review rule that is actually in force (E25-S13, CR0). ADR-0025 replaced
+  the two-round ceiling with a yield-based stopping rule, and three surfaces still said "at most
+  twice": `AGENT_PROTOCOL.md` in two places, the `story-executor` skill, and PD-022 in the decision
+  register, which is now superseded by PD-024. The skill is the one worth noting - the pack's rule
+  is that a skill points at the contract and never restates it, and the single rule it restated is
+  the one that drifted.
+
 ### Changed
 
 - Review stops on **measured yield** rather than a fixed round count, and an epic that changes

@@ -349,6 +349,31 @@
       ]
     },
     {
+      "id": "E25-S13",
+      "title": "The rule in force is the rule the documents state",
+      "status": "done",
+      "outcome": "ADR-0025 replaced the two-round review ceiling with a yield-based stopping rule, and AGENTS.md and WORK_ITEM_MODEL.md were amended with it. Three surfaces were not: AGENT_PROTOCOL.md said 'at most twice per epic' in two places, the story-executor skill restated it a third time, and the decision register still carried PD-022 as accepted. The skill is the interesting one: the pack's governing rule is that a skill points at the contract and never restates it, and the one place it restated a rule is the place that drifted - the failure mode the rule was written to prevent, found inside its own pack.",
+      "change_risk": "CR0",
+      "dependencies": [
+        "E25-S04"
+      ],
+      "acceptance_criteria": [
+        "Every document that states how many review rounds an epic gets shall state the rule ADR-0025 put in force.",
+        "The decision register shall carry the superseded decision as superseded and the rule in force as its own entry, rather than editing the earlier text.",
+        "If a skill would restate a rule a document owns, then it shall link the document instead, because a restatement is a second source of truth and drifts."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "No document outside the audit trail and the ADRs themselves still says review is bounded to two rounds.",
+        "scripts/check_process.py accepts the supersession and scripts/check_agent_skills.py accepts the skill's links."
+      ],
+      "documentation_impact": [
+        "docs/development/AGENT_PROTOCOL.md",
+        ".claude/skills/story-executor/SKILL.md",
+        "project/decisions.json"
+      ]
+    },
+    {
       "id": "E25-S14",
       "title": "A gate that cannot see its evidence refuses rather than guesses",
       "status": "done",

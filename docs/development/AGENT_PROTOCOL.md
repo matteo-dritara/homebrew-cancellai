@@ -19,8 +19,9 @@ Attempts to falsify the implementation from the story, acceptance criteria, inva
 Roles may rotate between Claude and Codex across stories/sprints to reduce systematic bias.
 
 **Current standing assignment:** Claude is the executor and hands work over at
-`ready_for_review`; Codex performs the independent review, once the whole epic is ready and
-at most twice per epic.
+`ready_for_review`; Codex performs the independent review, once the whole epic is ready. How
+many rounds that takes is decided by what the rounds find, not by a constant
+([ADR-0025](../adrs/0025-review-stops-on-yield-and-a-shippable-nothing-does-not-cut-a-release.md)).
 
 ## What "independent" can mean here
 
@@ -107,10 +108,15 @@ An executor's work is finished at `ready_for_review`. It does not set `verificat
 
 ## Verifier procedure
 
-Review runs at **epic** scope, when every story in the epic is `ready_for_review`, and at
-most **twice** per epic (ADR-0014 / PD-022). Do not review a story in isolation while its
-neighbours are still moving, and do not open a third round: findings that survive round 2
-become new backlog work items recorded as accepted residual risk.
+Review runs at **epic** scope, when every story in the epic is `ready_for_review`. It stops on
+**measured yield**, not on a round count: another round is required while a round rejects 10% or
+more of the stories it judges, and two rounds whose findings do not overlap escalate to the owner
+rather than closing ([ADR-0025](../adrs/0025-review-stops-on-yield-and-a-shippable-nothing-does-not-cut-a-release.md),
+amending ADR-0014 / PD-022, which fixed the number at two). Three rounds is a cost ceiling that
+`scripts/check_process.py` enforces, and reaching it is an owner decision recorded as such, not an
+automatic close. Do not review a story in isolation while its neighbours are still moving.
+Findings that survive the last round become new backlog work items recorded as accepted residual
+risk.
 
 Pick up work from the review queue rather than from chat context:
 

@@ -79,8 +79,9 @@ Invoke the `evidence-packet` skill. Then set the story to `ready_for_review` in
 `python3 scripts/project_os.py check` passes, and commit code, docs, generated files, evidence and
 the status change together as one checkpoint. Conventional Commit prefix required.
 
-Stop there. `ready_for_review` is the exit state. Review happens at epic scope, at most twice,
-once every story in the epic is ready.
+Stop there. `ready_for_review` is the exit state. Review happens at epic scope, once every story
+in the epic is ready, and stops on what the rounds find rather than after a fixed number - see
+`docs/development/AGENT_PROTOCOL.md`.
 
 ## Report format
 

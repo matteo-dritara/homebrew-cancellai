@@ -290,9 +290,9 @@ An epic reaching done produces a version tag and everything that follows it: ver
 
 ## PD-022 - Review is per epic and bounded to two rounds
 
-**Status:** accepted
+**Status:** superseded
 
-An epic is reviewed once all its stories are implemented, not story by story, and at most twice. Findings that survive round two become new backlog work items recorded as accepted residual risk in the closure packet, rather than triggering a third round.
+Superseded by PD-024. Review was bounded to two rounds per epic, with findings surviving round two becoming backlog work items rather than triggering a third round.
 
 **Rationale.** E00 ran three review rounds with no rule that would ever stop it; the loop ended because the owner stopped it, not because the process had a completion criterion. Per-story review also made the reviewer re-read overlapping code while the epic could not converge.
 
@@ -314,3 +314,17 @@ E16-S02 ("Signed knowledge bundle format") depended on both E16-S01 and E17-S01.
 
 - Backlog authors adding a cross-epic story dependency should check whether the reverse direction already exists (directly or transitively) before committing it - PD-021/PD-022 together turn any such cycle into a deadlock, not just a scheduling inconvenience.
 - E17-S07's own dependency on E16-S05 (rather than E16-S02, which is what its "trusted signed knowledge" downgrade mechanism actually needs) is left as-is by this decision - it is a separate, non-blocking accuracy question about which E16 story E17-S07 should cite, not itself a cycle, and is not resolved here.
+
+## PD-024 - Review stops on measured yield, not on a round count
+
+**Status:** accepted
+
+Another review round is required while a round rejects 10% or more of the stories it judges. Two rounds whose findings do not overlap escalate to the owner rather than closing, because a zero overlap bounds nothing. Three rounds remains a cost ceiling that scripts/check_process.py enforces, and reaching it is an owner decision recorded as such, not an automatic close.
+
+**Rationale.** PD-022 fixed the number at two without evidence that two is where yield falls off. The process measurement in E25-S01 says it is not a constant: E00's second round rejected more than its first (100% against 86%) and its two rounds found disjoint sets, which leaves Lincoln-Petersen undefined; E20's second round collapsed to zero. E00 needed a third round, got one by exception, and that round found more defects. A stopping rule the measurement can support replaces a constant nobody measured.
+
+**Implications**
+
+- An epic whose first round rejects little closes after one round, which PD-022 did not allow.
+- An epic whose rounds disagree entirely stops being a process question and becomes an owner decision.
+- ADR-0025 carries the full argument; this entry is the register's record of it, and PD-022 is superseded rather than edited so the earlier rule stays readable.
