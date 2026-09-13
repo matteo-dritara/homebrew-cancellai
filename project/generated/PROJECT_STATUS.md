@@ -4,7 +4,7 @@
 
 Current phase: **P1**
 
-Epics: **27** | Stories: **143**
+Epics: **28** | Stories: **144**
 
 ## Story status
 
@@ -12,6 +12,7 @@ Epics: **27** | Stories: **143**
 - `cancelled`: 1
 - `done`: 114
 - `planned`: 26
+- `ready_for_review`: 1
 
 ## Change risk distribution
 
@@ -19,7 +20,7 @@ Epics: **27** | Stories: **143**
 - `CR1`: 32
 - `CR2`: 44
 - `CR3`: 25
-- `CR4`: 30
+- `CR4`: 31
 
 ## Explicitly ready work
 
@@ -27,4 +28,4 @@ Epics: **27** | Stories: **143**
 
 ## Awaiting independent review
 
-- none
+- **E27-S01** - The lint policy states the thesis the project already claims (CR4)

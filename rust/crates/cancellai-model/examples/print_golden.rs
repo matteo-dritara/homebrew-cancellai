@@ -11,6 +11,9 @@
 //!
 //! Review the resulting diff before committing - this tool does not know whether a change is
 //! correct, only how to reproduce it.
+// A developer tool, not a shipped surface: failing loudly with the path that could not be written
+// is the correct behaviour here, so the workspace's panic-freedom lints are lifted for this file.
+#![allow(clippy::panic)]
 
 use cancellai_model::{Diagnostic, ErrorCategory};
 

@@ -83,6 +83,8 @@ pub fn open_and_observe_identity(path: &Path) -> io::Result<(File, WindowsFileFa
 /// this same `GetFileInformationByHandle` query against the handle it already has, not a
 /// second, path-based reopen that would defeat the whole point of a handle-relative walk.
 pub(crate) fn observe_identity_of_handle(handle: RawHandle) -> io::Result<WindowsFileFacts> {
+    // SAFETY: `BY_HANDLE_FILE_INFORMATION` is a plain C aggregate of integers and fixed arrays with no niche and
+    // no validity invariant, so the all-zero bit pattern is a valid value; the call below
     let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
     // SAFETY: the caller guarantees `handle` is a valid, currently-open HANDLE for the
     // duration of this call. `info` is a stack-allocated, correctly-sized

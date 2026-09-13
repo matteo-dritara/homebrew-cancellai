@@ -167,6 +167,9 @@ fn nt_open_child(
         SecurityQualityOfService: std::ptr::null(),
     };
     let mut handle: HANDLE = std::ptr::null_mut();
+    // SAFETY: `IO_STATUS_BLOCK` is a plain C aggregate of integers and pointers with no niche
+    // and no validity invariant, so the all-zero bit pattern is a valid value; the call
+    // below overwrites it before anything reads it.
     let mut iosb: IO_STATUS_BLOCK = unsafe { std::mem::zeroed() };
     // `FILE_OPEN_REPARSE_POINT` is unconditional, including for `FILE_CREATE`, and this is
     // safety-load-bearing, not incidental: an earlier version of this function omitted it for
@@ -388,6 +391,9 @@ impl SealedRoot {
     /// than reopening by name, since a reopen after the delete call above would itself be a
     /// fresh, unprotected path lookup - exactly what this crate exists to avoid.
     pub fn is_delete_pending(handle: &File) -> Result<bool, SealError> {
+        // SAFETY: `FILE_STANDARD_INFO` is a plain C aggregate of integers and pointers with no niche
+        // and no validity invariant, so the all-zero bit pattern is a valid value; the call
+        // below overwrites it before anything reads it.
         let mut info: FILE_STANDARD_INFO = unsafe { std::mem::zeroed() };
         // SAFETY: `handle` is a valid, currently-open HANDLE for the duration of this call.
         // `info` is a stack-allocated, correctly-sized `FILE_STANDARD_INFO`, passed as a valid
@@ -434,6 +440,9 @@ impl SealedRoot {
             SecurityQualityOfService: std::ptr::null(),
         };
         let mut handle: HANDLE = std::ptr::null_mut();
+        // SAFETY: `IO_STATUS_BLOCK` is a plain C aggregate of integers and pointers with no niche
+        // and no validity invariant, so the all-zero bit pattern is a valid value; the call
+        // below overwrites it before anything reads it.
         let mut iosb: IO_STATUS_BLOCK = unsafe { std::mem::zeroed() };
         // SAFETY: same invariants as `nt_open_child` above - `RootDirectory` is this
         // `SealedRoot`'s own held, open handle; `ObjectName` names a single bare component with
@@ -557,8 +566,21 @@ fn rename_child(dir: &File, old_name: &str, new_name: &str) -> Result<(), SealEr
         (*info).RootDirectory = dir.as_raw_handle();
         (*info).FileNameLength = name_byte_len;
     }
-    buffer[header_len..].copy_from_slice(&bytemuck_u16_to_u8(&new_wide));
+    // `get_mut` rather than `[header_len..]`: the buffer was allocated as
+    // `header_len + new_wide.len() * 2` a few lines up, so the range is in bounds, but this is the
+    // rename path of the mutation boundary and an arithmetic change upstream should surface as a
+    // refusal rather than as an abort mid-rename.
+    let Some(name_bytes) = buffer.get_mut(header_len..) else {
+        return Err(SealError::Io(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "rename buffer too small for its own header",
+        )));
+    };
+    name_bytes.copy_from_slice(&bytemuck_u16_to_u8(&new_wide));
 
+    // SAFETY: `IO_STATUS_BLOCK` is a plain C aggregate of integers and pointers with no niche
+    // and no validity invariant, so the all-zero bit pattern is a valid value; the call
+    // below overwrites it before anything reads it.
     let mut iosb: IO_STATUS_BLOCK = unsafe { std::mem::zeroed() };
     // SAFETY: `target` is a valid, currently-open HANDLE for the duration of this call, opened
     // with `DELETE` access (required for a rename). `buffer` is a correctly-sized, fully

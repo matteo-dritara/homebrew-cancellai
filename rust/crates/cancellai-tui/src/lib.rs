@@ -11,6 +11,14 @@
 //! at all (see `Cargo.toml`'s own comment) - only `cancellai-policy`'s public view-model API,
 //! read through [`data::EngineData`], plus `crossterm`/`ratatui` and this crate's own state.
 
+// Presentation layer, outer ring (ADR-0019). `indexing_slicing` is denied workspace-wide because
+// a panic in code that decides what may be deleted is a wrong answer arriving as a crash; this
+// crate decides nothing - it renders what the engine already decided, and a layout array indexed
+// against the constraint list that produced it is clearer as `chunks[0]` than as a fallible
+// lookup with an invented fallback. A `deny` in the workspace table is lifted by this attribute;
+// `unsafe_code` is `forbid` and deliberately cannot be.
+#![allow(clippy::indexing_slicing)]
+
 pub mod app;
 pub mod capability;
 pub mod data;

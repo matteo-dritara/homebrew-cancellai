@@ -39,3 +39,26 @@ clap = { version = "4", features = ["derive"] }
 # overrides this locally with an explicit, reviewed justification - it is never removed here.
 [workspace.lints.rust]
 unsafe_code = "forbid"
+# `unsafe fn` does not make its body an implicit unsafe block. Requiring the block makes each
+# unsafe operation inside one visible to `undocumented_unsafe_blocks` below, instead of hiding a
+# whole function's worth of them behind one signature.
+unsafe_op_in_unsafe_fn = "deny"
+
+# Until now this workspace configured no clippy lint at all: `cargo clippy -D warnings` ran the
+# default set and nothing else. For a project whose thesis is that a tool deleting files must
+# never act on an unproven assumption, the lints below are the ones that state that thesis in a
+# form the compiler checks. They are denied in production and allowed in tests (`clippy.toml`) -
+# a test that unwraps is asserting, production code that unwraps is choosing to abort mid-work.
+#
+# `expect_used` is deliberately absent. `CString::new("/").expect("literal has no embedded NUL")`
+# is the correct idiom for an invariant that holds by construction, and denying it pushes authors
+# toward silently swallowing the case instead of naming why it cannot happen.
+[workspace.lints.clippy]
+undocumented_unsafe_blocks = "deny"
+unwrap_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+mem_forget = "deny"
+indexing_slicing = "deny"

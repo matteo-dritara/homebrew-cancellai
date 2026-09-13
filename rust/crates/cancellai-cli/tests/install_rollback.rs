@@ -17,6 +17,11 @@
 //!   provider roots it was explicitly pointed at (C-10: cancellAI's local state is disposable
 //!   and rebuildable - here demonstrated by there being none to begin with).
 
+// Integration tests live outside `#[cfg(test)]`, so clippy's `allow-*-in-tests` options in
+// `clippy.toml` do not reach them. The workspace's panic-freedom lints are lifted here for the
+// same reason they are allowed in unit tests: a test that unwraps is asserting.
+#![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
+
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};

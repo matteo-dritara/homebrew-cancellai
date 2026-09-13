@@ -22,6 +22,11 @@
 //! divergence would be (AGENTS.md: "unexplained Python/Rust differential behavior is a
 //! failure").
 
+// Integration tests live outside `#[cfg(test)]`, so clippy's `allow-*-in-tests` options in
+// `clippy.toml` do not reach them. The workspace's panic-freedom lints are lifted here for the
+// same reason they are allowed in unit tests: a test that unwraps is asserting.
+#![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
+
 use std::fs;
 use std::path::{Path, PathBuf};
 

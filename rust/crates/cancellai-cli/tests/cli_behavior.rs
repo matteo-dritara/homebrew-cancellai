@@ -12,6 +12,11 @@
 //! `--allow-running` for exactly this reason, not because the flag is expected to matter in a
 //! clean CI sandbox.
 
+// Integration tests live outside `#[cfg(test)]`, so clippy's `allow-*-in-tests` options in
+// `clippy.toml` do not reach them. The workspace's panic-freedom lints are lifted here for the
+// same reason they are allowed in unit tests: a test that unwraps is asserting.
+#![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
+
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 

@@ -285,6 +285,9 @@ mod unix_impl {
     /// (see [`open_child_dir_nofollow`]) - never as the containment check itself, which is the
     /// no-follow `openat` call that already ran.
     fn is_symlink_at(parent_fd: RawFd, name: &CString) -> bool {
+        // SAFETY: `libc::stat` is a plain C aggregate of integers and fixed arrays with no
+        // niche and no validity invariant, so the all-zero bit pattern is a valid value; the
+        // `fstatat` call below overwrites it before anything reads it.
         let mut stat: libc::stat = unsafe { std::mem::zeroed() };
         // SAFETY: `parent_fd` is a valid open directory descriptor for the call's duration;
         // `stat` is a valid, appropriately-sized out-parameter; `AT_SYMLINK_NOFOLLOW` makes
@@ -438,6 +441,9 @@ mod unix_impl {
                     // attacker's symlink) - fall through to the no-follow open, which accepts
                     // the former and refuses the latter, rather than treating either as this
                     // call's own failure.
+                    // SAFETY: `current` is a live open directory descriptor borrowed for this call, and
+                    // `leaf` is a NUL-terminated bare filename validated upstream, so the relative lookup
+                    // cannot leave that directory. `mkdirat` reads both and retains neither past the call.
                     let rc = unsafe { libc::mkdirat(current.as_raw_fd(), leaf.as_ptr(), 0o700) };
                     if rc != 0 {
                         let create_err = io::Error::last_os_error();
@@ -498,6 +504,9 @@ mod unix_impl {
             let cname = validate_child_name(name)?;
             let dirfd = self.dir.as_raw_fd();
 
+            // SAFETY: `libc::stat` is a plain C aggregate of integers and fixed arrays with no
+            // niche and no validity invariant, so the all-zero bit pattern is a valid value; the
+            // `fstatat` call below overwrites it before anything reads it.
             let mut stat: libc::stat = unsafe { std::mem::zeroed() };
             // SAFETY: `dirfd` is a valid open directory descriptor for this call's duration
             // (borrowed from `self.dir`); `cname` is a NUL-terminated bare filename validated

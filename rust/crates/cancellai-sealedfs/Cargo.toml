@@ -13,8 +13,27 @@ publish.workspace = true
 # child operation relative to that held descriptor, immune to a later rename/symlink-swap of
 # the original path). Every `unsafe` block in this crate carries its own `// SAFETY:`
 # justification; `git grep unsafe rust/crates` should return nothing outside this crate.
+# This crate cannot write `[lints] workspace = true`: the workspace forbids `unsafe_code`, and
+# `forbid` is precisely the level a crate may not lift - not from its manifest and not from an
+# inner attribute. ADR-0017's exception therefore has to be a local lints table, and a local table
+# *replaces* the workspace one rather than extending it. The consequence went unnoticed until the
+# workspace gained a real clippy policy: the one crate holding every `unsafe` block in the
+# repository was the one crate that policy could not reach. The policy is repeated here, and
+# `scripts/check_rust_workspace.py` fails if the two tables ever disagree on anything but
+# `unsafe_code`.
 [lints.rust]
 unsafe_code = "allow"
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+undocumented_unsafe_blocks = "deny"
+unwrap_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+mem_forget = "deny"
+indexing_slicing = "deny"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

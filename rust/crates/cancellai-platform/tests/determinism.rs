@@ -8,6 +8,11 @@
 //! changing either the clock reading or a single fact changes that output - the comparison
 //! has to be able to fail, or passing it proves nothing.
 
+// Integration tests live outside `#[cfg(test)]`, so clippy's `allow-*-in-tests` options in
+// `clippy.toml` do not reach them. The workspace's panic-freedom lints are lifted here for the
+// same reason they are allowed in unit tests: a test that unwraps is asserting.
+#![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
+
 use std::path::PathBuf;
 
 use cancellai_platform::{

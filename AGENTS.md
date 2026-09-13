@@ -283,6 +283,28 @@ outer-ring dependency may never become a second path to a safety decision - it d
 the user asked for, never what is permitted (SI-007 in particular stays a property of this
 workspace's own command dispatch, regardless of which crate parses the tokens).
 
+### Lint policy
+
+`[workspace.lints]` denies the lints that state this project's thesis in a form the compiler
+checks: `undocumented_unsafe_blocks`, `unwrap_used`, `panic`, `todo`, `unimplemented`,
+`dbg_macro`, `mem_forget`, `indexing_slicing`, and `unsafe_op_in_unsafe_fn`
+([ADR-0028](docs/adrs/0028-lint-policy-states-the-safety-thesis-and-differs-by-ring.md)). Tests are
+exempt via `rust/clippy.toml`; integration tests live outside `#[cfg(test)]`, so each carries the
+equivalent inner attribute. `expect_used` is deliberately not denied - `expect("literal has no
+embedded NUL")` names an invariant, and denying it pushes authors toward swallowing the case.
+
+Two rules follow from how Cargo works, and both have bitten:
+
+- **A crate's own `[lints]` table replaces the workspace's, it does not extend it.** Only
+  `cancellai-sealedfs` declares one, because ADR-0017 lifts `unsafe_code` and `forbid` is the one
+  level an inner attribute cannot lift. It therefore repeats the clippy policy, and
+  `scripts/check_rust_workspace.py` fails if the two ever disagree on anything else. Before that
+  gate, the crate holding every `unsafe` block in the repository was the only crate a workspace
+  lint policy could not reach.
+- **Relax a lint in the crate's own source, not in its manifest.** `cancellai-tui` carries
+  `#![allow(clippy::indexing_slicing)]` with its reason above it, where a reader of the code sees
+  it. An exemption buried in a manifest is one nobody reads.
+
 Any new dependency's license must be in the `cargo-deny` allow-list ADR-0015 fixes (MIT,
 Apache-2.0, BSD-2/3-Clause, ISC, Unicode-3.0, Zlib), or the license list in `rust/deny.toml`
 needs its own reviewed change first, in either ring.

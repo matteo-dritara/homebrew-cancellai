@@ -121,9 +121,11 @@ pub fn extract_uuid(text: &str) -> Option<String> {
     }
     last_match.and_then(|(start, end)| {
         // GROUPS/hyphens are ASCII-only by construction, so this slice is always valid UTF-8
-        // even if `text` as a whole is not ASCII elsewhere.
-        std::str::from_utf8(&bytes[start..end])
-            .ok()
+        // even if `text` as a whole is not ASCII elsewhere. `get` rather than `[]` so an
+        // out-of-range pair from a future edit returns `None` instead of aborting the process.
+        bytes
+            .get(start..end)
+            .and_then(|slice| std::str::from_utf8(slice).ok())
             .map(str::to_lowercase)
     })
 }

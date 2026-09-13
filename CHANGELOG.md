@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The Rust lint policy now states this project's thesis in a form the compiler checks**
+  (E27-S01, CR4; [ADR-0028](docs/adrs/0028-lint-policy-states-the-safety-thesis-and-differs-by-ring.md)).
+  `[workspace.lints]` held one line - `unsafe_code = "forbid"` - so `cargo clippy -D warnings` ran
+  the default set and nothing else, in a workspace whose whole argument is that a tool deleting
+  files must never act on an unproven assumption. Measured before changing anything: **41 `unsafe`
+  blocks against 30 `SAFETY:` comments**, and **13 panic sites in production code**, six of them
+  indexing strings that arrive from third-party provider manifests.
+  - All 41 unsafe blocks now carry a written safety argument, enforced by the compiler and
+    asserted by a test that does not depend on clippy. **Seven of the eleven undocumented ones
+    exist only behind `cfg(windows)`** and no single-platform run could have found them.
+  - Two of the thirteen panics were real rather than theoretical: a plan action naming no target
+    artifact aborted the CLI part-way through a run, and the Windows rename path inside the
+    mutation boundary sliced a buffer whose size was computed a few lines earlier.
+  - The glob matcher that reads provider manifest patterns is panic-free by construction and is
+    checked against a naive reference implementation over every pattern and input up to length
+    four across an alphabet containing multi-byte characters - the differential method this
+    repository already uses between its Python reference and its Rust port, applied to a parser
+    that had never been tested that way.
+  - **A structural defect the measurement exposed:** Cargo's `[lints]` table is all-or-nothing, so
+    `cancellai-sealedfs` - which must declare its own to lift `forbid` - was the one crate a
+    workspace policy could never reach. Every `unsafe` block in the repository sat in the only
+    crate exempt from the rule about `unsafe` blocks. A gate now refuses any workspace lint a
+    crate drops.
+  - First coverage measurement in the project's history: **94.54% of regions**, with the worst
+    kernel-ring file being `cancellai-sealedfs/src/lib.rs` at 92.57%.
+
 ## [1.13.4] - 2026-09-13
 
 ### Fixed

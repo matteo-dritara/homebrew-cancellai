@@ -200,9 +200,14 @@ pub(crate) fn unescape_proc_mounts_field(field: &str) -> String {
     let chars: Vec<char> = field.chars().collect();
     let mut out = String::with_capacity(field.len());
     let mut i = 0;
-    while i < chars.len() {
-        if chars[i] == '\\' && i + 3 < chars.len() {
-            let octal: String = chars[i + 1..i + 4].iter().collect();
+    // Indexed with `get` rather than `[]`: the bounds were already correct, but they were correct
+    // because a reader checked them, and this function parses a file the kernel writes and an
+    // operator can influence. `get` makes the compiler carry that proof instead.
+    while let Some(&current) = chars.get(i) {
+        if current == '\\'
+            && let Some(digits) = chars.get(i + 1..i + 4)
+        {
+            let octal: String = digits.iter().collect();
             if octal.bytes().all(|b| (b'0'..=b'7').contains(&b))
                 && let Ok(value) = u8::from_str_radix(&octal, 8)
             {
@@ -211,7 +216,7 @@ pub(crate) fn unescape_proc_mounts_field(field: &str) -> String {
                 continue;
             }
         }
-        out.push(chars[i]);
+        out.push(current);
         i += 1;
     }
     out

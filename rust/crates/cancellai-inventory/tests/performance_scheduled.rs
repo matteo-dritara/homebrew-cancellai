@@ -19,6 +19,11 @@
 //! recorded as forward-looking targets in `docs/development/RELEASE_GATES.md` pending a
 //! runtime that can actually produce them - not fabricated here.
 
+// Integration tests live outside `#[cfg(test)]`, so clippy's `allow-*-in-tests` options in
+// `clippy.toml` do not reach them. The workspace's panic-freedom lints are lifted here for the
+// same reason they are allowed in unit tests: a test that unwraps is asserting.
+#![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
+
 mod perf_support;
 
 use std::time::Instant;

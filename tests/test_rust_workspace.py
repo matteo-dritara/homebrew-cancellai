@@ -125,5 +125,60 @@ class RustWorkspaceTests(unittest.TestCase):
         self.assertTrue(any("does not match its directory" in e for e in errors), errors)
 
 
+class LintPolicyTests(unittest.TestCase):
+    """A crate may not quietly drop a workspace lint.
+
+    Cargo's `[lints]` table is all-or-nothing: a crate declaring its own *replaces* the workspace
+    table. `cancellai-sealedfs` must declare one, because ADR-0017 lifts `unsafe_code` and `forbid`
+    is the one level an inner attribute cannot lift. That was invisible while the workspace table
+    held one lint, and became real the moment it held a panic-freedom policy - the crate holding
+    every `unsafe` block in the repository was the only crate the policy could not reach.
+    """
+
+    WORKSPACE = """[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+undocumented_unsafe_blocks = "deny"
+"""
+
+    def test_a_local_table_that_repeats_the_policy_is_accepted(self):
+        local = '[lints.rust]\nunsafe_code = "allow"\n\n[lints.clippy]\nunwrap_used = "deny"\nundocumented_unsafe_blocks = "deny"\n'
+        workspace = rw.lint_tables(self.WORKSPACE)
+        tables = rw.lint_tables(local)
+        for tool, lints in workspace.items():
+            for lint, level in lints.items():
+                if lint == "unsafe_code":
+                    continue
+                self.assertEqual(level, tables.get(tool, {}).get(lint))
+
+    def test_unsafe_code_is_the_one_permitted_difference(self):
+        tables = rw.lint_tables('[lints.rust]\nunsafe_code = "allow"\n')
+        self.assertEqual("allow", tables["rust"]["unsafe_code"])
+
+    def test_the_parser_reads_both_workspace_and_crate_tables(self):
+        self.assertEqual(
+            {"rust": {"unsafe_code": "forbid"}, "clippy": {"unwrap_used": "deny", "undocumented_unsafe_blocks": "deny"}},
+            rw.lint_tables(self.WORKSPACE),
+        )
+
+    def test_the_committed_workspace_passes(self):
+        self.assertEqual([], rw.lint_policy_errors())
+
+    def test_every_unsafe_block_in_the_workspace_carries_a_safety_comment(self):
+        # The property the lint enforces, asserted independently of clippy so it survives a lint
+        # being relaxed: 41 unsafe blocks, 41 SAFETY comments, all in the one crate ADR-0017 allows.
+        root = rw.RUST_CRATES_DIR
+        for source in sorted(root.glob("*/src/*.rs")):
+            text = source.read_text(encoding="utf-8")
+            blocks = text.count("unsafe {")
+            if not blocks:
+                continue
+            with self.subTest(source=str(source.relative_to(root))):
+                self.assertEqual("cancellai-sealedfs", source.parts[-3], "unsafe outside the ADR-0017 crate")
+                self.assertGreaterEqual(text.count("SAFETY:"), blocks)
+
+
 if __name__ == "__main__":
     unittest.main()

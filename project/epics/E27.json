@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "id": "E27",
+  "phase": "P1",
+  "title": "Codebase Health",
+  "objective": "Nobody had measured this codebase. Twenty-seven gates, 143 stories and a risk model governed how work arrives, and no number described the code the work produces: not coverage, not the unsafe surface, not the panic surface, not which document anyone reads. This epic measures first and then spends the measurement - hardening where the numbers say the risk is, and removing where they say a thing costs more attention than it catches. The centre of gravity is the code, not the process: the owner chose codebase health over adding method, and chose Rust first with a security pass on the frozen Python reference. Nothing is removed on taste: a removal arrives with its measurement, in its own reversible commit, and nothing guarding a Safety Invariant or the mutation boundary is removed for cost at all.",
+  "dependencies": [],
+  "status": "in_progress",
+  "stories": [
+    {
+      "id": "E27-S01",
+      "title": "The lint policy states the thesis the project already claims",
+      "status": "ready_for_review",
+      "outcome": "`[workspace.lints]` held one line - `unsafe_code = \"forbid\"` - so `cargo clippy -D warnings` ran the default set and nothing else. For a workspace whose argument is that a tool deleting files must never act on an unproven assumption, the default set says nothing about the two ways that fails: an unwrap that aborts mid-operation, and an unsafe block whose soundness argument was never written down. Measured first: 41 unsafe blocks against 30 SAFETY comments, and 13 panic sites in production code, six of them indexing strings that come from third-party provider manifests. The measurement also exposed a structural defect - Cargo's `[lints]` table is all-or-nothing, so cancellai-sealedfs, which must declare its own to lift `forbid`, was the one crate a workspace policy could never reach: every unsafe block in the repository sat in the only crate exempt from the rule about unsafe blocks.",
+      "change_risk": "CR4",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "Every unsafe block in the workspace shall carry a written safety argument, enforced by the compiler rather than by review.",
+        "Production code shall not reach a panic through unwrap, indexing or slicing, on any tier-1 platform.",
+        "If a crate declares its own lint table, then a gate shall refuse any workspace lint it drops, because a local table replaces the workspace one rather than extending it.",
+        "Where a crate is exempt from a lint, the exemption shall be declared in that crate's source rather than in a manifest, so a reader of the code sees it.",
+        "If the policy is relaxed for tests, then the relaxation shall be explicit and shall not reach production code."
+      ],
+      "safety_obligations": [
+        "SI-019"
+      ],
+      "verification": [
+        "Clippy with -D warnings passes on native, x86_64-pc-windows-gnu and x86_64-unknown-linux-gnu - seven of the eleven undocumented unsafe blocks only exist behind cfg(windows) and no single-platform run could see them.",
+        "The rewritten glob matcher is compared against a naive reference implementation over every pattern and input up to length four across an alphabet containing a multi-byte character.",
+        "The lint-policy gate is shown to fail when a lint is dropped from the sealedfs table, not merely to pass when it is present.",
+        "41 unsafe blocks and 41 SAFETY comments, asserted by a test independent of clippy so the property survives a lint being relaxed."
+      ],
+      "documentation_impact": [
+        "docs/adrs/0028-lint-policy-states-the-safety-thesis-and-differs-by-ring.md",
+        "AGENTS.md"
+      ]
+    }
+  ]
+}
