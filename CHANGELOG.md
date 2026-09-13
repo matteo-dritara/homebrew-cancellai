@@ -198,6 +198,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   demonstrated exploit, and nothing here calls `lru::IterMut` - it is ratatui's internal render
   cache. `cargo deny check` does not see it: that gate reads the RustSec database and this advisory
   is in GitHub's, which is a narrower coverage than "advisories are checked" suggests.
+  **Correction (2026-09-13):** the sentence above is wrong and is kept as published. GHSA-rhfx-m35p-ff5j
+  aliases [RUSTSEC-2026-0002](https://rustsec.org/advisories/RUSTSEC-2026-0002.html), which the
+  local RustSec database already carried. `cargo deny` missed it because its `unsound` check
+  defaults to direct workspace dependencies and `lru` is transitive - a narrower scope than
+  assumed, but not the one claimed. Found by the E17-S08 independent review and repaired with
+  `unsound = "all"`; see ADR-0026 and the Unreleased section.
   [ADR-0026](docs/adrs/0026-raise-the-workspace-msrv-to-1-88.md) puts the choice - raise the
   minimum and clear it, or accept it explicitly - in front of the owner with the evidence. It is
   **proposed, not decided**; nothing in this release changes the minimum.
