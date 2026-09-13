@@ -1909,7 +1909,7 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 ### E17-S08 - The MSRV is decided on its cost, not inherited from edition 2024
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-021, SI-022, SI-029, SI-017
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-021, SI-022, SI-029, SI-017
 
 **Outcome.** ADR-0026 accepted by the owner on 2026-09-13. The workspace MSRV moves from 1.85.0 - inherited from edition 2024 and never chosen on its own merits - to 1.88.0, which takes ratatui 0.30 and with it clears GHSA-rhfx-m35p-ff5j in lru and the RUSTSEC-2024-0436 waiver for an unmaintained paste, leaving deny.toml's ignore list empty. Filed as CR2 and executed as CR4: clippy reads rust-version, so raising it enabled MSRV-gated lints that had been silently skipped, two of them in floored crates - the floor caught the story mid-flight and raised its own level.
 

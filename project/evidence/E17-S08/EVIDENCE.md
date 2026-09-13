@@ -9,9 +9,9 @@
 
 ## Outcome
 
-Independent verification in progress. This packet replaces the executor's disproved claims
-with measured results. The original implementation and the verifier's repairs are distinguished
-below; a final Safety Verdict is separate.
+Independent verification completed: **PASS_WITH_RESIDUALS**. This packet replaces the
+executor's disproved claims with measured results. The original implementation and the
+verifier's repairs are distinguished below; the independent review and Safety Verdict are linked below.
 
 ## Acceptance Criteria Evidence
 
@@ -114,7 +114,8 @@ proof of the repairs.
 ## Residual risks
 
 - No 1.88 toolchain is installed locally. The original target's nine Rust CI jobs passed,
-  including 1.88.0 checks on macOS/Linux/Windows. Fresh CI must cover the repaired revision.
+  including 1.88.0 checks on macOS/Linux/Windows. All nine jobs also passed on repaired
+  source `ba30b42` in [Rust CI run 34774901899](https://github.com/matteo-dritara/homebrew-cancellai/actions/runs/34774901899).
 - Native Windows process-mutation execution and live Windows/Linux TUI testing remain unrun
   locally. Cross-target clippy verifies compilation/lints, not runtime behavior.
 - E17-S11 records the unrelated toolchain-report false positive (approved members are omitted
@@ -126,9 +127,12 @@ proof of the repairs.
 
 ## Safety Verdict
 
-Independent verdict and final gate evidence are issued in the story-scoped review and
-`SAFETY_VERDICT.md` after the final rerun. Neither epic is closed by this review.
+See the [independent review](../E17-S08-VERIFIER-REVIEW.md) and
+[Safety Verdict](SAFETY_VERDICT.md): PASS_WITH_RESIDUALS. Both distinguish native CI evidence
+from local cross-compilation and synthetic probes. Neither epic is closed by this review.
 
 Final-gate follow-up: clippy caught `repeat(1)` in the verifier's new signature fixture.
 It was replaced with `to_string()` without changing the test input; all gates are rerun after
-this test-only repair.
+this test-only repair: 483 Python tests plus 444 subtests, 598 Rust tests, all 31 Python
+commands and all seven Rust gates passed. Two existing Rust benchmarks remain ignored.
+The repaired source also passed all four CI workflows (Rust, governance, tests and CodeQL).

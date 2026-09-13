@@ -10,9 +10,8 @@ Epics: **27** | Stories: **141**
 
 - `blocked`: 2
 - `cancelled`: 1
-- `done`: 109
+- `done`: 110
 - `planned`: 28
-- `ready_for_review`: 1
 
 ## Change risk distribution
 
@@ -28,4 +27,4 @@ Epics: **27** | Stories: **141**
 
 ## Awaiting independent review
 
-- **E17-S08** - The MSRV is decided on its cost, not inherited from edition 2024 (CR4)
+- none

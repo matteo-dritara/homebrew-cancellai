@@ -1,0 +1,208 @@
+{
+  "source_commit": "ba30b4297a6bf67527d3c2944e83d880437cf8d7",
+  "python_environment": "existing repository .venv",
+  "rustc": "1.94.0",
+  "results": [
+    {
+      "command": "python3 -m pytest tests -v",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 -m ruff check .",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 -m ruff format --check .",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 -m mypy cancellai.py scripts/gen_docs.py scripts/project_os.py scripts/check_docs.py scripts/check_workflows.py scripts/check_fixtures.py scripts/check_schemas.py scripts/characterize.py scripts/diff_harness.py scripts/check_rust_workspace.py scripts/check_mutation_boundary.py scripts/check_provider_compatibility.py scripts/check_provider_trust.py scripts/check_platforms.py scripts/rust_python_parity.py scripts/release_manifest.py scripts/check_repository_topology.py scripts/check_agent_skills.py scripts/process_metrics.py scripts/check_risk_classification.py scripts/check_agent_toolchain.py scripts/check_evidence.py scripts/check_ears.py scripts/safety_oracle.py scripts/gate_sensitivity.py",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 scripts/gen_docs.py --check",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 scripts/project_os.py check",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 scripts/check_docs.py check",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 scripts/check_workflows.py check",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 scripts/check_fixtures.py check",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 scripts/check_schemas.py check",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 scripts/characterize.py check",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 scripts/diff_harness.py check",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 scripts/check_rust_workspace.py check",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 scripts/check_mutation_boundary.py check",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 scripts/check_provider_compatibility.py check",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 scripts/check_provider_trust.py check",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 scripts/check_platforms.py check",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 scripts/rust_python_parity.py self-test",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 scripts/rust_python_parity.py check",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 scripts/check_process.py check",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 scripts/release.py check",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 scripts/release_manifest.py check",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 scripts/check_repository_topology.py check",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 scripts/check_agent_skills.py check",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 scripts/process_metrics.py check",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 scripts/check_risk_classification.py check",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 scripts/check_agent_toolchain.py check",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 scripts/check_evidence.py check",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 scripts/safety_oracle.py check",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 scripts/check_ears.py check",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "python3 scripts/gate_sensitivity.py check",
+      "exit": 0,
+      "cwd": "repository"
+    },
+    {
+      "command": "cargo fmt --check",
+      "exit": 0,
+      "cwd": "rust"
+    },
+    {
+      "command": "cargo clippy --workspace --all-targets --all-features -- -D warnings",
+      "exit": 0,
+      "cwd": "rust"
+    },
+    {
+      "command": "cargo check --workspace --all-targets",
+      "exit": 0,
+      "cwd": "rust"
+    },
+    {
+      "command": "cargo test --workspace",
+      "exit": 0,
+      "cwd": "rust"
+    },
+    {
+      "command": "cargo deny check",
+      "exit": 0,
+      "cwd": "rust",
+      "initial_attempt": "sandbox database lock refused",
+      "rerun": "permission granted; advisories, bans, licenses and sources all ok; ignore=[]; unsound=all"
+    },
+    {
+      "command": "cargo clippy --workspace --all-targets --all-features --target x86_64-pc-windows-gnu -- -D warnings",
+      "exit": 0,
+      "cwd": "rust"
+    },
+    {
+      "command": "cargo clippy --workspace --all-targets --all-features --target x86_64-unknown-linux-gnu -- -D warnings",
+      "exit": 0,
+      "cwd": "rust"
+    }
+  ],
+  "pytest": {
+    "passed": 483,
+    "subtests": 444
+  },
+  "rust_tests": {
+    "passed": 598,
+    "ignored": 2
+  },
+  "msrv_local": "not installed; CI required"
+}

@@ -1,0 +1,220 @@
+{
+  "target": "4c2801b",
+  "baseline": [
+    {
+      "name": "E17-hex-drop-parity",
+      "status": "survived",
+      "exit": 0,
+      "failures": []
+    },
+    {
+      "name": "E17-hex-invert-parity",
+      "status": "caught",
+      "exit": 101,
+      "failures": [
+        "test knowledge_bundle::tests::a_correctly_signed_bundle_verifies ... FAILED",
+        "test knowledge_bundle::tests::ac2_tier_comes_from_local_policy_never_from_the_bundle ... FAILED",
+        "test knowledge_bundle::tests::expiry_a_bundle_before_its_expires_at_still_verifies ... FAILED",
+        "test knowledge_bundle::tests::a_first_bundle_from_a_different_publisher_is_never_stale ... FAILED",
+        "test knowledge_bundle::tests::expiry_a_bundle_past_its_expires_at_is_rejected ... FAILED",
+        "test knowledge_bundle::tests::replay_a_stale_sequence_from_the_same_publisher_is_rejected ... FAILED",
+        "test knowledge_bundle::tests::replay_an_equal_sequence_from_the_same_publisher_is_also_rejected ... FAILED",
+        "test knowledge_bundle::tests::rollback_ac3_a_replaced_bundle_can_be_restored ... FAILED",
+        "test knowledge_bundle::tests::rollback_fails_closed_with_no_prior_bundle ... FAILED",
+        "test knowledge_bundle::tests::tamper_a_bit_flipped_signature_is_rejected ... FAILED",
+        "test knowledge_bundle::tests::tamper_a_digest_updated_to_match_tampered_payload_still_fails_signature_verification ... FAILED",
+        "test knowledge_bundle::tests::rollback_at_exactly_the_expiry_boundary_refuses ... FAILED",
+        "test knowledge_bundle::tests::rollback_just_before_the_expiry_boundary_succeeds ... FAILED",
+        "test knowledge_bundle::tests::rollback_refuses_to_reinstate_a_bundle_that_has_since_expired ... FAILED",
+        "test knowledge_bundle::tests::unknown_signer_a_correct_publisher_id_with_a_different_signing_key_is_rejected ... FAILED",
+        "test result: FAILED. 86 passed; 15 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s"
+      ]
+    },
+    {
+      "name": "E17-env-drop-empty",
+      "status": "caught",
+      "exit": 101,
+      "failures": [
+        "test manifest::tests::an_empty_env_var_name_is_rejected ... FAILED",
+        "test result: FAILED. 77 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+      ]
+    },
+    {
+      "name": "E17-subdir-drop-validation",
+      "status": "caught",
+      "exit": 101,
+      "failures": [
+        "test manifest::tests::a_path_traversal_attempt_in_subdir_is_rejected ... FAILED",
+        "test result: FAILED. 77 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s"
+      ]
+    },
+    {
+      "name": "E17-glob-drop-match",
+      "status": "caught",
+      "exit": 101,
+      "failures": [
+        "test builtin::tests::a_realistic_gemini_home_is_detected_and_its_chats_inventoried ... FAILED",
+        "test builtin::tests::a_realistic_copilot_home_is_detected_and_its_session_events_inventoried ... FAILED",
+        "test manifest_provider::tests::a_recognized_layout_reports_supported_observed_and_lists_session_artifacts ... FAILED",
+        "test result: FAILED. 75 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+      ]
+    },
+    {
+      "name": "E17-wsl-advance-three",
+      "status": "caught",
+      "exit": 101,
+      "failures": [
+        "test wsl::tests::a_mountpoint_containing_an_escaped_space_still_matches_its_real_path ... FAILED",
+        "test wsl::tests::unescape_proc_mounts_field_decodes_the_kernels_octal_escapes ... FAILED",
+        "test result: FAILED. 67 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s"
+      ]
+    },
+    {
+      "name": "E17-wsl-drop-continue",
+      "status": "caught",
+      "exit": 101,
+      "failures": [
+        "test wsl::tests::unescape_proc_mounts_field_decodes_the_kernels_octal_escapes ... FAILED",
+        "test result: FAILED. 68 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+      ]
+    },
+    {
+      "name": "E17-wsl-drop-octal-guard",
+      "status": "survived",
+      "exit": 0,
+      "failures": []
+    },
+    {
+      "name": "E17-windows-drop-dedup",
+      "status": "survived",
+      "exit": 0,
+      "failures": []
+    }
+  ],
+  "after_repairs": [
+    {
+      "name": "E17-hex-drop-parity",
+      "status": "caught",
+      "exit": 101,
+      "failures": [
+        "test knowledge_bundle::tests::hex_decoder_accepts_exact_byte_pairs_and_rejects_odd_or_non_ascii_text ... FAILED",
+        "test knowledge_bundle::tests::malformed_signature_text_is_rejected_without_panicking ... FAILED",
+        "test result: FAILED. 103 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s"
+      ]
+    },
+    {
+      "name": "E17-hex-invert-parity",
+      "status": "caught",
+      "exit": 101,
+      "failures": [
+        "test knowledge_bundle::tests::hex_decoder_accepts_exact_byte_pairs_and_rejects_odd_or_non_ascii_text ... FAILED",
+        "test knowledge_bundle::tests::expiry_a_bundle_past_its_expires_at_is_rejected ... FAILED",
+        "test knowledge_bundle::tests::expiry_a_bundle_before_its_expires_at_still_verifies ... FAILED",
+        "test knowledge_bundle::tests::a_correctly_signed_bundle_verifies ... FAILED",
+        "test knowledge_bundle::tests::replay_an_equal_sequence_from_the_same_publisher_is_also_rejected ... FAILED",
+        "test knowledge_bundle::tests::replay_a_stale_sequence_from_the_same_publisher_is_rejected ... FAILED",
+        "test knowledge_bundle::tests::rollback_ac3_a_replaced_bundle_can_be_restored ... FAILED",
+        "test knowledge_bundle::tests::rollback_at_exactly_the_expiry_boundary_refuses ... FAILED",
+        "test knowledge_bundle::tests::a_first_bundle_from_a_different_publisher_is_never_stale ... FAILED",
+        "test knowledge_bundle::tests::rollback_fails_closed_with_no_prior_bundle ... FAILED",
+        "test knowledge_bundle::tests::ac2_tier_comes_from_local_policy_never_from_the_bundle ... FAILED",
+        "test knowledge_bundle::tests::tamper_a_bit_flipped_signature_is_rejected ... FAILED",
+        "test knowledge_bundle::tests::rollback_refuses_to_reinstate_a_bundle_that_has_since_expired ... FAILED",
+        "test knowledge_bundle::tests::rollback_just_before_the_expiry_boundary_succeeds ... FAILED",
+        "test knowledge_bundle::tests::unknown_signer_a_correct_publisher_id_with_a_different_signing_key_is_rejected ... FAILED",
+        "test knowledge_bundle::tests::tamper_a_digest_updated_to_match_tampered_payload_still_fails_signature_verification ... FAILED",
+        "test knowledge_bundle::tests::malformed_signature_text_is_rejected_without_panicking ... FAILED",
+        "test knowledge_bundle::tests::verifier_expiry_matrix_and_refused_rollback_preserve_all_current_fields ... FAILED",
+        "test knowledge_bundle::tests::verifier_local_policy_weak_key_is_rejected ... FAILED",
+        "test result: FAILED. 86 passed; 19 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+      ]
+    },
+    {
+      "name": "E17-env-drop-empty",
+      "status": "caught",
+      "exit": 101,
+      "failures": [
+        "test manifest::tests::an_empty_env_var_name_is_rejected ... FAILED",
+        "test result: FAILED. 77 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+      ]
+    },
+    {
+      "name": "E17-subdir-drop-validation",
+      "status": "caught",
+      "exit": 101,
+      "failures": [
+        "test manifest::tests::a_path_traversal_attempt_in_subdir_is_rejected ... FAILED",
+        "test result: FAILED. 77 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+      ]
+    },
+    {
+      "name": "E17-glob-drop-match",
+      "status": "caught",
+      "exit": 101,
+      "failures": [
+        "test builtin::tests::a_realistic_copilot_home_is_detected_and_its_session_events_inventoried ... FAILED",
+        "test builtin::tests::a_realistic_gemini_home_is_detected_and_its_chats_inventoried ... FAILED",
+        "test manifest_provider::tests::a_recognized_layout_reports_supported_observed_and_lists_session_artifacts ... FAILED",
+        "test result: FAILED. 75 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+      ]
+    },
+    {
+      "name": "E17-wsl-advance-three",
+      "status": "caught",
+      "exit": 101,
+      "failures": [
+        "test wsl::tests::a_mountpoint_containing_an_escaped_space_still_matches_its_real_path ... FAILED",
+        "test wsl::tests::octal_escape_boundaries_and_malformed_fields_preserve_literal_input ... FAILED",
+        "test wsl::tests::unescape_proc_mounts_field_decodes_the_kernels_octal_escapes ... FAILED",
+        "test result: FAILED. 67 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+      ]
+    },
+    {
+      "name": "E17-wsl-drop-continue",
+      "status": "caught",
+      "exit": 101,
+      "failures": [
+        "test wsl::tests::unescape_proc_mounts_field_decodes_the_kernels_octal_escapes ... FAILED",
+        "test result: FAILED. 69 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s"
+      ]
+    },
+    {
+      "name": "E17-wsl-drop-octal-guard",
+      "status": "caught",
+      "exit": 101,
+      "failures": [
+        "test wsl::tests::octal_escape_boundaries_and_malformed_fields_preserve_literal_input ... FAILED",
+        "test result: FAILED. 69 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+      ]
+    },
+    {
+      "name": "E17-windows-drop-dedup",
+      "status": "survived",
+      "exit": 0,
+      "failures": []
+    },
+    {
+      "name": "E17-revert-strict",
+      "status": "caught",
+      "exit": 101,
+      "failures": [
+        "test knowledge_bundle::tests::verifier_local_policy_weak_key_is_rejected ... FAILED",
+        "test result: FAILED. 104 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s"
+      ]
+    }
+  ],
+  "windows_exact_function_probe": [
+    {
+      "name": "original",
+      "exit": 0
+    },
+    {
+      "name": "drop-dedup",
+      "exit": 101
+    },
+    {
+      "name": "drop-match",
+      "exit": 101
+    }
+  ]
+}
