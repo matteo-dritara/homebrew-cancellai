@@ -5,6 +5,7 @@
 - Tag: `v1.8.0`
 - Commit: recorded by the release workflow at the tag
 - Channel: stable
+- Published: yes
 - Date: 2026-09-03
 
 ## Included work

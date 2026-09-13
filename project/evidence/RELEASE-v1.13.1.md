@@ -5,6 +5,7 @@
 - Tag: `v1.13.1`
 - Commit: recorded by the release workflow at the tag
 - Channel: stable
+- Published: no - release-manifest-generate refused to publish because the checksum guard hashed each artifact's SBOM instead of its archive (run 34733067617); repaired by E17-S09
 - Date: 2026-09-13
 
 ## Included work

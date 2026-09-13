@@ -42,6 +42,24 @@ python3 scripts/release.py finalize --version X.Y.Z
 git commit -am "chore(release): point formula at the vX.Y.Z tarball" && git push
 ```
 
+### When a release fails
+
+A tag is immutable history here, so a failed release is not undone - it is recorded, and the fix
+ships as the next version. Four have failed so far (v1.10.0, v1.12.0, v1.13.0, v1.13.1), each in a
+job that only runs on a tag.
+
+```sh
+python3 scripts/release.py outcome --version X.Y.Z --state no --reason "which job failed, and the run id"
+```
+
+`prepare` writes `Published: pending` into the packet; this sets it. `release.py check` then names
+every unpublished version with its cause, and the formula-lag rule skips one - the formula cannot
+point at a version whose artifacts do not exist. Without this, v1.13.1 had to be finalized by hand
+before v1.13.2 could be prepared, and the only record of why was whoever remembered.
+
+Record the successful ones too (`--state yes`): an older version with no recorded outcome is
+reported as a question, which is how v1.10.0's silent failure was found a month late.
+
 Step 2 writes `project/evidence/RELEASE-vX.Y.Z.md` from the epic's contract: stories, CR4
 Safety Verdict links, gate results, compatibility, residual risks and rollback.
 

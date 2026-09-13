@@ -5,6 +5,7 @@
 - Tag: `v1.10.0`
 - Commit: recorded by the release workflow at the tag
 - Channel: stable
+- Published: no - the release workflow's ancestor gate could not resolve the verified commit under a shallow checkout (run 34252829459); repaired by E23-S01
 - Date: 2026-09-08
 
 ## Included work

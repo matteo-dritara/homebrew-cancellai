@@ -5,6 +5,7 @@
 - Tag: `v1.13.0`
 - Commit: recorded by the release workflow at the tag
 - Channel: stable
+- Published: no - verify-rust failed on all three platforms on a clippy denial (run 34707880245); repaired by E06-S05
 - Date: 2026-09-12
 
 ## Included work

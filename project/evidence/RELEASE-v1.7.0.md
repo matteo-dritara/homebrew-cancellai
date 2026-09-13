@@ -5,6 +5,7 @@
 - Tag: `v1.7.0`
 - Commit: recorded by the release workflow at the tag
 - Channel: stable
+- Published: yes
 - Date: 2026-09-02
 - Process exception: **Owner-authorized combined verify+fix+close round, 2026-09-02 - see conversation record.** Codex was explicitly authorized to verify, repair, self-reverify, write the E07-S09 CR4 Safety Verdict, and close the named stories for this release round only.
 

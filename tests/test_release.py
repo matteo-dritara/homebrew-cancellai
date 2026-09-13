@@ -140,5 +140,72 @@ class EmbeddedLinkTests(unittest.TestCase):
                     self.assertTrue((path.parent / target.split("#")[0]).exists(), target)
 
 
+class ReleaseOutcomeTests(unittest.TestCase):
+    """A cut version whose release never published is a state, not folklore.
+
+    Four of them exist - v1.10.0, v1.12.0, v1.13.0, v1.13.1 - each tagged with an evidence packet
+    and a cut changelog section, none published. Before E17-S10 the only record was whoever
+    remembered, and the formula-lag rule had to be walked around by hand.
+    """
+
+    def test_the_formula_may_skip_a_version_that_never_published(self):
+        cut = ["1.13.2", "1.13.1", "1.13.0"]
+        outcomes = {"1.13.1": ("no", "workflow failed"), "1.13.0": ("yes", "")}
+        self.assertEqual("1.13.0", release.formula_should_point_at("1.13.2", cut, outcomes))
+
+    def test_it_is_exactly_the_old_rule_where_nothing_failed(self):
+        cut = ["1.13.2", "1.13.1", "1.13.0"]
+        outcomes = {"1.13.1": ("yes", ""), "1.13.0": ("yes", "")}
+        self.assertEqual("1.13.1", release.formula_should_point_at("1.13.2", cut, outcomes))
+
+    def test_a_pending_outcome_does_not_let_the_formula_skip(self):
+        # Unknown is not permission. Only a recorded failure moves the expected pointer back.
+        cut = ["1.13.2", "1.13.1"]
+        self.assertEqual("1.13.1", release.formula_should_point_at("1.13.2", cut, {}))
+
+    def test_a_source_that_is_not_the_newest_cut_version_has_no_window(self):
+        self.assertIsNone(release.formula_should_point_at("1.13.1", ["1.13.2", "1.13.1"], {}))
+
+    def test_an_unpublished_release_must_say_what_failed(self):
+        with self.assertRaises(release.ReleaseError) as caught:
+            release.record_outcome("1.13.1", "no", "   ")
+        self.assertIn("--reason is required", str(caught.exception))
+
+    def test_recording_against_a_version_with_no_packet_is_refused(self):
+        with self.assertRaises(release.ReleaseError) as caught:
+            release.record_outcome("9.9.9", "yes", None)
+        self.assertIn("nothing to record against", str(caught.exception))
+
+    def test_an_unknown_state_is_refused(self):
+        with self.assertRaises(release.ReleaseError):
+            release.record_outcome("1.13.2", "maybe", None)
+
+    def test_the_report_names_every_unpublished_version_and_its_reason(self):
+        outcomes = {"1.12.0": ("no", "windows packaging"), "1.13.2": ("yes", "")}
+        lines = release.unpublished_report(outcomes, "1.13.2")
+        self.assertEqual(1, len(lines))
+        self.assertIn("windows packaging", lines[0])
+
+    def test_the_report_asks_about_an_older_version_with_no_outcome(self):
+        lines = release.unpublished_report({"1.12.0": ("pending", "")}, "1.13.2")
+        self.assertTrue(any("no recorded outcome" in line for line in lines))
+
+    def test_every_committed_packet_records_an_outcome(self):
+        # The backfill is the corpus this story was written from; a packet without a marker would
+        # silently read as pending and make the report noisy rather than wrong.
+        for version, (state, reason) in release.release_outcomes().items():
+            with self.subTest(version=version):
+                self.assertIn(state, release.PUBLISHED_STATES)
+                self.assertNotEqual("pending", state, f"v{version} has no recorded outcome")
+                if state == "no":
+                    self.assertTrue(reason, f"v{version} says it failed and does not say why")
+
+    def test_the_four_known_failures_are_recorded_as_such(self):
+        outcomes = release.release_outcomes()
+        for version in ("1.10.0", "1.12.0", "1.13.0", "1.13.1"):
+            with self.subTest(version=version):
+                self.assertEqual("no", outcomes[version][0])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

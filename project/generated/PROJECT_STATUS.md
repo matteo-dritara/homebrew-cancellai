@@ -10,15 +10,15 @@ Epics: **27** | Stories: **141**
 
 - `blocked`: 2
 - `cancelled`: 1
-- `done`: 111
-- `planned`: 27
+- `done`: 112
+- `planned`: 26
 
 ## Change risk distribution
 
 - `CR0`: 12
-- `CR1`: 33
+- `CR1`: 32
 - `CR2`: 43
-- `CR3`: 24
+- `CR3`: 25
 - `CR4`: 29
 
 ## Explicitly ready work

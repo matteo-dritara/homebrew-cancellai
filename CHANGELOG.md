@@ -30,6 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A cut version whose release never published is now a state the repository can express**
+  (E17-S10, CR1). Each release packet records `Published: yes | no | pending` with the reason when
+  it failed, `release.py check` names every unpublished version, and the formula-lag rule skips one
+  rather than demanding the impossible - v1.13.1 had to be finalized by hand before v1.13.2 could
+  be prepared, because the tooling had no word for what had happened. Backfilling the record found
+  a fourth: **v1.10.0** was cut and never published a month ago, and nobody had noticed.
 - The toolchain report counts approved pack members as managed (E17-S11, CR1). It listed all eight
   approved skills as "decide or remove" in the one report the session-start ritual puts in front of
   the owner; `check` had always counted them correctly. Found by the E17-S08 independent review.

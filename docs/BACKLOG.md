@@ -1965,20 +1965,22 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 ### E17-S10 - A cut version whose release failed is a state the tooling can express
 
-**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR3` | **Dependencies:** none | **Safety obligations:** none
 
-**Outcome.** Three releases failed this week and each left the repository in a state its own model has no name for: a tag exists, its evidence packet exists, its changelog section is cut - and no GitHub release was ever published, so `finalize` never ran and the formula stayed behind. `release.py check` allows the formula to lag the source by exactly one cut release, which is right for the window between prepare and finalize and wrong for this, so v1.13.1 had to be finalized by hand before v1.13.2 could be prepared. The check is not too strict; the model is missing a state. Naming it would also let `check` say the thing nobody currently checks: that a tag which was cut actually published.
+**Outcome.** Four releases have failed - three this week and v1.10.0 in September and each left the repository in a state its own model has no name for: a tag exists, its evidence packet exists, its changelog section is cut - and no GitHub release was ever published, so `finalize` never ran and the formula stayed behind. `release.py check` allows the formula to lag the source by exactly one cut release, which is right for the window between prepare and finalize and wrong for this, so v1.13.1 had to be finalized by hand before v1.13.2 could be prepared. The check is not too strict; the model is missing a state. Naming it would also let `check` say the thing nobody currently checks: that a tag which was cut actually published. Filed as CR1 and executed as CR3: the commit gate refused it, because `scripts/release.py` carries a floor for release authority - what is cut, and on what evidence - and this story changes exactly what that check will accept.
 
 **Acceptance criteria**
 
 - A cut version whose release did not publish shall be recordable, so the formula's lag is explained by repository state rather than by whoever remembers.
 - If a tag exists with release evidence and no published release, then the release check shall report it, because a version that was cut and never shipped is the state most likely to be forgotten.
 - The one-release lag rule shall stay exactly as strict where no release has failed.
+- If a release is recorded as not published, then the record shall name what failed, because an unpublished release with no reason is the folklore this replaces.
 
 **Verification**
 
-- v1.12.0 and v1.13.0 and v1.13.1 are the corpus: all three are tagged, all three have evidence packets, and none published.
-- A repository with no failed release behaves exactly as it does today.
+- v1.10.0, v1.12.0, v1.13.0 and v1.13.1 are the corpus: all four are tagged, all four have evidence packets, and none published. v1.10.0 was found by comparing the tags against the published releases rather than from memory.
+- A repository with no failed release behaves exactly as it does today: the expected formula pointer is the previous cut version.
+- An unknown outcome does not let the formula skip a version - only a recorded failure does.
 
 **Documentation impact**
 

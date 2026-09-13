@@ -5,6 +5,7 @@
 - Tag: `v1.13.2`
 - Commit: recorded by the release workflow at the tag
 - Channel: stable
+- Published: yes
 - Date: 2026-09-13
 
 ## Included work

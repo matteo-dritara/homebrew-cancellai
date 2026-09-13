@@ -5,6 +5,7 @@
 - Tag: `v1.12.0`
 - Commit: recorded by the release workflow at the tag
 - Channel: stable
+- Published: no - build-artifacts died on the Windows leg, where the SBOM step ran under PowerShell without a declared shell (run 34545116539); repaired by E22-S08
 - Date: 2026-09-11
 
 ## Included work

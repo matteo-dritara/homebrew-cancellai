@@ -58,6 +58,13 @@ UNRELEASED_RE = re.compile(r"^## \[Unreleased\]\s*$", re.MULTILINE)
 # down, so the same text embedded there points at nothing. v1.13.0's packet has the rewritten form
 # because someone did it by hand, which is the failure this file's own docstring warns about.
 BODY_LINK_RE = re.compile(r"\]\((?!https?://|#|/|\.\./)([^)]+)\)")
+# Whether the release a tag was cut for actually published. Four versions - v1.10.0, v1.12.0,
+# v1.13.0, v1.13.1 - were tagged with evidence packets and a cut changelog section while their
+# release workflows failed, and the repository had no word for that: `finalize` never ran, the
+# formula stayed behind, and the only record was whoever remembered. `pending` is what `prepare`
+# writes, because at that moment nobody can know (E17-S10).
+PUBLISHED_RE = re.compile(r"^- Published:\s*(yes|no|pending)\b[ \t]*-?[ \t]*(.*)$", re.MULTILINE)
+PUBLISHED_STATES = ("yes", "no", "pending")
 EPIC_DECLARATION_RE = re.compile(r"^\s*- Epic:\s*(E\d{2})\b", re.MULTILINE)
 RELEASED_HEADING_RE = re.compile(r"^## \[(\d+\.\d+\.\d+)\] - (\d{4}-\d{2}-\d{2})\s*$", re.MULTILINE)
 
@@ -143,6 +150,32 @@ def released_epics() -> dict[str, str]:
     return mapping
 
 
+def release_outcomes() -> dict[str, tuple[str, str]]:
+    """Version -> (published state, reason). A packet with no marker reads as `pending`."""
+    outcomes: dict[str, tuple[str, str]] = {}
+    for path in sorted(EVIDENCE.glob("RELEASE-v*.md")):
+        version = path.stem.removeprefix("RELEASE-v")
+        match = PUBLISHED_RE.search(read(path))
+        outcomes[version] = (match.group(1), match.group(2).strip()) if match else ("pending", "")
+    return outcomes
+
+
+def formula_should_point_at(source: str, cut: list[str], outcomes: dict[str, tuple[str, str]]) -> str | None:
+    """The version the formula may point at while `source` is prepared but not yet finalized.
+
+    Normally the previous cut release. A release that never published is skipped: the formula
+    cannot point at a version whose artifacts do not exist, and demanding it made v1.13.1 need
+    finalizing by hand before v1.13.2 could be prepared. Where nothing failed, this is exactly
+    the old rule.
+    """
+    if not cut or cut[0] != source:
+        return None
+    for version in cut[1:]:
+        if outcomes.get(version, ("pending", ""))[0] != "no":
+            return version
+    return cut[1] if len(cut) >= 2 else None
+
+
 def released_versions() -> list[str]:
     """Versions with a cut changelog section, newest first."""
     return [match.group(1) for match in RELEASED_HEADING_RE.finditer(read(CHANGELOG))]
@@ -160,7 +193,8 @@ def check() -> list[str]:
         # a formula ahead of the source, or lagging by more than the in-flight window -
         # is real drift, and drift here means shipping a build nobody verified.
         cut = released_versions()
-        in_flight = len(cut) >= 2 and versions.source == cut[0] and versions.formula == cut[1]
+        expected = formula_should_point_at(versions.source, cut, release_outcomes())
+        in_flight = expected is not None and versions.formula == expected
         if not in_flight:
             problems.append(f"the Homebrew formula points at v{versions.formula} while the source says {versions.source}")
         elif not release_evidence_path(versions.source).exists():
@@ -233,6 +267,7 @@ def render_evidence(version: str, epic_id: str | None, body: str, reason: str | 
 - Commit: recorded by the release workflow at the tag
 - Channel: stable
 - Date: {today}
+- Published: pending
 
 ## Included work
 
@@ -395,6 +430,43 @@ def finalize(version: str, sha256: str | None = None) -> None:
     print(f"  git commit -am 'chore(release): point formula at the v{version} tarball' && git push")
 
 
+def record_outcome(version: str, state: str, reason: str | None) -> None:
+    """Record whether the release for a cut version actually published."""
+    if state not in PUBLISHED_STATES:
+        raise ReleaseError(f"state must be one of {list(PUBLISHED_STATES)}, not {state!r}")
+    if state == "no" and not (reason or "").strip():
+        # An unpublished release with no reason is the folklore this story exists to replace.
+        raise ReleaseError("--reason is required when a release did not publish: say what failed")
+    path = release_evidence_path(version)
+    if not path.exists():
+        raise ReleaseError(f"no release evidence at {path.relative_to(ROOT)}; nothing to record against")
+    line = f"- Published: {state}" + (f" - {reason.strip()}" if reason and reason.strip() else "")
+    text = read(path)
+    if PUBLISHED_RE.search(text):
+        text = PUBLISHED_RE.sub(line.replace("\\", "\\\\"), text, count=1)
+    else:
+        text = text.replace("- Channel: stable\n", "- Channel: stable\n" + line + "\n", 1)
+    path.write_text(text, encoding="utf-8")
+    print(f"recorded v{version}: {line[len('- Published: ') :]}")
+
+
+def unpublished_report(outcomes: dict[str, tuple[str, str]], source: str) -> list[str]:
+    """Cut versions whose release never published, newest first.
+
+    Reported rather than failed: they are history, and a gate that refuses forever because a
+    release failed in the past is a gate that gets deleted. What matters is that the repository
+    can say it rather than relying on whoever remembers.
+    """
+    lines = []
+    for version in sorted(outcomes, key=parse, reverse=True):
+        state, reason = outcomes[version]
+        if state == "no":
+            lines.append(f"  v{version} was cut and never published: {reason}")
+        elif state == "pending" and version != source and parse(version) < parse(source):
+            lines.append(f"  v{version} has no recorded outcome; run `release.py outcome --version {version} ...`")
+    return lines
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Cut a cancellAI release.")
     sub = parser.add_subparsers(dest="command")
@@ -407,6 +479,10 @@ def build_parser() -> argparse.ArgumentParser:
     finalize_cmd = sub.add_parser("finalize", help="Point the Homebrew formula at the pushed tag.")
     finalize_cmd.add_argument("--version", required=True)
     finalize_cmd.add_argument("--sha256", help="skip the download and use this digest")
+    outcome_cmd = sub.add_parser("outcome", help="Record whether a cut version's release actually published.")
+    outcome_cmd.add_argument("--version", required=True)
+    outcome_cmd.add_argument("--state", required=True, choices=list(PUBLISHED_STATES))
+    outcome_cmd.add_argument("--reason", help="required when the release did not publish")
     return parser
 
 
@@ -418,6 +494,8 @@ def main(argv: list[str] | None = None) -> int:
             prepare(args.version, args.epic, args.fix)
         elif command == "finalize":
             finalize(args.version, args.sha256)
+        elif command == "outcome":
+            record_outcome(args.version, args.state, args.reason)
         else:
             problems = check()
             if problems:
@@ -429,6 +507,8 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 print(f"release OK: v{versions.source} is prepared; the formula still points at v{versions.formula}")
                 print(f"  push the tag, then: python3 scripts/release.py finalize --version {versions.source}")
+            for line in unpublished_report(release_outcomes(), versions.source):
+                print(line)
             print(f"next epic closure would suggest v{suggest_version(versions.source)}")
         return 0
     except (ReleaseError, OSError, KeyError, ValueError) as exc:

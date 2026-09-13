@@ -5,6 +5,7 @@
 - Tag: `v1.9.0`
 - Commit: recorded by the release workflow at the tag
 - Channel: stable
+- Published: yes
 - Date: 2026-09-04
 
 ## Included work
