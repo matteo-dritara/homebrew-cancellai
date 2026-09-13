@@ -173,6 +173,29 @@
         "docs/security/SUPPLY_CHAIN.md",
         "docs/development/RELEASE_GATES.md"
       ]
+    },
+    {
+      "id": "E17-S08",
+      "title": "The MSRV is decided on its cost, not inherited from edition 2024",
+      "status": "planned",
+      "outcome": "Blocked on an owner decision: ADR-0026 is proposed, not accepted. The workspace promises rustc 1.85.0 - the minimum edition 2024 requires - and that promise now holds back three things at once: a low-severity advisory in lru 0.12.5 that only ratatui 0.30 clears and that needs 1.88; the RUSTSEC-2024-0436 ignore for paste, accepted for the same reason; and the workspace's own kernel source, which had drifted to requiring 1.88 for four days without anyone noticing. This story carries the change if the owner accepts it: rust-version, the ratatui bump, the deny.toml ignore, ADR-0015's text and the CI matrix move together or not at all.",
+      "change_risk": "CR2",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "The declared rust-version, ADR-0015's text, the CI MSRV matrix and any build-from-source instruction shall state the same minimum.",
+        "Where the raised minimum makes a held-back dependency adoptable, the story shall adopt it and remove the ignore it justified, rather than raising the minimum and leaving the reason unaddressed.",
+        "If the owner rejects the raise, then the open advisory shall be recorded as accepted residual risk and its Dependabot update dismissed, rather than left failing daily where nobody can act on it."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "The MSRV legs of rust.yml build the workspace at the declared minimum on all three tier-1 platforms.",
+        "cargo deny check passes without the ignore the raise was supposed to remove."
+      ],
+      "documentation_impact": [
+        "docs/adrs/0026-raise-the-workspace-msrv-to-1-88.md",
+        "docs/adrs/0015-rust-workspace-toolchain-and-repository-layout.md",
+        "rust/deny.toml"
+      ]
     }
   ]
 }

@@ -113,6 +113,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **This story stays at `ready_for_review`:** it is a CR4 change to the safety kernel, and the
   executor's own review cannot close one.
 
+### Security
+
+- **Open, low severity, not cleared:** `lru 0.12.5` is subject to
+  [GHSA-rhfx-m35p-ff5j](https://github.com/advisories/GHSA-rhfx-m35p-ff5j) (`IterMut` violates
+  Stacked Borrows), fixed in `lru 0.16.3`. It reaches this workspace through `ratatui 0.29`, which
+  pins `lru ^0.12`; the version that takes the fix is `ratatui 0.30`, whose own minimum Rust is
+  1.88.0 against this workspace's promised 1.85.0. It is an unsoundness report rather than a
+  demonstrated exploit, and nothing here calls `lru::IterMut` - it is ratatui's internal render
+  cache. `cargo deny check` does not see it: that gate reads the RustSec database and this advisory
+  is in GitHub's, which is a narrower coverage than "advisories are checked" suggests.
+  [ADR-0026](docs/adrs/0026-raise-the-workspace-msrv-to-1-88.md) puts the choice - raise the
+  minimum and clear it, or accept it explicitly - in front of the owner with the evidence. It is
+  **proposed, not decided**; nothing in this release changes the minimum.
+
 ### Changed
 
 - Review stops on **measured yield** rather than a fixed round count, and an epic that changes
