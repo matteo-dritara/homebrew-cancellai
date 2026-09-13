@@ -54,6 +54,16 @@ is evaluated separately from this signature-policy correction.
 | --- | --- | --- |
 | AC6 - weak keys/signatures fail closed | Strict verification, with pre-fix failure and post-fix rejection plus full current-store equality. | PASS |
 
+## Independent coverage repair (2026-09-13)
+
+Baseline mutation tests survived deletion of `decode_hex`'s parity check and the WSL
+unescaper's octal-digit guard. The former can panic on odd ASCII text; the latter lets the
+numeric parser accept a leading plus sign that is not an octal digit. New regressions exercise
+malformed public signature input, all 256 byte values in lower/upper hex, 512 three-digit
+octal strings (including overflow), truncated escapes, signed digits, Unicode and mixed
+valid/invalid escapes. Both previously surviving mutants now fail. Production parsing logic
+is unchanged by this coverage repair.
+
 ## Verification Commands
 
 ```text

@@ -689,4 +689,39 @@ mod tests {
         );
         assert_eq!(store.current(), before.as_ref());
     }
+    #[test]
+    fn malformed_signature_text_is_rejected_without_panicking() {
+        let policy = policy_for(1, "acme", promoted_tier());
+        for signature in [
+            String::new(),
+            "0".repeat(1),
+            "0".repeat(127),
+            "0".repeat(129),
+            "gg".repeat(64),
+            "é".repeat(64),
+            "00 ".repeat(64),
+        ] {
+            let mut bundle = signed_bundle(1, "acme", 1, 0, None, "payload");
+            bundle.signature = signature;
+            assert_eq!(
+                verify_bundle(&bundle, &policy, 0).unwrap_err(),
+                KnowledgeBundleError::MalformedSignature
+            );
+        }
+        let mut valid = signed_bundle(1, "acme", 1, 0, None, "payload");
+        valid.signature.make_ascii_uppercase();
+        assert!(verify_bundle(&valid, &policy, 0).is_ok());
+    }
+
+    #[test]
+    fn hex_decoder_accepts_exact_byte_pairs_and_rejects_odd_or_non_ascii_text() {
+        assert_eq!(decode_hex(""), Some(vec![]));
+        for value in 0..=255u8 {
+            assert_eq!(decode_hex(&format!("{value:02x}")), Some(vec![value]));
+            assert_eq!(decode_hex(&format!("{value:02X}")), Some(vec![value]));
+        }
+        for text in ["0", "abc", "01234", "gg", "+0", "é", "０0", "\0\0"] {
+            assert_eq!(decode_hex(text), None, "{text:?}");
+        }
+    }
 }

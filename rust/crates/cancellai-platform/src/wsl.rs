@@ -554,4 +554,33 @@ none /mnt/wsl tmpfs rw,relatime 0 0
             }
         );
     }
+    #[test]
+    fn octal_escape_boundaries_and_malformed_fields_preserve_literal_input() {
+        for value in 0..=511u16 {
+            let field = format!("left\\{value:03o}right");
+            let expected = if value <= 255 {
+                format!("left{}right", char::from(value as u8))
+            } else {
+                field.clone()
+            };
+            assert_eq!(unescape_proc_mounts_field(&field), expected, "{field:?}");
+        }
+        for field in [
+            r"\",
+            r"\0",
+            r"\07",
+            r"\078",
+            r"\+10",
+            r"\-10",
+            r"\é00",
+            r"\777\040tail",
+        ] {
+            let expected = if field == r"\777\040tail" {
+                "\\777 tail"
+            } else {
+                field
+            };
+            assert_eq!(unescape_proc_mounts_field(field), expected, "{field:?}");
+        }
+    }
 }
