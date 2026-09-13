@@ -1951,6 +1951,28 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 - `CHANGELOG.md`
 
+### E17-S10 - A cut version whose release failed is a state the tooling can express
+
+**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
+
+**Outcome.** Three releases failed this week and each left the repository in a state its own model has no name for: a tag exists, its evidence packet exists, its changelog section is cut - and no GitHub release was ever published, so `finalize` never ran and the formula stayed behind. `release.py check` allows the formula to lag the source by exactly one cut release, which is right for the window between prepare and finalize and wrong for this, so v1.13.1 had to be finalized by hand before v1.13.2 could be prepared. The check is not too strict; the model is missing a state. Naming it would also let `check` say the thing nobody currently checks: that a tag which was cut actually published.
+
+**Acceptance criteria**
+
+- A cut version whose release did not publish shall be recordable, so the formula's lag is explained by repository state rather than by whoever remembers.
+- If a tag exists with release evidence and no published release, then the release check shall report it, because a version that was cut and never shipped is the state most likely to be forgotten.
+- The one-release lag rule shall stay exactly as strict where no release has failed.
+
+**Verification**
+
+- v1.12.0 and v1.13.0 and v1.13.1 are the corpus: all three are tagged, all three have evidence packets, and none published.
+- A repository with no failed release behaves exactly as it does today.
+
+**Documentation impact**
+
+- `docs/RELEASING.md`
+- `scripts/release.py`
+
 ## E18 - Remote Targets and Fleet Boundary
 
 **Phase:** `P6` | **Status:** `planned` | **Epic dependencies:** E16, E17
