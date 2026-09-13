@@ -4,19 +4,19 @@
 
 Current phase: **P1**
 
-Epics: **27** | Stories: **137**
+Epics: **27** | Stories: **138**
 
 ## Story status
 
 - `blocked`: 2
 - `cancelled`: 1
-- `done`: 106
+- `done`: 107
 - `planned`: 27
 - `ready_for_review`: 1
 
 ## Change risk distribution
 
-- `CR0`: 11
+- `CR0`: 12
 - `CR1`: 31
 - `CR2`: 44
 - `CR3`: 23

@@ -3114,3 +3114,24 @@ Skills, hooks, subagents, plugins, MCP servers and language servers are third-pa
 - `docs/development/AGENT_TOOLCHAIN.md`
 - `.claude/skills/toolchain/SKILL.md`
 - `docs/security/THREAT_MODEL.md`
+
+### E26-S04 - A session reads the branch it is about to build on
+
+**Status:** `done` | **Change Risk:** `CR0` | **Dependencies:** E26-S01 | **Safety obligations:** none
+
+**Outcome.** The session-start ritual read the control plane, the working tree and the toolchain, and never asked whether the branch it was about to commit to was green. It was not: the MSRV leg of rust.yml failed on every push for four days, across two attempted releases, while every other leg stayed green. Nobody was reading the failing one, so the repository carried a broken compatibility promise, an unfixable security advisory and a kernel that would not compile on its own minimum toolchain, all at once. A failure nobody reads is indistinguishable from a gate nobody has.
+
+**Acceptance criteria**
+
+- The session-start skill shall report the default branch's current workflow conclusions before a story is selected.
+- If the branch status cannot be determined, then the report shall say unknown rather than silent, because an absent answer must not read as a passing one.
+- If any workflow is failing, then that shall be reported to the owner as a finding before work begins, rather than noted and worked around.
+
+**Verification**
+
+- The injected command degrades to an error line rather than failing the skill when gh is absent or unauthenticated.
+- scripts/check_agent_skills.py accepts the frontmatter and every path the skill cites.
+
+**Documentation impact**
+
+- `.claude/skills/orient/SKILL.md`

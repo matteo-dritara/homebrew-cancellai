@@ -1,7 +1,7 @@
 ---
 name: orient
 description: Orient a session inside the cancellAI control plane before any work. Loads live project state (check/status/next/review), the working-tree delta, and the reading order AGENTS.md mandates. Use at the start of any session, when asked "what should I work on", "where are we", "cosa c'è da fare", or before touching code in this repository.
-allowed-tools: Bash(python3 scripts/project_os.py:*), Bash(python3 scripts/check_agent_toolchain.py:*), Bash(git status:*), Bash(git log:*), Read, Glob, Grep
+allowed-tools: Bash(python3 scripts/project_os.py:*), Bash(python3 scripts/check_agent_toolchain.py:*), Bash(git status:*), Bash(git log:*), Bash(gh run list:*), Read, Glob, Grep
 ---
 
 # Orient
@@ -39,6 +39,11 @@ The agent toolchain this session is carrying, and whether it still matches its m
 
 !`python3 scripts/check_agent_toolchain.py check 2>&1 | tail -6`
 
+Whether the default branch is green right now. Best effort: this needs `gh` and the network, and a
+blank or error line means **unknown**, which is not the same as green:
+
+!`gh run list --branch main --limit 5 --json name,conclusion,status --jq '.[]|"\(.conclusion // .status) \(.name)"' 2>&1 | head -6`
+
 ## What to do with this
 
 1. **Read before concluding.** The state above is an index, not the contract. The contract is
@@ -56,7 +61,13 @@ The agent toolchain this session is carrying, and whether it still matches its m
    its review date, invoke the `toolchain` skill before starting work - a session whose tooling
    nobody decided to carry is a session whose output nobody can account for. If it is clean, say
    so in one line and move on.
-6. **Then hand off** to `story-executor` (implementation) or `epic-verifier` (review).
+6. **Do not build on a red default branch.** If any workflow above is failing, that is the first
+   thing to report, before selecting a story - and it is reported to the owner as a finding, not
+   noted and worked around. This step exists because it did not: the MSRV leg of `rust.yml` failed
+   on every push for four days, across two attempted releases, while every other leg stayed green
+   and every session read the green ones. A failure nobody reads is indistinguishable from a gate
+   nobody has.
+7. **Then hand off** to `story-executor` (implementation) or `epic-verifier` (review).
 
 ## Reporting
 

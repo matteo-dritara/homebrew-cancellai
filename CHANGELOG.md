@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The session-start ritual reads the branch it is about to build on (E26-S04, CR0). `orient` now
+  reports every workflow conclusion on the default branch before a story is selected, and says
+  *unknown* rather than nothing when it cannot tell. It exists because the MSRV leg of `rust.yml`
+  failed on every push for four days, across two attempted releases, while every other leg stayed
+  green and every session read the green ones. A failure nobody reads is indistinguishable from a
+  gate nobody has.
+
 ## [1.13.1] - 2026-09-13
 
 ### Added
