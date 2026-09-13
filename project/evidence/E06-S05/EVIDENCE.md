@@ -17,8 +17,8 @@ PASS
 | AC1 - the ordering is unchanged | `sort_by_key(Reverse(..))` sorts a total order identically to `sort_by(\|a, b\| b.cmp(&a))`, and both are stable, so ties keep the input order exactly as the comment above the line has always claimed. `cargo test -p cancellai-policy` passes unchanged - the atlas tests are what pin the ordering. | PASS |
 | AC2 - a lint denied on CI fails the release rather than publishing | That is what happened: the v1.13.0 release workflow failed at `verify-rust` on ubuntu, macOS and Windows, and `publish` was skipped. Nothing in this change weakens it. | PASS |
 | AC3 - the workspace quality set is clean | `cargo fmt --check`, `cargo clippy -p cancellai-policy --all-targets -- -D warnings`, `cargo test -p cancellai-policy` all pass locally; the workspace run is in the commit's CI. | PASS |
-| AC5 - a cited story does not bind the gate | `STORY_TRAILER`; `test_a_trailer_is_authoritative_over_prose`, and three more covering several stories, shorthand inside a trailer, and the prose fallback when there is none. This gate refused this very commit before the trailer existed. | PASS |
 | AC4 - an override names its reason | `project/risk_floors.json`, first entry in `overrides`: the list is presentation ordering for the atlas summary, downstream of every eligibility decision, and the ordering is pinned by tests. `test_an_override_with_no_reason_is_refused` shows an unreasoned override is refused. | PASS |
+| AC5 - a cited story does not bind the gate | `STORY_TRAILER`; `test_a_trailer_is_authoritative_over_prose`, and three more covering several stories, shorthand inside a trailer, and the prose fallback when there is none. This gate refused this very commit before the trailer existed. | PASS |
 
 ## Safety Evidence
 

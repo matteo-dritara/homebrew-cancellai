@@ -35,6 +35,7 @@ Stdlib-only, like every other governance checker here.
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
 import shutil
 import subprocess
@@ -81,8 +82,11 @@ MUTANTS: tuple[Mutant, ...] = (
         invariant="SI-001",
         claim="Protected/unknown state is non-destructive",
         path="cancellai.py",
-        find='"settings.json"',
-        replace='"settings-DISARMED.json"',
+        # Anchored on the assignment, not on the bare name: `"settings.json"` appears three times
+        # in this file, and `apply_mutant` rewrites one occurrence, so a bare name would plant the
+        # violation wherever it happened to appear first.
+        find='CLAUDE_PROTECTED_NAMES = {\n    "settings.json",',
+        replace='CLAUDE_PROTECTED_NAMES = {\n    "settings-DISARMED.json",',
         gates=("pytest", "characterization"),
     ),
     Mutant(
@@ -103,8 +107,17 @@ MUTANTS: tuple[Mutant, ...] = (
         invariant="SI-008",
         claim="Partial scan is non-destructive",
         path="cancellai.py",
-        find="except OSError",
-        replace="except RuntimeError",
+        # `Scan.record` is where this invariant actually lives: it is the one place that decides an
+        # unreadable path is worth remembering, and a scope with no recorded error hands out
+        # destructive authority. Making it swallow every OSError is the violation in its purest form.
+        #
+        # The first version of this mutant read `except OSError` -> `except RuntimeError`, which
+        # appears 26 times in this file and therefore landed on a marker validator instead. That
+        # mutant died on Python 3.13 and survived on 3.14, because 3.13's `Path.is_file()` re-raises
+        # PermissionError and 3.14's returns False - so it was measuring pathlib's error handling,
+        # not this repository's. A kill that depends on the interpreter is not evidence about a gate.
+        find="        if isinstance(exc, FileNotFoundError):\n            return",
+        replace="        if isinstance(exc, OSError):\n            return",
         gates=("pytest",),
     ),
     Mutant(
@@ -206,10 +219,21 @@ def apply_mutant(tree: Path, mutant: Mutant) -> None:
     if not target.is_file():
         raise SensitivityError(f"{mutant.identifier}: {mutant.path} does not exist")
     text = target.read_text(encoding="utf-8")
-    if mutant.find not in text:
+    occurrences = text.count(mutant.find)
+    if occurrences == 0:
         raise SensitivityError(
             f"{mutant.identifier}: the text it mutates is no longer in {mutant.path}. "
             "The code moved and this mutant is testing nothing - repair the mutant, do not delete it"
+        )
+    if occurrences > 1:
+        # Only one occurrence is rewritten, so an ambiguous anchor plants the violation at whichever
+        # site happens to come first rather than at the one the mutant names. That is not a
+        # cosmetic defect: it is how this harness came to certify SI-008 on the strength of a
+        # mutation to an unrelated marker validator.
+        raise SensitivityError(
+            f"{mutant.identifier}: its anchor appears {occurrences} times in {mutant.path}, so the "
+            "violation would be planted wherever that text happens to come first rather than where "
+            "this mutant aims it - make the anchor unique"
         )
     target.write_text(text.replace(mutant.find, mutant.replace, 1), encoding="utf-8")
 
@@ -366,6 +390,12 @@ def render(results: list[tuple[Mutant, str | None, list[str]]], baseline: dict[s
         "  outside this harness by construction.",
         "- A gate that kills a mutant has been shown able to fail. It has not been shown to catch",
         "  the class the mutant stands for.",
+        "- A kill can belong to the runtime rather than to this repository. The SI-008 mutant used to",
+        "  die on Python 3.13 and survive on 3.14, because the two versions differ on whether",
+        "  `Path.is_file()` re-raises `PermissionError` - so the report depended on the interpreter",
+        "  that produced it. It is now anchored on the program's own completeness channel. Anchors",
+        "  are unique by construction (`apply_mutant` refuses an ambiguous one), because a mutant",
+        "  that lands somewhere nobody chose certifies an invariant it never touched.",
     ]
     return "\n".join(lines).rstrip("\n") + "\n"
 
@@ -409,7 +439,13 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         current = OUTPUT.read_text(encoding="utf-8") if OUTPUT.is_file() else ""
         if current != report:
+            # The diff, not just the fact. This report is produced by running gates rather than by
+            # reading files, so a staleness failure on a machine that is not the author's is the
+            # one case where the reader most needs to see *which* row moved - it may be a finding
+            # about that machine rather than about the commit.
             print("GATE SENSITIVITY ERROR: the committed report is stale; run `generate`", file=sys.stderr)
+            for line in difflib.unified_diff(current.splitlines(), report.splitlines(), "committed", "this run", lineterm="", n=1):
+                print(line, file=sys.stderr)
             return 2
         credible = sum(1 for _, k, _ in results if k)
         print(f"gate sensitivity OK: {len(results)} mutants, {credible} killed, every gate clean on an unmutated tree")

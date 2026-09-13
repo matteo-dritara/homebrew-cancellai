@@ -24,13 +24,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     one. No safety standard lets the implementing party assign its own criticality level.
   - `scripts/gate_sensitivity.py` plants a violation of each named claim and records which gate
     caught it - Mills' error seeding, generalised from the two comparators already using it. Eleven
-    mutants, all killed; the one that initially survived had edited the risk floor itself.
+    mutants, all killed; the one that initially survived had edited the risk floor itself. A control
+    pass runs every gate on an unmutated copy first, because a gate that fails on a clean export
+    appears to kill everything it is pointed at, and a kill by such a gate is not counted.
   - `scripts/check_evidence.py` requires a row per acceptance criterion, a real residual-risk section
     at CR3 and above, and a Safety Verdict for a CR4 story at `done`.
   - `scripts/safety_oracle.py` checks protected-name enforcement, root capability and the retention
     rule against predicates written from the invariants rather than recorded from the implementation.
-  - `scripts/check_ears.py` classifies acceptance criteria and requires a CR3+ story to say what
-    happens when something is wrong. **14 of 294 criteria describe unwanted behaviour.**
+  - `scripts/check_ears.py` classifies acceptance criteria and requires a CR2+ story to say what
+    happens when something is wrong. **13 of 366 criteria describe unwanted behaviour.**
   - `docs/security/HAZARD_ANALYSIS.md` adds an STPA pass over the mutation control loop: twenty
     unsafe control actions, five loss scenarios from process-model inconsistency, and three gaps the
     invariant set does not constrain.
@@ -51,6 +53,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   correctly skipped. The ordering is unchanged. Recorded with the first use of the risk-floor
   override mechanism, since `cancellai-policy/src` carries a CR3 floor and this is presentation
   ordering downstream of every eligibility decision.
+
+- The sensitivity harness plants each violation where the mutant aims it (E25-S12, CR2). Anchors are
+  unique by construction: `except OSError` matched 26 sites in `cancellai.py` and only one is
+  rewritten, so the SI-008 mutant had been editing a marker validator rather than the scan's
+  completeness channel - and it therefore died on Python 3.13 and survived on 3.14, which is where
+  CI found it. The report is now byte-identical on both, SI-008 is seeded in `Scan.record`, and a
+  stale report prints the rows that differ instead of only saying that something moved.
 
 ### Changed
 

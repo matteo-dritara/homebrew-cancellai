@@ -52,3 +52,9 @@ kills is a finding rather than a failure of this harness.
   outside this harness by construction.
 - A gate that kills a mutant has been shown able to fail. It has not been shown to catch
   the class the mutant stands for.
+- A kill can belong to the runtime rather than to this repository. The SI-008 mutant used to
+  die on Python 3.13 and survive on 3.14, because the two versions differ on whether
+  `Path.is_file()` re-raises `PermissionError` - so the report depended on the interpreter
+  that produced it. It is now anchored on the program's own completeness channel. Anchors
+  are unique by construction (`apply_mutant` refuses an ambiguous one), because a mutant
+  that lands somewhere nobody chose certifies an invariant it never touched.

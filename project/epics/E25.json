@@ -321,6 +321,32 @@
         "docs/INDEX.md",
         "docs/audits/2026-09-12-METHODOLOGY_REVIEW.md"
       ]
+    },
+    {
+      "id": "E25-S12",
+      "title": "A planted violation lands where the mutant aims it",
+      "status": "done",
+      "outcome": "CI on Python 3.14 rejected the committed sensitivity report that Python 3.13 had just produced, and the reason turned out to be a defect in the harness rather than in the commit. The SI-008 mutant was anchored on the text `except OSError`, which appears 26 times in cancellai.py, and only one occurrence is rewritten - so the violation was being planted in a marker validator rather than in the scan's completeness channel the mutant names. It died on 3.13 because that version's Path.is_file() re-raises PermissionError and survived on 3.14 because that version's returns False. The report was therefore measuring the interpreter, and SI-008 was certified on the strength of a mutation to code that has nothing to do with it. Anchors become unique by construction, the SI-008 mutant moves to Scan.record, and a stale report says which row moved.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E25-S06"
+      ],
+      "acceptance_criteria": [
+        "Every mutant's anchor shall match exactly one site in the file it names.",
+        "If a mutant's anchor matches more than one site, then the harness shall refuse to apply it and say how many sites matched, rather than planting the violation wherever that text happens to come first.",
+        "The seeded SI-008 violation shall be applied to this repository's own completeness channel, so that the killing gate is evidence about this repository and not about the interpreter running it.",
+        "If a fresh run disagrees with the committed report, then the checker shall print the rows that differ, so a reader on a different machine can tell a stale commit from a finding about that machine."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "The report generated under Python 3.13 and under Python 3.14 is byte-identical.",
+        "A mutant whose anchor matches twice raises rather than mutating.",
+        "The SI-008 mutant's anchor is inside Scan.record, asserted against the live source rather than against a copy of it."
+      ],
+      "documentation_impact": [
+        "project/generated/GATE_SENSITIVITY.md",
+        "CHANGELOG.md"
+      ]
     }
   ]
 }

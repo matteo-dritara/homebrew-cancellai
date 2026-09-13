@@ -10,11 +10,13 @@ and a usage record that reads absence as idleness.
 from __future__ import annotations
 
 import datetime as dt
+import inspect
 import json
 import tempfile
 import unittest
 from pathlib import Path
 
+import cancellai
 from scripts import check_agent_toolchain as toolchain
 from scripts import check_ears as ears
 from scripts import gate_sensitivity as sensitivity
@@ -35,6 +37,32 @@ class MutantIntegrityTests(unittest.TestCase):
             with self.subTest(mutant=mutant.identifier):
                 text = (sensitivity.ROOT / mutant.path).read_text(encoding="utf-8")
                 self.assertIn(mutant.find, text)
+
+    def test_every_anchor_is_unique_in_its_file(self):
+        # `apply_mutant` rewrites one occurrence. An anchor that matches several sites plants the
+        # violation at whichever comes first, which is how the SI-008 mutant spent its life
+        # mutating a marker validator while the report credited it with testing the scan's
+        # completeness channel.
+        for mutant in sensitivity.MUTANTS:
+            with self.subTest(mutant=mutant.identifier):
+                text = (sensitivity.ROOT / mutant.path).read_text(encoding="utf-8")
+                self.assertEqual(1, text.count(mutant.find), f"{mutant.identifier}: anchor is not unique")
+
+    def test_an_ambiguous_anchor_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tree = Path(tmp)
+            (tree / "x.md").write_text("repeat\nrepeat\n", encoding="utf-8")
+            ambiguous = sensitivity.Mutant("ambiguous", "SI-000", "claim", "x.md", "repeat", "quiet", ("docs",))
+            with self.assertRaises(sensitivity.SensitivityError) as caught:
+                sensitivity.apply_mutant(tree, ambiguous)
+            self.assertIn("appears 2 times", str(caught.exception))
+
+    def test_the_scan_completeness_mutant_does_not_depend_on_the_interpreter(self):
+        # The specific regression: the old anchor died on Python 3.13's `Path.is_file()` re-raising
+        # PermissionError and survived on 3.14's returning False, so the committed report differed
+        # from CI's. The repair is that this mutant targets code this repository owns.
+        mutant = next(m for m in sensitivity.MUTANTS if m.identifier == "unreadable-reads-as-empty")
+        self.assertIn(mutant.find, inspect.getsource(cancellai.Scan.record))
 
     def test_every_mutant_actually_changes_the_file(self):
         for mutant in sensitivity.MUTANTS:
