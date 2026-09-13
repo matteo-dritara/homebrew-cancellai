@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.4] - 2026-09-13
+
+### Fixed
+
+- Independent review of the released Atlas TUI and storage-accounting epics is now recorded. The
+  TUI still has no mutation path, while the macOS filesystem probe's CR4 unsafe-boundary authority
+  is explicitly documented in ADR-0027.
+- Historical multi-story commits can no longer disappear from risk-floor auditing. New ambiguous
+  batches are checked at their combined floor; older irrecoverable attribution gaps are visible,
+  reasoned baselines.
+
 ## [1.13.3] - 2026-09-13
 
 ### Changed
