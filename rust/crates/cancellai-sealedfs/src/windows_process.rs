@@ -46,8 +46,10 @@ pub fn list_running_process_names() -> io::Result<Vec<String>> {
     }
     let snapshot = Snapshot(raw);
 
-    // SAFETY: `PROCESSENTRY32W` is a plain C aggregate of integers and fixed arrays with no niche and
-    // no validity invariant, so the all-zero bit pattern is a valid value; `dwSize` is set on the next line and
+    // SAFETY: in windows-sys 0.61.2, `PROCESSENTRY32W` contains only `u32`, `usize`, `i32`, and
+    // `[u16; 260]`; all accept the all-zero representation. This is a generated-binding claim,
+    // so it must be rechecked if the locked `windows-sys` version changes. `dwSize` is set on the
+    // next line before `Process32FirstW` can inspect it.
     let mut entry: PROCESSENTRY32W = unsafe { std::mem::zeroed() };
     entry.dwSize = size_of::<PROCESSENTRY32W>() as u32;
 

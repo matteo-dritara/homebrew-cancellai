@@ -167,9 +167,10 @@ fn nt_open_child(
         SecurityQualityOfService: std::ptr::null(),
     };
     let mut handle: HANDLE = std::ptr::null_mut();
-    // SAFETY: `IO_STATUS_BLOCK` is a plain C aggregate of integers and pointers with no niche
-    // and no validity invariant, so the all-zero bit pattern is a valid value; the call
-    // below overwrites it before anything reads it.
+    // SAFETY: in windows-sys 0.61.2, `IO_STATUS_BLOCK` is a `repr(C)` union of `NTSTATUS` or a
+    // nullable raw pointer plus `usize`; all accept the all-zero representation. This
+    // generated-binding claim must be rechecked if the locked `windows-sys` version changes.
+    // The call below overwrites it before anything reads it.
     let mut iosb: IO_STATUS_BLOCK = unsafe { std::mem::zeroed() };
     // `FILE_OPEN_REPARSE_POINT` is unconditional, including for `FILE_CREATE`, and this is
     // safety-load-bearing, not incidental: an earlier version of this function omitted it for
@@ -444,9 +445,10 @@ impl SealedRoot {
             SecurityQualityOfService: std::ptr::null(),
         };
         let mut handle: HANDLE = std::ptr::null_mut();
-        // SAFETY: `IO_STATUS_BLOCK` is a plain C aggregate of integers and pointers with no niche
-        // and no validity invariant, so the all-zero bit pattern is a valid value; the call
-        // below overwrites it before anything reads it.
+        // SAFETY: in windows-sys 0.61.2, `IO_STATUS_BLOCK` is a `repr(C)` union of `NTSTATUS` or a
+        // nullable raw pointer plus `usize`; all accept the all-zero representation. This
+        // generated-binding claim must be rechecked if the locked `windows-sys` version changes.
+        // The call below overwrites it before anything reads it.
         let mut iosb: IO_STATUS_BLOCK = unsafe { std::mem::zeroed() };
         // SAFETY: same invariants as `nt_open_child` above - `RootDirectory` is this
         // `SealedRoot`'s own held, open handle; `ObjectName` names a single bare component with
@@ -582,9 +584,10 @@ fn rename_child(dir: &File, old_name: &str, new_name: &str) -> Result<(), SealEr
     };
     name_bytes.copy_from_slice(&bytemuck_u16_to_u8(&new_wide));
 
-    // SAFETY: `IO_STATUS_BLOCK` is a plain C aggregate of integers and pointers with no niche
-    // and no validity invariant, so the all-zero bit pattern is a valid value; the call
-    // below overwrites it before anything reads it.
+    // SAFETY: in windows-sys 0.61.2, `IO_STATUS_BLOCK` is a `repr(C)` union of `NTSTATUS` or a
+    // nullable raw pointer plus `usize`; all accept the all-zero representation. This
+    // generated-binding claim must be rechecked if the locked `windows-sys` version changes.
+    // The call below overwrites it before anything reads it.
     let mut iosb: IO_STATUS_BLOCK = unsafe { std::mem::zeroed() };
     // SAFETY: `target` is a valid, currently-open HANDLE for the duration of this call, opened
     // with `DELETE` access (required for a rename). `buffer` is a correctly-sized, fully

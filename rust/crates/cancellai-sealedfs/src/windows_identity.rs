@@ -83,13 +83,10 @@ pub fn open_and_observe_identity(path: &Path) -> io::Result<(File, WindowsFileFa
 /// this same `GetFileInformationByHandle` query against the handle it already has, not a
 /// second, path-based reopen that would defeat the whole point of a handle-relative walk.
 pub(crate) fn observe_identity_of_handle(handle: RawHandle) -> io::Result<WindowsFileFacts> {
-    // `Default::default()` rather than `unsafe { mem::zeroed() }`: `windows-sys` derives `Default`
-    // on this struct, so the zero value is the binding's own and no `unsafe` block is needed to
-    // obtain it. That also retires a soundness argument that depended on a dependency's field
-    // types - `FILE_STANDARD_INFO`'s `DeletePending`/`Directory` are `bool` in windows-sys 0.61 and
-    // were `BOOLEAN` (a `u8` alias) in 0.59, and a `bool` has a validity invariant a `u8` does not.
-    // The conclusion held either way; the stated reason did not, and clippy only checks that a
-    // comment exists, never that it is true.
+    // `Default::default()` rather than `unsafe { mem::zeroed() }`: `windows-sys` 0.61.2 derives
+    // `Default`, so every field begins as a valid Rust value. This struct is exactly thirteen
+    // `u32` words (52 bytes, alignment 4), with no padding; independently, the API documents
+    // `info` as an out-pointer, so it does not rely on any incoming representation.
     let mut info = BY_HANDLE_FILE_INFORMATION::default();
     // SAFETY: the caller guarantees `handle` is a valid, currently-open HANDLE for the
     // duration of this call. `info` is a stack-allocated, correctly-sized
