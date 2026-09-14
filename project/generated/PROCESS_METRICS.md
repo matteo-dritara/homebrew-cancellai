@@ -30,6 +30,7 @@ distinguished by the next round, which is why the ceiling matters.
 | E09 | 1 | independent | 5 | 0 | 0% |
 | E10 | 1 | **self** | 2 | 1 | 50% |
 | E10 | 1 | independent | 3 | 1 | 33% |
+| E11 | 1 | **self** | 3 | 0 | 0% |
 | E16 | 1 | independent | 6 | 0 | 0% |
 | E17 | 1 | independent | 6 | 0 | 0% |
 | E20 | 1 | independent | 3 | 3 | 100% |
@@ -45,7 +46,7 @@ The gap between *every gate passed* and *the work is right*. Each rejected story
 already been declared `ready_for_review` by an executor who ran the full gate set green.
 
 - **Independent reviewer:** 33 of 76 round-1 verdicts were `FAIL` - **43%**.
-- **Self-review (same agent as executor):** 3 of 9 round-1 verdicts were `FAIL` - **33%**.
+- **Self-review (same agent as executor):** 3 of 12 round-1 verdicts were `FAIL` - **25%**.
 
 - **Round-1 records excluded as unreadable:** 1. Their verdicts are in neither denominator above, so both rates are computed over the subset of records that use a machine-readable verdict table.
 
@@ -117,7 +118,7 @@ load-bearing rather than academic.
 
 ## Documentation readership
 
-- Documents a committed review record has named: **22**. Never named: **25**.
+- Documents a committed review record has named: **23**. Never named: **24**.
 - Never named is not the same as never read, and an unread document may still be the right
   document. This is a list for the owner once a phase, not a purge, and accepted ADRs are
   undeletable regardless of what it says.
@@ -127,7 +128,6 @@ load-bearing rather than academic.
 - `docs/CLI.md`
 - `docs/DECISION_REGISTER.md`
 - `docs/PLATFORMS.md`
-- `docs/PRODUCT.md`
 - `docs/PROVIDERS.md`
 - `docs/RELEASING.md`
 - `docs/ROADMAP.md`
