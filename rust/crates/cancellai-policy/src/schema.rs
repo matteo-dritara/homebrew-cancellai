@@ -47,10 +47,14 @@ pub const CURRENT_SCHEMA_VERSION: u32 = 1;
 /// promotion" is exactly what an implicit default here would risk).
 ///
 /// `retention`/`budget` are carried as their written text (`"30d"`, `"50GB"`) rather than a
-/// parsed duration/byte count. Deciding that grammar is E11-S04's ("Budgets, retention,
-/// pinning") outcome, not this story's - a schema that invented a duration/byte type today and
-/// a different one in S04 would be exactly the "second, drifting copy" `AGENTS.md`'s skill-pack
-/// rule warns about for documents, not just documentation.
+/// parsed duration/byte count at this layer - `crate::budget::parse_age_days`/
+/// `crate::budget::parse_budget_bytes` (E11-S04) are the one place that grammar is decided, so a
+/// document round-trips through `parse_policy`/`serde::Serialize` unchanged regardless of
+/// whether a caller ever asks for the parsed form.
+///
+/// `keep_latest` (E11-S04) is the count-retention counterpart to `retention`'s age-retention
+/// text - a plain `u32`, not a string, because unlike a duration or a byte size it needs no
+/// unit grammar to parse.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScopePolicy {
@@ -58,6 +62,8 @@ pub struct ScopePolicy {
     pub authority: Option<AuthorityLevel>,
     #[serde(default)]
     pub retention: Option<String>,
+    #[serde(default)]
+    pub keep_latest: Option<u32>,
     #[serde(default)]
     pub budget: Option<String>,
 }

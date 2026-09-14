@@ -165,6 +165,7 @@ mod tests {
         ScopePolicy {
             authority: Some(authority),
             retention: None,
+            keep_latest: None,
             budget: None,
         }
     }
@@ -318,6 +319,7 @@ mod tests {
             ScopePolicy {
                 authority: None,
                 retention: Some("30d".to_string()),
+                keep_latest: None,
                 budget: None,
             },
         );

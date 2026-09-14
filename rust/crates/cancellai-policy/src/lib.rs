@@ -24,10 +24,16 @@
 //! output into one ordered, deterministic graph a caller can render - not a new module named
 //! `explain` a second time, since `explain` (E09-S03) already answers a different question (one
 //! artifact's built-in retention outcome) from a different input (`ClassifiedArtifact`/`Action`).
+//! E11-S04 adds [`pinning`] (a session pin resolves to `ProtectionState::Pinned`, feeding the
+//! same pre-existing lifecycle constraint every other protection fact already does) and
+//! [`budget`] (age/count retention and budget text parsing, plus budget-pressure selection
+//! restricted by construction to what `retention::build_actions` already marked eligible).
 
 pub mod atlas;
+pub mod budget;
 pub mod explain;
 pub mod explanation;
+pub mod pinning;
 pub mod resolver;
 pub mod retention;
 pub mod schema;
@@ -35,9 +41,14 @@ mod trust;
 pub mod views;
 
 pub use atlas::{AtlasSummary, ProjectTotals, ProviderTotals, TopContributor, summarize};
+pub use budget::{
+    BudgetSelection, ValueParseError, parse_age_days, parse_budget_bytes, resolve_age_retention,
+    resolve_budget_bytes, resolve_keep_latest, select_under_budget_pressure,
+};
 pub use cancellai_model::{AuthorityLevel, KnowledgeConfidence, Reversibility};
 pub use explain::{AttributedProject, ExplainView, PolicyOutcome, explain, is_low_confidence};
 pub use explanation::{ExplanationStep, PolicyExplanation, explain_policy};
+pub use pinning::{is_pinned, resolve_protection};
 pub use resolver::{
     PolicyContext, PolicyScopeSource, ResolvedRequest, resolve_effective_authority,
     resolve_requested_authority,

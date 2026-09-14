@@ -130,3 +130,30 @@ story's own AC ("More specific user policy cannot exceed artifact/provider/trust
 construction*: whatever authority a policy scope requests is just one more input to a minimum
 that other, independent constraints already bound - a policy document has no path to raise the
 result past what those already refuse.
+
+## Rust budgets, retention, and pinning (E11-S04)
+
+`cancellai-policy::pinning` implements the `SESSION`/`EXPLICIT PIN` rung the resolver's ladder
+excludes: `resolve_protection` matches an artifact's session id against `schema::PolicyDocument
+::pins` and resolves to `cancellai_model::ProtectionState::Pinned` - the same lifecycle axis
+`effective_authority` already collapses to non-destructive authority on its own. A pin can only
+ever raise `Normal` protection to `Pinned`; it never weakens an artifact already `Protected` by a
+barrier this codebase trusts (SI-006). This is "pinned/protected state outranks cleanup policy"
+by the same composition pattern the resolver/explanation modules already established: no new
+ceiling logic, only a new input to the one that exists.
+
+`cancellai-policy::budget` implements the age/count/budget grammar `schema::ScopePolicy`'s
+`retention`/`keep_latest`/`budget` fields carry, resolved via the identical most-specific-scope-
+wins ladder the authority resolver uses (`parse_age_days` for `"30d"` text,
+`ScopePolicy::keep_latest` as a plain count needing no parsing, `parse_budget_bytes` for `"50GB"`
+text using the same binary-1024 `B`/`KB`/`MB`/`GB`/`TB` convention `cancellai.py`'s own
+`format_bytes` already uses). A scope's value that fails to parse is reported, never silently
+skipped to a less specific scope - a malformed value is not the same fact as an absent one.
+
+`select_under_budget_pressure` is what actually chooses which artifacts to propose under storage
+pressure - restricted **by construction** to whatever `retention::build_actions` already marked
+`Delete`/`Quarantine`/`Archive`-eligible (itself already gated by scan completeness, activity,
+protection, and `reachable_authority`): the function filters that set, it cannot ever add to it.
+This is "budget pressure chooses only artifacts already eligible under safety/lifecycle rules" -
+not a new eligibility check, a narrowing of one that already exists. Selection order is
+largest-first (frees the most pressure per artifact) with a deterministic tie-break.

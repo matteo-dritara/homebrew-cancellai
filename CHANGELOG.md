@@ -29,13 +29,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   floor) still binds the result exactly as it does for any other caller, discharging SI-025 by
   construction rather than by new logic. `SESSION`/pin is deliberately excluded from the ladder;
   pin/protect semantics are E11-S04's outcome.
-- Added the policy explanation graph (E11-S03, CR2, `docs/PRODUCT.md` "policy engine" /
+- Added the policy explanation graph (E11-S03, CR3 - raised from the declared CR2 by the same
+  crate-wide policy-resolution floor, `docs/PRODUCT.md` "policy engine" /
   `docs/architecture/POLICY_MODEL.md`): `cancellai-policy::explanation::explain_policy` reshapes
   the resolver's own output into one ordered, deterministic `PolicyExplanation` - every
   constraint `effective_authority` evaluated, in a fixed order, each flagged with whether it was
   among the one(s) that actually bound the final result, plus which policy scope supplied the
   original request. Invents no new authority logic; it is a read-only view over data E11-S02
   already produces.
+- Implemented budgets, retention, and pinning (E11-S04, CR3, `docs/architecture/POLICY_MODEL.md`
+  "Rust budgets, retention, and pinning"): `cancellai-policy::pinning::resolve_protection` maps
+  an explicit session pin (`schema::PinEntry`) to `ProtectionState::Pinned`, feeding the same
+  pre-existing lifecycle constraint every other protection fact already relies on - it never
+  weakens an artifact already `Protected`. `cancellai-policy::budget` parses `retention`/
+  `keep_latest`/`budget` scope fields (age-in-days text, a plain count, and byte-size text using
+  `cancellai.py::format_bytes`'s own binary-1024 convention) via the same scope ladder the
+  authority resolver uses, and `select_under_budget_pressure` chooses which artifacts to propose
+  under storage pressure - restricted by construction to whatever `retention::build_actions`
+  already marked eligible, so budget pressure can only narrow that set, never widen it.
 
 ## [1.14.0] - 2026-09-14
 

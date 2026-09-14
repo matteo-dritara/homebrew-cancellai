@@ -105,6 +105,7 @@ mod tests {
         ScopePolicy {
             authority: Some(authority),
             retention: None,
+            keep_latest: None,
             budget: None,
         }
     }

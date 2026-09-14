@@ -1264,7 +1264,7 @@ Compile human-readable policy into typed constraints and a fully explainable Eff
 
 ### E11-S04 - Budgets, retention, pinning
 
-**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E11-S02 | **Safety obligations:** SI-001, SI-025
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E11-S02 | **Safety obligations:** SI-001, SI-025
 
 **Outcome.** Implement total/provider/project budgets, age/count retention, and explicit pin/protect semantics.
 

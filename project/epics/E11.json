@@ -80,7 +80,7 @@
     {
       "id": "E11-S04",
       "title": "Budgets, retention, pinning",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Implement total/provider/project budgets, age/count retention, and explicit pin/protect semantics.",
       "change_risk": "CR3",
       "dependencies": [
