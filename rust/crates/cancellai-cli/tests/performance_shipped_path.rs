@@ -20,6 +20,11 @@
 //! paired with an assertion on what the resolution actually produced, so a discovery path that
 //! stops finding artifacts fails here instead of reporting an excellent number.
 
+// Integration tests live outside `#[cfg(test)]`, so clippy's `allow-*-in-tests` options in
+// `clippy.toml` do not reach them. The workspace's panic-freedom lints are lifted here for the
+// same reason they are allowed in unit tests: a test that unwraps is asserting.
+#![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
+
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 

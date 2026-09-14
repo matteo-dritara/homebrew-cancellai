@@ -1,0 +1,197 @@
+{
+  "schema_version": 1,
+  "id": "E27",
+  "phase": "P1",
+  "title": "Codebase Health",
+  "objective": "Nobody had measured this codebase. Twenty-seven gates, 143 stories and a risk model governed how work arrives, and no number described the code the work produces: not coverage, not the unsafe surface, not the panic surface, not which document anyone reads. This epic measures first and then spends the measurement - hardening where the numbers say the risk is, and removing where they say a thing costs more attention than it catches. The centre of gravity is the code, not the process: the owner chose codebase health over adding method, and chose Rust first with a security pass on the frozen Python reference. Nothing is removed on taste: a removal arrives with its measurement, in its own reversible commit, and nothing guarding a Safety Invariant or the mutation boundary is removed for cost at all.",
+  "dependencies": [],
+  "status": "in_progress",
+  "stories": [
+    {
+      "id": "E27-S01",
+      "title": "The lint policy states the thesis the project already claims",
+      "status": "done",
+      "outcome": "`[workspace.lints]` held one line - `unsafe_code = \"forbid\"` - so `cargo clippy -D warnings` ran the default set and nothing else. For a workspace whose argument is that a tool deleting files must never act on an unproven assumption, the default set says nothing about the two ways that fails: an unwrap that aborts mid-operation, and an unsafe block whose soundness argument was never written down. Measured first: 41 unsafe blocks against 30 SAFETY comments, and 13 panic sites in production code, six of them indexing strings that come from third-party provider manifests. The measurement also exposed a structural defect - Cargo's `[lints]` table is all-or-nothing, so cancellai-sealedfs, which must declare its own to lift `forbid`, was the one crate a workspace policy could never reach: every unsafe block in the repository sat in the only crate exempt from the rule about unsafe blocks.",
+      "change_risk": "CR4",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "Every unsafe block in the workspace shall carry a written safety argument, enforced by the compiler rather than by review.",
+        "Production code shall not reach a panic through unwrap, indexing or slicing, on any tier-1 platform.",
+        "If a crate declares its own lint table, then a gate shall refuse any workspace lint it drops, because a local table replaces the workspace one rather than extending it.",
+        "Where a crate is exempt from a lint, the exemption shall be declared in that crate's source rather than in a manifest, so a reader of the code sees it.",
+        "If the policy is relaxed for tests, then the relaxation shall be explicit and shall not reach production code."
+      ],
+      "safety_obligations": [
+        "SI-019"
+      ],
+      "verification": [
+        "Clippy with -D warnings passes on native, x86_64-pc-windows-gnu and x86_64-unknown-linux-gnu - seven of the eleven undocumented unsafe blocks only exist behind cfg(windows) and no single-platform run could see them.",
+        "The rewritten glob matcher is compared against a naive reference implementation over every pattern and input up to length four across an alphabet containing a multi-byte character.",
+        "The lint-policy gate is shown to fail when a lint is dropped from the sealedfs table, not merely to pass when it is present.",
+        "41 unsafe blocks and 41 SAFETY comments, asserted by a test independent of clippy so the property survives a lint being relaxed."
+      ],
+      "documentation_impact": [
+        "docs/adrs/0028-lint-policy-states-the-safety-thesis-and-differs-by-ring.md",
+        "AGENTS.md"
+      ]
+    },
+    {
+      "id": "E27-S02",
+      "title": "Coverage may not fall where falling matters",
+      "status": "done",
+      "outcome": "E27-S01 measured coverage for the first time and the headline was 94.54% of regions - a good number and the wrong one to act on, because an average hides its worst member and the worst member was cancellai-sealedfs at 92.54%, the crate holding every unsafe block and the mutation boundary. A ratchet records what each crate covers today and fails when a crate falls below it: nobody has to defend a threshold nobody can justify, and nothing can quietly get worse. Only the kernel ring plus policy and inventory are gated; the rest is recorded for visibility, because a rendering regression is a bug and not an authority failure.",
+      "change_risk": "CR1",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "Region coverage per crate shall be recorded in version control and compared against a real measurement, not asserted.",
+        "If a gated crate covers less than its recorded floor, then the gate shall refuse and name both numbers.",
+        "A crate that improves shall not tighten its own floor silently: re-recording is an explicit, reviewable change.",
+        "If a gated crate is absent from the report, then the gate shall refuse rather than treat a crate that stopped building as passing.",
+        "Movement below a stated tolerance shall not be a regression, and the tolerance shall not be usable as a way through.",
+        "A crate that is a declared skeleton shall not be gated, so a correct zero is not reported as a crisis."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "The ratchet is shown failing on a lowered floor before it is shown passing.",
+        "The tolerance is tested from both sides: 0.4 below passes, 0.6 below fails.",
+        "The committed baseline covers every gated crate, asserted against the real file."
+      ],
+      "documentation_impact": [
+        "AGENTS.md",
+        ".github/workflows/rust.yml"
+      ]
+    },
+    {
+      "id": "E27-S03",
+      "title": "The documents describe the repository as it is now",
+      "status": "done",
+      "outcome": "A week of method changes left statements behind. RELEASE_GATES.md classified thirty-one gates and said nine were structural, when the table already held sixteen and a thirty-second gate had just been added - and `gate_sensitivity.py` refuses a gate that table does not classify, so the drift was one commit from being a build failure. docs/INDEX.md listed the generated measurements and not the coverage baseline. And the README described a macOS-only Python CLI while every release since v1.13.2 attaches prebuilt Rust binaries for four targets with SBOMs and signed provenance - a reader downloading a Windows zip had nothing telling them what it was.",
+      "change_risk": "CR0",
+      "dependencies": [
+        "E27-S02"
+      ],
+      "acceptance_criteria": [
+        "Every gate the repository runs shall be classified in the release-gates table, and the counts in its prose shall match the table.",
+        "The documentation index shall name every committed measurement a reader is expected to act on.",
+        "If a release attaches an artifact the README does not describe, then the README shall say what it is and whether it is supported."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "The counts are read from the table and the gate list rather than retyped.",
+        "gate_sensitivity.py's unclassified-gate check passes, which is the mechanism that would have caught the omission as a build failure."
+      ],
+      "documentation_impact": [
+        "docs/development/RELEASE_GATES.md",
+        "docs/INDEX.md",
+        "README.md"
+      ]
+    },
+    {
+      "id": "E27-S04",
+      "title": "Recursive deletion refuses where the platform cannot resist a symlink race",
+      "status": "done",
+      "outcome": "The shipped Python reference deletes directories with shutil.rmtree. Every containment check before that call is path-based - is_within, resolve, the config-root comparison - and a path re-checked immediately before use cannot close a race: once the walk starts, a subdirectory can be swapped for a symlink pointing anywhere. Python closes that only where the platform supports fd-relative removal, which shutil.rmtree.avoids_symlink_attacks reports, and nothing in this codebase ever read that flag. On macOS it is True, so the shipped platform was protected by luck of the platform rather than by a decision. This is the identical gap ADR-0017 built cancellai-sealedfs to close in the Rust engine; the frozen reference cannot grow a sealed root, so it does the other thing the constitution allows and refuses rather than guessing.",
+      "change_risk": "CR3",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "If the platform's recursive removal cannot resist a symlink swapped in mid-walk, then the tool shall refuse to delete a directory and say why, rather than deleting it anyway.",
+        "A refusal shall leave the tree exactly as it was, not half-removed.",
+        "Deleting a path already proven to be a regular file shall remain possible on such a platform, because a single unlink is not exposed to the walk race.",
+        "On a platform where removal is safe, behaviour shall be unchanged and the committed characterization shall still match."
+      ],
+      "safety_obligations": [
+        "SI-019"
+      ],
+      "verification": [
+        "Both directions are exercised by flipping the platform flag under test, so the refusal path runs on macOS where the real flag is True and could otherwise never be reached.",
+        "The refusal is checked to be non-destructive by asserting the file inside the directory still exists afterwards.",
+        "characterize.py, diff_harness.py and rust_python_parity.py all still pass, which is what proves the frozen reference did not change behaviour where it is safe."
+      ],
+      "documentation_impact": [
+        "CHANGELOG.md"
+      ]
+    },
+    {
+      "id": "E27-S05",
+      "title": "Remove what costs more attention than it catches",
+      "status": "done",
+      "outcome": "The subtractive half of this epic, run on measurements rather than taste. Two things went and three deliberately stayed. AGENTS.md is loaded into every session and had grown from 234 lines to 395 in six days - it was restating ADR-0019's dependency rings and ADR-0015's licence list at length, which is the same second-source-of-truth defect the skill pack rule already forbids, applied by this file to itself. docs/ARCHITECTURE.md was a second index of the architecture directory and had already drifted: docs/INDEX.md lists nine architecture documents and ARCHITECTURE.md listed eight. Nothing was removed for speed, because the measurement said the 26 gates cost thirteen seconds in total, and nothing that guards a Safety Invariant was touched at all.",
+      "change_risk": "CR0",
+      "dependencies": [
+        "E27-S03"
+      ],
+      "acceptance_criteria": [
+        "Every sentence removed from the always-loaded contract shall exist in the document that owns the rule, verified before the removal rather than asserted after it.",
+        "A removal shall be its own commit, so any single one can be reverted without disturbing the rest.",
+        "If a candidate is not loaded into an agent's context, then removing it shall not be counted as saving attention, because it does not cost any.",
+        "Nothing that guards a Safety Invariant or the mutation boundary shall be removed on cost grounds.",
+        "Where the measurement says there is nothing to remove, that shall be recorded as the result rather than met with a removal."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Each removed claim is located in its owning document by search before the cut lands.",
+        "The duplicated index is shown to have drifted, not predicted to drift: INDEX.md lists JSON_CONTRACTS.md and ARCHITECTURE.md did not.",
+        "Gate overlap is measured across twenty checkers rather than assumed, and the result is that no two assert the same property."
+      ],
+      "documentation_impact": [
+        "AGENTS.md",
+        "docs/INDEX.md"
+      ]
+    },
+    {
+      "id": "E27-S06",
+      "title": "Three unsafe blocks deleted, and Miri says what it can and cannot reach",
+      "status": "done",
+      "change_risk": "CR4",
+      "outcome": "Independent verification confirmed that Default is sound for the three Windows out-buffers: FILE_STANDARD_INFO may have unspecified tail padding, but GetFileInformationByHandleEx documents it as output-only, and BY_HANDLE_FILE_INFORMATION has no padding. The verifier repaired four remaining binding-dependent zero-initialization comments, the unsafe-block inventory lexer, and the weekly Miri job's complete crate inventory. Miri executed 233 tests across seven classified crates with explicit filesystem and test-fixture leak flags; six other crates have named local macOS limitations. The platform coverage ratchet failed reproducibly without a platform source change and is tracked separately as E27-S07 rather than silently lowering the floor.",
+      "dependencies": [
+        "E27-S01"
+      ],
+      "acceptance_criteria": [
+        "Where a binding provides a zero value of its own, the unsafe block obtaining it shall be removed rather than documented.",
+        "A remaining safety argument that depends on a dependency's field types shall say so, because a routine dependency update can change it and no gate would notice.",
+        "Miri shall be run and its result recorded, including the crates it refuses, rather than its absence being listed as a residual risk.",
+        "If Miri cannot execute a crate, then the reason shall be named specifically, so a reader can tell a tool limit from an untested path.",
+        "Running Miri on every push shall not be proposed: the cost shall be measured and the cadence chosen from it."
+      ],
+      "safety_obligations": [
+        "SI-019"
+      ],
+      "verification": [
+        "Clippy with -D warnings on native, windows-gnu and linux-gnu after the three blocks are removed.",
+        "The unsafe-block count is recounted excluding comment lines, because the naive grep counts the comment that mentions the construct it replaced.",
+        "Each Miri refusal is reported with the foreign function or intrinsic that caused it."
+      ],
+      "documentation_impact": [
+        ".github/workflows/rust-benchmark.yml",
+        "AGENTS.md"
+      ]
+    },
+    {
+      "id": "E27-S07",
+      "title": "A coverage number that does not say what measured it is not a measurement",
+      "status": "done",
+      "change_risk": "CR1",
+      "outcome": "The E27-S06 independent review ran the coverage ratchet on an unchanged cancellai-platform and got 93.24% against a recorded 95.83%, twice, and filed this rather than lowering the baseline - which was the right call and is the only reason the cause was found. The cause: the same unchanged workspace measures that crate at 95.83% on stable and 63.85% on nightly. Region counting depends on the compiler that produced the instrumentation, and the ratchet recorded a number with no record of what produced it. Installing a nightly toolchain for Miri the day before was enough to make the gate report a coverage regression that was a different compiler. It is the same defect this repository fixed in the risk gate for shallow clones - a gate describing the machine it ran on - rebuilt three days later by the same author.",
+      "dependencies": [
+        "E27-S02"
+      ],
+      "acceptance_criteria": [
+        "The measurement shall name the toolchain it uses rather than taking whatever is default.",
+        "The baseline shall record what produced it: the toolchain, its compiler version, and the coverage tool's version.",
+        "If the measurement was taken with different tooling than the baseline, then the gate shall refuse and name the difference, and shall draw no conclusion about coverage at all.",
+        "If the provenance cannot be probed, then it shall be recorded as unknown and refused rather than silently omitted."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "The toolchain sensitivity is demonstrated, not asserted: the same checkout measured on two toolchains, 95.83% against 63.85%.",
+        "Two consecutive runs on one toolchain produce identical numbers, which is what separates a tooling difference from a flaky measurement.",
+        "The refusal is exercised by rewriting the recorded provenance and observing exit 2 with the difference named."
+      ],
+      "documentation_impact": [
+        "AGENTS.md",
+        "project/coverage_baseline.json"
+      ]
+    }
+  ]
+}

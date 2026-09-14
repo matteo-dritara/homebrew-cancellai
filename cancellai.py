@@ -1331,6 +1331,25 @@ def safe_remove(path: Path, approved_root: Path, protected_names: set[str]) -> i
     if stat.S_ISREG(st.st_mode):
         path.unlink(missing_ok=True)
     elif stat.S_ISDIR(st.st_mode):
+        # Every check above this line is path-based, and a path re-checked immediately before use
+        # cannot close a symlink race: once the walk starts, a directory can be swapped for a
+        # symlink pointing anywhere. `shutil.rmtree` closes it only where the platform supports
+        # fd-relative removal, which is what `avoids_symlink_attacks` reports - on macOS and Linux
+        # it is True, and Python does not promise that everywhere. Where it is False the walk falls
+        # back to path-based unlinking and this function would delete outside the approved root
+        # under a race it cannot see.
+        #
+        # This is the same gap ADR-0017 built `cancellai-sealedfs` to close in the Rust engine
+        # ("a path re-checked immediately before use is not enough; only a retained capability
+        # is"). The reference cannot grow a sealed-root implementation under the E01 freeze, so it
+        # does the other thing this project's constitution allows: it refuses rather than guesses.
+        if not shutil.rmtree.avoids_symlink_attacks:
+            raise SafetyError(
+                f"Refusing to delete the directory {path}: this platform's recursive removal "
+                "cannot resist a symlink swapped in mid-walk, so deletion could leave the "
+                "approved root. Delete it yourself, or use a platform where Python reports "
+                "shutil.rmtree.avoids_symlink_attacks"
+            )
         shutil.rmtree(path)
     else:
         path.unlink(missing_ok=True)

@@ -46,13 +46,17 @@ be shown to fail by planting a violation, which is what
 | `check_ears.py check` | behavioural |
 | `gate_sensitivity.py check` | behavioural |
 | `rust_python_parity.py check` | behavioural |
+| `check_coverage.py check` | behavioural |
 | `cargo fmt / clippy / check` | structural |
 | `cargo test` | behavioural |
 | `cargo deny check` | behavioural |
 
-Nine of thirty-one are structural-only in the sense that no planted violation could make them fail
+Sixteen of thirty-two are structural in the sense that no planted violation could make them fail
 about the product. That ratio is not a target and is recorded so that a green run is read for what
-it is: roughly two thirds of this gate set asserts a property, and one third asserts a shape.
+it is: half of this gate set asserts a property, and half asserts a shape. The half that asserts a
+shape is not wasted - drift between a document and the thing it describes is a real defect class
+here, and it is the class these catch - but a green run from them says nothing about whether the
+product is safe.
 
 ## G1 Functional
 

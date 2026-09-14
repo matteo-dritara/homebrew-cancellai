@@ -170,6 +170,66 @@ def _check_required_reachability(graph: dict[str, set[str]], errors: list[str]) 
                 )
 
 
+LINT_TABLE_RE = re.compile(r"^\[(?:workspace\.)?lints\.(\w+)\]\s*$", re.MULTILINE)
+LINT_ENTRY_RE = re.compile(r"^([a-z_][a-z0-9_]*)\s*=\s*\"(\w+)\"\s*$", re.MULTILINE)
+WORKSPACE_LINTS_RE = re.compile(r"^\[lints\]\s*\nworkspace\s*=\s*true\s*$", re.MULTILINE)
+
+
+def lint_tables(text: str) -> dict[str, dict[str, str]]:
+    """The `[lints.*]` / `[workspace.lints.*]` tables in one manifest, as tool -> lint -> level."""
+    tables: dict[str, dict[str, str]] = {}
+    matches = list(LINT_TABLE_RE.finditer(text))
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        body = text[match.end() : end].split("\n[", 1)[0]
+        tables.setdefault(match.group(1), {}).update(dict(LINT_ENTRY_RE.findall(body)))
+    return tables
+
+
+def lint_policy_errors() -> list[str]:
+    """No crate may quietly drop a workspace lint.
+
+    Cargo's `[lints]` table is all-or-nothing: a crate that declares its own **replaces** the
+    workspace table rather than extending it. `cancellai-sealedfs` has to declare one, because
+    ADR-0017 lifts `unsafe_code` and `forbid` is the one level a crate cannot lift from an inner
+    attribute. The consequence was invisible while the workspace table held a single lint, and
+    became real the moment it held a panic-freedom policy: the crate holding every `unsafe` block
+    in the repository was the only crate that policy did not reach.
+
+    So a local table is allowed, and it must be a superset - it may add lints and it may differ on
+    `unsafe_code`, and it may not silently drop anything else. A crate that wants a lint relaxed
+    says so in its own source with an inner `#![allow(..)]`, where a reader of the code sees it.
+    """
+    errors: list[str] = []
+    manifest = RUST_CRATES_DIR.parent / "Cargo.toml"
+    if not manifest.is_file():
+        # The other checks in this module are exercised against synthetic crate trees with no
+        # workspace manifest; with no policy to compare against there is nothing to drop.
+        return errors
+    workspace = lint_tables(manifest.read_text(encoding="utf-8"))
+    for cargo_toml in sorted(RUST_CRATES_DIR.glob("*/Cargo.toml")):
+        text = cargo_toml.read_text(encoding="utf-8")
+        if WORKSPACE_LINTS_RE.search(text):
+            continue
+        local = lint_tables(text)
+        if not local:
+            errors.append(
+                f"{_display_path(cargo_toml)}: declares no lints and does not inherit the workspace table (`[lints] workspace = true`)"
+            )
+            continue
+        for tool, lints in workspace.items():
+            for lint, level in lints.items():
+                if lint == "unsafe_code":
+                    continue
+                if local.get(tool, {}).get(lint) != level:
+                    errors.append(
+                        f'{_display_path(cargo_toml)}: local lint table drops `{tool}.{lint} = "{level}"` from the '
+                        "workspace policy. A local table replaces the workspace one; repeat the lint here, or "
+                        "relax it in the crate's own source with an inner `#![allow(..)]` so a reader sees it"
+                    )
+    return errors
+
+
 def validate() -> list[str]:
     errors: list[str] = []
     if not RUST_CRATES_DIR.is_dir():
@@ -188,6 +248,8 @@ def validate() -> list[str]:
             errors.append(f"documented in {_display_path(TARGET_DOC)} but missing under {_display_path(RUST_CRATES_DIR)}: {missing_on_disk}")
         if undocumented:
             errors.append(f"present under {_display_path(RUST_CRATES_DIR)} but not documented in {_display_path(TARGET_DOC)}: {undocumented}")
+
+    errors.extend(lint_policy_errors())
 
     graph = build_graph()
 

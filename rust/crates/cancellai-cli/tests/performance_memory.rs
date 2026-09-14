@@ -22,6 +22,11 @@
 //! whole-tree buffering regression (the exact shape `CR-TE-04` found and `E21-S06` repaired in
 //! `cancellai-provider-codex`), not to police allocator internals.
 
+// Integration tests live outside `#[cfg(test)]`, so clippy's `allow-*-in-tests` options in
+// `clippy.toml` do not reach them. The workspace's panic-freedom lints are lifted here for the
+// same reason they are allowed in unit tests: a test that unwraps is asserting.
+#![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
+
 mod perf_support;
 
 #[cfg(target_os = "linux")]

@@ -20,6 +20,9 @@ pub fn observe_filesystem_name(path: &Path) -> io::Result<String> {
     let c_path = CString::new(path.as_os_str().as_bytes())
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
 
+    // SAFETY: `libc::statfs` is a plain C aggregate of integers and fixed `c_char` arrays
+    // with no niche and no validity invariant, so all-zero is a valid value; `statfs(2)`
+    // below overwrites it before `f_fstypename` is read.
     let mut stat: libc::statfs = unsafe { std::mem::zeroed() };
     // SAFETY: `c_path` is a valid, NUL-terminated C string for the duration of this call.
     // `stat` is a stack-allocated, correctly-sized `libc::statfs` passed as a valid out-pointer;

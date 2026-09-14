@@ -167,6 +167,10 @@ fn nt_open_child(
         SecurityQualityOfService: std::ptr::null(),
     };
     let mut handle: HANDLE = std::ptr::null_mut();
+    // SAFETY: in windows-sys 0.61.2, `IO_STATUS_BLOCK` is a `repr(C)` union of `NTSTATUS` or a
+    // nullable raw pointer plus `usize`; all accept the all-zero representation. This
+    // generated-binding claim must be rechecked if the locked `windows-sys` version changes.
+    // The call below overwrites it before anything reads it.
     let mut iosb: IO_STATUS_BLOCK = unsafe { std::mem::zeroed() };
     // `FILE_OPEN_REPARSE_POINT` is unconditional, including for `FILE_CREATE`, and this is
     // safety-load-bearing, not incidental: an earlier version of this function omitted it for
@@ -388,7 +392,14 @@ impl SealedRoot {
     /// than reopening by name, since a reopen after the delete call above would itself be a
     /// fresh, unprotected path lookup - exactly what this crate exists to avoid.
     pub fn is_delete_pending(handle: &File) -> Result<bool, SealError> {
-        let mut info: FILE_STANDARD_INFO = unsafe { std::mem::zeroed() };
+        // `Default::default()` rather than `unsafe { mem::zeroed() }`: `windows-sys` derives `Default`
+        // on this struct, so the zero value is the binding's own and no `unsafe` block is needed to
+        // obtain it. That also retires a soundness argument that depended on a dependency's field
+        // types - `FILE_STANDARD_INFO`'s `DeletePending`/`Directory` are `bool` in windows-sys 0.61 and
+        // were `BOOLEAN` (a `u8` alias) in 0.59, and a `bool` has a validity invariant a `u8` does not.
+        // The conclusion held either way; the stated reason did not, and clippy only checks that a
+        // comment exists, never that it is true.
+        let mut info = FILE_STANDARD_INFO::default();
         // SAFETY: `handle` is a valid, currently-open HANDLE for the duration of this call.
         // `info` is a stack-allocated, correctly-sized `FILE_STANDARD_INFO`, passed as a valid
         // out-pointer alongside its exact byte size; `GetFileInformationByHandleEx` only writes
@@ -434,6 +445,10 @@ impl SealedRoot {
             SecurityQualityOfService: std::ptr::null(),
         };
         let mut handle: HANDLE = std::ptr::null_mut();
+        // SAFETY: in windows-sys 0.61.2, `IO_STATUS_BLOCK` is a `repr(C)` union of `NTSTATUS` or a
+        // nullable raw pointer plus `usize`; all accept the all-zero representation. This
+        // generated-binding claim must be rechecked if the locked `windows-sys` version changes.
+        // The call below overwrites it before anything reads it.
         let mut iosb: IO_STATUS_BLOCK = unsafe { std::mem::zeroed() };
         // SAFETY: same invariants as `nt_open_child` above - `RootDirectory` is this
         // `SealedRoot`'s own held, open handle; `ObjectName` names a single bare component with
@@ -557,8 +572,22 @@ fn rename_child(dir: &File, old_name: &str, new_name: &str) -> Result<(), SealEr
         (*info).RootDirectory = dir.as_raw_handle();
         (*info).FileNameLength = name_byte_len;
     }
-    buffer[header_len..].copy_from_slice(&bytemuck_u16_to_u8(&new_wide));
+    // `get_mut` rather than `[header_len..]`: the buffer was allocated as
+    // `header_len + new_wide.len() * 2` a few lines up, so the range is in bounds, but this is the
+    // rename path of the mutation boundary and an arithmetic change upstream should surface as a
+    // refusal rather than as an abort mid-rename.
+    let Some(name_bytes) = buffer.get_mut(header_len..) else {
+        return Err(SealError::Io(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "rename buffer too small for its own header",
+        )));
+    };
+    name_bytes.copy_from_slice(&bytemuck_u16_to_u8(&new_wide));
 
+    // SAFETY: in windows-sys 0.61.2, `IO_STATUS_BLOCK` is a `repr(C)` union of `NTSTATUS` or a
+    // nullable raw pointer plus `usize`; all accept the all-zero representation. This
+    // generated-binding claim must be rechecked if the locked `windows-sys` version changes.
+    // The call below overwrites it before anything reads it.
     let mut iosb: IO_STATUS_BLOCK = unsafe { std::mem::zeroed() };
     // SAFETY: `target` is a valid, currently-open HANDLE for the duration of this call, opened
     // with `DELETE` access (required for a rename). `buffer` is a correctly-sized, fully

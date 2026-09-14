@@ -1,0 +1,7 @@
+# Panic-freedom and unsafe documentation are denied in production code and allowed in tests.
+# A test that unwraps is asserting; production code that unwraps is deciding to abort a tool
+# whose job is deleting files, which is the one thing it must never do by surprise.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-indexing-slicing-in-tests = true

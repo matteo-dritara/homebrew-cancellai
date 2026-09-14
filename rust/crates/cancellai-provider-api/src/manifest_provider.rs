@@ -129,32 +129,53 @@ pub fn fingerprint_manifest_root(
 /// matches zero or more characters (ordinary shell-glob-within-a-segment semantics: `*.json`
 /// matches `one.json`, `session-*` matches `session-42`) but never crosses a `/` boundary - `*`
 /// cannot match into a different path segment, only within the one it appears in.
+///
+/// Every index into `actual` goes through `get`. The previous version was sound - each bound was
+/// correct because a reader had checked that a preceding `starts_with`/`ends_with` had put the
+/// offset on a UTF-8 character boundary - but the proof was four interacting facts held in a
+/// human's head, in a function whose input is a pattern written by a third-party manifest author.
+/// A byte offset landing inside a multi-byte character aborts the process. Now an impossible
+/// index returns `false` instead, and `exhaustive_glob_agrees_with_a_naive_reference` checks the
+/// rewrite kept the semantics exactly.
 fn segment_matches(pattern: &str, actual: &str) -> bool {
     let parts: Vec<&str> = pattern.split('*').collect();
+    let (Some(first), Some(last)) = (parts.first(), parts.last()) else {
+        return pattern == actual;
+    };
     if parts.len() == 1 {
         return pattern == actual;
     }
+
     let mut pos = 0usize;
-    if !parts[0].is_empty() {
-        if !actual.starts_with(parts[0]) {
+    if !first.is_empty() {
+        if !actual.starts_with(first) {
             return false;
         }
-        pos = parts[0].len();
+        pos = first.len();
     }
-    let last = parts[parts.len() - 1];
-    if !last.is_empty() && (actual.len() < pos || !actual[pos..].ends_with(last)) {
+    let Some(tail) = actual.get(pos..) else {
+        return false;
+    };
+    if !last.is_empty() && !tail.ends_with(last) {
         return false;
     }
     let end = actual.len().saturating_sub(last.len());
     if end < pos {
         return false;
     }
+
     let mut cursor = pos;
-    for part in &parts[1..parts.len() - 1] {
+    let Some(middle) = parts.get(1..parts.len() - 1) else {
+        return true;
+    };
+    for part in middle {
         if part.is_empty() {
             continue;
         }
-        match actual[cursor..end].find(part) {
+        let Some(window) = actual.get(cursor..end) else {
+            return false;
+        };
+        match window.find(part) {
             Some(idx) => cursor += idx + part.len(),
             None => return false,
         }
@@ -632,6 +653,99 @@ mod tests {
         {
             let matches = find_matching_files(&tree.0.join("root"), "sessions/*/secret.json");
             assert!(matches.is_empty());
+        }
+    }
+
+    /// A naive, obviously-correct glob matcher for `*`-within-a-segment, written to be read
+    /// rather than to be fast. It is the oracle the real one is compared against.
+    fn reference_matches(pattern: &[char], actual: &[char]) -> bool {
+        match pattern.split_first() {
+            None => actual.is_empty(),
+            Some(('*', rest)) => (0..=actual.len())
+                .any(|skip| reference_matches(rest, actual.get(skip..).unwrap_or(&[]))),
+            Some((expected, rest)) => match actual.split_first() {
+                Some((got, actual_rest)) if got == expected => reference_matches(rest, actual_rest),
+                _ => false,
+            },
+        }
+    }
+
+    fn words(alphabet: &[char], max_len: usize) -> Vec<String> {
+        let mut out = vec![String::new()];
+        let mut frontier = vec![String::new()];
+        for _ in 0..max_len {
+            let mut next = Vec::new();
+            for word in &frontier {
+                for &c in alphabet {
+                    let mut candidate = word.clone();
+                    candidate.push(c);
+                    next.push(candidate);
+                }
+            }
+            out.extend(next.iter().cloned());
+            frontier = next;
+        }
+        out
+    }
+
+    /// Differential testing, the method this repository already uses between its Python reference
+    /// and its Rust port (`scripts/rust_python_parity.py`), applied to a matcher that had never
+    /// been tested that way. Exhaustive over a small alphabet rather than random: for a string
+    /// matcher, every word up to length four over a deliberately nasty alphabet is stronger
+    /// evidence than a sample, and it is reproducible with no new dependency and no flake.
+    ///
+    /// The alphabet carries the cases that break byte-indexed matchers: a multi-byte character
+    /// (`é` is two bytes) and the metacharacter itself.
+    #[test]
+    fn exhaustive_glob_agrees_with_a_naive_reference() {
+        let patterns = words(&['a', '*', 'é'], 4);
+        let actuals = words(&['a', 'b', 'é'], 4);
+        let mut compared = 0usize;
+        for pattern in &patterns {
+            let pattern_chars: Vec<char> = pattern.chars().collect();
+            for actual in &actuals {
+                let actual_chars: Vec<char> = actual.chars().collect();
+                let expected = reference_matches(&pattern_chars, &actual_chars);
+                assert_eq!(
+                    segment_matches(pattern, actual),
+                    expected,
+                    "pattern {pattern:?} against {actual:?}"
+                );
+                compared += 1;
+            }
+        }
+        // Guards the test itself: a `words` that silently produced nothing would make every
+        // assertion above vacuous and the test would still pass.
+        assert!(compared > 10_000, "only {compared} pairs compared");
+    }
+
+    /// The specific shape that made the old implementation a latent abort: an offset landing
+    /// inside a multi-byte character. These panic on a byte-indexed matcher and return a verdict
+    /// here.
+    #[test]
+    fn multibyte_boundaries_do_not_abort() {
+        let cases = [
+            ("é*", "é"),
+            ("é*é", "ééé"),
+            ("*é", "é"),
+            ("*é*", "aéb"),
+            ("a*é", "aé"),
+            ("é*a", "éa"),
+            ("*", "日本語"),
+            ("日*語", "日本語"),
+            ("日*語", "日本"),
+            ("𝄞*𝄞", "𝄞x𝄞"),
+        ];
+        for (pattern, actual) in cases {
+            let expected = reference_matches(
+                &pattern.chars().collect::<Vec<_>>(),
+                &actual.chars().collect::<Vec<_>>(),
+            );
+            assert_eq!(
+                segment_matches(pattern, actual),
+                expected,
+                "pattern {pattern:?} against {actual:?}"
+            );
         }
     }
 }

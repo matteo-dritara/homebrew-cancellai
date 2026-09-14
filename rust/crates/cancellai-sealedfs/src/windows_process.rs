@@ -46,6 +46,10 @@ pub fn list_running_process_names() -> io::Result<Vec<String>> {
     }
     let snapshot = Snapshot(raw);
 
+    // SAFETY: in windows-sys 0.61.2, `PROCESSENTRY32W` contains only `u32`, `usize`, `i32`, and
+    // `[u16; 260]`; all accept the all-zero representation. This is a generated-binding claim,
+    // so it must be rechecked if the locked `windows-sys` version changes. `dwSize` is set on the
+    // next line before `Process32FirstW` can inspect it.
     let mut entry: PROCESSENTRY32W = unsafe { std::mem::zeroed() };
     entry.dwSize = size_of::<PROCESSENTRY32W>() as u32;
 
@@ -66,7 +70,10 @@ pub fn list_running_process_names() -> io::Result<Vec<String>> {
 /// buffer - this decodes exactly the meaningful prefix, never the untouched trailing zeros.
 fn exe_file_name(buffer: &[u16; 260]) -> String {
     let len = buffer.iter().position(|&c| c == 0).unwrap_or(buffer.len());
-    String::from_utf16_lossy(&buffer[..len])
+    // `get` rather than `[..len]`: `len` cannot exceed the buffer, but this decodes a name the
+    // operating system wrote into a fixed array, and an empty name is a better answer than an
+    // aborted scan if that ever stops holding.
+    String::from_utf16_lossy(buffer.get(..len).unwrap_or(&[]))
 }
 
 #[cfg(test)]

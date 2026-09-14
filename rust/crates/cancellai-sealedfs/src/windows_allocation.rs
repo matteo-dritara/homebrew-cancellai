@@ -23,7 +23,12 @@ use crate::windows_identity::open_no_follow;
 pub fn observe_allocated_size(path: &Path) -> io::Result<u64> {
     let file = open_no_follow(path)?;
 
-    let mut info: FILE_STANDARD_INFO = unsafe { std::mem::zeroed() };
+    // `Default::default()` rather than `unsafe { mem::zeroed() }`: `windows-sys` 0.61.2 derives
+    // `Default`, so every field starts as a valid Rust value even though `DeletePending` and
+    // `Directory` are `bool`. `FILE_STANDARD_INFO` has two tail-padding bytes on 64-bit Windows;
+    // `Default` need not initialize them, but this API documents `info` as an out-buffer and does
+    // not inspect its incoming contents. That is sufficient here, unlike an FFI input struct.
+    let mut info = FILE_STANDARD_INFO::default();
     // SAFETY: `file` is a valid, currently-open HANDLE for the entire duration of this call.
     // `info` is a stack-allocated, correctly-sized `FILE_STANDARD_INFO` (the struct
     // `windows-sys` generates directly from the same Win32 metadata that documents this call),

@@ -73,7 +73,7 @@ independent samples, and the population estimate collapses to what one round alr
 
 ## Evidence-ledger integrity
 
-- **99 of 114** story packets past `ready_for_review` carry a row per acceptance criterion.
+- **106 of 121** story packets past `ready_for_review` carry a row per acceptance criterion.
 - Packets that do not:
   - E00-S01 (CR4): 0 rows for 3 criteria
   - E00-S02 (CR4): 0 rows for 3 criteria
@@ -95,9 +95,9 @@ independent samples, and the population estimate collapses to what one round alr
 
 | CR0 | CR1 | CR2 | CR3 | CR4 |
 | --- | --- | --- | --- | --- |
-| 12 | 32 | 44 | 25 | 30 |
+| 14 | 34 | 44 | 26 | 32 |
 
-55 of 143 stories are CR3 or CR4, the levels whose gates require
+58 of 150 stories are CR3 or CR4, the levels whose gates require
 independent verification. That share is what makes the reviewer-independence question above
 load-bearing rather than academic.
 
@@ -107,7 +107,7 @@ load-bearing rather than academic.
 
 ## Requirements shape
 
-- Acceptance criteria describing **unwanted behaviour**: **35 of 418** (8%).
+- Acceptance criteria describing **unwanted behaviour**: **45 of 450** (10%).
 - Epics whose requirements describe the feature and not the hazard:
   - `E00` - 0 of 29
   - `E01` - 0 of 13
@@ -117,14 +117,13 @@ load-bearing rather than academic.
 
 ## Documentation readership
 
-- Documents a committed review record has named: **22**. Never named: **26**.
+- Documents a committed review record has named: **22**. Never named: **25**.
 - Never named is not the same as never read, and an unread document may still be the right
   document. This is a list for the owner once a phase, not a purge, and accepted ADRs are
   undeletable regardless of what it says.
 
 <details><summary>Never named in a review record</summary>
 
-- `docs/ARCHITECTURE.md`
 - `docs/CLI.md`
 - `docs/DECISION_REGISTER.md`
 - `docs/PLATFORMS.md`

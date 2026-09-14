@@ -5,6 +5,11 @@
 //! a precise latency SLA. The heavy 10k/100k/1M-entry runs live in `performance_scheduled.rs`
 //! and are `#[ignore]`d out of the default `cargo test` run.
 
+// Integration tests live outside `#[cfg(test)]`, so clippy's `allow-*-in-tests` options in
+// `clippy.toml` do not reach them. The workspace's panic-freedom lints are lifted here for the
+// same reason they are allowed in unit tests: a test that unwraps is asserting.
+#![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
+
 mod perf_support;
 
 use std::time::Instant;

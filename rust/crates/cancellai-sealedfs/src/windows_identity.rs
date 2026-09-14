@@ -83,7 +83,11 @@ pub fn open_and_observe_identity(path: &Path) -> io::Result<(File, WindowsFileFa
 /// this same `GetFileInformationByHandle` query against the handle it already has, not a
 /// second, path-based reopen that would defeat the whole point of a handle-relative walk.
 pub(crate) fn observe_identity_of_handle(handle: RawHandle) -> io::Result<WindowsFileFacts> {
-    let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
+    // `Default::default()` rather than `unsafe { mem::zeroed() }`: `windows-sys` 0.61.2 derives
+    // `Default`, so every field begins as a valid Rust value. This struct is exactly thirteen
+    // `u32` words (52 bytes, alignment 4), with no padding; independently, the API documents
+    // `info` as an out-pointer, so it does not rely on any incoming representation.
+    let mut info = BY_HANDLE_FILE_INFORMATION::default();
     // SAFETY: the caller guarantees `handle` is a valid, currently-open HANDLE for the
     // duration of this call. `info` is a stack-allocated, correctly-sized
     // `BY_HANDLE_FILE_INFORMATION` (the struct `windows-sys` generates directly from the same

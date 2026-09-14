@@ -2,6 +2,11 @@
 //! snapshots"). Proves the serialized shape is stable and that every explicit
 //! unsupported/unknown state actually serializes as such, not as a fabricated default.
 
+// Integration tests live outside `#[cfg(test)]`, so clippy's `allow-*-in-tests` options in
+// `clippy.toml` do not reach them. The workspace's panic-freedom lints are lifted here for the
+// same reason they are allowed in unit tests: a test that unwraps is asserting.
+#![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
+
 use cancellai_inventory::{FactObservation, observe_file_facts};
 use cancellai_platform::{
     AllocationObservation, FileKind, FsMetadata, IdentityObservation, IdentityToken, Observation,

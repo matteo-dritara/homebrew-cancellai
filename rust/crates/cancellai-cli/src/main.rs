@@ -358,7 +358,12 @@ fn cmd_read_only(flags: CommonFlags, mode: RunMode) -> i32 {
                     scan_completeness_docs(&resolved),
                     artifacts,
                 );
-                println!("{}", serde_json::to_string_pretty(&doc).unwrap());
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&doc).expect(
+                        "diagnostic documents are plain owned structs and always serialize"
+                    )
+                );
             } else {
                 print_status_summary(&resolved);
             }
@@ -384,7 +389,12 @@ fn cmd_read_only(flags: CommonFlags, mode: RunMode) -> i32 {
                     actions,
                     Vec::new(),
                 );
-                println!("{}", serde_json::to_string_pretty(&doc).unwrap());
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&doc).expect(
+                        "diagnostic documents are plain owned structs and always serialize"
+                    )
+                );
             } else {
                 print_plan_summary(&actions);
             }
@@ -657,7 +667,21 @@ fn execute_clean(resolved: &Resolved, actions: &[Action], json: bool, allow_runn
     let mut reclaimed_bytes = 0u64;
 
     for action in actions {
-        let target_id = &action.target_artifact_ids[0];
+        // A sealed plan always names at least one target, but a plan is data and this loop is the
+        // last place that assumption is load-bearing before execution. Indexing turned a
+        // malformed plan into an abort part-way through a run; it is now a recorded fault for
+        // that action, which is what every other unexpected shape in this loop produces.
+        let Some(target_id) = action.target_artifact_ids.first() else {
+            any_failed = true;
+            results.push(ActionResultDoc {
+                action_id: action.action_id.0.clone(),
+                status: "failed",
+                reason_code: "INTERNAL_FAULT: plan action names no target artifact".to_string(),
+                reclaimed_bytes: 0,
+                post_action_state: "unchanged",
+            });
+            continue;
+        };
         let doc = match action.action_class {
             ActionClass::Delete => match by_id.get(target_id) {
                 None => {
@@ -720,7 +744,11 @@ fn execute_clean(resolved: &Resolved, actions: &[Action], json: bool, allow_runn
     let now = SystemClock.now();
     if json {
         let doc = documents::result_document("plan-1".to_string(), now, results);
-        println!("{}", serde_json::to_string_pretty(&doc).unwrap());
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&doc)
+                .expect("diagnostic documents are plain owned structs and always serialize")
+        );
     } else {
         let succeeded = results.iter().filter(|r| r.status == "succeeded").count();
         println!("{succeeded} artifact(s) deleted, {reclaimed_bytes} bytes reclaimed.");
@@ -987,7 +1015,15 @@ fn configure_claude_retention(claude_home: &Path, days: u32) -> Result<(), Confi
         None => serde_json::json!({}),
     };
     let mut value = value;
-    value["cleanupPeriodDays"] = serde_json::json!(days);
+    // Proven an object three lines up - the parse branch rejects anything else and the `None`
+    // branch builds one - but `value["k"] = ..` aborts if that ever stops holding, in the command
+    // that writes a provider's settings file.
+    let Some(object) = value.as_object_mut() else {
+        return Err(ConfigureError::MalformedSettings(
+            "settings.json root must be a JSON object".to_string(),
+        ));
+    };
+    object.insert("cleanupPeriodDays".to_string(), serde_json::json!(days));
     let serialized = serde_json::to_string_pretty(&value).expect("value is always representable");
 
     let unique_suffix = std::time::SystemTime::now()

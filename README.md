@@ -15,6 +15,8 @@ macOS only for this release. The tool has not been tested on Linux. Cross-platfo
 
 The target-engine (Rust) capability matrix - what is CI-verified today across macOS, Linux, Windows, and WSL2 - is generated at [docs/PLATFORMS.md](docs/PLATFORMS.md).
 
+Each release also attaches prebuilt `cancellai-cli` archives for four targets, with a CycloneDX SBOM and signed build provenance per artifact. **Those are the migration target, not the product**: the Rust engine is not the canonical engine yet (that cutover is E06-S04, still open), and the supported way to install cancellAI remains `brew install`. They are published so the supply chain is exercised and verifiable before anything depends on it, not because they are ready to replace the Python CLI.
+
 ## Install
 
 ```sh

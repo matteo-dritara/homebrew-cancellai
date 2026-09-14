@@ -38,10 +38,7 @@ removes a component** - see [`docs/development/AGENT_TOOLCHAIN.md`](docs/develop
 The last command asks the other question that must be answered before work starts: **is the branch
 you are about to build on green?** Read every workflow's conclusion, not an aggregate, and treat an
 answer you cannot obtain as *unknown* rather than as passing. A failing workflow goes to the owner
-as a finding before a story is selected - not noted and worked around. This is here because it was
-not: the MSRV leg of `rust.yml` failed on every push for four days, across two attempted releases,
-while every other leg stayed green and every session read the green ones. A failure nobody reads is
-indistinguishable from a gate nobody has.
+as a finding before a story is selected - not noted and worked around.
 
 ## Current transition state
 
@@ -248,44 +245,94 @@ cargo deny check
 duplicate dependency bans, and unknown-registry/unknown-git source denial in one command
 (`rust/deny.toml`); a separate `cargo audit` is redundant with it and is not used.
 
-**Clippy only sees the platform it runs on.** Code behind `cfg(windows)` or `cfg(target_os = ...)`
-is not compiled on your machine, so a lint inside it reaches CI unexamined - which is how E17-S08's
-sixth lint site was found by `quality (windows-latest)` rather than locally. When a change touches
-`cancellai-platform`, or when anything changes the lint surface workspace-wide (an MSRV bump does,
-because clippy reads `rust-version`), add:
+**Clippy only sees the platform it runs on**, so a lint behind `cfg(windows)` reaches CI
+unexamined. When a change touches `cancellai-platform`, or anything moves the lint surface
+workspace-wide, add:
 
 ```sh
 cargo clippy --workspace --all-targets --all-features --target x86_64-pc-windows-gnu -- -D warnings
 cargo clippy --workspace --all-targets --all-features --target x86_64-unknown-linux-gnu -- -D warnings
 ```
 
-They need `rustup target add` once. They lint the other platforms' code without running it, which
-is all clippy does anyway.
+They need `rustup target add` once, and lint the other platforms' code without running it - which
+is all clippy does anyway. Seven of eleven undocumented `unsafe` blocks and two panics were found
+this way rather than by CI ([ADR-0028](docs/adrs/0028-lint-policy-states-the-safety-thesis-and-differs-by-ring.md)).
 
 CI (`.github/workflows/rust.yml`) runs `cargo check --workspace --all-targets` on macOS,
 Linux, and Windows against both MSRV (1.88.0, raised from 1.85.0 by ADR-0026) and current stable, and the full quality set
 above (`fmt`, `clippy -D warnings`, `cargo test`, `cargo deny check`) on all three platforms
 against stable (ADR-0015).
 
-Dependency rules differ by ring ([ADR-0019](docs/adrs/0019-dependency-rings-per-crate.md),
-E22-S03). **Kernel ring** - `cancellai-model`, `cancellai-safety`, `cancellai-platform`,
-`cancellai-sealedfs`, and any future crate that participates in authority, identity, or
-mutation: do not add a dependency merely to reduce implementation effort; a dependency
-requires a dedicated, reviewed ADR naming the specific capability `std` cannot express
-(ADR-0017 is the template). **Outer ring** - `cancellai-cli`, `cancellai-tui`,
-`cancellai-store`, `cancellai-guardian`, and the provider adapters: a mature, widely-audited
-crate is admissible when it does not reach into authority/identity/mutation decisions and the
-story adopting it says what it replaces - reduced implementation effort is a legitimate
-reason here, because the thing being implemented is not a safety boundary. Both rings share
-two constraints that are not negotiable by ring membership: `unsafe_code = "forbid"` stays
-the workspace default (`cancellai-sealedfs` is the sole ADR-0017 exception), and an
-outer-ring dependency may never become a second path to a safety decision - it decides what
-the user asked for, never what is permitted (SI-007 in particular stays a property of this
-workspace's own command dispatch, regardless of which crate parses the tokens).
+**Before adding any crate dependency, read
+[ADR-0019](docs/adrs/0019-dependency-rings-per-crate.md).** It names which crates are kernel ring
+and which are outer ring, what each ring admits, and the two constraints that cross both. Reading
+it is the rule; this file deliberately does not repeat it, because a paraphrase that drifts from
+the decision is worse than a link that does not.
 
-Any new dependency's license must be in the `cargo-deny` allow-list ADR-0015 fixes (MIT,
-Apache-2.0, BSD-2/3-Clause, ISC, Unicode-3.0, Zlib), or the license list in `rust/deny.toml`
-needs its own reviewed change first, in either ring.
+### Coverage
+
+Coverage is a **ratchet, not a target** ([ADR-0028](docs/adrs/0028-lint-policy-states-the-safety-thesis-and-differs-by-ring.md), E27-S02).
+`project/coverage_baseline.json` records what each crate covers; `scripts/check_coverage.py check`
+fails when a kernel-ring crate covers less than it already did, and reports the rest for visibility
+without gating them. Improving is free; re-recording to tighten the ratchet is an explicit,
+reviewable diff. CI runs it on Linux only - region coverage is not platform-specific for these
+crates and an instrumented rebuild is not worth paying for three times.
+
+```sh
+python3 scripts/check_coverage.py report   # needs `cargo llvm-cov`
+python3 scripts/check_coverage.py record   # after a deliberate improvement
+```
+
+The baseline records **what measured it** - toolchain, `rustc` version, `cargo-llvm-cov` version -
+and the gate refuses outright when yours differ, drawing no conclusion about coverage at all. That
+is not pedantry: the same unchanged workspace measures `cancellai-platform` at 95.83% on stable and
+63.85% on nightly, and installing nightly for Miri was enough to make the gate report a regression
+that was a different compiler (E27-S07).
+
+Read the per-crate numbers, never the workspace average: the first measurement was 94.54% overall
+while the crate holding every `unsafe` block sat at 92.5%, and an average is exactly the number
+that hides its worst member.
+
+**Do not add a `rust-toolchain.toml`.** It would collapse the MSRV matrix silently;
+[ADR-0028](docs/adrs/0028-lint-policy-states-the-safety-thesis-and-differs-by-ring.md) explains why.
+
+### Undefined behaviour
+
+`cargo +nightly miri test -p <crate>` with `MIRIFLAGS=-Zmiri-disable-isolation` executes a crate
+under an interpreter that reports undefined behaviour the compiler cannot see. It runs **weekly**
+in `rust-benchmark.yml`, not per-PR: `cancellai-tui` alone takes over five minutes.
+
+Know its reach before reading its silence as safety. Miri cannot call foreign functions it has no
+shim for, and this workspace's `unsafe` is almost entirely `libc` and Win32 FFI - **it cannot
+execute a single one of the 38 `unsafe` blocks in `cancellai-sealedfs`**. Four crates run clean
+(`model`, `inventory`, `provider-api`, `tui`); `sealedfs` and `platform` stop at `statfs`, `policy`
+at `fsetattrlist`, and `safety` inside `sha2`'s aarch64 SHA-512 intrinsics. E27-S06's evidence
+packet has the detail.
+
+### Lint policy
+
+`[workspace.lints]` denies the lints that state this project's thesis in a form the compiler
+checks: `undocumented_unsafe_blocks`, `unwrap_used`, `panic`, `todo`, `unimplemented`,
+`dbg_macro`, `mem_forget`, `indexing_slicing`, and `unsafe_op_in_unsafe_fn`
+([ADR-0028](docs/adrs/0028-lint-policy-states-the-safety-thesis-and-differs-by-ring.md)). Tests are
+exempt via `rust/clippy.toml`; integration tests live outside `#[cfg(test)]`, so each carries the
+equivalent inner attribute. `expect_used` is deliberately not denied - `expect("literal has no
+embedded NUL")` names an invariant, and denying it pushes authors toward swallowing the case.
+
+Two rules follow from how Cargo works, and both have bitten:
+
+- **A crate's own `[lints]` table replaces the workspace's, it does not extend it.** Only
+  `cancellai-sealedfs` declares one, because ADR-0017 lifts `unsafe_code` and `forbid` is the one
+  level an inner attribute cannot lift. It therefore repeats the clippy policy, and
+  `scripts/check_rust_workspace.py` fails if the two ever disagree on anything else. Before that
+  gate, the crate holding every `unsafe` block in the repository was the only crate a workspace
+  lint policy could not reach.
+- **Relax a lint in the crate's own source, not in its manifest.** `cancellai-tui` carries
+  `#![allow(clippy::indexing_slicing)]` with its reason above it, where a reader of the code sees
+  it. An exemption buried in a manifest is one nobody reads.
+
+The licence must already be in the allow-list ADR-0015 fixes, in either ring; widening
+`rust/deny.toml`'s list is its own reviewed change.
 
 ## Generated project docs
 
