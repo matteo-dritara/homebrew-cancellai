@@ -1,11 +1,79 @@
 from __future__ import annotations
 
+import re
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from scripts import check_rust_workspace as rw
+
+
+def rust_code_and_comments(source: str) -> tuple[str, str]:
+    """Separate Rust code from comments and literals for a narrow source-inventory assertion.
+
+    This is deliberately a lexer rather than a line filter: `unsafe {` in a block comment or a
+    raw string is not an unsafe block, while an actual block followed by a trailing `//` comment
+    still is. It need not parse Rust expressions; it only recognizes the lexical forms that can
+    hide these two strings.
+    """
+    code: list[str] = []
+    comments: list[str] = []
+    index = 0
+    length = len(source)
+    while index < length:
+        if source.startswith("//", index):
+            end = source.find("\n", index)
+            if end == -1:
+                end = length
+            comments.append(source[index:end])
+            index = end
+        elif source.startswith("/*", index):
+            start = index
+            depth = 1
+            index += 2
+            while index < length and depth:
+                if source.startswith("/*", index):
+                    depth += 1
+                    index += 2
+                elif source.startswith("*/", index):
+                    depth -= 1
+                    index += 2
+                else:
+                    index += 1
+            comments.append(source[start:index])
+        elif source[index] in {"r", "b"}:
+            raw_start = index
+            if source.startswith("br", index):
+                raw_start += 1
+            if source[raw_start] == "r":
+                quote = raw_start + 1
+                while quote < length and source[quote] == "#":
+                    quote += 1
+                if quote < length and source[quote] == '"':
+                    hashes = source[raw_start + 1 : quote]
+                    terminator = '"' + hashes
+                    end = source.find(terminator, quote + 1)
+                    code.extend(source[index : quote + 1])
+                    index = length if end == -1 else end + len(terminator)
+                    continue
+            code.append(source[index])
+            index += 1
+        elif source[index] == '"':
+            code.append('"')
+            index += 1
+            while index < length:
+                if source[index] == "\\":
+                    index += 2
+                elif source[index] == '"':
+                    index += 1
+                    break
+                else:
+                    index += 1
+        else:
+            code.append(source[index])
+            index += 1
+    return "".join(code), "\n".join(comments)
 
 
 def write_crate(base: Path, name: str, deps: list[str]) -> None:
@@ -172,17 +240,22 @@ undocumented_unsafe_blocks = "deny"
         root = rw.RUST_CRATES_DIR
         for source in sorted(root.glob("*/src/*.rs")):
             text = source.read_text(encoding="utf-8")
-            # Comment lines are excluded, and that is not a convenience: a `SAFETY:` comment
-            # explaining why an `unsafe { mem::zeroed() }` was *replaced* mentions the construct
-            # without being one, and counting it made this test fail on a change that removed
-            # three unsafe blocks (E27-S06).
-            code = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("//"))
-            blocks = code.count("unsafe {")
+            code, comments = rust_code_and_comments(text)
+            blocks = len(re.findall(r"\bunsafe\s*\{", code))
             if not blocks:
                 continue
             with self.subTest(source=str(source.relative_to(root))):
                 self.assertEqual("cancellai-sealedfs", source.parts[-3], "unsafe outside the ADR-0017 crate")
-                self.assertGreaterEqual(text.count("SAFETY:"), blocks)
+                self.assertGreaterEqual(comments.count("SAFETY:"), blocks)
+
+    def test_unsafe_inventory_ignores_comments_and_raw_strings_but_not_trailing_code(self):
+        code, comments = rust_code_and_comments(
+            "/* SAFETY: documentation, not a block: unsafe { */\n"
+            'let quoted = r##"raw unsafe { // SAFETY:"##;\n'
+            "let value = unsafe { call() }; // SAFETY: trailing comment\n"
+        )
+        self.assertEqual(1, len(re.findall(r"\bunsafe\s*\{", code)))
+        self.assertEqual(2, comments.count("SAFETY:"))
 
 
 if __name__ == "__main__":
