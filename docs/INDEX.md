@@ -67,6 +67,10 @@ The source of truth for project planning lives under [`project/`](../project/):
 - [`project/generated/PROCESS_METRICS.md`](../project/generated/PROCESS_METRICS.md) - generated measurement of the
   engineering process itself: review yield per round, first-pass rejection rate, residual-defect
   estimate from reviewer overlap, evidence-ledger integrity.
+- [`project/coverage_baseline.json`](../project/coverage_baseline.json) - region coverage per crate,
+  a ratchet rather than a target: the kernel ring may not cover less than it already did
+  ([ADR-0028](adrs/0028-lint-policy-states-the-safety-thesis-and-differs-by-ring.md)). Read the
+  distribution, not the average.
 - [`project/generated/GATE_SENSITIVITY.md`](../project/generated/GATE_SENSITIVITY.md) - for each planted
   violation of a named claim, which gate caught it, or that none did.
 - `project/templates/` - see [the template index](../project/README.md#templates).

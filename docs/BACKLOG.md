@@ -3316,3 +3316,26 @@ Nobody had measured this codebase. Twenty-seven gates, 143 stories and a risk mo
 
 - `AGENTS.md`
 - `.github/workflows/rust.yml`
+
+### E27-S03 - The documents describe the repository as it is now
+
+**Status:** `done` | **Change Risk:** `CR0` | **Dependencies:** E27-S02 | **Safety obligations:** none
+
+**Outcome.** A week of method changes left statements behind. RELEASE_GATES.md classified thirty-one gates and said nine were structural, when the table already held sixteen and a thirty-second gate had just been added - and `gate_sensitivity.py` refuses a gate that table does not classify, so the drift was one commit from being a build failure. docs/INDEX.md listed the generated measurements and not the coverage baseline. And the README described a macOS-only Python CLI while every release since v1.13.2 attaches prebuilt Rust binaries for four targets with SBOMs and signed provenance - a reader downloading a Windows zip had nothing telling them what it was.
+
+**Acceptance criteria**
+
+- Every gate the repository runs shall be classified in the release-gates table, and the counts in its prose shall match the table.
+- The documentation index shall name every committed measurement a reader is expected to act on.
+- If a release attaches an artifact the README does not describe, then the README shall say what it is and whether it is supported.
+
+**Verification**
+
+- The counts are read from the table and the gate list rather than retyped.
+- gate_sensitivity.py's unclassified-gate check passes, which is the mechanism that would have caught the omission as a build failure.
+
+**Documentation impact**
+
+- `docs/development/RELEASE_GATES.md`
+- `docs/INDEX.md`
+- `README.md`
