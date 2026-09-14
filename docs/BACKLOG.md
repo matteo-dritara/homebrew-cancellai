@@ -2751,7 +2751,7 @@ Make the cEOS contract executable by the agent harness that is supposed to execu
 
 ## E25 - Engineering System Falsification
 
-**Phase:** `P1` | **Status:** `done_no_release` | **Epic dependencies:** none
+**Phase:** `P1` | **Status:** `in_progress` | **Epic dependencies:** none
 
 cEOS has borrowed the artifact set of a safety standard without the mechanism that makes it work. In DO-178C, ISO 26262, IEC 61508 and NPR 7150.2 that mechanism is independence applied to the act of classification, and measurement applied to the process itself; cEOS has neither. This epic closes the gap the 2026-09-12 methodology review found, in the order the review prioritised: make the risk classification something other than self-assessment, prove the gates can catch a planted violation, make the evidence ledger checkable, and replace the fixed review ceiling with a rule the measurement can support. See docs/audits/2026-09-12-METHODOLOGY_REVIEW.md.
 
@@ -3148,6 +3148,30 @@ cEOS has borrowed the artifact set of a safety standard without the mechanism th
 
 - `project/risk_floors.json`
 - `docs/development/WORK_ITEM_MODEL.md`
+
+### E25-S16 - An anchor picked for stability by phase alone went stale within one epic close
+
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E25-S06, E25-S12 | **Safety obligations:** none
+
+**Outcome.** The `story-status-forged` mutant was anchored on E11-S01, chosen - by the comment above the anchor itself - because E11 was 'a future phase' whose stories were 'stable', after an earlier anchor on a story this session was actively moving went stale within the hour. E11 closed as `done_no_release` in this same session, turning that story's status from `planned` to `done` and taking the anchor's match count from one to zero: `tests/test_governance_extras.py::MutantIntegrityTests` failed on main, and `story-status-forged` stopped being demonstrated at all rather than being demonstrated on the wrong thing, which is the same class of silent gate loss E25-S12 found for SI-008 and E25-S06 exists to catch in general. Phase is not a stability signal this backlog can rely on - the project reached a 'future' phase's epic inside one session - so the replacement anchor is chosen by a measurable property instead: E19-S02 sits behind more unmet transitive dependencies (9) than any other planned story in the backlog, computed from `project/epics/*.json`, and carries no evidence packet.
+
+**Acceptance criteria**
+
+- The `story-status-forged` mutant in scripts/gate_sensitivity.py anchors on E19-S02 rather than E11-S01, and the anchor text matches exactly one site in project/epics/E19.json.
+- The reasoning for the chosen anchor - the measurable property used, not just the story id - is recorded next to the mutant definition, so a third failure updates the same record instead of re-deriving the pattern from scratch.
+- project/generated/GATE_SENSITIVITY.md and the committed sensitivity report are regenerated against the new anchor.
+- If the `tests` workflow is re-run on main after this change, then it shall report success, because a fix that leaves the same job red has not fixed the finding it was opened for.
+
+**Verification**
+
+- tests/test_governance_extras.py::MutantIntegrityTests passes locally against the current working tree.
+- scripts/gate_sensitivity.py check reproduces the committed report byte-for-byte.
+- A manual replay of `python3 -m pytest tests -v` no longer shows story-status-forged failing.
+
+**Documentation impact**
+
+- `project/generated/GATE_SENSITIVITY.md`
+- `CHANGELOG.md`
 
 ## E26 - Agent Toolchain Governance
 

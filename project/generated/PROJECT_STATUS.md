@@ -4,7 +4,7 @@
 
 Current phase: **P1**
 
-Epics: **28** | Stories: **150**
+Epics: **28** | Stories: **151**
 
 ## Story status
 
@@ -12,12 +12,13 @@ Epics: **28** | Stories: **150**
 - `cancelled`: 1
 - `done`: 125
 - `planned`: 22
+- `ready_for_review`: 1
 
 ## Change risk distribution
 
 - `CR0`: 14
 - `CR1`: 34
-- `CR2`: 42
+- `CR2`: 43
 - `CR3`: 28
 - `CR4`: 32
 
@@ -27,4 +28,4 @@ Epics: **28** | Stories: **150**
 
 ## Awaiting independent review
 
-- none
+- **E25-S16** - An anchor picked for stability by phase alone went stale within one epic close (CR2)

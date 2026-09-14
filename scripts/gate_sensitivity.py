@@ -187,14 +187,17 @@ MUTANTS: tuple[Mutant, ...] = (
         identifier="story-status-forged",
         invariant="process",
         claim="A story cannot sit past ready_for_review without committed evidence",
-        path="project/epics/E11.json",
+        path="project/epics/E19.json",
         # Anchored on a story that is planned and has no evidence packet, so forging its status
-        # is exactly the violation this gate exists to catch. E11 is a future phase and its
-        # stories are stable; an earlier version anchored on a story this session was actively
-        # moving, and the anchor went stale within the hour - which the harness reported as an
-        # error rather than as a pass, which is the whole point of that rule.
-        find='"id": "E11-S01",\n      "title": "Policy schema and scopes",\n      "status": "planned"',
-        replace='"id": "E11-S01",\n      "title": "Policy schema and scopes",\n      "status": "done"',
+        # is exactly the violation this gate exists to catch. The first anchor was on a story this
+        # session was actively moving, and went stale within the hour; the second was picked for
+        # sitting in "a future phase" and went stale when that phase closed within one session
+        # anyway (E25-S16) - phase is not a stability signal this backlog can rely on. This one is
+        # picked by a measurable property instead: E19-S02 sits behind more unmet transitive
+        # dependencies than any other planned story in the backlog at the time of writing, which
+        # does not make it permanent, only re-computable the next time this goes stale.
+        find='"id": "E19-S02",\n      "title": "Cross-platform desktop shell",\n      "status": "planned"',
+        replace='"id": "E19-S02",\n      "title": "Cross-platform desktop shell",\n      "status": "done"',
         gates=("project-os",),
     ),
 )
