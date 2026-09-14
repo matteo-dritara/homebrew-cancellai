@@ -1200,13 +1200,13 @@ Make storage numbers trustworthy and the scanner inexpensive enough for continuo
 
 ## E11 - Deterministic Policy Engine
 
-**Phase:** `P3` | **Status:** `planned` | **Epic dependencies:** E09
+**Phase:** `P3` | **Status:** `in_progress` | **Epic dependencies:** E09
 
 Compile human-readable policy into typed constraints and a fully explainable Effective Policy.
 
 ### E11-S01 - Policy schema and scopes
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E08-S01 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E08-S01 | **Safety obligations:** none
 
 **Outcome.** Define global, machine, provider, project, artifact-type, session/pin scopes and versioned policy schema.
 

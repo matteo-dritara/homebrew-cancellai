@@ -18,6 +18,8 @@ cancellai-provider-api = { path = "../cancellai-provider-api", version = "0.1.0"
 cancellai-provider-claude = { path = "../cancellai-provider-claude", version = "0.1.0" }
 cancellai-provider-codex = { path = "../cancellai-provider-codex", version = "0.1.0" }
 cancellai-safety = { path = "../cancellai-safety", version = "0.1.0" }
-
-[dev-dependencies]
+# E11-S01: schema.rs parses the versioned policy document (deny_unknown_fields + schema_version
+# gate, the same pattern cancellai-provider-api::manifest and cancellai-safety::knowledge_bundle
+# already use). Both are already workspace dependencies elsewhere - no new external crate.
+serde = { workspace = true }
 serde_json = { workspace = true }

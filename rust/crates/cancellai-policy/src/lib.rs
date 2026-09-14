@@ -14,20 +14,26 @@
 //! adds [`atlas`], the second occupant, for `cancellai-tui`'s Atlas screen. E09-S03 adds
 //! [`explain`], the third, for `cancellai-tui`'s artifact explain view. E09-S04 (Plan review)
 //! adds no new module - it reads `explain`'s own output through `cancellai-tui`'s
-//! `EngineData::plan_context`.
+//! `EngineData::plan_context`. E11-S01 adds [`schema`], the declarative policy document this
+//! crate's `retention`/`explain` modules do not yet read from - see that module's own doc for
+//! the scope hierarchy and what parsing it deliberately does not compute.
 
 pub mod atlas;
 pub mod explain;
 pub mod retention;
+pub mod schema;
 mod trust;
 pub mod views;
 
 pub use atlas::{AtlasSummary, ProjectTotals, ProviderTotals, TopContributor, summarize};
-pub use cancellai_model::{KnowledgeConfidence, Reversibility};
+pub use cancellai_model::{AuthorityLevel, KnowledgeConfidence, Reversibility};
 pub use explain::{AttributedProject, ExplainView, PolicyOutcome, explain, is_low_confidence};
 pub use retention::{
     ClassifiedArtifact, ProviderPlanningView, ProviderResolution, RetentionPolicy, ToolScope,
     build_actions, resolve_claude, resolve_codex,
+};
+pub use schema::{
+    CURRENT_SCHEMA_VERSION, PinEntry, PolicyDocument, PolicyError, ScopePolicy, parse_policy,
 };
 pub use trust::builtin_provider_trust;
 pub use views::{

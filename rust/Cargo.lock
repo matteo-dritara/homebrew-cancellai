@@ -234,6 +234,7 @@ dependencies = [
  "cancellai-provider-claude",
  "cancellai-provider-codex",
  "cancellai-safety",
+ "serde",
  "serde_json",
 ]
 

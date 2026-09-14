@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Defined the declarative policy document schema v1 (E11-S01, CR2,
+  `docs/architecture/POLICY_MODEL.md` "Rust schema"): `cancellai-policy::schema::PolicyDocument`
+  carries the global/machine/provider/project/artifact-type/session-pin scope hierarchy as
+  versioned, `#[serde(deny_unknown_fields)]` data - the same pattern
+  `cancellai-provider-api::manifest` and `cancellai-safety::knowledge_bundle` already use for
+  their own documents. No field can express a shell command, script, or provider-native
+  operation, and an absent scope deserializes as absent rather than a default authority. This
+  story only parses and structurally validates a document; merging several scopes into one
+  deterministic `EffectivePolicy` is E11-S02's constraint resolver.
+
 ## [1.14.0] - 2026-09-14
 
 ### Changed

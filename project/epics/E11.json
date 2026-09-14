@@ -7,14 +7,14 @@
   "dependencies": [
     "E09"
   ],
-  "status": "planned",
+  "status": "in_progress",
   "stories": [
     {
       "id": "E11-S01",
       "title": "Policy schema and scopes",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Define global, machine, provider, project, artifact-type, session/pin scopes and versioned policy schema.",
-      "change_risk": "CR2",
+      "change_risk": "CR3",
       "dependencies": [
         "E08-S01"
       ],

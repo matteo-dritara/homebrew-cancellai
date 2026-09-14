@@ -9,7 +9,13 @@
 /// Declaration order is deliberately `Observe < Recommend < Quarantine < Govern < Autopilot`,
 /// matching the documented ordering exactly, so `derive(Ord)` needs no hand-written
 /// comparison to get this right (or wrong).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
+///
+/// `Deserialize` (E11-S01) lets a declarative policy document (`cancellai-policy::schema`)
+/// name a requested authority by the same variant names this crate already serializes -
+/// one vocabulary, not a second string-to-enum mapping a policy parser would otherwise own.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum AuthorityLevel {
     Observe,

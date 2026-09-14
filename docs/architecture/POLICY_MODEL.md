@@ -87,3 +87,26 @@ The engine exposes the same explanation graph to CLI, TUI, Guardian, and later f
 ## Policy migration
 
 Policy schemas are versioned. Unknown security-relevant keys fail validation. Automatic migration may rewrite syntax only when semantics are provably equivalent; otherwise the user receives a migration plan rather than silent reinterpretation.
+
+## Rust schema (E11-S01)
+
+`cancellai-policy::schema` implements the scope hierarchy above as a versioned document type -
+`PolicyDocument` (`schema_version`, `global`, `machine`, `providers`, `projects`,
+`artifact_types`, `pins`), each scope a `ScopePolicy { authority, retention, budget }`. It is
+serialized as JSON today, reusing this workspace's existing `serde`/`serde_json` dependency
+rather than adding a YAML parser for this story; the example above remains the normative
+statement of *semantics*, and the serialization format stays an open decision as this document's
+own text already anticipated ("YAML or another readable declarative form once the Rust
+implementation selects parsing dependencies").
+
+Every struct is `#[serde(deny_unknown_fields)]` and `parse_policy` rejects any `schema_version`
+other than `CURRENT_SCHEMA_VERSION` (`1` today) - the same versioned-document pattern
+`cancellai-provider-api::manifest` and `cancellai-safety::knowledge_bundle` already use. A scope
+with nothing set deserializes as absent, never as a default authority (SI-025's monotonic
+narrowing depends on "unset" and "weakest" staying distinct facts). `retention`/`budget` are
+carried as their written text (`"30d"`, `"50GB"`); parsing that into a duration/byte count is
+E11-S04's ("Budgets, retention, pinning") outcome, not this schema's.
+
+This module parses and structurally validates a document only. Turning several scopes into one
+deterministic `EffectivePolicy` for an artifact/action - the explanation contract and
+constitutional-precedence resolution described above - is E11-S02's constraint resolver.
