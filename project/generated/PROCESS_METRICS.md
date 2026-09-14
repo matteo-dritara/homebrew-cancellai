@@ -117,14 +117,13 @@ load-bearing rather than academic.
 
 ## Documentation readership
 
-- Documents a committed review record has named: **22**. Never named: **26**.
+- Documents a committed review record has named: **22**. Never named: **25**.
 - Never named is not the same as never read, and an unread document may still be the right
   document. This is a list for the owner once a phase, not a purge, and accepted ADRs are
   undeletable regardless of what it says.
 
 <details><summary>Never named in a review record</summary>
 
-- `docs/ARCHITECTURE.md`
 - `docs/CLI.md`
 - `docs/DECISION_REGISTER.md`
 - `docs/PLATFORMS.md`

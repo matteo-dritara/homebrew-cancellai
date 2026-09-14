@@ -12,7 +12,13 @@ cancellAI treats documentation as part of the executable product system. This pa
 
 ## Architecture
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) - architecture index and transition state.
+cancellAI is in a controlled architecture transition: the shipping product is the Python v1
+reference in `cancellai.py`, and the target is a provider-neutral Rust engine with CLI and TUI
+clients, then policy, quarantine and Guardian. **Do not confuse current implementation constraints
+with target architecture decisions.** Read in the order below, starting with `AS_IS.md` for how the
+tool actually works today; the migration contract itself is
+[development/MIGRATION_PYTHON_RUST.md](development/MIGRATION_PYTHON_RUST.md).
+
 - [architecture/AS_IS.md](architecture/AS_IS.md) - current Python v1 architecture and verified defects.
 - [architecture/TARGET.md](architecture/TARGET.md) - target Rust/control-plane architecture.
 - [architecture/DOMAIN_MODEL.md](architecture/DOMAIN_MODEL.md) - AgentArtifact, evidence, lifecycle, plans, authority.
