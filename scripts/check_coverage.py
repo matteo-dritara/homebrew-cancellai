@@ -45,7 +45,13 @@ BASELINE = ROOT / "project" / "coverage_baseline.json"
 # the instrumentation. A baseline without provenance is a number compared against a different
 # number, and reporting that as a coverage regression is a gate describing the machine it ran on
 # (E27-S07, found by the E27-S06 independent review getting a third value again).
-MEASUREMENT_TOOLCHAIN = "stable"
+# Pinned, not `stable`. `stable` moves every six weeks and CI's runner and a developer's machine
+# are never on the same day of that cycle, so a baseline recorded against `stable` can only ever be
+# compared with itself. The first CI run after this gate learned to check its own provenance said
+# so immediately: the runner measured with rustc 1.98.1 and cargo-llvm-cov 0.6.21 against a
+# baseline recorded with 1.94.0 and 0.9.0. Pinning both sides is the fix; tolerating the difference
+# would mean tolerating the 32-point swing this gate exists to notice.
+MEASUREMENT_TOOLCHAIN = "1.98.1"
 
 # The crates whose coverage is a safety property rather than a quality one.
 RATCHETED = (

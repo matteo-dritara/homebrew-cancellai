@@ -144,7 +144,11 @@ class ProvenanceTests(unittest.TestCase):
                 self.assertIn(key, recorded)
                 self.assertNotEqual("unknown", recorded[key], f"{key} was not probed successfully")
 
-    def test_the_measurement_names_its_toolchain_rather_than_taking_the_default(self):
-        # `cargo llvm-cov` with whatever rustup happens to default to is how the same checkout
-        # produced three different numbers for one unchanged crate.
-        self.assertEqual("stable", coverage.MEASUREMENT_TOOLCHAIN)
+    def test_the_measurement_pins_an_exact_toolchain(self):
+        # `cargo llvm-cov` with whatever rustup defaults to is how the same checkout produced three
+        # different numbers for one unchanged crate. `stable` is not enough either: it moves every
+        # six weeks, so a runner and a developer are never on the same day of that cycle, and the
+        # first CI run to check its own provenance said exactly that.
+        self.assertNotIn(coverage.MEASUREMENT_TOOLCHAIN, {"stable", "beta", "nightly"})
+        self.assertRegex(coverage.MEASUREMENT_TOOLCHAIN, r"^\d+\.\d+\.\d+$")
+        self.assertIn(coverage.MEASUREMENT_TOOLCHAIN, coverage.load_baseline()["provenance"]["rustc"])

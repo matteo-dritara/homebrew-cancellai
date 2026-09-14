@@ -69,6 +69,29 @@ python3 scripts/check_coverage.py check   (provenance edited) -> exit 2, differe
 python3 -m pytest tests/test_coverage.py -q                 -> 19 passed, 13 subtests
 ```
 
+## The first CI run found the second half of the same defect
+
+Pushing the provenance check turned the `coverage` job red immediately, and it was right to:
+
+```
+cargo_llvm_cov: measured with 'cargo-llvm-cov 0.6.21', baseline recorded 'cargo-llvm-cov 0.9.0'
+rustc:          measured with 'rustc 1.98.1 (48a229cea 2026-09-01)', baseline recorded 'rustc 1.94.0'
+```
+
+A baseline recorded against `stable` can only ever be compared with itself: `stable` moves every
+six weeks and a runner and a developer's machine are never on the same day of that cycle. So both
+sides are now **pinned exactly** - `MEASUREMENT_TOOLCHAIN = "1.98.1"` in the script, the same
+version in the workflow's `toolchain:` input, and `cargo-llvm-cov@0.9.0` installed there to match.
+The cost is a cold instrumented rebuild whenever the pin changes, and an ageing compiler measuring
+coverage, which is the right trade: coverage of this workspace's own code does not need the newest
+compiler, and reproducibility is the entire point.
+
+One number worth correcting from the section above: measured on the pinned 1.98.1, `cancellai-platform`
+reads **94.39%** - the same as on rustc 1.94.0. So the 95.83 to 94.39 drift was **not** the
+toolchain; only the 63.85 on nightly was. What moved that 1.4 points across a week of unrelated
+workspace changes is still unexplained, and is now frozen against a pinned measurement rather than
+a moving one.
+
 ## Residual risks
 
 - **The baseline moved from 95.83% to 94.39% for `cancellai-platform` on the same toolchain**, with
