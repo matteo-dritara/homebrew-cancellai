@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-09-14
+
 ### Changed
 
 - **Three `unsafe` blocks deleted rather than documented, and Miri run for the first time**

@@ -5,7 +5,7 @@
   "title": "Codebase Health",
   "objective": "Nobody had measured this codebase. Twenty-seven gates, 143 stories and a risk model governed how work arrives, and no number described the code the work produces: not coverage, not the unsafe surface, not the panic surface, not which document anyone reads. This epic measures first and then spends the measurement - hardening where the numbers say the risk is, and removing where they say a thing costs more attention than it catches. The centre of gravity is the code, not the process: the owner chose codebase health over adding method, and chose Rust first with a security pass on the frozen Python reference. Nothing is removed on taste: a removal arrives with its measurement, in its own reversible commit, and nothing guarding a Safety Invariant or the mutation boundary is removed for cost at all.",
   "dependencies": [],
-  "status": "in_progress",
+  "status": "done",
   "stories": [
     {
       "id": "E27-S01",
