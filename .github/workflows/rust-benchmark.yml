@@ -33,9 +33,9 @@ jobs:
   # E27-S06: Miri executes the crates it can reach and reports undefined behaviour the compiler
   # cannot see. Weekly rather than per-PR for the same reason as the benchmark above: `tui` alone
   # takes over five minutes under the interpreter, and a UB regression introduced on Monday is
-  # still worth finding on Monday. Four crates only - the rest call foreign functions Miri has no
-  # shim for (`statfs`, `fsetattrlist`, aarch64 SHA-512 intrinsics), which is a limit of the tool
-  # and is recorded as such rather than worked around.
+  # still worth finding on Monday. The workspace inventory below is deliberate: a crate may be
+  # executable, or explicitly excluded for a named Miri limitation, but it may not disappear from
+  # the job when it is added or renamed.
   miri:
     runs-on: ubuntu-latest
     steps:
@@ -49,12 +49,45 @@ jobs:
       - name: undefined-behaviour check on the crates Miri can execute
         working-directory: rust
         env:
-          MIRIFLAGS: -Zmiri-disable-isolation
+          # Tests use synthetic trees, but need filesystem access. TUI fixture values deliberately
+          # use `Box::leak` to borrow them for the test lifetime, so leak reporting is not useful
+          # here; these flags do not disable Miri's invalid-value or aliasing/provenance checks.
+          MIRIFLAGS: -Zmiri-disable-isolation -Zmiri-ignore-leaks
         run: |
           set -euo pipefail
-          for crate in cancellai-model cancellai-inventory cancellai-provider-api cancellai-tui; do
+          executable=(
+            cancellai-model
+            cancellai-inventory
+            cancellai-provider-api
+            cancellai-provider-claude
+            cancellai-guardian
+            cancellai-store
+            cancellai-tui
+          )
+          excluded=(
+            cancellai-cli
+            cancellai-platform
+            cancellai-sealedfs
+            cancellai-policy
+            cancellai-provider-codex
+            cancellai-safety
+          )
+          expected="$(printf '%s\n' "${executable[@]}" "${excluded[@]}" | sort)"
+          actual="$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json, sys; print(*sorted(package["name"] for package in json.load(sys.stdin)["packages"]), sep="\n")')"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "Miri workspace inventory is stale; classify every added or renamed crate."
+            diff -u <(printf '%s\n' "$expected") <(printf '%s\n' "$actual") || true
+            exit 1
+          fi
+          for crate in "${executable[@]}"; do
             echo "::group::miri $crate"
-            cargo +nightly miri test -p "$crate"
+            if [[ "$crate" == "cancellai-inventory" ]]; then
+              # The ten-second threshold measures native performance, not correctness under an
+              # interpreter; its functional tests still run.
+              cargo +nightly miri test -p "$crate" -- --skip scan_scope_completes_within_budget_for_a_small_dataset
+            else
+              cargo +nightly miri test -p "$crate"
+            fi
             echo "::endgroup::"
           done
 
