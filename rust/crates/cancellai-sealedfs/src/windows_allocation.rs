@@ -23,9 +23,14 @@ use crate::windows_identity::open_no_follow;
 pub fn observe_allocated_size(path: &Path) -> io::Result<u64> {
     let file = open_no_follow(path)?;
 
-    // SAFETY: `FILE_STANDARD_INFO` contains only integer fields and two `bool`s; all-zero is
-    // therefore a valid value (`false` for each `bool`). The call below
-    let mut info: FILE_STANDARD_INFO = unsafe { std::mem::zeroed() };
+    // `Default::default()` rather than `unsafe { mem::zeroed() }`: `windows-sys` derives `Default`
+    // on this struct, so the zero value is the binding's own and no `unsafe` block is needed to
+    // obtain it. That also retires a soundness argument that depended on a dependency's field
+    // types - `FILE_STANDARD_INFO`'s `DeletePending`/`Directory` are `bool` in windows-sys 0.61 and
+    // were `BOOLEAN` (a `u8` alias) in 0.59, and a `bool` has a validity invariant a `u8` does not.
+    // The conclusion held either way; the stated reason did not, and clippy only checks that a
+    // comment exists, never that it is true.
+    let mut info = FILE_STANDARD_INFO::default();
     // SAFETY: `file` is a valid, currently-open HANDLE for the entire duration of this call.
     // `info` is a stack-allocated, correctly-sized `FILE_STANDARD_INFO` (the struct
     // `windows-sys` generates directly from the same Win32 metadata that documents this call),

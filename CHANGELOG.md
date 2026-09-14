@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Three `unsafe` blocks deleted rather than documented, and Miri run for the first time**
+  (E27-S06, CR4). The independent review of E27-S01 found two of the executor's `SAFETY` arguments
+  false - `FILE_STANDARD_INFO` was described as having no validity invariant, and in `windows-sys`
+  0.61 its `DeletePending`/`Directory` fields are Rust `bool`, which has one. The conclusion held;
+  the reason did not, and a reason is what the next reader extends. Underneath sat the better
+  answer: `windows-sys` derives `Default` on that struct, so **41 `unsafe` blocks became 38** and a
+  soundness argument that depended on a dependency's field types - and would have changed silently
+  under `cargo update` - went with them.
+  - **Miri: 197 tests across four crates execute with no undefined behaviour**, including the
+    parsing code that reads third-party provider manifests. It runs weekly, not per-PR:
+    `cancellai-tui` alone takes 333 seconds under the interpreter.
+  - **And it helps least exactly where the risk is highest.** Miri cannot call foreign functions it
+    has no shim for, so it cannot execute a single one of the 38 remaining `unsafe` blocks -
+    `cancellai-sealedfs` and `cancellai-platform` stop at `statfs`, `cancellai-policy` at
+    `fsetattrlist`, and `cancellai-safety` inside `sha2`'s aarch64 SHA-512 intrinsics. Recorded as
+    a measured reach rather than left as "Miri never ran".
+
 ### Security
 
 - **Recursive deletion now refuses where the platform cannot resist a symlink race** (E27-S04,

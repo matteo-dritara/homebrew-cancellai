@@ -290,6 +290,19 @@ that hides its worst member.
 **Do not add a `rust-toolchain.toml`.** It would collapse the MSRV matrix silently;
 [ADR-0028](docs/adrs/0028-lint-policy-states-the-safety-thesis-and-differs-by-ring.md) explains why.
 
+### Undefined behaviour
+
+`cargo +nightly miri test -p <crate>` with `MIRIFLAGS=-Zmiri-disable-isolation` executes a crate
+under an interpreter that reports undefined behaviour the compiler cannot see. It runs **weekly**
+in `rust-benchmark.yml`, not per-PR: `cancellai-tui` alone takes over five minutes.
+
+Know its reach before reading its silence as safety. Miri cannot call foreign functions it has no
+shim for, and this workspace's `unsafe` is almost entirely `libc` and Win32 FFI - **it cannot
+execute a single one of the 38 `unsafe` blocks in `cancellai-sealedfs`**. Four crates run clean
+(`model`, `inventory`, `provider-api`, `tui`); `sealedfs` and `platform` stop at `statfs`, `policy`
+at `fsetattrlist`, and `safety` inside `sha2`'s aarch64 SHA-512 intrinsics. E27-S06's evidence
+packet has the detail.
+
 ### Lint policy
 
 `[workspace.lints]` denies the lints that state this project's thesis in a form the compiler

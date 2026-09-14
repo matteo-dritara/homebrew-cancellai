@@ -3387,3 +3387,28 @@ Nobody had measured this codebase. Twenty-seven gates, 143 stories and a risk mo
 
 - `AGENTS.md`
 - `docs/INDEX.md`
+
+### E27-S06 - Three unsafe blocks deleted, and Miri says what it can and cannot reach
+
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E27-S01 | **Safety obligations:** SI-019
+
+**Outcome.** The independent review of E27-S01 found two of the executor's SAFETY arguments false: FILE_STANDARD_INFO was described as having no validity invariant, and in windows-sys 0.61 its DeletePending and Directory fields are Rust bool, which has one. The conclusion held - zero is false - but the stated reason did not, and a reason is what the next reader extends. Underneath that sits the better answer: windows-sys derives Default on that struct and on BY_HANDLE_FILE_INFORMATION, so three unsafe blocks are deleted rather than argued about, and with them a soundness argument that depended on a dependency's field types and would have changed silently under cargo update. The owner then authorised installing the nightly toolchain, so Miri ran for the first time: 197 tests across four crates execute with no undefined behaviour, and the crate holding every remaining unsafe block is exactly the one Miri cannot reach.
+
+**Acceptance criteria**
+
+- Where a binding provides a zero value of its own, the unsafe block obtaining it shall be removed rather than documented.
+- A remaining safety argument that depends on a dependency's field types shall say so, because a routine dependency update can change it and no gate would notice.
+- Miri shall be run and its result recorded, including the crates it refuses, rather than its absence being listed as a residual risk.
+- If Miri cannot execute a crate, then the reason shall be named specifically, so a reader can tell a tool limit from an untested path.
+- Running Miri on every push shall not be proposed: the cost shall be measured and the cadence chosen from it.
+
+**Verification**
+
+- Clippy with -D warnings on native, windows-gnu and linux-gnu after the three blocks are removed.
+- The unsafe-block count is recounted excluding comment lines, because the naive grep counts the comment that mentions the construct it replaced.
+- Each Miri refusal is reported with the foreign function or intrinsic that caused it.
+
+**Documentation impact**
+
+- `.github/workflows/rust-benchmark.yml`
+- `AGENTS.md`

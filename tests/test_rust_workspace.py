@@ -172,7 +172,12 @@ undocumented_unsafe_blocks = "deny"
         root = rw.RUST_CRATES_DIR
         for source in sorted(root.glob("*/src/*.rs")):
             text = source.read_text(encoding="utf-8")
-            blocks = text.count("unsafe {")
+            # Comment lines are excluded, and that is not a convenience: a `SAFETY:` comment
+            # explaining why an `unsafe { mem::zeroed() }` was *replaced* mentions the construct
+            # without being one, and counting it made this test fail on a change that removed
+            # three unsafe blocks (E27-S06).
+            code = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("//"))
+            blocks = code.count("unsafe {")
             if not blocks:
                 continue
             with self.subTest(source=str(source.relative_to(root))):
