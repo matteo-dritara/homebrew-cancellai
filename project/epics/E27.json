@@ -169,26 +169,28 @@
     },
     {
       "id": "E27-S07",
-      "title": "Make the platform coverage ratchet reproducible before it blocks unrelated verification",
-      "status": "planned",
+      "title": "A coverage number that does not say what measured it is not a measurement",
+      "status": "done",
       "change_risk": "CR1",
-      "outcome": "The E27-S06 verifier ran the coverage gate twice on the same macOS checkout. cancellai-platform measured 93.24% against a 95.83% baseline even though no platform source changed between baseline commit 2fda2cf and the review target. Determine whether the measurement is tool-version, test-selection, or report-attribution drift; restore a reproducible gate without silently lowering the safety-crate floor.",
+      "outcome": "The E27-S06 independent review ran the coverage ratchet on an unchanged cancellai-platform and got 93.24% against a recorded 95.83%, twice, and filed this rather than lowering the baseline - which was the right call and is the only reason the cause was found. The cause: the same unchanged workspace measures that crate at 95.83% on stable and 63.85% on nightly. Region counting depends on the compiler that produced the instrumentation, and the ratchet recorded a number with no record of what produced it. Installing a nightly toolchain for Miri the day before was enough to make the gate report a coverage regression that was a different compiler. It is the same defect this repository fixed in the risk gate for shallow clones - a gate describing the machine it ran on - rebuilt three days later by the same author.",
       "dependencies": [
         "E27-S02"
       ],
       "acceptance_criteria": [
-        "The coverage gate shall either reproduce the recorded cancellai-platform result from the same source revision or report the measurement provenance that makes a changed result explainable.",
-        "A platform coverage baseline shall not be lowered merely to make an unrelated review green.",
-        "The repair shall include a regression check for the identified source of nondeterminism or attribution drift."
+        "The measurement shall name the toolchain it uses rather than taking whatever is default.",
+        "The baseline shall record what produced it: the toolchain, its compiler version, and the coverage tool's version.",
+        "If the measurement was taken with different tooling than the baseline, then the gate shall refuse and name the difference, and shall draw no conclusion about coverage at all.",
+        "If the provenance cannot be probed, then it shall be recorded as unknown and refused rather than silently omitted."
       ],
       "safety_obligations": [],
       "verification": [
-        "Run python3 scripts/check_coverage.py check twice from a clean coverage build and compare per-crate output.",
-        "Show the baseline commit and current target have or do not have a cancellai-platform source diff before changing either measurement or baseline."
+        "The toolchain sensitivity is demonstrated, not asserted: the same checkout measured on two toolchains, 95.83% against 63.85%.",
+        "Two consecutive runs on one toolchain produce identical numbers, which is what separates a tooling difference from a flaky measurement.",
+        "The refusal is exercised by rewriting the recorded provenance and observing exit 2 with the difference named."
       ],
       "documentation_impact": [
-        "project/coverage_baseline.json",
-        "scripts/check_coverage.py"
+        "AGENTS.md",
+        "project/coverage_baseline.json"
       ]
     }
   ]

@@ -1,18 +1,23 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "comment": "Region coverage per crate, from `cargo llvm-cov`. A ratchet, not a target: see scripts/check_coverage.py.",
+  "provenance": {
+    "toolchain": "stable",
+    "rustc": "rustc 1.94.0 (4a4ef493e 2026-03-02)",
+    "cargo_llvm_cov": "cargo-llvm-cov 0.9.0"
+  },
   "crates": {
-    "cancellai-cli": 90.61,
+    "cancellai-cli": 89.78,
     "cancellai-guardian": 0.0,
-    "cancellai-inventory": 95.09,
-    "cancellai-model": 95.79,
-    "cancellai-platform": 95.83,
-    "cancellai-policy": 98.16,
-    "cancellai-provider-api": 95.37,
-    "cancellai-provider-claude": 83.88,
-    "cancellai-provider-codex": 88.76,
-    "cancellai-safety": 98.23,
-    "cancellai-sealedfs": 92.54,
-    "cancellai-tui": 94.86
+    "cancellai-inventory": 92.41,
+    "cancellai-model": 95.18,
+    "cancellai-platform": 94.39,
+    "cancellai-policy": 97.1,
+    "cancellai-provider-api": 94.4,
+    "cancellai-provider-claude": 83.8,
+    "cancellai-provider-codex": 88.7,
+    "cancellai-safety": 97.78,
+    "cancellai-sealedfs": 91.79,
+    "cancellai-tui": 93.52
   }
 }

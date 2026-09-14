@@ -39,6 +39,14 @@ ROOT = Path(__file__).resolve().parent.parent
 RUST = ROOT / "rust"
 BASELINE = ROOT / "project" / "coverage_baseline.json"
 
+# The measurement is taken with a named toolchain, not with whatever `rustup` happens to default
+# to. This is not tidiness: the same unchanged workspace measures 95.83% for `cancellai-platform`
+# on stable and 63.85% on nightly, because region counting depends on the compiler that produced
+# the instrumentation. A baseline without provenance is a number compared against a different
+# number, and reporting that as a coverage regression is a gate describing the machine it ran on
+# (E27-S07, found by the E27-S06 independent review getting a third value again).
+MEASUREMENT_TOOLCHAIN = "stable"
+
 # The crates whose coverage is a safety property rather than a quality one.
 RATCHETED = (
     "cancellai-model",
@@ -64,7 +72,7 @@ def measure() -> dict[str, float]:
         raise CoverageError("`cargo` is not on PATH; this gate measures rather than assumes")
     try:
         result = subprocess.run(  # noqa: S603 - fixed argument list, resolved executable
-            [cargo, "llvm-cov", "--workspace", "--json", "--summary-only"],
+            [cargo, f"+{MEASUREMENT_TOOLCHAIN}", "llvm-cov", "--workspace", "--json", "--summary-only"],
             cwd=RUST,
             capture_output=True,
             text=True,
@@ -92,6 +100,52 @@ def measure() -> dict[str, float]:
         counts[0] += int(regions["count"])
         counts[1] += int(regions["covered"])
     return {crate: round(100.0 * covered / count, 2) if count else 100.0 for crate, (count, covered) in sorted(totals.items())}
+
+
+def provenance() -> dict[str, str]:
+    """What produced a measurement: the toolchain, its compiler, and the coverage tool.
+
+    Recorded beside the numbers so a later comparison can tell a coverage regression from a
+    different compiler. Everything here is a version string; nothing about the machine.
+    """
+    cargo = shutil.which("cargo")
+    if cargo is None:
+        return {"toolchain": MEASUREMENT_TOOLCHAIN, "rustc": "unknown", "cargo_llvm_cov": "unknown"}
+
+    def version(binary: str, *args: str) -> str:
+        resolved = shutil.which(binary)
+        if resolved is None:
+            return "unknown"
+        try:
+            result = subprocess.run(  # noqa: S603 - fixed argument list, resolved executable
+                [resolved, f"+{MEASUREMENT_TOOLCHAIN}", *args], capture_output=True, text=True, timeout=60, check=False
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return "unknown"
+        return result.stdout.strip().splitlines()[0] if result.returncode == 0 and result.stdout.strip() else "unknown"
+
+    return {
+        "toolchain": MEASUREMENT_TOOLCHAIN,
+        "rustc": version("rustc", "--version"),
+        "cargo_llvm_cov": version("cargo", "llvm-cov", "--version"),
+    }
+
+
+def provenance_errors(now: dict[str, str], recorded: dict[str, str]) -> list[str]:
+    """A measurement taken with different tools is not comparable, and must not read as a fall."""
+    if not recorded:
+        return ["the baseline records no measurement provenance; run `record`"]
+    differences = [
+        f"{key}: measured with {now.get(key, 'unknown')!r}, baseline recorded {recorded.get(key, 'unknown')!r}"
+        for key in sorted(recorded)
+        if now.get(key) != recorded.get(key)
+    ]
+    if not differences:
+        return []
+    return [
+        "the measurement was taken with different tooling than the baseline, so the numbers are not "
+        "comparable and no conclusion about coverage is drawn:\n    " + "\n    ".join(differences)
+    ]
 
 
 def crate_of(filename: str) -> str | None:
@@ -136,8 +190,9 @@ def record() -> int:
     BASELINE.write_text(
         json.dumps(
             {
-                "schema_version": 1,
+                "schema_version": 2,
                 "comment": "Region coverage per crate, from `cargo llvm-cov`. A ratchet, not a target: see scripts/check_coverage.py.",
+                "provenance": provenance(),
                 "crates": measured,
             },
             indent=2,
@@ -163,8 +218,14 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if command == "record":
             return record()
+        baseline = load_baseline()
+        mismatch = provenance_errors(provenance(), baseline.get("provenance", {}))
+        if mismatch:
+            for line in mismatch:
+                print(f"COVERAGE ERROR: {line}", file=sys.stderr)
+            return 2
         measured = measure()
-        errors, notes = evaluate(measured, load_baseline())
+        errors, notes = evaluate(measured, baseline)
     except CoverageError as exc:
         print(f"COVERAGE ERROR: {exc}", file=sys.stderr)
         return 2

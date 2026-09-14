@@ -283,6 +283,12 @@ python3 scripts/check_coverage.py report   # needs `cargo llvm-cov`
 python3 scripts/check_coverage.py record   # after a deliberate improvement
 ```
 
+The baseline records **what measured it** - toolchain, `rustc` version, `cargo-llvm-cov` version -
+and the gate refuses outright when yours differ, drawing no conclusion about coverage at all. That
+is not pedantry: the same unchanged workspace measures `cancellai-platform` at 95.83% on stable and
+63.85% on nightly, and installing nightly for Miri was enough to make the gate report a regression
+that was a different compiler (E27-S07).
+
 Read the per-crate numbers, never the workspace average: the first measurement was 94.54% overall
 while the crate holding every `unsafe` block sat at 92.5%, and an average is exactly the number
 that hides its worst member.

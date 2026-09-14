@@ -79,7 +79,9 @@ class BaselineTests(unittest.TestCase):
 
     def test_the_baseline_is_valid_json_with_a_schema_version(self):
         data = json.loads(coverage.BASELINE.read_text(encoding="utf-8"))
-        self.assertEqual(1, data["schema_version"])
+        # Version 2 added `provenance`: a baseline that does not say what measured it cannot be
+        # compared against anything (E27-S07).
+        self.assertEqual(2, data["schema_version"])
 
     def test_the_kernel_ring_is_ratcheted(self):
         # The ring ADR-0019 defines, plus the two crates that decide eligibility and completeness.
@@ -99,3 +101,50 @@ class BaselineTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ProvenanceTests(unittest.TestCase):
+    """A measurement taken with different tools is not a comparison (E27-S07).
+
+    The same unchanged workspace measures `cancellai-platform` at 95.83% on stable and 63.85% on
+    nightly. Region counting depends on the compiler that produced the instrumentation, so a
+    baseline without provenance compares one number against a different number and reports the
+    difference as a coverage regression - a gate describing the machine it ran on, which is the
+    defect class this repository fixed in the risk gate for shallow clones.
+    """
+
+    RECORDED: ClassVar[dict[str, str]] = {
+        "toolchain": "stable",
+        "rustc": "rustc 1.94.0 (4a4ef493e 2026-03-02)",
+        "cargo_llvm_cov": "cargo-llvm-cov 0.9.0",
+    }
+
+    def test_matching_provenance_is_accepted(self):
+        self.assertEqual([], coverage.provenance_errors(dict(self.RECORDED), self.RECORDED))
+
+    def test_a_different_compiler_is_refused_rather_than_read_as_a_fall(self):
+        now = dict(self.RECORDED, rustc="rustc 1.100.0-nightly (4b6d04e70 2026-09-13)")
+        errors = coverage.provenance_errors(now, self.RECORDED)
+        self.assertEqual(1, len(errors))
+        self.assertIn("not comparable", errors[0])
+        self.assertIn("nightly", errors[0])
+
+    def test_a_different_coverage_tool_is_refused(self):
+        now = dict(self.RECORDED, cargo_llvm_cov="cargo-llvm-cov 0.6.21")
+        self.assertTrue(coverage.provenance_errors(now, self.RECORDED))
+
+    def test_a_baseline_with_no_provenance_is_refused(self):
+        errors = coverage.provenance_errors(dict(self.RECORDED), {})
+        self.assertTrue(any("records no measurement provenance" in error for error in errors))
+
+    def test_the_committed_baseline_carries_provenance(self):
+        recorded = coverage.load_baseline().get("provenance", {})
+        for key in ("toolchain", "rustc", "cargo_llvm_cov"):
+            with self.subTest(key=key):
+                self.assertIn(key, recorded)
+                self.assertNotEqual("unknown", recorded[key], f"{key} was not probed successfully")
+
+    def test_the_measurement_names_its_toolchain_rather_than_taking_the_default(self):
+        # `cargo llvm-cov` with whatever rustup happens to default to is how the same checkout
+        # produced three different numbers for one unchanged crate.
+        self.assertEqual("stable", coverage.MEASUREMENT_TOOLCHAIN)
