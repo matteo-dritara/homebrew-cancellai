@@ -10,9 +10,8 @@ Epics: **28** | Stories: **148**
 
 - `blocked`: 2
 - `cancelled`: 1
-- `done`: 118
+- `done`: 119
 - `planned`: 26
-- `ready_for_review`: 1
 
 ## Change risk distribution
 
@@ -28,4 +27,4 @@ Epics: **28** | Stories: **148**
 
 ## Awaiting independent review
 
-- **E27-S01** - The lint policy states the thesis the project already claims (CR4)
+- none

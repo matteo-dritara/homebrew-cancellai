@@ -3267,7 +3267,7 @@ Nobody had measured this codebase. Twenty-seven gates, 143 stories and a risk mo
 
 ### E27-S01 - The lint policy states the thesis the project already claims
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-019
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-019
 
 **Outcome.** `[workspace.lints]` held one line - `unsafe_code = "forbid"` - so `cargo clippy -D warnings` ran the default set and nothing else. For a workspace whose argument is that a tool deleting files must never act on an unproven assumption, the default set says nothing about the two ways that fails: an unwrap that aborts mid-operation, and an unsafe block whose soundness argument was never written down. Measured first: 41 unsafe blocks against 30 SAFETY comments, and 13 panic sites in production code, six of them indexing strings that come from third-party provider manifests. The measurement also exposed a structural defect - Cargo's `[lints]` table is all-or-nothing, so cancellai-sealedfs, which must declare its own to lift `forbid`, was the one crate a workspace policy could never reach: every unsafe block in the repository sat in the only crate exempt from the rule about unsafe blocks.
 
