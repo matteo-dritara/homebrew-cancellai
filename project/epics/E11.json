@@ -12,7 +12,7 @@
     {
       "id": "E11-S01",
       "title": "Policy schema and scopes",
-      "status": "in_progress",
+      "status": "done",
       "outcome": "Define global, machine, provider, project, artifact-type, session/pin scopes and versioned policy schema.",
       "change_risk": "CR3",
       "dependencies": [
@@ -33,7 +33,7 @@
     {
       "id": "E11-S02",
       "title": "Constraint resolver",
-      "status": "blocked",
+      "status": "done",
       "outcome": "Implement constitutional precedence and monotonic authority resolution.",
       "change_risk": "CR4",
       "dependencies": [
@@ -59,7 +59,7 @@
     {
       "id": "E11-S03",
       "title": "Policy explanation graph",
-      "status": "blocked",
+      "status": "done",
       "outcome": "Return a trace showing every rule/evidence item that contributed to the final result.",
       "change_risk": "CR3",
       "dependencies": [
@@ -80,7 +80,7 @@
     {
       "id": "E11-S04",
       "title": "Budgets, retention, pinning",
-      "status": "blocked",
+      "status": "done",
       "outcome": "Implement total/provider/project budgets, age/count retention, and explicit pin/protect semantics.",
       "change_risk": "CR3",
       "dependencies": [

@@ -241,6 +241,13 @@
       "classifier": "Codex owner-authorized verifier repair",
       "date": "2026-09-13",
       "reason": "The follow-on record changes the documented authority of the only unsafe-code exception and therefore retains the CR4 floor."
+    },
+    {
+      "story": "E11-S02",
+      "level": "CR4",
+      "classifier": "Codex independent verifier",
+      "date": "2026-09-14",
+      "reason": "The resolver determines which authority request reaches the safety kernel. It is non-mutating, but policy/trust precedence is an authority boundary; the declared CR4 level is retained and the independent Safety Verdict records the review."
     }
   ]
 }
