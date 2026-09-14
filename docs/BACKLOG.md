@@ -1200,7 +1200,7 @@ Make storage numbers trustworthy and the scanner inexpensive enough for continuo
 
 ## E11 - Deterministic Policy Engine
 
-**Phase:** `P3` | **Status:** `in_progress` | **Epic dependencies:** E09
+**Phase:** `P3` | **Status:** `done_no_release` | **Epic dependencies:** E09
 
 Compile human-readable policy into typed constraints and a fully explainable Effective Policy.
 

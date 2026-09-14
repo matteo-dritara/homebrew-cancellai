@@ -7,7 +7,7 @@
   "dependencies": [
     "E09"
   ],
-  "status": "in_progress",
+  "status": "done_no_release",
   "stories": [
     {
       "id": "E11-S01",

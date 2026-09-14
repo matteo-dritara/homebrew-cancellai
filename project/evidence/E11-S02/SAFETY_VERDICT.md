@@ -59,8 +59,11 @@ unwired policy-resolution API; it cannot require data recovery.
 
 ## Owner decision
 
-`PENDING — owner decision required: ACCEPT | REJECT | ACCEPT_WITH_RECORDED_RESIDUALS`
+`ACCEPT`
 
-Owner note: Final acceptance of this CR4 Safety Verdict is an owner decision under
-`docs/development/AGENT_PROTOCOL.md`; this document is the independent verifier's recommendation,
-not a self-executing close.
+Owner note: Accepted 2026-09-14 on the record that both round-1 findings (the E11-S01 duplicate
+scope-key ambiguity and the E11-S04 budget-selection overflow) were repaired and independently
+re-verified with regression tests in round 2 (`project/evidence/E11-VERIFIER-REVIEW-ROUND2.md`),
+with zero new findings. The residual named above - no production caller wires this resolver to
+real safety facts yet - is accepted as a known, disclosed gap for a future integration story to
+close, not a defect in this story's own contract.
