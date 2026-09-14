@@ -391,8 +391,8 @@ impl SealedRoot {
     /// than reopening by name, since a reopen after the delete call above would itself be a
     /// fresh, unprotected path lookup - exactly what this crate exists to avoid.
     pub fn is_delete_pending(handle: &File) -> Result<bool, SealError> {
-        // SAFETY: `FILE_STANDARD_INFO` is a plain C aggregate of integers and pointers with no niche
-        // and no validity invariant, so the all-zero bit pattern is a valid value; the call
+        // SAFETY: `FILE_STANDARD_INFO` contains only integer fields and two `bool`s; all-zero is
+        // therefore a valid value (`false` for each `bool`). The call
         // below overwrites it before anything reads it.
         let mut info: FILE_STANDARD_INFO = unsafe { std::mem::zeroed() };
         // SAFETY: `handle` is a valid, currently-open HANDLE for the duration of this call.

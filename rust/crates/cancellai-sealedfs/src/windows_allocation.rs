@@ -23,8 +23,8 @@ use crate::windows_identity::open_no_follow;
 pub fn observe_allocated_size(path: &Path) -> io::Result<u64> {
     let file = open_no_follow(path)?;
 
-    // SAFETY: `FILE_STANDARD_INFO` is a plain C aggregate of integers and fixed arrays with no niche and
-    // no validity invariant, so the all-zero bit pattern is a valid value; the call below
+    // SAFETY: `FILE_STANDARD_INFO` contains only integer fields and two `bool`s; all-zero is
+    // therefore a valid value (`false` for each `bool`). The call below
     let mut info: FILE_STANDARD_INFO = unsafe { std::mem::zeroed() };
     // SAFETY: `file` is a valid, currently-open HANDLE for the entire duration of this call.
     // `info` is a stack-allocated, correctly-sized `FILE_STANDARD_INFO` (the struct
