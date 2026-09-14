@@ -3390,9 +3390,9 @@ Nobody had measured this codebase. Twenty-seven gates, 143 stories and a risk mo
 
 ### E27-S06 - Three unsafe blocks deleted, and Miri says what it can and cannot reach
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E27-S01 | **Safety obligations:** SI-019
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** E27-S01 | **Safety obligations:** SI-019
 
-**Outcome.** The independent review of E27-S01 found two of the executor's SAFETY arguments false: FILE_STANDARD_INFO was described as having no validity invariant, and in windows-sys 0.61 its DeletePending and Directory fields are Rust bool, which has one. The conclusion held - zero is false - but the stated reason did not, and a reason is what the next reader extends. Underneath that sits the better answer: windows-sys derives Default on that struct and on BY_HANDLE_FILE_INFORMATION, so three unsafe blocks are deleted rather than argued about, and with them a soundness argument that depended on a dependency's field types and would have changed silently under cargo update. The owner then authorised installing the nightly toolchain, so Miri ran for the first time: 197 tests across four crates execute with no undefined behaviour, and the crate holding every remaining unsafe block is exactly the one Miri cannot reach.
+**Outcome.** Independent verification confirmed that Default is sound for the three Windows out-buffers: FILE_STANDARD_INFO may have unspecified tail padding, but GetFileInformationByHandleEx documents it as output-only, and BY_HANDLE_FILE_INFORMATION has no padding. The verifier repaired four remaining binding-dependent zero-initialization comments, the unsafe-block inventory lexer, and the weekly Miri job's complete crate inventory. Miri executed 233 tests across seven classified crates with explicit filesystem and test-fixture leak flags; six other crates have named local macOS limitations. The platform coverage ratchet failed reproducibly without a platform source change and is tracked separately as E27-S07 rather than silently lowering the floor.
 
 **Acceptance criteria**
 
@@ -3412,3 +3412,25 @@ Nobody had measured this codebase. Twenty-seven gates, 143 stories and a risk mo
 
 - `.github/workflows/rust-benchmark.yml`
 - `AGENTS.md`
+
+### E27-S07 - Make the platform coverage ratchet reproducible before it blocks unrelated verification
+
+**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E27-S02 | **Safety obligations:** none
+
+**Outcome.** The E27-S06 verifier ran the coverage gate twice on the same macOS checkout. cancellai-platform measured 93.24% against a 95.83% baseline even though no platform source changed between baseline commit 2fda2cf and the review target. Determine whether the measurement is tool-version, test-selection, or report-attribution drift; restore a reproducible gate without silently lowering the safety-crate floor.
+
+**Acceptance criteria**
+
+- The coverage gate shall either reproduce the recorded cancellai-platform result from the same source revision or report the measurement provenance that makes a changed result explainable.
+- A platform coverage baseline shall not be lowered merely to make an unrelated review green.
+- The repair shall include a regression check for the identified source of nondeterminism or attribution drift.
+
+**Verification**
+
+- Run python3 scripts/check_coverage.py check twice from a clean coverage build and compare per-crate output.
+- Show the baseline commit and current target have or do not have a cancellai-platform source diff before changing either measurement or baseline.
+
+**Documentation impact**
+
+- `project/coverage_baseline.json`
+- `scripts/check_coverage.py`

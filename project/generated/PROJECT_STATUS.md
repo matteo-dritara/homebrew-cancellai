@@ -4,20 +4,19 @@
 
 Current phase: **P1**
 
-Epics: **28** | Stories: **149**
+Epics: **28** | Stories: **150**
 
 ## Story status
 
 - `blocked`: 2
 - `cancelled`: 1
-- `done`: 119
-- `planned`: 26
-- `ready_for_review`: 1
+- `done`: 120
+- `planned`: 27
 
 ## Change risk distribution
 
 - `CR0`: 14
-- `CR1`: 33
+- `CR1`: 34
 - `CR2`: 44
 - `CR3`: 26
 - `CR4`: 32
@@ -28,4 +27,4 @@ Epics: **28** | Stories: **149**
 
 ## Awaiting independent review
 
-- **E27-S06** - Three unsafe blocks deleted, and Miri says what it can and cannot reach (CR4)
+- none
