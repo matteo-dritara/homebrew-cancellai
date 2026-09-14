@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Recursive deletion now refuses where the platform cannot resist a symlink race** (E27-S04,
+  CR3). The shipped Python reference deletes directories with `shutil.rmtree`, and every
+  containment check before that call is path-based - a path re-checked immediately before use
+  cannot close a race, because once the walk starts a subdirectory can be swapped for a symlink
+  pointing anywhere. Python closes that only where the platform supports fd-relative removal and
+  reports it as `shutil.rmtree.avoids_symlink_attacks`; **nothing here had ever read that flag**.
+  On macOS it is `True`, so the shipped tool was protected by a property of the platform rather
+  than by a decision. It is now a stated precondition: where the platform cannot remove safely,
+  `clean` refuses the directory and says why, rather than removing it anyway. Behaviour on macOS
+  and Linux is unchanged, which the committed characterization and the Python/Rust differential
+  parity both confirm. This is the same gap
+  [ADR-0017](docs/adrs/0017-sealed-root-handle-for-configuration-writes.md) built
+  `cancellai-sealedfs` to close in the Rust engine.
+
 ### Added
 
 - **Coverage is now a ratchet in the crates where falling matters** (E27-S02, CR1). Per-crate

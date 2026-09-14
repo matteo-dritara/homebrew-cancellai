@@ -3339,3 +3339,26 @@ Nobody had measured this codebase. Twenty-seven gates, 143 stories and a risk mo
 - `docs/development/RELEASE_GATES.md`
 - `docs/INDEX.md`
 - `README.md`
+
+### E27-S04 - Recursive deletion refuses where the platform cannot resist a symlink race
+
+**Status:** `done` | **Change Risk:** `CR3` | **Dependencies:** none | **Safety obligations:** SI-019
+
+**Outcome.** The shipped Python reference deletes directories with shutil.rmtree. Every containment check before that call is path-based - is_within, resolve, the config-root comparison - and a path re-checked immediately before use cannot close a race: once the walk starts, a subdirectory can be swapped for a symlink pointing anywhere. Python closes that only where the platform supports fd-relative removal, which shutil.rmtree.avoids_symlink_attacks reports, and nothing in this codebase ever read that flag. On macOS it is True, so the shipped platform was protected by luck of the platform rather than by a decision. This is the identical gap ADR-0017 built cancellai-sealedfs to close in the Rust engine; the frozen reference cannot grow a sealed root, so it does the other thing the constitution allows and refuses rather than guessing.
+
+**Acceptance criteria**
+
+- If the platform's recursive removal cannot resist a symlink swapped in mid-walk, then the tool shall refuse to delete a directory and say why, rather than deleting it anyway.
+- A refusal shall leave the tree exactly as it was, not half-removed.
+- Deleting a path already proven to be a regular file shall remain possible on such a platform, because a single unlink is not exposed to the walk race.
+- On a platform where removal is safe, behaviour shall be unchanged and the committed characterization shall still match.
+
+**Verification**
+
+- Both directions are exercised by flipping the platform flag under test, so the refusal path runs on macOS where the real flag is True and could otherwise never be reached.
+- The refusal is checked to be non-destructive by asserting the file inside the directory still exists afterwards.
+- characterize.py, diff_harness.py and rust_python_parity.py all still pass, which is what proves the frozen reference did not change behaviour where it is safe.
+
+**Documentation impact**
+
+- `CHANGELOG.md`

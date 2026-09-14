@@ -3,6 +3,7 @@ import importlib.util
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -1485,3 +1486,53 @@ class RoundTwoResponseTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class RecursiveDeletionSymlinkRaceTests(unittest.TestCase):
+    """Recursive removal is refused where the platform cannot resist a symlink race (E27-S04).
+
+    Every containment check in `delete_path` is path-based, and a path re-checked immediately
+    before use cannot close a race: once `shutil.rmtree` starts walking, a subdirectory can be
+    swapped for a symlink pointing anywhere. Python closes that only where the platform supports
+    fd-relative removal, which `shutil.rmtree.avoids_symlink_attacks` reports. ADR-0017 built an
+    entire crate to close the same gap in the Rust engine; the frozen reference cannot grow one,
+    so it refuses instead.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name) / "root"
+        (self.root / "victim").mkdir(parents=True)
+        (self.root / "victim" / "file.txt").write_text("x", encoding="utf-8")
+        self.addCleanup(self.tmp.cleanup)
+
+    def test_a_directory_is_removed_where_the_platform_is_safe(self):
+        if not shutil.rmtree.avoids_symlink_attacks:
+            self.skipTest("this platform cannot remove safely; the refusal path is the other test")
+        cleaner.safe_remove(self.root / "victim", self.root, set())
+        self.assertFalse((self.root / "victim").exists())
+
+    def test_a_directory_is_refused_where_the_platform_is_not_safe(self):
+        original = shutil.rmtree.avoids_symlink_attacks
+        shutil.rmtree.avoids_symlink_attacks = False
+        try:
+            with self.assertRaises(cleaner.SafetyError) as caught:
+                cleaner.safe_remove(self.root / "victim", self.root, set())
+        finally:
+            shutil.rmtree.avoids_symlink_attacks = original
+        self.assertIn("symlink", str(caught.exception))
+        # Refusing must not be a half-deletion: the tree is exactly as it was.
+        self.assertTrue((self.root / "victim" / "file.txt").is_file())
+
+    def test_a_plain_file_is_still_removed_where_the_platform_is_not_safe(self):
+        # The refusal is scoped to recursive removal. A single `unlink` on a path already proven
+        # to be a regular file is not exposed to the walk race, and widening the refusal to cover
+        # it would stop the tool working for no gain in safety.
+        original = shutil.rmtree.avoids_symlink_attacks
+        shutil.rmtree.avoids_symlink_attacks = False
+        try:
+            target = self.root / "victim" / "file.txt"
+            cleaner.safe_remove(target, self.root, set())
+            self.assertFalse(target.exists())
+        finally:
+            shutil.rmtree.avoids_symlink_attacks = original
