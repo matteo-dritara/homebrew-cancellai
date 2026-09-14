@@ -31,6 +31,7 @@ distinguished by the next round, which is why the ceiling matters.
 | E10 | 1 | **self** | 2 | 1 | 50% |
 | E10 | 1 | independent | 3 | 1 | 33% |
 | E11 | 1 | **self** | 3 | 0 | 0% |
+| E11 | 1 | independent | 4 | 2 | 50% |
 | E16 | 1 | independent | 6 | 0 | 0% |
 | E17 | 1 | independent | 6 | 0 | 0% |
 | E20 | 1 | independent | 3 | 3 | 100% |
@@ -45,7 +46,7 @@ distinguished by the next round, which is why the ceiling matters.
 The gap between *every gate passed* and *the work is right*. Each rejected story below had
 already been declared `ready_for_review` by an executor who ran the full gate set green.
 
-- **Independent reviewer:** 33 of 76 round-1 verdicts were `FAIL` - **43%**.
+- **Independent reviewer:** 35 of 80 round-1 verdicts were `FAIL` - **44%**.
 - **Self-review (same agent as executor):** 3 of 12 round-1 verdicts were `FAIL` - **25%**.
 
 - **Round-1 records excluded as unreadable:** 1. Their verdicts are in neither denominator above, so both rates are computed over the subset of records that use a machine-readable verdict table.
@@ -70,11 +71,12 @@ independent samples, and the population estimate collapses to what one round alr
 | E06 | 3 | 2 | 2 | 3.0 | 0.0 |
 | E09 | 1 and 1 | 0 | 0 | 0 | undefined - disjoint findings | at least 0 were present |
 | E10 | 1 | 1 | 1 | 1.0 | 0.0 |
+| E11 | 1 and 1 | 0 | 2 | 0 | undefined - disjoint findings | at least 2 were present |
 | E20 | 1 and 2 | 3 | 0 | 0 | undefined - disjoint findings | at least 3 were present |
 
 ## Evidence-ledger integrity
 
-- **110 of 125** story packets past `ready_for_review` carry a row per acceptance criterion.
+- **106 of 121** story packets past `ready_for_review` carry a row per acceptance criterion.
 - Packets that do not:
   - E00-S01 (CR4): 0 rows for 3 criteria
   - E00-S02 (CR4): 0 rows for 3 criteria

@@ -236,7 +236,7 @@ pub fn select_under_budget_pressure<'a>(
         if freed_bytes >= bytes_over_budget {
             break;
         }
-        freed_bytes += candidate.size_bytes;
+        freed_bytes = freed_bytes.saturating_add(candidate.size_bytes);
         selected.push(candidate);
     }
 
@@ -618,5 +618,19 @@ mod tests {
         assert_eq!(first_ids, second_ids);
         // Tied sizes break by identity_token ascending - "a" before "b".
         assert_eq!(first_ids, vec!["a"]);
+    }
+
+    #[test]
+    fn selection_saturates_freed_bytes_when_eligible_sizes_exceed_u64() {
+        let first = classified("first", u64::MAX - 1, AuthorityLevel::Govern);
+        let second = classified("second", 2, AuthorityLevel::Govern);
+        let candidates = vec![first.clone(), second.clone()];
+        let actions = vec![delete_action(&first), delete_action(&second)];
+
+        let selection = select_under_budget_pressure(&candidates, &actions, u64::MAX, 0);
+
+        assert_eq!(selection.selected.len(), 2);
+        assert_eq!(selection.freed_bytes, u64::MAX);
+        assert!(selection.satisfied);
     }
 }

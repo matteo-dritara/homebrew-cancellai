@@ -99,8 +99,9 @@ statement of *semantics*, and the serialization format stays an open decision as
 own text already anticipated ("YAML or another readable declarative form once the Rust
 implementation selects parsing dependencies").
 
-Every struct is `#[serde(deny_unknown_fields)]` and `parse_policy` rejects any `schema_version`
-other than `CURRENT_SCHEMA_VERSION` (`1` today) - the same versioned-document pattern
+Every struct is `#[serde(deny_unknown_fields)]`, every keyed scope map rejects duplicate keys
+(rather than allowing a later textual duplicate to silently win), and `parse_policy` rejects any
+`schema_version` other than `CURRENT_SCHEMA_VERSION` (`1` today) - the same versioned-document pattern
 `cancellai-provider-api::manifest` and `cancellai-safety::knowledge_bundle` already use. A scope
 with nothing set deserializes as absent, never as a default authority (SI-025's monotonic
 narrowing depends on "unset" and "weakest" staying distinct facts). `retention`/`budget` are

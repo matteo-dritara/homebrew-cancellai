@@ -1206,7 +1206,7 @@ Compile human-readable policy into typed constraints and a fully explainable Eff
 
 ### E11-S01 - Policy schema and scopes
 
-**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E08-S01 | **Safety obligations:** none
+**Status:** `in_progress` | **Change Risk:** `CR3` | **Dependencies:** E08-S01 | **Safety obligations:** none
 
 **Outcome.** Define global, machine, provider, project, artifact-type, session/pin scopes and versioned policy schema.
 
@@ -1225,7 +1225,7 @@ Compile human-readable policy into typed constraints and a fully explainable Eff
 
 ### E11-S02 - Constraint resolver
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E11-S01, E03-S04 | **Safety obligations:** SI-001, SI-025
+**Status:** `blocked` | **Change Risk:** `CR4` | **Dependencies:** E11-S01, E03-S04 | **Safety obligations:** SI-001, SI-025
 
 **Outcome.** Implement constitutional precedence and monotonic authority resolution.
 
@@ -1245,7 +1245,7 @@ Compile human-readable policy into typed constraints and a fully explainable Eff
 
 ### E11-S03 - Policy explanation graph
 
-**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E11-S02 | **Safety obligations:** none
+**Status:** `blocked` | **Change Risk:** `CR3` | **Dependencies:** E11-S02 | **Safety obligations:** none
 
 **Outcome.** Return a trace showing every rule/evidence item that contributed to the final result.
 
@@ -1264,7 +1264,7 @@ Compile human-readable policy into typed constraints and a fully explainable Eff
 
 ### E11-S04 - Budgets, retention, pinning
 
-**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E11-S02 | **Safety obligations:** SI-001, SI-025
+**Status:** `blocked` | **Change Risk:** `CR3` | **Dependencies:** E11-S02 | **Safety obligations:** SI-001, SI-025
 
 **Outcome.** Implement total/provider/project budgets, age/count retention, and explicit pin/protect semantics.
 

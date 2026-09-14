@@ -34,8 +34,10 @@
 //! the requested value forward for the resolver to bound.
 
 use std::collections::{BTreeMap, HashSet};
+use std::fmt;
 
 use cancellai_model::AuthorityLevel;
+use serde::de::{self, MapAccess, Visitor};
 
 /// The only schema version [`parse_policy`] currently accepts.
 pub const CURRENT_SCHEMA_VERSION: u32 = 1;
@@ -68,6 +70,43 @@ pub struct ScopePolicy {
     pub budget: Option<String>,
 }
 
+/// Deserializes a scope map while rejecting duplicate keys. `BTreeMap`'s ordinary
+/// deserialization overwrites an earlier value with a later duplicate; treating that ambiguity
+/// as a policy choice could make textual ordering raise a requested authority, contrary to C-03.
+fn deserialize_unique_scope_map<'de, D>(
+    deserializer: D,
+) -> Result<BTreeMap<String, ScopePolicy>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct UniqueScopeMapVisitor;
+
+    impl<'de> Visitor<'de> for UniqueScopeMapVisitor {
+        type Value = BTreeMap<String, ScopePolicy>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str("a policy scope map with unique keys")
+        }
+
+        fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+        where
+            A: MapAccess<'de>,
+        {
+            let mut scopes = BTreeMap::new();
+            while let Some((key, value)) = map.next_entry::<String, ScopePolicy>()? {
+                if scopes.insert(key.clone(), value).is_some() {
+                    return Err(de::Error::custom(format!(
+                        "duplicate policy scope key {key:?}"
+                    )));
+                }
+            }
+            Ok(scopes)
+        }
+    }
+
+    deserializer.deserialize_map(UniqueScopeMapVisitor)
+}
+
 /// One explicit session pin (`docs/architecture/POLICY_MODEL.md`'s `pins: - session: abc123`) -
 /// the most specific scope in the hierarchy. What a pin *does* to authority is the resolver's
 /// decision (E11-S02); this only names which session it refers to.
@@ -88,19 +127,19 @@ pub struct PolicyDocument {
     /// Keyed by machine identifier. A map, not a single value, because one policy document can
     /// travel with a user across machines (`docs/architecture/POLICY_MODEL.md`'s scope
     /// hierarchy names `MACHINE` as its own level, distinct from `GLOBAL`).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_unique_scope_map")]
     pub machine: BTreeMap<String, ScopePolicy>,
     /// Keyed by provider id (`"codex"`, `"claude-code"`, ...). Not restricted to a known set -
     /// the core is provider-neutral (C-08); an unrecognized provider id here is not this
     /// module's concern, only an empty one is (AC1's parsing gate, checked by [`parse_policy`]).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_unique_scope_map")]
     pub providers: BTreeMap<String, ScopePolicy>,
     /// Keyed by project reference, verbatim - the same un-decoded string
     /// `cancellai_model::ProjectRef` already carries elsewhere in this codebase.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_unique_scope_map")]
     pub projects: BTreeMap<String, ScopePolicy>,
     /// Keyed by artifact type (`"session"`, `"rebuildable_debug"`, ...).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_unique_scope_map")]
     pub artifact_types: BTreeMap<String, ScopePolicy>,
     #[serde(default)]
     pub pins: Vec<PinEntry>,
@@ -417,6 +456,19 @@ mod tests {
     #[test]
     fn malformed_json_is_rejected_with_a_clear_error_not_a_panic() {
         let err = parse_policy("not json at all").expect_err("malformed JSON must be rejected");
+        assert!(matches!(err, PolicyError::Malformed(_)), "{err:?}");
+    }
+
+    #[test]
+    fn a_duplicate_key_in_a_scoped_policy_map_is_rejected_not_last_value_wins() {
+        let text = r#"{
+            "schema_version": 1,
+            "providers": {
+                "codex": {"authority": "observe"},
+                "codex": {"authority": "autopilot"}
+            }
+        }"#;
+        let err = parse_policy(text).expect_err("ambiguous duplicate scope key must be rejected");
         assert!(matches!(err, PolicyError::Malformed(_)), "{err:?}");
     }
 
