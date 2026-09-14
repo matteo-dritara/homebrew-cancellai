@@ -78,6 +78,23 @@ where a reader of the code will see it, not in a manifest.
 - `cancellai-sealedfs`'s manifest repeats the clippy table. That duplication is real and is the
   price of `forbid` being unliftable; the gate above is what keeps it from drifting.
 
+## Why there is no `rust-toolchain.toml`
+
+Recorded here because it is the obvious next step and it is wrong.
+
+Pinning the toolchain in the tree looks like the missing piece: it would make every contributor
+compile with the version this workspace promises, and it would have caught the MSRV drift that
+went unnoticed for four days. It would also **collapse the MSRV matrix, silently**.
+`.github/workflows/rust.yml` selects toolchains through `dtolnay/rust-toolchain`'s `toolchain:`
+input, and a `rust-toolchain.toml` under `rust/` takes precedence over rustup's default for any
+`cargo` invoked there. Every leg would compile with the pinned version while the job names still
+read `stable` and `1.88.0`, and the matrix that exists to catch exactly this class of drift would
+report green on one toolchain tested three times.
+
+Pin the toolchain in CI, where the pin is visible in the job name. What is genuinely missing
+locally is a 1.88 toolchain to check against, and installing one is an owner decision, not an
+executor's.
+
 ## Alternatives considered
 
 **Enable `clippy::pedantic` or `clippy::restriction` wholesale.** Rejected: both include lints that

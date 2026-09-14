@@ -3362,3 +3362,28 @@ Nobody had measured this codebase. Twenty-seven gates, 143 stories and a risk mo
 **Documentation impact**
 
 - `CHANGELOG.md`
+
+### E27-S05 - Remove what costs more attention than it catches
+
+**Status:** `done` | **Change Risk:** `CR0` | **Dependencies:** E27-S03 | **Safety obligations:** none
+
+**Outcome.** The subtractive half of this epic, run on measurements rather than taste. Two things went and three deliberately stayed. AGENTS.md is loaded into every session and had grown from 234 lines to 395 in six days - it was restating ADR-0019's dependency rings and ADR-0015's licence list at length, which is the same second-source-of-truth defect the skill pack rule already forbids, applied by this file to itself. docs/ARCHITECTURE.md was a second index of the architecture directory and had already drifted: docs/INDEX.md lists nine architecture documents and ARCHITECTURE.md listed eight. Nothing was removed for speed, because the measurement said the 26 gates cost thirteen seconds in total, and nothing that guards a Safety Invariant was touched at all.
+
+**Acceptance criteria**
+
+- Every sentence removed from the always-loaded contract shall exist in the document that owns the rule, verified before the removal rather than asserted after it.
+- A removal shall be its own commit, so any single one can be reverted without disturbing the rest.
+- If a candidate is not loaded into an agent's context, then removing it shall not be counted as saving attention, because it does not cost any.
+- Nothing that guards a Safety Invariant or the mutation boundary shall be removed on cost grounds.
+- Where the measurement says there is nothing to remove, that shall be recorded as the result rather than met with a removal.
+
+**Verification**
+
+- Each removed claim is located in its owning document by search before the cut lands.
+- The duplicated index is shown to have drifted, not predicted to drift: INDEX.md lists JSON_CONTRACTS.md and ARCHITECTURE.md did not.
+- Gate overlap is measured across twenty checkers rather than assumed, and the result is that no two assert the same property.
+
+**Documentation impact**
+
+- `AGENTS.md`
+- `docs/INDEX.md`

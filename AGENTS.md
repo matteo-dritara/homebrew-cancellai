@@ -38,10 +38,7 @@ removes a component** - see [`docs/development/AGENT_TOOLCHAIN.md`](docs/develop
 The last command asks the other question that must be answered before work starts: **is the branch
 you are about to build on green?** Read every workflow's conclusion, not an aggregate, and treat an
 answer you cannot obtain as *unknown* rather than as passing. A failing workflow goes to the owner
-as a finding before a story is selected - not noted and worked around. This is here because it was
-not: the MSRV leg of `rust.yml` failed on every push for four days, across two attempted releases,
-while every other leg stayed green and every session read the green ones. A failure nobody reads is
-indistinguishable from a gate nobody has.
+as a finding before a story is selected - not noted and worked around.
 
 ## Current transition state
 
@@ -248,40 +245,29 @@ cargo deny check
 duplicate dependency bans, and unknown-registry/unknown-git source denial in one command
 (`rust/deny.toml`); a separate `cargo audit` is redundant with it and is not used.
 
-**Clippy only sees the platform it runs on.** Code behind `cfg(windows)` or `cfg(target_os = ...)`
-is not compiled on your machine, so a lint inside it reaches CI unexamined - which is how E17-S08's
-sixth lint site was found by `quality (windows-latest)` rather than locally. When a change touches
-`cancellai-platform`, or when anything changes the lint surface workspace-wide (an MSRV bump does,
-because clippy reads `rust-version`), add:
+**Clippy only sees the platform it runs on**, so a lint behind `cfg(windows)` reaches CI
+unexamined. When a change touches `cancellai-platform`, or anything moves the lint surface
+workspace-wide, add:
 
 ```sh
 cargo clippy --workspace --all-targets --all-features --target x86_64-pc-windows-gnu -- -D warnings
 cargo clippy --workspace --all-targets --all-features --target x86_64-unknown-linux-gnu -- -D warnings
 ```
 
-They need `rustup target add` once. They lint the other platforms' code without running it, which
-is all clippy does anyway.
+They need `rustup target add` once, and lint the other platforms' code without running it - which
+is all clippy does anyway. Seven of eleven undocumented `unsafe` blocks and two panics were found
+this way rather than by CI ([ADR-0028](docs/adrs/0028-lint-policy-states-the-safety-thesis-and-differs-by-ring.md)).
 
 CI (`.github/workflows/rust.yml`) runs `cargo check --workspace --all-targets` on macOS,
 Linux, and Windows against both MSRV (1.88.0, raised from 1.85.0 by ADR-0026) and current stable, and the full quality set
 above (`fmt`, `clippy -D warnings`, `cargo test`, `cargo deny check`) on all three platforms
 against stable (ADR-0015).
 
-Dependency rules differ by ring ([ADR-0019](docs/adrs/0019-dependency-rings-per-crate.md),
-E22-S03). **Kernel ring** - `cancellai-model`, `cancellai-safety`, `cancellai-platform`,
-`cancellai-sealedfs`, and any future crate that participates in authority, identity, or
-mutation: do not add a dependency merely to reduce implementation effort; a dependency
-requires a dedicated, reviewed ADR naming the specific capability `std` cannot express
-(ADR-0017 is the template). **Outer ring** - `cancellai-cli`, `cancellai-tui`,
-`cancellai-store`, `cancellai-guardian`, and the provider adapters: a mature, widely-audited
-crate is admissible when it does not reach into authority/identity/mutation decisions and the
-story adopting it says what it replaces - reduced implementation effort is a legitimate
-reason here, because the thing being implemented is not a safety boundary. Both rings share
-two constraints that are not negotiable by ring membership: `unsafe_code = "forbid"` stays
-the workspace default (`cancellai-sealedfs` is the sole ADR-0017 exception), and an
-outer-ring dependency may never become a second path to a safety decision - it decides what
-the user asked for, never what is permitted (SI-007 in particular stays a property of this
-workspace's own command dispatch, regardless of which crate parses the tokens).
+**Before adding any crate dependency, read
+[ADR-0019](docs/adrs/0019-dependency-rings-per-crate.md).** It names which crates are kernel ring
+and which are outer ring, what each ring admits, and the two constraints that cross both. Reading
+it is the rule; this file deliberately does not repeat it, because a paraphrase that drifts from
+the decision is worse than a link that does not.
 
 ### Coverage
 
@@ -301,14 +287,8 @@ Read the per-crate numbers, never the workspace average: the first measurement w
 while the crate holding every `unsafe` block sat at 92.5%, and an average is exactly the number
 that hides its worst member.
 
-### Why there is no `rust-toolchain.toml`
-
-It looks like the missing piece and it would break the MSRV matrix. `.github/workflows/rust.yml`
-selects toolchains through `dtolnay/rust-toolchain`'s `toolchain:` input, and a
-`rust-toolchain.toml` in `rust/` takes precedence over rustup's default for any `cargo` invoked
-there - so every leg would compile with the pinned version while the job names still said
-`stable` and `1.88.0`. The matrix would collapse silently, which is the exact failure mode
-this repository spent a week repairing. Pin the toolchain in CI, not in the tree.
+**Do not add a `rust-toolchain.toml`.** It would collapse the MSRV matrix silently;
+[ADR-0028](docs/adrs/0028-lint-policy-states-the-safety-thesis-and-differs-by-ring.md) explains why.
 
 ### Lint policy
 
@@ -332,9 +312,8 @@ Two rules follow from how Cargo works, and both have bitten:
   `#![allow(clippy::indexing_slicing)]` with its reason above it, where a reader of the code sees
   it. An exemption buried in a manifest is one nobody reads.
 
-Any new dependency's license must be in the `cargo-deny` allow-list ADR-0015 fixes (MIT,
-Apache-2.0, BSD-2/3-Clause, ISC, Unicode-3.0, Zlib), or the license list in `rust/deny.toml`
-needs its own reviewed change first, in either ring.
+The licence must already be in the allow-list ADR-0015 fixes, in either ring; widening
+`rust/deny.toml`'s list is its own reviewed change.
 
 ## Generated project docs
 
