@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Defined the declarative policy document schema v1 (E11-S01, CR2,
+- Defined the declarative policy document schema v1 (E11-S01, CR3 - raised from the declared
+  CR2 by `project/risk_floors.json`'s domain-model floor,
   `docs/architecture/POLICY_MODEL.md` "Rust schema"): `cancellai-policy::schema::PolicyDocument`
   carries the global/machine/provider/project/artifact-type/session-pin scope hierarchy as
   versioned, `#[serde(deny_unknown_fields)]` data - the same pattern
@@ -18,6 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   operation, and an absent scope deserializes as absent rather than a default authority. This
   story only parses and structurally validates a document; merging several scopes into one
   deterministic `EffectivePolicy` is E11-S02's constraint resolver.
+- Implemented the policy constraint resolver (E11-S02, CR4, `docs/architecture/POLICY_MODEL.md`
+  "Rust constraint resolver"): `cancellai-policy::resolver::resolve_effective_authority` walks
+  the scope ladder most-specific-first (`ARTIFACT_TYPE -> PROJECT -> PROVIDER -> MACHINE ->
+  GLOBAL`) to pick one requested authority, then folds it into
+  `cancellai_safety::authority::AuthorityInputs::user_requested` and calls the already-verified
+  `effective_authority`. The resolver computes no ceiling of its own - every existing safety
+  constraint (artifact ceiling, confidence, lifecycle, provider trust, the constitutional safety
+  floor) still binds the result exactly as it does for any other caller, discharging SI-025 by
+  construction rather than by new logic. `SESSION`/pin is deliberately excluded from the ladder;
+  pin/protect semantics are E11-S04's outcome.
 
 ## [1.14.0] - 2026-09-14
 

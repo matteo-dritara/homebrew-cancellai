@@ -16,10 +16,14 @@
 //! adds no new module - it reads `explain`'s own output through `cancellai-tui`'s
 //! `EngineData::plan_context`. E11-S01 adds [`schema`], the declarative policy document this
 //! crate's `retention`/`explain` modules do not yet read from - see that module's own doc for
-//! the scope hierarchy and what parsing it deliberately does not compute.
+//! the scope hierarchy and what parsing it deliberately does not compute. E11-S02 adds
+//! [`resolver`], which turns a parsed `schema::PolicyDocument` into the single requested
+//! authority the scope ladder resolves to, and folds it into `cancellai_safety::
+//! effective_authority` - see that module's own doc for why it computes no ceiling itself.
 
 pub mod atlas;
 pub mod explain;
+pub mod resolver;
 pub mod retention;
 pub mod schema;
 mod trust;
@@ -28,6 +32,10 @@ pub mod views;
 pub use atlas::{AtlasSummary, ProjectTotals, ProviderTotals, TopContributor, summarize};
 pub use cancellai_model::{AuthorityLevel, KnowledgeConfidence, Reversibility};
 pub use explain::{AttributedProject, ExplainView, PolicyOutcome, explain, is_low_confidence};
+pub use resolver::{
+    PolicyContext, PolicyScopeSource, ResolvedRequest, resolve_effective_authority,
+    resolve_requested_authority,
+};
 pub use retention::{
     ClassifiedArtifact, ProviderPlanningView, ProviderResolution, RetentionPolicy, ToolScope,
     build_actions, resolve_claude, resolve_codex,

@@ -11,8 +11,8 @@ Epics: **28** | Stories: **150**
 - `blocked`: 2
 - `cancelled`: 1
 - `done`: 121
-- `planned`: 25
-- `ready_for_review`: 1
+- `planned`: 24
+- `ready_for_review`: 2
 
 ## Change risk distribution
 
@@ -29,3 +29,4 @@ Epics: **28** | Stories: **150**
 ## Awaiting independent review
 
 - **E11-S01** - Policy schema and scopes (CR3)
+- **E11-S02** - Constraint resolver (CR4)

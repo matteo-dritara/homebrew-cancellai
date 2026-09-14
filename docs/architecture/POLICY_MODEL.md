@@ -110,3 +110,23 @@ E11-S04's ("Budgets, retention, pinning") outcome, not this schema's.
 This module parses and structurally validates a document only. Turning several scopes into one
 deterministic `EffectivePolicy` for an artifact/action - the explanation contract and
 constitutional-precedence resolution described above - is E11-S02's constraint resolver.
+
+## Rust constraint resolver (E11-S02)
+
+`cancellai-policy::resolver` walks the scope hierarchy most-specific-first
+(`ARTIFACT_TYPE -> PROJECT -> PROVIDER -> MACHINE -> GLOBAL`) and returns the first scope that
+sets an `authority` for a given `PolicyContext` - deterministically, since the scope maps are
+uniquely keyed and the ladder order is fixed. `SESSION`/`EXPLICIT PIN`, the most specific rung
+in the hierarchy above, is not part of this ladder: a pin carries no `authority` field (see
+"Rust schema" above) - it is a protection fact, and wiring it into the safety inputs' protection
+axis is E11-S04's own outcome.
+
+Crucially, this resolver computes **no ceiling of its own**. `resolve_effective_authority` folds
+its result into `cancellai_safety::authority::AuthorityInputs::user_requested` and calls the
+already-verified `effective_authority` (E03-S04) - the same monotonic minimum over named
+constraints (artifact ceiling, confidence, lifecycle, provider trust, the constitutional safety
+floor) every other caller in this workspace uses. This is what discharges SI-025 and this
+story's own AC ("More specific user policy cannot exceed artifact/provider/trust ceilings") *by
+construction*: whatever authority a policy scope requests is just one more input to a minimum
+that other, independent constraints already bound - a policy document has no path to raise the
+result past what those already refuse.

@@ -1225,7 +1225,7 @@ Compile human-readable policy into typed constraints and a fully explainable Eff
 
 ### E11-S02 - Constraint resolver
 
-**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E11-S01, E03-S04 | **Safety obligations:** SI-001, SI-025
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E11-S01, E03-S04 | **Safety obligations:** SI-001, SI-025
 
 **Outcome.** Implement constitutional precedence and monotonic authority resolution.
 
