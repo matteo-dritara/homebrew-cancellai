@@ -129,6 +129,15 @@ Move the epic's stories to `verification` while reviewing, then to `done` on a p
 verdict with evidence committed, or back to `in_progress` on a rejection. Closing the epic
 cuts a release; see [WORK_ITEM_MODEL.md](WORK_ITEM_MODEL.md).
 
+**Once an epic's closing commit is made** - its status set to `done` or `done_no_release`,
+generated files regenerated, `python3 scripts/project_os.py check` passing - the agent
+pushes it to `origin main` without a separate confirmation step for the push itself. The
+gates already run (governance/process/evidence checks, and `scripts/release.py check` for a
+`done` epic) are the actual safety boundary; withholding the push after they pass adds a
+ceremony step, not a checked property. This does not extend to force-pushing, rewriting
+history, or any push to a branch other than `main` - those remain confirm-first regardless of
+epic status.
+
 1. Ignore the executor's intended mechanism; start from required behavior.
 2. Reproduce the baseline/claimed fix independently.
 3. Check every AC and safety obligation.
