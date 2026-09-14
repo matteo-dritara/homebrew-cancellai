@@ -29,6 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   floor) still binds the result exactly as it does for any other caller, discharging SI-025 by
   construction rather than by new logic. `SESSION`/pin is deliberately excluded from the ladder;
   pin/protect semantics are E11-S04's outcome.
+- Added the policy explanation graph (E11-S03, CR2, `docs/PRODUCT.md` "policy engine" /
+  `docs/architecture/POLICY_MODEL.md`): `cancellai-policy::explanation::explain_policy` reshapes
+  the resolver's own output into one ordered, deterministic `PolicyExplanation` - every
+  constraint `effective_authority` evaluated, in a fixed order, each flagged with whether it was
+  among the one(s) that actually bound the final result, plus which policy scope supplied the
+  original request. Invents no new authority logic; it is a read-only view over data E11-S02
+  already produces.
 
 ## [1.14.0] - 2026-09-14
 

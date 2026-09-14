@@ -110,6 +110,14 @@ concrete policy outcome - and when that outcome is destructive, the same human-r
 screen (C-06: evidence before action). Confidence weaker than fully verified is always flagged in
 the text itself, not only by color.
 
+The policy engine (E11) answers a related but distinct question: not "what would happen to this
+artifact" but "why does the *system* allow exactly this much." Every policy resolution exposes
+the same ordered explanation graph - what was requested and which configured scope asked for it,
+every safety constraint considered in a fixed, deterministic order, and which one(s) actually
+bound the final result when a request was not granted in full (E11-S03). The same graph is meant
+for CLI, TUI, Guardian, and later fleet UI - one shared account of "why," never a per-surface
+narrative that could quietly disagree with another.
+
 ## Open-source and commercial boundary
 
 The single-machine product remains open source: scanner, artifact model, provider framework, safety kernel, CLI/TUI, quarantine, Guardian, and local policy engine.

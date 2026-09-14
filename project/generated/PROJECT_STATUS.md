@@ -11,15 +11,15 @@ Epics: **28** | Stories: **150**
 - `blocked`: 2
 - `cancelled`: 1
 - `done`: 121
-- `planned`: 24
-- `ready_for_review`: 2
+- `planned`: 23
+- `ready_for_review`: 3
 
 ## Change risk distribution
 
 - `CR0`: 14
 - `CR1`: 34
-- `CR2`: 43
-- `CR3`: 27
+- `CR2`: 42
+- `CR3`: 28
 - `CR4`: 32
 
 ## Explicitly ready work
@@ -30,3 +30,4 @@ Epics: **28** | Stories: **150**
 
 - **E11-S01** - Policy schema and scopes (CR3)
 - **E11-S02** - Constraint resolver (CR4)
+- **E11-S03** - Policy explanation graph (CR3)

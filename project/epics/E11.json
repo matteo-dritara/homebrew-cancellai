@@ -59,9 +59,9 @@
     {
       "id": "E11-S03",
       "title": "Policy explanation graph",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Return a trace showing every rule/evidence item that contributed to the final result.",
-      "change_risk": "CR2",
+      "change_risk": "CR3",
       "dependencies": [
         "E11-S02"
       ],

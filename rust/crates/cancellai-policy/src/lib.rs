@@ -20,9 +20,14 @@
 //! [`resolver`], which turns a parsed `schema::PolicyDocument` into the single requested
 //! authority the scope ladder resolves to, and folds it into `cancellai_safety::
 //! effective_authority` - see that module's own doc for why it computes no ceiling itself.
+//! E11-S03 adds [`explanation`], which reshapes `resolver::resolve_effective_authority`'s own
+//! output into one ordered, deterministic graph a caller can render - not a new module named
+//! `explain` a second time, since `explain` (E09-S03) already answers a different question (one
+//! artifact's built-in retention outcome) from a different input (`ClassifiedArtifact`/`Action`).
 
 pub mod atlas;
 pub mod explain;
+pub mod explanation;
 pub mod resolver;
 pub mod retention;
 pub mod schema;
@@ -32,6 +37,7 @@ pub mod views;
 pub use atlas::{AtlasSummary, ProjectTotals, ProviderTotals, TopContributor, summarize};
 pub use cancellai_model::{AuthorityLevel, KnowledgeConfidence, Reversibility};
 pub use explain::{AttributedProject, ExplainView, PolicyOutcome, explain, is_low_confidence};
+pub use explanation::{ExplanationStep, PolicyExplanation, explain_policy};
 pub use resolver::{
     PolicyContext, PolicyScopeSource, ResolvedRequest, resolve_effective_authority,
     resolve_requested_authority,

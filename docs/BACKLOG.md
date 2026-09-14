@@ -1245,7 +1245,7 @@ Compile human-readable policy into typed constraints and a fully explainable Eff
 
 ### E11-S03 - Policy explanation graph
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E11-S02 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E11-S02 | **Safety obligations:** none
 
 **Outcome.** Return a trace showing every rule/evidence item that contributed to the final result.
 
