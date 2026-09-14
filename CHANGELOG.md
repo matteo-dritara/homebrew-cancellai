@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Coverage is now a ratchet in the crates where falling matters** (E27-S02, CR1). Per-crate
+  region coverage is recorded in `project/coverage_baseline.json` and
+  `scripts/check_coverage.py check` fails when a kernel-ring crate covers less than it already did.
+  Read the distribution, not the average: the workspace sits at 94.54%, `cancellai-safety` at
+  98.23%, and **`cancellai-sealedfs` - the crate holding every `unsafe` block and the mutation
+  boundary - at 92.54%**, the lowest of the gated set. `cancellai-guardian`'s 0% is correct and
+  deliberately not gated: it is a sixteen-line skeleton that prints "not yet implemented".
+
 ### Changed
 
 - **The Rust lint policy now states this project's thesis in a form the compiler checks**

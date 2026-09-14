@@ -34,6 +34,32 @@
         "docs/adrs/0028-lint-policy-states-the-safety-thesis-and-differs-by-ring.md",
         "AGENTS.md"
       ]
+    },
+    {
+      "id": "E27-S02",
+      "title": "Coverage may not fall where falling matters",
+      "status": "done",
+      "outcome": "E27-S01 measured coverage for the first time and the headline was 94.54% of regions - a good number and the wrong one to act on, because an average hides its worst member and the worst member was cancellai-sealedfs at 92.54%, the crate holding every unsafe block and the mutation boundary. A ratchet records what each crate covers today and fails when a crate falls below it: nobody has to defend a threshold nobody can justify, and nothing can quietly get worse. Only the kernel ring plus policy and inventory are gated; the rest is recorded for visibility, because a rendering regression is a bug and not an authority failure.",
+      "change_risk": "CR1",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "Region coverage per crate shall be recorded in version control and compared against a real measurement, not asserted.",
+        "If a gated crate covers less than its recorded floor, then the gate shall refuse and name both numbers.",
+        "A crate that improves shall not tighten its own floor silently: re-recording is an explicit, reviewable change.",
+        "If a gated crate is absent from the report, then the gate shall refuse rather than treat a crate that stopped building as passing.",
+        "Movement below a stated tolerance shall not be a regression, and the tolerance shall not be usable as a way through.",
+        "A crate that is a declared skeleton shall not be gated, so a correct zero is not reported as a crisis."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "The ratchet is shown failing on a lowered floor before it is shown passing.",
+        "The tolerance is tested from both sides: 0.4 below passes, 0.6 below fails.",
+        "The committed baseline covers every gated crate, asserted against the real file."
+      ],
+      "documentation_impact": [
+        "AGENTS.md",
+        ".github/workflows/rust.yml"
+      ]
     }
   ]
 }

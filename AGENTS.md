@@ -283,6 +283,33 @@ outer-ring dependency may never become a second path to a safety decision - it d
 the user asked for, never what is permitted (SI-007 in particular stays a property of this
 workspace's own command dispatch, regardless of which crate parses the tokens).
 
+### Coverage
+
+Coverage is a **ratchet, not a target** ([ADR-0028](docs/adrs/0028-lint-policy-states-the-safety-thesis-and-differs-by-ring.md), E27-S02).
+`project/coverage_baseline.json` records what each crate covers; `scripts/check_coverage.py check`
+fails when a kernel-ring crate covers less than it already did, and reports the rest for visibility
+without gating them. Improving is free; re-recording to tighten the ratchet is an explicit,
+reviewable diff. CI runs it on Linux only - region coverage is not platform-specific for these
+crates and an instrumented rebuild is not worth paying for three times.
+
+```sh
+python3 scripts/check_coverage.py report   # needs `cargo llvm-cov`
+python3 scripts/check_coverage.py record   # after a deliberate improvement
+```
+
+Read the per-crate numbers, never the workspace average: the first measurement was 94.54% overall
+while the crate holding every `unsafe` block sat at 92.5%, and an average is exactly the number
+that hides its worst member.
+
+### Why there is no `rust-toolchain.toml`
+
+It looks like the missing piece and it would break the MSRV matrix. `.github/workflows/rust.yml`
+selects toolchains through `dtolnay/rust-toolchain`'s `toolchain:` input, and a
+`rust-toolchain.toml` in `rust/` takes precedence over rustup's default for any `cargo` invoked
+there - so every leg would compile with the pinned version while the job names still said
+`stable` and `1.88.0`. The matrix would collapse silently, which is the exact failure mode
+this repository spent a week repairing. Pin the toolchain in CI, not in the tree.
+
 ### Lint policy
 
 `[workspace.lints]` denies the lints that state this project's thesis in a form the compiler
