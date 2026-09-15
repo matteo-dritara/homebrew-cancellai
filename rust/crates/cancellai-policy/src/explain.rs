@@ -95,12 +95,13 @@ pub fn explain<'a>(classified: &'a ClassifiedArtifact, actions: &'a [Action]) ->
             ActionClass::Observe => PolicyOutcome::ObservationOnly {
                 reason: action.reason.as_str(),
             },
-            ActionClass::Quarantine | ActionClass::Archive | ActionClass::Delete => {
-                PolicyOutcome::Recommended {
-                    action_class: action.action_class,
-                    reason: action.reason.as_str(),
-                }
-            }
+            ActionClass::Quarantine
+            | ActionClass::Archive
+            | ActionClass::Delete
+            | ActionClass::Restore => PolicyOutcome::Recommended {
+                action_class: action.action_class,
+                reason: action.reason.as_str(),
+            },
         })
         .unwrap_or(PolicyOutcome::NotEvaluated);
 

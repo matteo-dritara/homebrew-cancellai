@@ -107,6 +107,10 @@ pub enum MutationOperation {
         destination: PathBuf,
         record: Vec<u8>,
     },
+    /// Move an artifact out of cancellAI's quarantine store back to a destination outside it
+    /// (E12-S02). The reverse of `Quarantine`'s move, without its sidecar - the destination
+    /// here is the artifact's original provider location, not cancellAI's own store.
+    Restore { destination: PathBuf },
 }
 
 /// Why a real mutation attempt failed. Always the underlying OS error text, or this seam's
@@ -146,6 +150,9 @@ impl MutationExecutor for SystemMutationExecutor {
                 destination,
                 record,
             } => confirmed_quarantine_move(target, expected, &destination, &record),
+            MutationOperation::Restore { destination } => {
+                confirmed_restore_move(target, expected, &destination)
+            }
         }
     }
 }
@@ -329,6 +336,70 @@ fn confirmed_quarantine_move_inner(
     record: &[u8],
     between_open_and_move: impl FnOnce(),
 ) -> Result<(), MutationError> {
+    let dest_sealed = confirmed_move_inner(source, expected, destination, between_open_and_move)?;
+
+    // Contentless restore-metadata sidecar, written atomically next to the moved object once
+    // the move itself has already succeeded - its own bytes never carry artifact payload
+    // content (docs/architecture/PERSISTENCE_MODEL.md's quarantine store rules), only what a
+    // later restore needs to find and verify it. A failure here does not undo the move: the
+    // artifact is already safely quarantined (non-destructive), it is simply missing a restore
+    // record until repaired - a disclosed residual, not silent data loss.
+    let dest_name = destination
+        .file_name()
+        .and_then(|n| n.to_str())
+        .expect("already validated by confirmed_move_inner above");
+    let record_name = format!("{dest_name}.quarantine-record.json");
+    let tmp_name = format!("{dest_name}.quarantine-record.json.tmp");
+    dest_sealed
+        .write_new_child_atomically(&tmp_name, &record_name, record)
+        .map_err(|e| {
+            MutationError(format!(
+                "quarantine move succeeded but the restore record could not be written: {e}"
+            ))
+        })?;
+
+    Ok(())
+}
+
+/// The restore counterpart of [`confirmed_quarantine_move`] (E12-S02): the identical
+/// identity-confirmed, no-clobber move, reversed in direction and *without* writing any
+/// sidecar into the destination - the destination here is the artifact's original provider
+/// location, not cancellAI's own quarantine store, and nothing of cancellAI's belongs there.
+#[cfg(unix)]
+fn confirmed_restore_move(
+    source: &Path,
+    expected: &IdentityToken,
+    destination: &Path,
+) -> Result<(), MutationError> {
+    refuse_unverified_wsl2_mutation(SystemEnvironmentObserver.detect())?;
+    confirmed_restore_move_inner(source, expected, destination, || {})
+}
+
+#[cfg(unix)]
+fn confirmed_restore_move_inner(
+    source: &Path,
+    expected: &IdentityToken,
+    destination: &Path,
+    between_open_and_move: impl FnOnce(),
+) -> Result<(), MutationError> {
+    confirmed_move_inner(source, expected, destination, between_open_and_move)?;
+    Ok(())
+}
+
+/// The shared identity-confirmed, handle-relative move: open-time and immediately-before
+/// checks around `between_open_and_move` (mirroring [`confirmed_delete_file_inner`]'s own two
+/// checks around the unlink), then a no-clobber `renameat` via
+/// `cancellai_sealedfs::rename_child_matching_unix_identity`. Returns the destination's own
+/// held [`cancellai_sealedfs::SealedRoot`] so [`confirmed_quarantine_move_inner`] can write its
+/// sidecar against the same handle without a second, separately-racy `bind_existing` call;
+/// [`confirmed_restore_move_inner`] simply discards it.
+#[cfg(unix)]
+fn confirmed_move_inner(
+    source: &Path,
+    expected: &IdentityToken,
+    destination: &Path,
+    between_open_and_move: impl FnOnce(),
+) -> Result<cancellai_sealedfs::SealedRoot, MutationError> {
     use std::os::unix::fs::MetadataExt;
 
     // This Unix-only move path has no verified interpretation of a `Windows` identity token -
@@ -342,12 +413,12 @@ fn confirmed_quarantine_move_inner(
     } = expected
     else {
         return Err(MutationError(
-            "confirmed quarantine move on this platform requires a Unix identity token".to_string(),
+            "confirmed move on this platform requires a Unix identity token".to_string(),
         ));
     };
 
     let file = std::fs::File::open(source)
-        .map_err(|e| MutationError(format!("could not open target for quarantine move: {e}")))?;
+        .map_err(|e| MutationError(format!("could not open target for move: {e}")))?;
     let before = file
         .metadata()
         .map_err(|e| MutationError(format!("could not stat open target before move: {e}")))?;
@@ -357,8 +428,7 @@ fn confirmed_quarantine_move_inner(
         || before.mtime_nsec() as u32 != *expected_modified_nanos
     {
         return Err(MutationError(
-            "target identity changed between revalidation and quarantine move (open-time check)"
-                .to_string(),
+            "target identity changed between revalidation and move (open-time check)".to_string(),
         ));
     }
 
@@ -368,7 +438,7 @@ fn confirmed_quarantine_move_inner(
     // reasoning as `confirmed_delete_file_inner`'s `just_before` re-check.
     let just_before = std::fs::symlink_metadata(source).map_err(|e| {
         MutationError(format!(
-            "could not re-stat target immediately before quarantine move: {e}"
+            "could not re-stat target immediately before move: {e}"
         ))
     })?;
     if just_before.dev() != *expected_device
@@ -377,14 +447,14 @@ fn confirmed_quarantine_move_inner(
         || just_before.mtime_nsec() as u32 != *expected_modified_nanos
     {
         return Err(MutationError(
-            "target identity changed immediately before quarantine move (path re-check failed); \
-             refusing to move a different object"
+            "target identity changed immediately before move (path re-check failed); refusing \
+             to move a different object"
                 .to_string(),
         ));
     }
 
     let source_parent = source.parent().ok_or_else(|| {
-        MutationError("target has no parent directory; refusing to quarantine".to_string())
+        MutationError("target has no parent directory; refusing to move".to_string())
     })?;
     let source_name = source.file_name().and_then(|n| n.to_str()).ok_or_else(|| {
         MutationError(
@@ -394,17 +464,15 @@ fn confirmed_quarantine_move_inner(
         )
     })?;
     let dest_parent = destination.parent().ok_or_else(|| {
-        MutationError(
-            "quarantine destination has no parent directory; refusing to move".to_string(),
-        )
+        MutationError("destination has no parent directory; refusing to move".to_string())
     })?;
     let dest_name = destination
         .file_name()
         .and_then(|n| n.to_str())
         .ok_or_else(|| {
             MutationError(
-                "quarantine destination's file name is not representable as UTF-8; refusing to \
-             move a name this seam cannot bind handle-relatively"
+                "destination's file name is not representable as UTF-8; refusing to move a \
+                 name this seam cannot bind handle-relatively"
                     .to_string(),
             )
         })?;
@@ -417,7 +485,7 @@ fn confirmed_quarantine_move_inner(
         })?;
     let dest_sealed = cancellai_sealedfs::SealedRoot::bind_existing(dest_parent).map_err(|e| {
         MutationError(format!(
-            "could not bind the quarantine destination directory without following a link: {e}"
+            "could not bind the destination directory without following a link: {e}"
         ))
     })?;
 
@@ -429,25 +497,9 @@ fn confirmed_quarantine_move_inner(
             *expected_device,
             *expected_inode,
         )
-        .map_err(|e| MutationError(format!("quarantine move failed: {e}")))?;
+        .map_err(|e| MutationError(format!("move failed: {e}")))?;
 
-    // Contentless restore-metadata sidecar, written atomically next to the moved object once
-    // the move itself has already succeeded - its own bytes never carry artifact payload
-    // content (docs/architecture/PERSISTENCE_MODEL.md's quarantine store rules), only what a
-    // later restore needs to find and verify it. A failure here does not undo the move: the
-    // artifact is already safely quarantined (non-destructive), it is simply missing a restore
-    // record until repaired - a disclosed residual, not silent data loss.
-    let record_name = format!("{dest_name}.quarantine-record.json");
-    let tmp_name = format!("{dest_name}.quarantine-record.json.tmp");
-    dest_sealed
-        .write_new_child_atomically(&tmp_name, &record_name, record)
-        .map_err(|e| {
-            MutationError(format!(
-                "quarantine move succeeded but the restore record could not be written: {e}"
-            ))
-        })?;
-
-    Ok(())
+    Ok(dest_sealed)
 }
 
 /// No verified handle-relative rename exists for Windows yet (mirroring `confirmed_delete_file`'s
@@ -476,6 +528,33 @@ fn confirmed_quarantine_move(
 ) -> Result<(), MutationError> {
     Err(MutationError(
         "confirmed quarantine move is not implemented on this platform".to_string(),
+    ))
+}
+
+/// No verified handle-relative rename exists for Windows yet - the restore-side counterpart
+/// of `confirmed_quarantine_move`'s own Windows refusal (E12-S02 residual, disclosed rather
+/// than silently gapped).
+#[cfg(windows)]
+fn confirmed_restore_move(
+    _source: &Path,
+    _expected: &IdentityToken,
+    _destination: &Path,
+) -> Result<(), MutationError> {
+    Err(MutationError(
+        "confirmed restore move is not implemented on this platform yet (E12-S02 residual - \
+         Windows restore is a follow-up story)"
+            .to_string(),
+    ))
+}
+
+#[cfg(not(any(unix, windows)))]
+fn confirmed_restore_move(
+    _source: &Path,
+    _expected: &IdentityToken,
+    _destination: &Path,
+) -> Result<(), MutationError> {
+    Err(MutationError(
+        "confirmed restore move is not implemented on this platform".to_string(),
     ))
 }
 
@@ -1036,11 +1115,7 @@ mod tests {
                 },
             )
             .expect_err("an existing destination must never be silently replaced");
-        assert!(
-            err.0.contains("quarantine move failed"),
-            "reason was: {}",
-            err.0
-        );
+        assert!(err.0.contains("move failed"), "reason was: {}", err.0);
         assert!(file.exists(), "the source must survive a refused move");
         assert_eq!(
             std::fs::read_to_string(&destination).expect("destination content"),
@@ -1186,6 +1261,143 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn system_executor_restores_a_real_file_confirmed_by_identity_and_writes_no_sidecar() {
+        let source_dir = TempDir::new("restore-source");
+        let dest_dir = TempDir::new("restore-dest");
+        let file = source_dir.path("quarantined.txt");
+        std::fs::write(&file, b"hello").expect("create file");
+        let expected = identity_of(&file);
+        let destination = dest_dir.path("artifact.txt");
+
+        let executor = SystemMutationExecutor;
+        executor
+            .mutate(
+                &file,
+                &expected,
+                MutationOperation::Restore {
+                    destination: destination.clone(),
+                },
+            )
+            .expect("restore move should succeed");
+
+        assert!(!file.exists(), "the quarantined copy must no longer exist");
+        assert_eq!(
+            std::fs::read_to_string(&destination).expect("destination content"),
+            "hello"
+        );
+        assert!(
+            !dest_dir
+                .path("artifact.txt.quarantine-record.json")
+                .exists(),
+            "restore must never write a sidecar into the original provider location"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn confirmed_restore_move_refuses_when_the_original_destination_was_recreated() {
+        // The exact TM-14 reproduction (docs/security/THREAT_MODEL.md): the original
+        // destination was recreated after quarantine - restore must refuse, not overwrite it.
+        let source_dir = TempDir::new("restore-destination-recreated-source");
+        let dest_dir = TempDir::new("restore-destination-recreated-dest");
+        let file = source_dir.path("quarantined.txt");
+        std::fs::write(&file, b"hello").expect("create file");
+        let expected = identity_of(&file);
+        let destination = dest_dir.path("artifact.txt");
+        std::fs::write(&destination, b"recreated by the provider").expect("recreate destination");
+
+        let executor = SystemMutationExecutor;
+        let err = executor
+            .mutate(
+                &file,
+                &expected,
+                MutationOperation::Restore {
+                    destination: destination.clone(),
+                },
+            )
+            .expect_err("a recreated destination must never be silently overwritten");
+        assert!(err.0.contains("move failed"), "reason was: {}", err.0);
+        assert!(
+            file.exists(),
+            "the quarantined copy must survive a refused restore"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&destination).expect("destination content"),
+            "recreated by the provider",
+            "the recreated destination must be untouched"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn confirmed_restore_move_rejects_a_target_already_swapped_before_open() {
+        let source_dir = TempDir::new("restore-swapped-before-open");
+        let dest_dir = TempDir::new("restore-swapped-before-open-dest");
+        let file = source_dir.path("quarantined.txt");
+        std::fs::write(&file, b"original").expect("create original");
+        let expected = identity_of(&file);
+        let destination = dest_dir.path("artifact.txt");
+
+        std::fs::remove_file(&file).expect("remove original");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        std::fs::write(&file, b"replacement").expect("create replacement");
+
+        let executor = SystemMutationExecutor;
+        let err = executor
+            .mutate(
+                &file,
+                &expected,
+                MutationOperation::Restore {
+                    destination: destination.clone(),
+                },
+            )
+            .expect_err("a target swapped before open must be rejected, not restored");
+        assert!(err.0.contains("open-time check"), "reason was: {}", err.0);
+        assert!(
+            file.exists(),
+            "the replacement must survive - it was never the intended target"
+        );
+        assert!(
+            !destination.exists(),
+            "nothing must land at the destination"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn confirmed_restore_move_detects_a_target_swapped_between_open_and_move() {
+        let source_dir = TempDir::new("restore-swapped-mid-flight");
+        let dest_dir = TempDir::new("restore-swapped-mid-flight-dest");
+        let file = source_dir.path("quarantined.txt");
+        std::fs::write(&file, b"original").expect("create original");
+        let expected = identity_of(&file);
+        let destination = dest_dir.path("artifact.txt");
+
+        let result = confirmed_restore_move_inner(&file, &expected, &destination, || {
+            std::fs::remove_file(&file).expect("simulate concurrent removal of the original");
+            std::fs::write(&file, b"replacement").expect("simulate concurrent replacement");
+        });
+
+        assert!(
+            result.is_err(),
+            "a mid-flight swap must never be reported as a successful restore"
+        );
+        assert!(
+            file.exists(),
+            "the replacement must survive - only the confirmed original may ever be restored"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&file).expect("replacement content must be intact"),
+            "replacement"
+        );
+        assert!(
+            !destination.exists(),
+            "nothing must land at the destination"
+        );
+    }
+
     #[cfg(windows)]
     struct WindowsTempDir(std::path::PathBuf);
 
@@ -1265,6 +1477,33 @@ mod tests {
                 },
             )
             .expect_err("quarantine on Windows must be refused, not silently attempted");
+        assert!(
+            err.0.contains("not implemented on this platform"),
+            "reason was: {}",
+            err.0
+        );
+        assert!(file.exists(), "the source must survive the refusal");
+        assert!(!destination.exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_system_executor_refuses_a_restore_move_as_a_disclosed_residual() {
+        let dir = WindowsTempDir::new("restore-not-implemented");
+        let file = dir.path("quarantined.txt");
+        std::fs::write(&file, b"hello").expect("create file");
+        let expected = windows_identity_of(&file);
+        let destination = dir.path("artifact.txt");
+
+        let err = SystemMutationExecutor
+            .mutate(
+                &file,
+                &expected,
+                MutationOperation::Restore {
+                    destination: destination.clone(),
+                },
+            )
+            .expect_err("restore on Windows must be refused, not silently attempted");
         assert!(
             err.0.contains("not implemented on this platform"),
             "reason was: {}",

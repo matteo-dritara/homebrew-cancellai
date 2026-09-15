@@ -269,7 +269,11 @@ pub fn effective_authority_for_channel(
 pub fn minimum_authority_for(action_class: ActionClass) -> AuthorityLevel {
     match action_class {
         ActionClass::Observe => AuthorityLevel::Observe,
-        ActionClass::Quarantine | ActionClass::Archive => AuthorityLevel::Quarantine,
+        // Restore is the reverse of Quarantine (E12-S02) - undoing a quarantine is no more
+        // dangerous than performing one, so it sits at the same floor.
+        ActionClass::Quarantine | ActionClass::Archive | ActionClass::Restore => {
+            AuthorityLevel::Quarantine
+        }
         ActionClass::Delete => AuthorityLevel::Govern,
     }
 }
@@ -282,7 +286,11 @@ pub fn minimum_authority_for(action_class: ActionClass) -> AuthorityLevel {
 pub fn reversibility_allowed(action_class: ActionClass, reversibility: Reversibility) -> bool {
     match action_class {
         ActionClass::Observe => true,
-        ActionClass::Quarantine => reversibility == Reversibility::Quarantinable,
+        // A restored artifact can itself be quarantined again if the restore turns out to be
+        // wrong (E12-S02) - the same recoverability `Quarantine` itself claims.
+        ActionClass::Quarantine | ActionClass::Restore => {
+            reversibility == Reversibility::Quarantinable
+        }
         ActionClass::Archive => reversibility == Reversibility::Archivable,
         ActionClass::Delete => reversibility == Reversibility::Irreversible,
     }
@@ -565,6 +573,10 @@ mod tests {
             ActionClass::Archive,
             Reversibility::Archivable
         ));
+        assert!(reversibility_allowed(
+            ActionClass::Restore,
+            Reversibility::Quarantinable
+        ));
     }
 
     #[test]
@@ -573,6 +585,7 @@ mod tests {
             ActionClass::Quarantine,
             ActionClass::Archive,
             ActionClass::Delete,
+            ActionClass::Restore,
         ];
         let reversibilities = [
             Reversibility::Rebuildable,
@@ -585,7 +598,9 @@ mod tests {
         for &class in &classes {
             for &reversibility in &reversibilities {
                 let expected_match = match class {
-                    ActionClass::Quarantine => reversibility == Reversibility::Quarantinable,
+                    ActionClass::Quarantine | ActionClass::Restore => {
+                        reversibility == Reversibility::Quarantinable
+                    }
                     ActionClass::Archive => reversibility == Reversibility::Archivable,
                     ActionClass::Delete => reversibility == Reversibility::Irreversible,
                     ActionClass::Observe => true,

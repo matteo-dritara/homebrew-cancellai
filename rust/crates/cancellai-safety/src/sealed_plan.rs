@@ -32,7 +32,7 @@ use std::path::{Path, PathBuf};
 use cancellai_model::{ActionClass, AuthorityLevel, Reversibility, RootFingerprint};
 use cancellai_platform::{IdentityObservation, IdentityToken};
 
-use crate::root_capability::{ApprovedRoot, BoundedPath, QuarantineDestination};
+use crate::root_capability::{ApprovedRoot, BoundedPath, MoveDestination};
 
 /// An immutable, sealed mutating plan for exactly one target artifact.
 ///
@@ -59,12 +59,12 @@ pub struct SealedPlan {
     authority: AuthorityLevel,
     reversibility: Reversibility,
     process_guard: Option<&'static [&'static str]>,
-    /// The quarantine move destination (E12-S01) - `Some` only for a plan built by
-    /// [`Self::seal_quarantine`]. Every other action class carries `None`: there is nothing to
-    /// move anywhere else to.
+    /// The move destination (E12-S01/E12-S02) - `Some` only for a plan built by
+    /// [`Self::seal_quarantine`] or [`Self::seal_restore`]. Every other action class carries
+    /// `None`: there is nothing to move anywhere else to.
     destination_path: Option<PathBuf>,
     /// The identity of the destination's own root, recorded the same way `root_identity` is -
-    /// from a real [`QuarantineDestination`], never a bare caller-suppliable value - so
+    /// from a real [`MoveDestination`], never a bare caller-suppliable value - so
     /// `mutation_executor::execute` can compare it against `root_identity` before ever
     /// attempting a move (SI-018).
     destination_root_identity: Option<IdentityToken>,
@@ -173,14 +173,14 @@ impl SealedPlan {
     /// the field `mutation_executor::execute` needs to perform the move and to compare the
     /// destination root's identity against `root`'s own (SI-018) before ever attempting it.
     /// `destination_root_identity`/`destination_path` are read from a real
-    /// [`QuarantineDestination`] (produced only by [`ApprovedRoot::prepare_destination`]),
+    /// [`MoveDestination`] (produced only by [`ApprovedRoot::prepare_destination`]),
     /// never accepted as bare caller-supplied values - the same principle [`Self::seal`]
     /// already applies to `root_identity`/`artifact_identity`.
     pub fn seal_quarantine(
         root: &ApprovedRoot,
         root_fingerprint: RootFingerprint,
         target: &BoundedPath,
-        destination: &QuarantineDestination,
+        destination: &MoveDestination,
         authority: AuthorityLevel,
         reversibility: Reversibility,
     ) -> Self {
@@ -189,6 +189,33 @@ impl SealedPlan {
             root.identity().clone(),
             target.identity().clone(),
             ActionClass::Quarantine,
+            authority,
+            reversibility,
+            None,
+            Some(destination.path().to_path_buf()),
+            Some(destination.root_identity().clone()),
+        )
+    }
+
+    /// Seal a restore plan for `target` - an artifact currently inside the quarantine store,
+    /// bound under `root` (the quarantine store's own [`ApprovedRoot`], not the original
+    /// provider root) - moving it to `destination` (E12-S02). The reverse of
+    /// [`Self::seal_quarantine`]: same shape, same SI-018 boundary comparison at execution
+    /// time, `destination` here names a location outside the quarantine store rather than
+    /// inside it.
+    pub fn seal_restore(
+        root: &ApprovedRoot,
+        root_fingerprint: RootFingerprint,
+        target: &BoundedPath,
+        destination: &MoveDestination,
+        authority: AuthorityLevel,
+        reversibility: Reversibility,
+    ) -> Self {
+        Self::new_with_destination(
+            root_fingerprint,
+            root.identity().clone(),
+            target.identity().clone(),
+            ActionClass::Restore,
             authority,
             reversibility,
             None,
@@ -498,6 +525,55 @@ mod tests {
         );
 
         assert_eq!(plan.action_class(), ActionClass::Quarantine);
+        assert_eq!(plan.destination_path(), Some(destination.path()));
+        assert_eq!(
+            plan.destination_root_identity(),
+            Some(destination.root_identity())
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn seal_restore_records_the_destination_from_a_real_capability() {
+        use cancellai_platform::{SystemIdentityObserver, SystemPathResolver};
+
+        let dir = std::env::temp_dir().join(format!(
+            "cancellai-sealed-plan-seal-restore-test-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let quarantine_root_path = dir.join("quarantine");
+        std::fs::create_dir_all(&quarantine_root_path).expect("create quarantine root");
+        let provider_root_path = dir.join("provider");
+        std::fs::create_dir_all(&provider_root_path).expect("create provider root");
+        let file = quarantine_root_path.join("quarantined.txt");
+        std::fs::write(&file, b"hello").expect("create file");
+
+        let resolver = SystemPathResolver;
+        let observer = SystemIdentityObserver;
+        let quarantine_root = ApprovedRoot::establish(&quarantine_root_path, &resolver, &observer)
+            .expect("quarantine root");
+        let target = quarantine_root
+            .bind(&file, &resolver, &observer)
+            .expect("bind target");
+        let provider_root = ApprovedRoot::establish(&provider_root_path, &resolver, &observer)
+            .expect("provider root");
+        let destination = provider_root
+            .prepare_destination("artifact.txt", &observer)
+            .expect("prepare destination");
+
+        let plan = SealedPlan::seal_restore(
+            &quarantine_root,
+            fingerprint(),
+            &target,
+            &destination,
+            AuthorityLevel::Quarantine,
+            Reversibility::Quarantinable,
+        );
+
+        assert_eq!(plan.action_class(), ActionClass::Restore);
         assert_eq!(plan.destination_path(), Some(destination.path()));
         assert_eq!(
             plan.destination_root_identity(),

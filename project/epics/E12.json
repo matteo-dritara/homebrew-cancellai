@@ -38,7 +38,7 @@
     {
       "id": "E12-S02",
       "title": "Restore protocol",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Restore quarantined artifacts only if destination safety and conflict policy are satisfied.",
       "change_risk": "CR4",
       "dependencies": [

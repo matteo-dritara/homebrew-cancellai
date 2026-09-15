@@ -728,15 +728,16 @@ fn execute_clean(resolved: &Resolved, actions: &[Action], json: bool, allow_runn
                     )
                 }
             },
-            ActionClass::Observe | ActionClass::Quarantine | ActionClass::Archive => {
-                ActionResultDoc {
-                    action_id: action.action_id.0.clone(),
-                    status: "safely_skipped",
-                    reason_code: "NOT_ELIGIBLE".to_string(),
-                    reclaimed_bytes: 0,
-                    post_action_state: "hot",
-                }
-            }
+            ActionClass::Observe
+            | ActionClass::Quarantine
+            | ActionClass::Archive
+            | ActionClass::Restore => ActionResultDoc {
+                action_id: action.action_id.0.clone(),
+                status: "safely_skipped",
+                reason_code: "NOT_ELIGIBLE".to_string(),
+                reclaimed_bytes: 0,
+                post_action_state: "hot",
+            },
         };
         results.push(doc);
     }

@@ -151,7 +151,7 @@ impl ApprovedRoot {
         &self,
         child_name: &str,
         observer: &dyn IdentityObserver,
-    ) -> Result<QuarantineDestination, BoundaryError> {
+    ) -> Result<MoveDestination, BoundaryError> {
         if child_name.is_empty()
             || child_name == "."
             || child_name == ".."
@@ -161,7 +161,7 @@ impl ApprovedRoot {
         }
         let candidate = self.path.join(child_name);
         match observer.observe(&candidate) {
-            IdentityObservation::Absent => Ok(QuarantineDestination {
+            IdentityObservation::Absent => Ok(MoveDestination {
                 path: candidate,
                 root_identity: self.identity.clone(),
             }),
@@ -185,12 +185,12 @@ impl ApprovedRoot {
 /// applied here across two different roots (the provider root and the quarantine store root).
 /// The only public constructor is [`ApprovedRoot::prepare_destination`].
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct QuarantineDestination {
+pub struct MoveDestination {
     path: PathBuf,
     root_identity: IdentityToken,
 }
 
-impl QuarantineDestination {
+impl MoveDestination {
     pub fn path(&self) -> &Path {
         &self.path
     }

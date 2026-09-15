@@ -60,6 +60,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   backstop. A contentless restore-metadata sidecar is written atomically once the move
   succeeds. Unix-only for now; Windows quarantine refuses explicitly as a disclosed residual,
   matching `DeleteFile`'s own history before E20-S05.
+- Added restore as the reverse of quarantine (E12-S02, CR4, `docs/security/THREAT_MODEL.md`
+  "TM-14 Restore overwrites new provider state"): a new `ActionClass::Restore` sits at the same
+  authority/reversibility floor as `Quarantine` - undoing a quarantine is no more dangerous than
+  performing one. `cancellai_platform::mutation::MutationOperation::Restore` reuses the exact
+  identity-confirmed, no-clobber move `Quarantine` already performs (both now share one
+  `confirmed_move_inner`), just reversed in direction and without writing any sidecar - nothing
+  of cancellAI's belongs at an artifact's original provider location.
+  `SealedPlan::seal_restore`/`mutation_executor::execute` reuse the same explicit same-device
+  boundary check (SI-018); a destination recreated after quarantine is refused
+  (`SealError::DestinationAlreadyExists`), never silently overwritten, and a drifted artifact
+  identity is refused by the same pre-existing `revalidate` (SI-013) every other action class
+  already goes through. `ApprovedRoot::prepare_destination`'s return type is renamed
+  `MoveDestination`, since it now serves both directions. Unix-only for now, matching
+  `Quarantine`'s own residual.
 
 ### Fixed
 

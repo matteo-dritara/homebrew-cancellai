@@ -152,13 +152,26 @@ Control: protected source, minimal CI permissions, reproducible/verifiable build
 
 Under disk pressure, a cross-volume or copy-based quarantine duplicates many GB and makes pressure worse.
 
-Control: move-first same-volume semantics, capacity check, explicit copy capability, net-free-space reporting.
+Control (E12-S01): move-only semantics - no copy fallback exists. A same-device identity-confirmed
+`renameat` (`cancellai_platform::mutation::MutationOperation::Quarantine`) never duplicates
+content; a cross-volume destination is refused explicitly (`mutation_executor::execute`'s
+same-device check, SI-018) rather than falling back to a copy. Net-free-space reporting remains
+a later story's concern.
 
 ### TM-14 Restore overwrites new provider state
 
 The original destination was recreated after quarantine.
 
-Control: restore preconditions and conflict policy; no silent overwrite.
+Control (E12-S02): the same identity-confirmed, no-clobber move primitive `renameat`s from the
+quarantine store back to a destination prepared by `ApprovedRoot::prepare_destination` - the
+same "refuse rather than replace" check that already protects a quarantine move's own
+destination protects a restore's. A destination recreated after quarantine is detected as
+already-existing and refused (`SealError::DestinationAlreadyExists`), never silently
+overwritten. `mutation_executor::execute`'s pre-existing `revalidate` (SI-013) additionally
+refuses if the quarantined artifact's own identity drifted since the plan was sealed. Choosing
+an alternate destination or a provider-specific restore path is the caller's policy decision,
+made by calling `prepare_destination` again for a different location - this mechanism does not
+choose one on its own.
 
 ### TM-15 Guardian panic escalation
 

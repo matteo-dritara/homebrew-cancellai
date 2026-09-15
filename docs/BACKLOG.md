@@ -1309,7 +1309,7 @@ Introduce reversible lifecycle operations before expanding autonomy.
 
 ### E12-S02 - Restore protocol
 
-**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E12-S01 | **Safety obligations:** SI-013
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E12-S01 | **Safety obligations:** SI-013
 
 **Outcome.** Restore quarantined artifacts only if destination safety and conflict policy are satisfied.
 

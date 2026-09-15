@@ -35,6 +35,10 @@ pub enum ActionClass {
     Quarantine,
     Archive,
     Delete,
+    /// Move a quarantined artifact back to a destination outside the quarantine store
+    /// (E12-S02). The reverse of `Quarantine`, at the same authority/reversibility bar -
+    /// undoing a quarantine is no more dangerous than performing it.
+    Restore,
 }
 
 /// How recoverable an action's effect is (`docs/architecture/DOMAIN_MODEL.md`

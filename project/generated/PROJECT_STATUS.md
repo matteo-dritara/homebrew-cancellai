@@ -11,8 +11,8 @@ Epics: **32** | Stories: **165**
 - `blocked`: 2
 - `cancelled`: 1
 - `done`: 140
-- `planned`: 21
-- `ready_for_review`: 1
+- `planned`: 20
+- `ready_for_review`: 2
 
 ## Change risk distribution
 
@@ -29,3 +29,4 @@ Epics: **32** | Stories: **165**
 ## Awaiting independent review
 
 - **E12-S01** - Quarantine store semantics (CR4)
+- **E12-S02** - Restore protocol (CR4)
