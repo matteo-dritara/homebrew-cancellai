@@ -312,9 +312,7 @@ class ClosedEpicDependencies(unittest.TestCase):
             if epic["status"] == "done_no_release"
             and any(epic["id"] in candidate["dependencies"] and candidate["status"] in gated for candidate in model.epics)
         )
-        dependent = next(
-            epic for epic in model.epics if closed["id"] in epic["dependencies"] and epic["status"] in gated
-        )
+        dependent = next(epic for epic in model.epics if closed["id"] in epic["dependencies"] and epic["status"] in gated)
         for status in project_os.VALID_EPIC_STATUS - project_os.CLOSED_EPIC_STATUS:
             with self.subTest(status=status):
                 epics = copy.deepcopy(model.epics)
