@@ -229,8 +229,10 @@ and a verdict with no author.
 **The refusal that matters most** is the one that keeps the two roles apart: a verdict whose
 `Verifier:` is the party that rendered the brief is refused outright. Automating a handoff between
 two roles is the most direct way to collapse them, so the rule that an executor's work ends at
-`ready_for_review` and that it does not write its own Safety Verdict stops being a rule the
-executor chooses to obey.
+`ready_for_review` and that it does not write its own Safety Verdict is checked instead of merely
+being documented. The fields are still unverified identity claims: a party willing to write a
+different name can defeat this refusal. The artifact prevents accidental role collapse and makes
+the claimed separation auditable; it does not prove the human or model behind either claim.
 
 Three properties a more convenient design would have lost:
 
