@@ -24,6 +24,7 @@ def component(**overrides):
         "scope": "user",
         "source": "github:owner/name",
         "version": "1.0.0",
+        "license": "MIT",
         "trust": "Vendor",
         "capabilities": ["prompt"],
         "always_on_tokens": 100,
@@ -35,7 +36,16 @@ def component(**overrides):
 
 
 def manifest(components, **overrides):
-    base = {"schema_version": 1, "review_cadence_days": 90, "context_budget_tokens": 1000, "components": components, "rejected": []}
+    base = {
+        "schema_version": 1,
+        "review_cadence_days": 90,
+        "context_budget_tokens": 1000,
+        # A manifest with no allow-list admits every licence, so the checker refuses one; a
+        # synthetic manifest that omitted it would be testing that refusal by accident.
+        "license_allowlist": ["MIT", "Apache-2.0"],
+        "components": components,
+        "rejected": [],
+    }
     base.update(overrides)
     return base
 
@@ -111,8 +121,11 @@ class ExpiryTests(unittest.TestCase):
         self.assertTrue(any("past the 90-day review cadence" in w for w in warnings))
 
     def test_a_recent_decision_is_not_reported(self):
+        # Scoped to expiry: E28-S04 added an unmeasured-cost warning that every user-scope
+        # component now carries, and asserting on the whole list would make this test fail for a
+        # reason it is not about.
         _, warnings = toolchain.evaluate(manifest([component()]), {}, TODAY)
-        self.assertEqual([], warnings)
+        self.assertEqual([], [w for w in warnings if "review cadence" in w])
 
     def test_a_retired_component_does_not_expire(self):
         entry = component(decision={"status": "retired", "by": "owner", "date": "2020-01-01", "rationale": "gone"})
@@ -257,6 +270,76 @@ class ReportManagedMembersTests(unittest.TestCase):
         data = toolchain.load_manifest()
         text = toolchain.render_report(data, toolchain.installed_project_components(), dt.date.today())
         self.assertNotIn("Installed but unmanaged", text)
+
+
+class DeclaredCostAgainstMeasurement(unittest.TestCase):
+    """The budget decided against Task Observer; until E28-S04 it summed numbers a person typed."""
+
+    def test_an_inflated_declaration_refuses(self) -> None:
+        pack = component(id="pack", scope="project", members=["skill:.claude/skills/orient"], always_on_tokens=9000)
+        errors, _ = toolchain.token_errors([pack])
+        self.assertEqual(len(errors), 1)
+        self.assertIn("9000", errors[0])
+
+    def test_the_real_declaration_is_inside_the_tolerance(self) -> None:
+        """Answers the question the story asked: was hand-entry reliable? For this component, yes."""
+        data = toolchain.load_manifest()
+        errors, _ = toolchain.token_errors(data["components"])
+        self.assertEqual(errors, [])
+
+    def test_the_tolerance_is_tested_from_both_sides(self) -> None:
+        pack = component(id="pack", scope="project", members=["skill:.claude/skills/orient"])
+        measured = toolchain.measured_tokens(pack)
+        assert measured is not None
+        inside = round(measured * (1 + toolchain.TOKEN_TOLERANCE * 0.5))
+        outside = round(measured * (1 + toolchain.TOKEN_TOLERANCE * 2))
+        self.assertEqual(toolchain.token_errors([{**pack, "always_on_tokens": inside}])[0], [])
+        self.assertEqual(len(toolchain.token_errors([{**pack, "always_on_tokens": outside}])[0]), 1)
+
+    def test_an_unmeasurable_component_is_noted_not_confirmed(self) -> None:
+        plugin = component(id="remote", scope="user", always_on_tokens=500)
+        errors, notes = toolchain.token_errors([plugin])
+        self.assertEqual(errors, [])
+        self.assertEqual(len(notes), 1)
+        self.assertIn("unmeasured", notes[0])
+
+    def test_a_member_that_is_not_a_skill_path_makes_the_component_unmeasured(self) -> None:
+        """The first version read members as bare names, measured nothing, and said so silently."""
+        pack = component(id="pack", scope="project", members=["orient"])
+        self.assertIsNone(toolchain.measured_tokens(pack))
+
+
+class ComponentLicences(unittest.TestCase):
+    ALLOWED: ClassVar[dict] = {"license_allowlist": ["MIT", "Apache-2.0", "CC-BY-SA-4.0"]}
+
+    def test_an_unlicensed_source_refuses_as_its_own_distinct_state(self) -> None:
+        """Three of the census's most popular candidates carried no licence file at all."""
+        errors = toolchain.license_errors(self.ALLOWED, [component(license=toolchain.UNLICENSED)])
+        self.assertEqual(len(errors), 1)
+        self.assertIn("all rights", errors[0])
+
+    def test_a_licence_outside_the_allow_list_refuses(self) -> None:
+        """GPL-3.0 is the real candidate the census rejected on this ground."""
+        errors = toolchain.license_errors(self.ALLOWED, [component(license="GPL-3.0")])
+        self.assertEqual(len(errors), 1)
+        self.assertIn("GPL-3.0", errors[0])
+
+    def test_an_absent_allow_list_refuses_rather_than_admitting_everything(self) -> None:
+        errors = toolchain.license_errors({}, [component(license="MIT")])
+        self.assertEqual(len(errors), 1)
+
+    def test_the_committed_manifest_passes_its_own_allow_list(self) -> None:
+        data = toolchain.load_manifest()
+        self.assertEqual(toolchain.license_errors(data, data["components"]), [])
+
+    def test_every_component_records_a_licence(self) -> None:
+        for entry in toolchain.load_manifest()["components"]:
+            self.assertIn("license", entry, f"{entry['id']} records no licence")
+
+    def test_the_allow_list_is_not_a_copy_of_the_crate_allow_list(self) -> None:
+        """Two lists that must agree eventually do not; these govern different artifacts."""
+        data = toolchain.load_manifest()
+        self.assertIn("CC-BY-SA-4.0", data["license_allowlist"], "the pack carried under it must be expressible")
 
 
 if __name__ == "__main__":

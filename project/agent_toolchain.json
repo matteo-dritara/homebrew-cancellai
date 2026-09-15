@@ -9,18 +9,12 @@
       "scope": "project",
       "source": ".claude/skills",
       "version": "tracked-in-repo",
+      "license": "MIT",
       "trust": "FirstParty",
       "capabilities": [
         "prompt"
       ],
       "always_on_tokens": 900,
-      "purpose": "The cEOS contract as loadable Agent Skills. Members are named one by one rather than declaring the directory, so a ninth skill appearing in the pack is unmanaged and fails the gate - an independent review added one and the first version of this checker reported nothing unmanaged.",
-      "decision": {
-        "status": "approved",
-        "by": "owner",
-        "date": "2026-09-12",
-        "rationale": "Authored in this repository under E24. Carries no code and no credentials; a skill is prompt text the agent may load."
-      },
       "members": [
         "skill:.claude/skills/adversarial-cases",
         "skill:.claude/skills/epic-verifier",
@@ -30,7 +24,14 @@
         "skill:.claude/skills/rust-kernel-guard",
         "skill:.claude/skills/story-executor",
         "skill:.claude/skills/toolchain"
-      ]
+      ],
+      "purpose": "The cEOS contract as loadable Agent Skills. Members are named one by one rather than declaring the directory, so a ninth skill appearing in the pack is unmanaged and fails the gate - an independent review added one and the first version of this checker reported nothing unmanaged.",
+      "decision": {
+        "status": "approved",
+        "by": "owner",
+        "date": "2026-09-12",
+        "rationale": "Authored in this repository under E24. Carries no code and no credentials; a skill is prompt text the agent may load."
+      }
     },
     {
       "id": "differential-review@trailofbits",
@@ -38,6 +39,7 @@
       "scope": "user",
       "source": "github:trailofbits/skills",
       "version": "2.0.0",
+      "license": "CC-BY-SA-4.0",
       "trust": "Vendor",
       "capabilities": [
         "prompt",
@@ -58,6 +60,7 @@
       "scope": "project",
       "source": ".claude/hooks/guard-generated-docs.sh",
       "version": "tracked-in-repo",
+      "license": "MIT",
       "trust": "FirstParty",
       "capabilities": [
         "executes-code"
@@ -77,6 +80,7 @@
       "scope": "user",
       "source": "github:trailofbits/skills",
       "version": "1.1.0",
+      "license": "CC-BY-SA-4.0",
       "trust": "Vendor",
       "capabilities": [
         "prompt"
@@ -96,6 +100,7 @@
       "scope": "user",
       "source": "github:trailofbits/skills",
       "version": "1.2.0",
+      "license": "CC-BY-SA-4.0",
       "trust": "Vendor",
       "capabilities": [
         "prompt"
@@ -115,6 +120,7 @@
       "scope": "user",
       "source": "marketplace:claude-plugins-official",
       "version": "unpinned",
+      "license": "Apache-2.0",
       "trust": "FirstParty",
       "capabilities": [
         "executes-code"
@@ -134,6 +140,7 @@
       "scope": "user",
       "source": "marketplace:claude-plugins-official",
       "version": "unpinned",
+      "license": "Apache-2.0",
       "trust": "FirstParty",
       "capabilities": [
         "executes-code"
@@ -153,6 +160,7 @@
       "scope": "user",
       "source": "github:trailofbits/skills",
       "version": "1.6.0",
+      "license": "CC-BY-SA-4.0",
       "trust": "Vendor",
       "capabilities": [
         "prompt",
@@ -173,6 +181,7 @@
       "scope": "user",
       "source": "github:trailofbits/skills",
       "version": "2.0.0",
+      "license": "CC-BY-SA-4.0",
       "trust": "Vendor",
       "capabilities": [
         "prompt",
@@ -193,6 +202,7 @@
       "scope": "user",
       "source": "github:trailofbits/skills",
       "version": "1.4.3",
+      "license": "CC-BY-SA-4.0",
       "trust": "Vendor",
       "capabilities": [
         "prompt",
@@ -213,6 +223,7 @@
       "scope": "user",
       "source": "github:trailofbits/skills",
       "version": "2.0.2",
+      "license": "CC-BY-SA-4.0",
       "trust": "Vendor",
       "capabilities": [
         "prompt"
@@ -232,6 +243,7 @@
       "scope": "user",
       "source": "github:trailofbits/skills",
       "version": "2.0.2",
+      "license": "CC-BY-SA-4.0",
       "trust": "Vendor",
       "capabilities": [
         "prompt"
@@ -327,5 +339,15 @@
       "reason": "A 342-repository census over 22 queries, ranked by stars, run at the owner's request rather than against a named gap. It produced one installation (pyright-lsp) and three stories (E28-S01/S02/S03); the entries above name the candidates judged individually. The classes that carried the rest, so they are not re-derived: catalogues and awesome-lists, which index components rather than being one; packages that define Done or the method a second time; sources with no licence or an incompatible one; domains this product does not touch; upstreams with no push in over six months; and tools duplicating a gate this repository already runs. The headline result is negative and worth keeping: the fourteen most-starred repositories, 1.7 million stars between them, yielded no installable component for this codebase.",
       "date": "2026-09-15"
     }
-  ]
+  ],
+  "license_allowlist": [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "CC-BY-4.0",
+    "CC-BY-SA-4.0"
+  ],
+  "license_allowlist_note": "Licences admissible for prompt content and tooling this repository carries into the agent. Deliberately not a copy of rust/deny.toml's crate allow-list: that governs linked code, this governs text the agent reads and patterns this repository may derive from. CC-BY-SA-4.0 is admitted because trailofbits/skills is carried under it, and AGENTS.md records harvesting patterns from external packs - share-alike is a condition worth naming rather than discovering."
 }

@@ -39,6 +39,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -81,11 +82,121 @@ def parse_date(value: str, where: str) -> dt.date:
         raise ToolchainError(f"{where}: {value!r} is not an ISO date") from exc
 
 
+# Characters per token. English prose runs near four; the exact figure is model-specific and this
+# gate is not trying to be a tokenizer. It is trying to catch an entry that is wrong by an order of
+# magnitude, which is the failure a hand-entered budget actually has (E28-S04).
+CHARS_PER_TOKEN = 4.0
+
+# How far a declaration may sit from the measurement before the gate refuses. Wide on purpose: the
+# conversion above is an approximation, so a narrow tolerance would fail honest entries and teach
+# everyone to widen it.
+TOKEN_TOLERANCE = 0.25
+
+# A licence that means "all rights reserved by default". Distinct from a licence not yet recorded:
+# one is a fact about the upstream, the other is work not done here.
+UNLICENSED = "NONE"
+
+
+def frontmatter_chars(path: Path) -> int:
+    """Characters of YAML frontmatter in a skill file - what actually sits in every session.
+
+    A skill's body is loaded when the skill is invoked; only its name and description are resident.
+    Measuring the whole file would overstate the always-on cost by an order of magnitude, which is
+    the same mistake in the other direction.
+    """
+    text = path.read_text(encoding="utf-8")
+    match = re.search(r"\A---\n(.*?)\n---", text, re.DOTALL)
+    return len(match.group(1)) if match else 0
+
+
+def measured_tokens(component: dict[str, Any]) -> int | None:
+    """The component's real always-on contribution, or None when it cannot be measured here.
+
+    Only a component whose content lives in this repository can be measured. A user-scope plugin is
+    declared intent - the checker cannot see it in CI - and the honest answer is that its cost is
+    unmeasured, never that the declared number was confirmed.
+    """
+    if component.get("scope") != "project":
+        return None
+    members = component.get("members")
+    if not members:
+        return None
+    total = 0
+    for member in members:
+        # Members are written `skill:.claude/skills/<name>` - a kind prefix over a repository path.
+        # The first version of this function treated them as bare names, found nothing, and
+        # returned None: the measurement silently reported itself as unmeasurable, which is the
+        # exact failure this story exists to remove. Anything that is not a skill path is not
+        # measurable prompt content and makes the whole component unmeasured rather than partial.
+        kind, _, relative = member.partition(":")
+        if kind != "skill" or not relative:
+            return None
+        path = ROOT / relative / "SKILL.md"
+        if not path.exists():
+            return None
+        total += frontmatter_chars(path)
+    return round(total / CHARS_PER_TOKEN)
+
+
+def token_errors(components: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
+    """Declared always-on cost against a measurement of it.
+
+    The budget decides what this project may carry - it is what refused Task Observer - and until
+    now it summed numbers a person typed with nothing comparing any of them to reality.
+    """
+    errors: list[str] = []
+    notes: list[str] = []
+    for component in components:
+        identifier = component.get("id", "<unnamed>")
+        declared = int(component.get("always_on_tokens", 0))
+        measured = measured_tokens(component)
+        if measured is None:
+            notes.append(f"{identifier}: always-on cost is unmeasured (not present in this repository), declared {declared}")
+            continue
+        allowed = max(TOKEN_TOLERANCE * measured, 1.0)
+        if abs(declared - measured) > allowed:
+            errors.append(
+                f"{identifier}: declares {declared} always-on tokens, measured {measured} "
+                f"(tolerance {TOKEN_TOLERANCE:.0%}). The budget is only as good as its inputs; "
+                "correct the declaration rather than the measurement"
+            )
+    return errors, notes
+
+
+def license_errors(data: dict[str, Any], components: list[dict[str, Any]]) -> list[str]:
+    """Licences of the prompt content this repository carries into the agent.
+
+    `rust/deny.toml` keeps an allow-list for crates and nothing governed this. The list below is
+    stated once, here, and is deliberately not a copy of deny.toml's: the artifacts differ, and two
+    lists that must agree eventually do not.
+    """
+    errors: list[str] = []
+    allowed = data.get("license_allowlist")
+    if not allowed:
+        return ["the manifest declares no license_allowlist; every licence would pass by default"]
+    for component in components:
+        identifier = component.get("id", "<unnamed>")
+        licence = component.get("license")
+        if licence is None:
+            continue  # validate_component already reported the missing field
+        if licence == UNLICENSED:
+            errors.append(
+                f"{identifier}: its source carries no licence, so by default all rights are "
+                "reserved. That is a distinct state from a permissive licence and does not pass as one"
+            )
+        elif licence not in allowed:
+            errors.append(
+                f"{identifier}: licence {licence!r} is not in the manifest's allow-list {sorted(allowed)}. "
+                "Widening the list is its own reviewed change"
+            )
+    return errors
+
+
 def validate_component(component: dict[str, Any]) -> list[str]:
     """Structural and policy problems with one manifest entry."""
     errors: list[str] = []
     identifier = component.get("id", "<unnamed>")
-    for field in ("id", "kind", "scope", "source", "version", "trust", "capabilities", "always_on_tokens", "purpose", "decision"):
+    for field in ("id", "kind", "scope", "source", "version", "trust", "license", "capabilities", "always_on_tokens", "purpose", "decision"):
         if field not in component:
             errors.append(f"{identifier}: missing required field {field!r}")
     if errors:
@@ -278,6 +389,12 @@ def evaluate(data: dict[str, Any], installed: dict[str, str], today: dt.date) ->
     cadence = int(data.get("review_cadence_days", 90))
     for identifier, age in stale_decisions(components, cadence, today):
         warnings.append(f"{identifier}: decision is {age} days old, past the {cadence}-day review cadence")
+
+    live = [c for c in components if c.get("decision", {}).get("status") != "retired"]
+    declared_errors, unmeasured = token_errors(live)
+    errors.extend(declared_errors)
+    warnings.extend(unmeasured)
+    errors.extend(license_errors(data, live))
 
     budget = int(data.get("context_budget_tokens", 0))
     total = sum(int(c.get("always_on_tokens", 0)) for c in components if c.get("decision", {}).get("status") != "retired")

@@ -115,3 +115,34 @@ The pack's one standing waiver is worth reading as a caution about scanners gene
 `adversarial-cases` skill was flagged for session persistence because it contains the words
 `~/.claude` and `~/.codex` - inside the sentence forbidding anyone to touch them. The rule matched
 the prohibition as though it were the act.
+
+## The manifest's own numbers
+
+Two fields in the manifest used to be assertions with nothing behind them, which is the same
+defect the content scan above removes from `trust` (E28-S04).
+
+**`always_on_tokens` is now measured.** The budget is what decides whether this project can carry
+a component - it is the field that refused Task Observer at 14,460 tokens against a 6,000 ceiling -
+and it summed numbers a person typed. `check` now measures a project-scope component's real
+contribution from the YAML frontmatter of its skills, which is what actually sits in every session,
+and refuses a declaration more than 25% away from it. The tolerance is wide on purpose: the
+characters-per-token conversion is an approximation and the gate is not a tokenizer, it is looking
+for an entry wrong by an order of magnitude. A user-scope component cannot be measured from this
+repository at all, and is reported as **unmeasured** rather than confirmed.
+
+The first run answered the question the story asked. `cancellai-skill-pack` declared 900 and
+measures 964 - 6.6% out, inside the tolerance. Hand-entry was reliable here; now nobody has to
+assume it stays so.
+
+**`license` now exists.** `rust/deny.toml` has kept a licence allow-list for crates since ADR-0015
+and nothing governed the prompt content carried into the agent. The allow-list lives in the
+manifest as `license_allowlist` and is deliberately **not** a copy of the crate list: those govern
+linked code, these govern text the agent reads and patterns this repository may derive from. It
+admits CC-BY-SA-4.0 because `trailofbits/skills` is carried under it, and AGENTS.md records
+harvesting patterns from external packs - share-alike is a condition worth naming rather than
+discovering.
+
+A source with **no licence** is its own refusal, distinct from a licence not yet recorded: one is a
+fact about the upstream, the other is work not done here. The 2026-09-15 census made that concrete -
+`anthropics/skills` at 176k stars, `vercel-labs/agent-skills` and `hamelsmu/claude-review-loop` all
+carry no licence file, so by default all rights are reserved.
