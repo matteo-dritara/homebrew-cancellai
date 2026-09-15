@@ -97,7 +97,7 @@ TOKEN_TOLERANCE = 0.25
 UNLICENSED = "NONE"
 
 
-def frontmatter_chars(path: Path) -> int:
+def frontmatter_chars(path: Path) -> int | None:
     """Characters of YAML frontmatter in a skill file - what actually sits in every session.
 
     A skill's body is loaded when the skill is invoked; only its name and description are resident.
@@ -106,7 +106,7 @@ def frontmatter_chars(path: Path) -> int:
     """
     text = path.read_text(encoding="utf-8")
     match = re.search(r"\A---\n(.*?)\n---", text, re.DOTALL)
-    return len(match.group(1)) if match else 0
+    return len(match.group(1)) if match else None
 
 
 def measured_tokens(component: dict[str, Any]) -> int | None:
@@ -134,7 +134,10 @@ def measured_tokens(component: dict[str, Any]) -> int | None:
         path = ROOT / relative / "SKILL.md"
         if not path.exists():
             return None
-        total += frontmatter_chars(path)
+        chars = frontmatter_chars(path)
+        if chars is None:
+            return None
+        total += chars
     return round(total / CHARS_PER_TOKEN)
 
 
@@ -151,7 +154,13 @@ def token_errors(components: list[dict[str, Any]]) -> tuple[list[str], list[str]
         declared = int(component.get("always_on_tokens", 0))
         measured = measured_tokens(component)
         if measured is None:
-            notes.append(f"{identifier}: always-on cost is unmeasured (not present in this repository), declared {declared}")
+            if component.get("scope") == "project" and "prompt" in component.get("capabilities", []):
+                errors.append(
+                    f"{identifier}: project-scope prompt content cannot be measured from its declared members. "
+                    "A carried skill that does not enter the measurement cannot pass as unmeasured"
+                )
+            else:
+                notes.append(f"{identifier}: always-on cost is unmeasured (not present in this repository), declared {declared}")
             continue
         allowed = max(TOKEN_TOLERANCE * measured, 1.0)
         if abs(declared - measured) > allowed:

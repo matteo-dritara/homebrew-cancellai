@@ -129,7 +129,9 @@ contribution from the YAML frontmatter of its skills, which is what actually sit
 and refuses a declaration more than 25% away from it. The tolerance is wide on purpose: the
 characters-per-token conversion is an approximation and the gate is not a tokenizer, it is looking
 for an entry wrong by an order of magnitude. A user-scope component cannot be measured from this
-repository at all, and is reported as **unmeasured** rather than confirmed.
+repository at all, and is reported as **unmeasured** rather than confirmed. A project-scope
+component that carries prompt content but cannot be measured is different: its files should be
+present here, so the gate refuses rather than recasting a broken measurement as uncertainty.
 
 The first run answered the question the story asked. `cancellai-skill-pack` declared 900 and
 measures 964 - 6.6% out, inside the tolerance. Hand-entry was reliable here; now nobody has to

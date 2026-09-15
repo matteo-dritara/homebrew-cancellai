@@ -14,7 +14,7 @@ PASS
 
 | AC | Evidence | Result |
 | --- | --- | --- |
-| AC1 | `measured_tokens()` reads each member skill's YAML frontmatter; a declaration more than 25% from the measurement refuses, naming both numbers. `tests/test_agent_toolchain.py::DeclaredCostAgainstMeasurement::test_an_inflated_declaration_refuses` | PASS |
+| AC1 | `measured_tokens()` reads each member skill's YAML frontmatter; a declaration more than 25% from the measurement refuses, naming both numbers. A project-scope component carrying prompt content now also refuses if its declared members cannot be measured, rather than borrowing the user-scope `unmeasured` state. `tests/test_agent_toolchain.py::DeclaredCostAgainstMeasurement::test_an_inflated_declaration_refuses` and `::test_a_project_scope_prompt_component_that_cannot_be_measured_refuses` | PASS after verifier repair |
 | AC2 | A user-scope component returns `None` and is reported `unmeasured`, never confirmed. `tests/test_agent_toolchain.py::DeclaredCostAgainstMeasurement::test_an_unmeasurable_component_is_noted_not_confirmed` | PASS |
 | AC3 | `license` is a required field and `license_allowlist` gates it; GPL-3.0 refuses. `tests/test_agent_toolchain.py::ComponentLicences::test_a_licence_outside_the_allow_list_refuses` | PASS |
 | AC4 | `NONE` refuses as its own state, distinct from a licence not yet recorded. `tests/test_agent_toolchain.py::ComponentLicences::test_an_unlicensed_source_refuses_as_its_own_distinct_state` | PASS |

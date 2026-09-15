@@ -308,6 +308,14 @@ class DeclaredCostAgainstMeasurement(unittest.TestCase):
         pack = component(id="pack", scope="project", members=["orient"])
         self.assertIsNone(toolchain.measured_tokens(pack))
 
+    def test_a_project_scope_prompt_component_that_cannot_be_measured_refuses(self) -> None:
+        """Only an absent user-scope component is honestly unmeasured; this one is carried here."""
+        pack = component(id="pack", scope="project", members=["orient"])
+        errors, notes = toolchain.token_errors([pack])
+        self.assertEqual(notes, [])
+        self.assertEqual(len(errors), 1)
+        self.assertIn("cannot be measured", errors[0])
+
 
 class ComponentLicences(unittest.TestCase):
     ALLOWED: ClassVar[dict] = {"license_allowlist": ["MIT", "Apache-2.0", "CC-BY-SA-4.0"]}
