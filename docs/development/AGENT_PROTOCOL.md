@@ -205,3 +205,38 @@ entry stays in the packet, so a later session does not re-propose it as though i
 canonical document - that is precisely why the package this idea came from was rejected, and a
 test asserts the property rather than trusting the author of the next change to remember it. A
 skill generated from an observation is a second copy of the contract produced without review.
+
+## The handoff itself
+
+Executor/verifier separation is the method this repository is built on, and until E28-S02 it was
+the only part of it with no artifact. `project_os.py brief <ID> --role verifier` rendered the
+verifier's input and nothing carried it anywhere: a human copied it into the other agent and
+copied the verdict back. Two things the ledger could not see follow from that - whether the
+verifier was given the brief the gate rendered or a paraphrase of it, and whether the verdict
+committed is the verdict the verifier produced.
+
+```sh
+python3 scripts/verifier_handoff.py brief <STORY-ID> --rendered-by "<who>"
+python3 scripts/verifier_handoff.py check
+```
+
+The brief is written to `project/evidence/<STORY-ID>/VERIFIER_BRIEF.md` with a checksum over its
+own body. A verdict answering it repeats that checksum on a `Brief-Checksum:` line and names
+itself on a `Verifier:` line. `check` refuses a verdict that answers a checksum which is not the
+committed brief's, a brief edited after it was rendered, and a verdict with no author.
+
+**The refusal that matters most** is the one that keeps the two roles apart: a verdict whose
+`Verifier:` is the party that rendered the brief is refused outright. Automating a handoff between
+two roles is the most direct way to collapse them, so the rule that an executor's work ends at
+`ready_for_review` and that it does not write its own Safety Verdict stops being a rule the
+executor chooses to obey.
+
+Three properties a more convenient design would have lost:
+
+- **An unavailable verifier is not a fallback.** No path here produces a verdict without one. A
+  story with a brief and no verdict stays where it is.
+- **A CR4 Safety Verdict stays attributable.** `Verifier:` is required, never defaulted, so an
+  unattributed verdict is not expressible.
+- **The mechanism is optional.** A handoff performed by a human stays valid - the method is the
+  separation, not the automation of it. A story with no brief is reported as having used the
+  manual route, not failed.
