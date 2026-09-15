@@ -271,6 +271,61 @@
       "id": "multica-ai/andrej-karpathy-skills",
       "reason": "Rule 3 (surgical changes) was harvested into AGENTS.md's Diff discipline. The package is rejected: it is a CLAUDE.md, so it is always resident rather than progressively disclosed, and its rule 2 forbids 'error handling for unrealistic edge cases' - in this product the unrealistic edge cases are the product.",
       "date": "2026-09-12"
+    },
+    {
+      "id": "thedotmack/claude-mem",
+      "reason": "Five lifecycle hooks, an MCP server, a background worker and a default cloud provider that ships session transcripts to cmem.ai. Refused by this manifest's own capability bar (executes-code + network at Community trust), and it would carry exactly what AGENTS.md forbids committing: real transcripts, prompts, source and home paths.",
+      "date": "2026-09-15"
+    },
+    {
+      "id": "diegosouzapw/OmniRoute",
+      "reason": "A gateway routing prompts across 352 providers. Refused by the capability bar, and it would falsify the executor/verifier attribution the evidence packets record: a gateway choosing a provider by quota makes 'Codex performed the independent review' unverifiable.",
+      "date": "2026-09-15"
+    },
+    {
+      "id": "rebelytics/one-skill-to-rule-them-all",
+      "reason": "Prompt-only, so it clears the trust bar. Refused on cost and duplication: a 14,460-token body whose own description requires invoking it before the first tool call of every session - 2.4x the whole context budget - and it generates skill edits, which is a second copy of the contract produced without review. The concept was kept as E28-S03.",
+      "date": "2026-09-15"
+    },
+    {
+      "id": "headroomlabs/headroom",
+      "reason": "Not identifiable as a component: at least five unrelated projects share the name, the headroomlabs org publishes no public repository despite an Apache-2.0 claim, and the PyPI package of that name is an unrelated CLI. No source or version could be written into this manifest honestly.",
+      "date": "2026-09-15"
+    },
+    {
+      "id": "centminmod/my-claude-code-setup",
+      "reason": "Stands for the whole 'someone else's Claude Code configuration' class, of which the census found at least eight. Same shape as obra/superpowers and multica-ai/andrej-karpathy-skills, both already rejected: a starter CLAUDE.md plus agents, skills and hooks that define the method a second time.",
+      "date": "2026-09-15"
+    },
+    {
+      "id": "anthropics/skills",
+      "reason": "First-party and 176k stars, and refused anyway: the repository carries no licence file and the licence endpoint returns 404, so by default all rights are reserved. This repository maintains a licence allow-list for Rust crates; prompt content it carries into the agent is the same question on a different artifact. E28-S04 makes that check mechanical.",
+      "date": "2026-09-15"
+    },
+    {
+      "id": "NeoLabHQ/context-engineering-kit",
+      "reason": "GPL-3.0. Outside any allow-list this repository would accept for content it carries and derives from.",
+      "date": "2026-09-15"
+    },
+    {
+      "id": "OthmanAdi/planning-with-files",
+      "reason": "Duplicates scripts/project_os.py - file-based planning with 50 hooks and 353 scripts - without the Change Risk Levels, the risk floors or the gates. Same rejection as github/spec-kit and claude-task-master.",
+      "date": "2026-09-15"
+    },
+    {
+      "id": "addyosmani/agent-skills",
+      "reason": "25 method skills and 9 hooks defining spec-driven, test-driven and constraint-driven development. A second definition of how work is done, which AGENTS.md already defines more strictly and ties to Safety Invariants.",
+      "date": "2026-09-15"
+    },
+    {
+      "id": "parcadei/Continuous-Claude-v3",
+      "reason": "358 hooks maintaining state through ledgers and handoffs, and no push since 2026-01-26. The abandonment signal alone disqualifies it; the evidence ledger already answers what it addresses.",
+      "date": "2026-09-15"
+    },
+    {
+      "id": "census:2026-09-15",
+      "reason": "A 342-repository census over 22 queries, ranked by stars, run at the owner's request rather than against a named gap. It produced one installation (pyright-lsp) and three stories (E28-S01/S02/S03); the entries above name the candidates judged individually. The classes that carried the rest, so they are not re-derived: catalogues and awesome-lists, which index components rather than being one; packages that define Done or the method a second time; sources with no licence or an incompatible one; domains this product does not touch; upstreams with no push in over six months; and tools duplicating a gate this repository already runs. The headline result is negative and worth keeping: the fourteen most-starred repositories, 1.7 million stars between them, yielded no installable component for this codebase.",
+      "date": "2026-09-15"
     }
   ]
 }
