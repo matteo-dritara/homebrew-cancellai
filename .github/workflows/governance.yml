@@ -61,7 +61,4 @@ jobs:
         with:
           python-version: "3.14"
       - run: python3 -m pip install -r requirements-dev.txt
-      # scripts/check_skill_content.py refuses when the scanner is absent rather than
-      # reporting a pack it never read, so pre-commit cannot run green without it (E28-S01).
-      - run: python3 -m pip install 'git+https://github.com/NVIDIA/SkillSpector@v2.11.2'
       - run: python3 -m pre_commit run --all-files --show-diff-on-failure

@@ -3,3 +3,10 @@ mypy==2.3.1
 pytest==9.1.1
 ruff==0.16.5
 pre-commit==4.6.2
+
+# The skill-content gate's scanner (E28-S01). Not on PyPI, so it is a PEP 508 direct reference
+# pinned to a tag - `scripts/check_skill_content.py` refuses outright when the installed version is
+# not the pinned one, because a scanner that changes what it detects changes the meaning of a
+# passing run. It lives here rather than in a separate install step so that one command makes a
+# fresh clone able to run every gate.
+skillspector @ git+https://github.com/NVIDIA/SkillSpector@v2.11.2

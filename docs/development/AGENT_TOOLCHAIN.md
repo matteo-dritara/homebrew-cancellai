@@ -85,12 +85,19 @@ python3 scripts/check_skill_content.py check    # fails at HIGH or above
 python3 scripts/check_skill_content.py report   # every finding, with the fingerprint a waiver names
 ```
 
-The instrument is [SkillSpector](https://github.com/NVIDIA/SkillSpector), pinned at 2.11.2 and
-installed as a development dependency - **not** as a component in the manifest it is checking:
+The instrument is [SkillSpector](https://github.com/NVIDIA/SkillSpector), pinned at 2.11.2 in
+`requirements-dev.txt` as a development dependency - **not** as a component in the manifest it is
+checking. The documented setup installs it, so a fresh clone can run every gate after one command:
 
 ```sh
-uv tool install 'git+https://github.com/NVIDIA/SkillSpector@v2.11.2'
+pip install -r requirements-dev.txt
 ```
+
+It was briefly a separate install step in two workflows and a line in this document, which is a
+step somebody does not take: the gate then passes for everyone who already has the tool and refuses
+for everyone who followed the instructions. `tests/test_dev_environment.py` asserts that the
+requirement and the version the gate pins do not drift apart, because the failure mode of that
+drift is a repository that only works on the machine it was built on.
 
 It runs with `--no-llm`, so no file content leaves the machine and the semantic analysers do not
 run. That is a real reduction in reach: static-only analysis remains explicitly `partial`, but the

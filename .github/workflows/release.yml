@@ -39,9 +39,6 @@ jobs:
         with:
           toolchain: stable
       - run: python3 -m pip install -r requirements-dev.txt
-      # check_skill_content.py refuses when the scanner is absent rather than reporting a
-      # pack it never read, so the gate cannot pass without it (E28-S01).
-      - run: python3 -m pip install 'git+https://github.com/NVIDIA/SkillSpector@v2.11.2'
       - run: python3 -m pytest tests -v
       - run: python3 -m ruff check .
       - run: python3 -m ruff format --check .
