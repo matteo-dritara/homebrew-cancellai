@@ -264,3 +264,22 @@ object - which is the shape of the defect E28-S05 repaired, one level up. `tests
 therefore asserts the exact set as well as the behaviour, so adding a member fails until somebody
 changes this paragraph and the assertion together, having decided that the new status really does
 mean a dependent epic may proceed (E29-S07).
+
+### A blocked item says by what
+
+`blocked` used to be a status with nothing beside it. Two stories carried it - `E06-S04` and
+`E17-S07`, which together gate the whole Rust cutover line - while every dependency each declared
+was `done`, so a tool reading the control plane could only conclude that nothing held them. The
+reasons lived in `RELEASE_GATES.md`'s cutover checklist, where one had already gone stale: it named
+`E16-S05` as an outstanding dependency long after `E16-S05` closed.
+
+A blocked item now records `blocked_by`: a `summary`, the date it was `recorded`, optionally the
+work items it is `waiting_on`, and where its `argument` lives. `project_os.py` enforces three
+things, and the first is deliberately narrow (E30-S01):
+
+- **required only where the dependencies explain nothing.** An open dependency already says what
+  holds an item, and restating it in prose would be a second source of truth that drifts. The field
+  is required exactly in the case that hid the two real blockers.
+- **refused on an item that is not blocked**, because a reason left behind reads as current.
+- **reported when `waiting_on` names something that has closed**, which is precisely how the prose
+  went wrong.

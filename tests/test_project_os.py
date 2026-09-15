@@ -100,9 +100,13 @@ class ProjectOSTests(unittest.TestCase):
         for epic in epics:
             epic["status"] = "planned"
             epic["dependencies"] = []
+            # A neutral copy is not blocked, so it carries no reason for being blocked. Leaving one
+            # behind is the kind of residue this helper exists to remove (E30-S01).
+            epic.pop("blocked_by", None)
             for story in epic["stories"]:
                 story["status"] = "planned"
                 story["dependencies"] = []
+                story.pop("blocked_by", None)
         return epics
 
     def test_same_epic_dependency_satisfied_by_ready_for_review(self) -> None:
@@ -234,6 +238,9 @@ class ProjectOSTests(unittest.TestCase):
             for epic in epics:
                 if epic["status"] != "planned" and not set(epic["dependencies"]) <= done_ids:
                     epic["status"] = "planned"
+                    # A reopened item is not blocked, so it carries no reason for being blocked.
+                    # Leaving one behind builds the inconsistent state this helper exists to avoid.
+                    epic.pop("blocked_by", None)
                     changed = True
                 if epic["status"] == "done" and any(s["status"] != "done" for s in epic["stories"]):
                     epic["status"] = "in_progress"
@@ -241,6 +248,7 @@ class ProjectOSTests(unittest.TestCase):
                 for story in epic["stories"]:
                     if story["status"] != "planned" and story is not target and not set(story["dependencies"]) <= done_ids:
                         story["status"] = "planned"
+                        story.pop("blocked_by", None)
                         changed = True
             return changed
 

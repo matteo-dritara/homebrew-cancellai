@@ -265,7 +265,7 @@ E06 to close.
 Windows now exist (E17-S02, `done`, `docs/RELEASING.md` "Target Rust release factory"), with
 provenance/SBOM/signing (E17-S03) and installation-source-aware upgrade guidance (E17-S04) on
 top. What remains open in E17 is **E17-S07** (safety incident containment and capability
-downgrade), `blocked` on `E16-S05`, which is itself blocked because epic E16 depends on `E15`
+downgrade), `blocked` because epic E16 depends on `E15`
 (Guardian runtime, phase P4, not yet started) - so this leg of G4 will not close until Guardian
 work begins, unless the owner instead accepts a scoped cutover perimeter by ADR per E06-S04's
 own acceptance criteria. Independent of E17, no performance/self-budget measurement exists for
@@ -314,7 +314,7 @@ ready with independent verification behind it. What remains is: (a) G2 - the rep
 authority defect is repaired and pinned by regressions, but repaired-by-executor is not the same
 claim as independently-confirmed-repaired, and no verifier has taken a second adversarial pass
 at `E21-S03`/`E21-S07` specifically; and (b) G4 - `E17-S07` sits behind a real dependency chain
-into Guardian (`E16-S05` → `E16` → `E15`, phase P4, not yet started), plus the still-unaddressed
+into Guardian (`E16` → `E15`, phase P4, not yet started), plus the still-unaddressed
 performance self-budget and crash/recovery gaps. Closing E06-S04 (and E06 as a whole) requires
 either this checklist to read "ready" against real evidence with an independent CR4 verifier
 pass and the owner's own Safety Verdict acceptance, or an explicit ADR narrowing the cutover

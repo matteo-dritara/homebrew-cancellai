@@ -194,6 +194,49 @@ def require_string_list(obj: dict[str, Any], key: str, where: str, *, allow_empt
     return value
 
 
+def blocked_by_errors(items: list[dict[str, Any]], kind: str, closed: set[str], status_of: dict[str, str]) -> list[str]:
+    """`blocked` has to name what holds it (E30-S01).
+
+    The status existed with ten sibling fields and none of them said why, so the two stories gating
+    the Rust cutover sat at `blocked` while every dependency they declared was `done`. The only
+    honest reading of the control plane was that nothing held them, which was false: the reasons
+    were in the prose of `docs/development/RELEASE_GATES.md`, where nothing checks them and where
+    one had already gone stale.
+    """
+    errors: list[str] = []
+    closed_statuses = CLOSED_EPIC_STATUS | {"done", "cancelled"}
+    for item in items:
+        identifier = item["id"]
+        recorded = item.get("blocked_by")
+        if item["status"] == "blocked":
+            # A declared dependency that is not yet closed already says what holds the item, and
+            # restating it in prose would create a second source of truth that drifts. The field is
+            # required exactly where the dependencies explain nothing - which is the case that hid
+            # the real blockers of the two stories gating the Rust cutover.
+            explained = any(status_of.get(dep) not in closed_statuses for dep in item.get("dependencies", []))
+            if not recorded and not explained:
+                errors.append(
+                    f"{identifier}: {kind} is blocked and every dependency it declares is satisfied, so "
+                    "nothing says what holds it. A block nobody can interrogate is one nobody can clear; "
+                    "record blocked_by naming what it waits on and where the argument lives"
+                )
+                continue
+            if not recorded:
+                continue
+            for waiting in recorded.get("waiting_on", []):
+                if waiting in closed:
+                    errors.append(
+                        f"{identifier}: blocked_by waits on {waiting}, which has closed. This is exactly how "
+                        "the prose went wrong - RELEASE_GATES.md still named E16-S05 long after it was done"
+                    )
+        elif recorded:
+            errors.append(
+                f"{identifier}: {kind} is {item['status']} and still carries blocked_by. A reason left "
+                "behind on an unblocked item is worse than none, because it reads as current"
+            )
+    return errors
+
+
 def validate(model: Model) -> list[str]:
     warnings: list[str] = []
     if model.decisions.get("schema_version") != 1 or model.decisions.get("project") != "cancellAI":
@@ -342,6 +385,9 @@ def validate(model: Model) -> list[str]:
 
     epic_status = {epic["id"]: epic["status"] for epic in model.epics}
     story_status = {story["id"]: story["status"] for story in model.stories}
+
+    closed_items = {i for i, s in epic_status.items() if s in CLOSED_EPIC_STATUS}
+    closed_items |= {i for i, s in story_status.items() if s == "done"}
     dependency_gated_statuses = {"ready", "in_progress", "ready_for_review", "verification", "done"}
     for epic in model.epics:
         if epic["status"] in dependency_gated_statuses:
@@ -408,6 +454,15 @@ def validate(model: Model) -> list[str]:
                             f"{story['id']}: cannot be done - no committed Safety Verdict records PASS or "
                             "PASS_WITH_RESIDUALS, and at least one records FAIL/REJECT"
                         )
+
+    # After the dependency rules, deliberately. An unsatisfied dependency is the more fundamental
+    # problem and the more useful message; a block that names nothing is worth reporting once the
+    # graph itself is sound (E30-S01).
+    status_of = {**epic_status, **story_status}
+    for message in blocked_by_errors(model.epics, "epic", closed_items, status_of) + blocked_by_errors(
+        model.stories, "story", closed_items, status_of
+    ):
+        raise GovernanceError(message)
 
     return warnings
 

@@ -79,7 +79,7 @@ independent samples, and the population estimate collapses to what one round alr
 
 ## Evidence-ledger integrity
 
-- **123 of 138** story packets past `ready_for_review` carry a row per acceptance criterion.
+- **124 of 139** story packets past `ready_for_review` carry a row per acceptance criterion.
 - Packets that do not:
   - E00-S01 (CR4): 0 rows for 3 criteria
   - E00-S02 (CR4): 0 rows for 3 criteria
@@ -101,9 +101,9 @@ independent samples, and the population estimate collapses to what one round alr
 
 | CR0 | CR1 | CR2 | CR3 | CR4 |
 | --- | --- | --- | --- | --- |
-| 14 | 38 | 51 | 28 | 32 |
+| 14 | 38 | 52 | 28 | 32 |
 
-60 of 163 stories are CR3 or CR4, the levels whose gates require
+60 of 164 stories are CR3 or CR4, the levels whose gates require
 independent verification. That share is what makes the reviewer-independence question above
 load-bearing rather than academic.
 
@@ -113,7 +113,7 @@ load-bearing rather than academic.
 
 ## Requirements shape
 
-- Acceptance criteria describing **unwanted behaviour**: **63 of 506** (12%).
+- Acceptance criteria describing **unwanted behaviour**: **65 of 511** (13%).
 - Epics whose requirements describe the feature and not the hazard:
   - `E00` - 0 of 29
   - `E01` - 0 of 13

@@ -82,6 +82,14 @@
       "id": "E06-S04",
       "title": "Canonical engine switch",
       "status": "blocked",
+      "blocked_by": {
+        "summary": "Two gates in the cutover checklist are open and neither is a dependency this story can declare. G2: the authority defect the 2026-09-03 target-engine review reproduced is repaired and pinned by regressions, but repaired-by-executor is not independently-confirmed-repaired, and no verifier has taken a second adversarial pass at E21-S03/E21-S07 - an act no work item currently carries, which is why it appears here rather than in waiting_on. G4: the operability leg needs E17-S07, itself behind the Guardian chain. Closing this needs either the checklist reading ready against real evidence with an independent CR4 verifier pass and the owner's own Safety Verdict, or an explicit ADR narrowing the cutover perimeter so the Guardian-dependent leg of G4 is not required for a first promotion. Neither is something an executor grants itself.",
+        "waiting_on": [
+          "E17-S07"
+        ],
+        "argument": "docs/development/RELEASE_GATES.md",
+        "recorded": "2026-09-15"
+      },
       "outcome": "Promote Rust to stable only after functional, safety, compatibility, and operability gates pass.",
       "change_risk": "CR4",
       "dependencies": [

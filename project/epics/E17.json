@@ -113,7 +113,7 @@
         "SI-030"
       ],
       "verification": [
-        "Channel \u00d7 policy authority tests."
+        "Channel × policy authority tests."
       ],
       "documentation_impact": [
         "docs/security/SAFETY_INVARIANTS.md",
@@ -147,6 +147,15 @@
       "id": "E17-S07",
       "title": "Safety incident containment and capability downgrade",
       "status": "blocked",
+      "blocked_by": {
+        "summary": "Sits behind the Guardian dependency chain. The declared story dependencies (E16-S05, E17-S03, E17-S05) are all done; what is not done is the Guardian runtime itself - epic E16 is blocked on E15, which is planned and not started. RELEASE_GATES.md described this chain as 'E16-S05 -> E16 -> E15' and that first link went stale when E16-S05 closed, which is the drift that motivated recording blockers here rather than in prose. The performance self-budget and crash/recovery gaps named in the same checklist are also unaddressed.",
+        "waiting_on": [
+          "E15",
+          "E16"
+        ],
+        "argument": "docs/development/RELEASE_GATES.md",
+        "recorded": "2026-09-15"
+      },
       "outcome": "Operationalize a least-authority incident path that can stop promotion and remotely distribute signed capability downgrades without introducing a remote destructive control plane.",
       "change_risk": "CR4",
       "dependencies": [

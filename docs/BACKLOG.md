@@ -3761,3 +3761,35 @@ ADR-0025 says findings that survive a review become backlog items with the story
 **Documentation impact**
 
 - `docs/development/WORK_ITEM_MODEL.md`
+
+## E30 - Blocked Says By What
+
+**Phase:** `P1` | **Status:** `done_no_release` | **Epic dependencies:** none
+
+The control plane can record that a story is blocked and cannot record by what. `E06-S04`, the Rust cutover, and `E17-S07`, safety incident containment, have both sat at `blocked` while every dependency they declare is `done` - the real blockers live in the prose of docs/development/RELEASE_GATES.md and nowhere a tool can read. Two consequences followed and both were observed. A session asking what is available computes an answer from dependency states and gets it wrong, which happened on 2026-09-15 when the executor reported E12 and E13 as ready to start. And the prose drifts unchecked: RELEASE_GATES.md still says E17-S07 waits on `E16-S05`, which closed some time ago. This epic makes a block name what holds it, so that a status nobody can interrogate stops being possible to write.
+
+### E30-S01 - A story that is blocked records what blocks it
+
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
+
+**Outcome.** `blocked` is a status with ten sibling fields and none of them says why. The two stories carrying it are the two that gate the entire Rust cutover line, and both declare dependencies that are all satisfied, so the only honest reading of the control plane is that nothing holds them - which is false. The reasons exist, in `docs/development/RELEASE_GATES.md`'s cutover checklist, and that document has already drifted: it names `E16-S05` as an outstanding dependency of E17-S07 and E16-S05 is `done`. A block that only prose can explain is a block nobody can check, and a document nobody checks is a document that is eventually wrong.
+
+**Acceptance criteria**
+
+- If a story or epic is blocked, then it shall record what blocks it, and the control plane shall refuse the status without it.
+- A recorded blocker shall point at where its argument lives, so the reason can be read rather than inferred.
+- If an item is not blocked, then it shall not carry a blocker, because a stale reason is worse than none.
+- The two stories already blocked shall record the reasons that actually hold them, taken from the cutover checklist rather than invented.
+- A blocker naming a work item that has since closed shall be reported, because that is how the existing prose went wrong.
+
+**Verification**
+
+- The gate is shown refusing a blocked item with no recorded blocker before it is shown accepting one with it.
+- A non-blocked item carrying a blocker is shown to be refused.
+- A blocker naming a closed work item is shown to be reported, using the real E16-S05 reference the prose still carries.
+- The committed control plane is shown to pass, with both real blockers recorded.
+
+**Documentation impact**
+
+- `docs/development/WORK_ITEM_MODEL.md`
+- `docs/development/RELEASE_GATES.md`
