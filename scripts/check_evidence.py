@@ -50,6 +50,11 @@ RESIDUAL_REQUIRED_AT = {"CR3", "CR4"}
 
 AC_ROW = re.compile(r"^\|\s*AC\s*(\d+)", re.MULTILINE | re.IGNORECASE)
 RESIDUAL_SECTION = re.compile(r"##\s*Residual risks?\s*\n(.*?)(?=\n##|\Z)", re.DOTALL | re.IGNORECASE)
+METHOD_SECTION = re.compile(r"##\s*Method defects?\s*\n(.*?)(?=\n##|\Z)", re.DOTALL | re.IGNORECASE)
+# A disposition is what turns an observation into a finding somebody decided. `proposed` is a
+# legitimate resting state - it means the owner has it and has not ruled - but absence is not.
+DISPOSITION = re.compile(r"\*{0,2}Disposition\*{0,2}\s*:\s*(proposed|accepted|declined)\b", re.IGNORECASE)
+PREVENTED_BY = re.compile(r"\*{0,2}Prevented by\*{0,2}\s*:", re.IGNORECASE)
 SCRIPT_COMMAND = re.compile(r"python3\s+(scripts/[\w./-]+\.py)")
 FENCED = re.compile(r"^```.*?^```", re.MULTILINE | re.DOTALL)
 
@@ -111,6 +116,47 @@ def residual_body(text: str) -> str:
     return "" if first.startswith("none") else body
 
 
+def method_defect_entries(text: str) -> list[str]:
+    """Top-level bullets of the Method defects section, or [] when there are none.
+
+    "none" as the first item is the common and honest answer and counts as no entries. The section
+    records defects in *how the work was done* - a rule that was missing, wrong or unreachable -
+    which the residual-risk section does not cover because that is about the product (E28-S03).
+    """
+    match = METHOD_SECTION.search(prose_only(text))
+    if not match:
+        return []
+    body = match.group(1).strip()
+    entries: list[str] = []
+    for line in body.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith(("- ", "* ")):
+            continue
+        content = stripped[2:].strip()
+        if content.lower().lstrip("*_ ").startswith("none"):
+            continue
+        entries.append(content)
+    return entries
+
+
+def method_defect_problems(story_id: str, text: str) -> list[str]:
+    """A recorded defect that nobody dispositioned, or that points nowhere."""
+    problems: list[str] = []
+    for entry in method_defect_entries(text):
+        excerpt = entry[:70]
+        if not DISPOSITION.search(entry):
+            problems.append(
+                f'{story_id}: method defect "{excerpt}" carries no Disposition. An observation '
+                "nobody dispositioned is a note, not a finding - record proposed, accepted or declined with a date"
+            )
+        if not PREVENTED_BY.search(entry):
+            problems.append(
+                f'{story_id}: method defect "{excerpt}" does not say what would have prevented it. '
+                "Name the document, gate or skill - or say none exists, which is itself the finding"
+            )
+    return problems
+
+
 def safety_verdict_exists(story_id: str) -> bool:
     directory = EVIDENCE / story_id
     if not directory.is_dir():
@@ -146,6 +192,8 @@ def check_story(story: dict[str, Any], root: Path) -> list[str]:
 
     if risk == "CR4" and story["status"] == "done" and not safety_verdict_exists(story_id):
         problems.append(f"{story_id}: CR4 story is done with no Safety Verdict recorded - that verdict is the reviewer's output")
+
+    problems.extend(method_defect_problems(story_id, text))
 
     for script in sorted(set(SCRIPT_COMMAND.findall(text))):
         if not (root / script).is_file():

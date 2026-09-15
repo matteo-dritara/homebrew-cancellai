@@ -132,7 +132,8 @@ Executor:
 - plan verification before code;
 - implement the smallest coherent change;
 - add tests/docs in the same work item;
-- create evidence summary;
+- create evidence summary, including any defect in the *method* the work exposed
+  (`docs/development/AGENT_PROTOCOL.md`, "Method defects");
 - set the story to `ready_for_review` and stop there.
 
 `ready_for_review` is the executor's exit state. Never mark your own work `verification` or `done`, and never write your own CR4 Safety Verdict. Claude is the standing executor; Codex performs the independent review.

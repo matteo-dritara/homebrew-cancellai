@@ -180,3 +180,28 @@ Canonical prompts live in:
 - `project/templates/VERIFIER_PROMPT.md`
 
 They reference repository documents rather than copying large specs into prompts, reducing drift.
+
+## Method defects
+
+Every rule in `AGENTS.md` worth having was written after something went wrong, and until E28-S03
+the record of what went wrong was nowhere. A session notices that a rule is missing, wrong or
+unreachable; the correction happens in conversation; the session ends and the observation is gone.
+The evidence packet already records residual risks about the *product*. The **Method defects**
+section records the same class of thing about *how the work was done*.
+
+An entry carries three things and the gate refuses it without them:
+
+- **what happened** - expectation, outcome, and the correction;
+- **what would have prevented it** - a document, gate or skill, or `none exists`, which is itself
+  the finding;
+- **a disposition** - `proposed`, `accepted <date>` or `declined <date> - reason`.
+
+`proposed` is a legitimate resting state: it means the owner has it and has not ruled. Absence is
+not, because an observation nobody dispositioned is a note rather than a finding. A **declined**
+entry stays in the packet, so a later session does not re-propose it as though it were new.
+`none` is the common and honest answer for most stories.
+
+**The mechanism proposes and never writes.** It does not edit a skill, `AGENTS.md`, or any
+canonical document - that is precisely why the package this idea came from was rejected, and a
+test asserts the property rather than trusting the author of the next change to remember it. A
+skill generated from an observation is a second copy of the contract produced without review.
