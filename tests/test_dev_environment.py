@@ -30,7 +30,8 @@ REQUIREMENTS = ROOT / "requirements-dev.txt"
 CONTRIBUTING = ROOT / ".github" / "CONTRIBUTING.md"
 WORKFLOWS = ROOT / ".github" / "workflows"
 
-SKILLSPECTOR_REQUIREMENT = re.compile(r"^skillspector\s*@\s*git\+\S+@v([0-9][0-9A-Za-z.\-+]*)\s*$", re.MULTILINE)
+SKILLSPECTOR_REQUIREMENT = re.compile(r"^skillspector\s*@\s*git\+\S+@v([0-9][0-9A-Za-z.\-+]*)\s*(?:;\s*(.+?))?\s*$", re.MULTILINE)
+PYTHON_MARKER = re.compile(r"""python_version\s*>=\s*['"](\d+)\.(\d+)['"]""")
 
 
 class TheScannerPinAgreesWithItself(unittest.TestCase):
@@ -50,6 +51,27 @@ class TheScannerPinAgreesWithItself(unittest.TestCase):
             "fails every fresh clone with a version mismatch and passes on any machine that "
             "installed the tool earlier",
         )
+
+    def test_the_requirement_is_skipped_below_the_scanner_s_minimum_python(self) -> None:
+        """Without this marker, `pip install -r requirements-dev.txt` fails outright on the 3.10 leg
+        of the test matrix - the scanner declares requires-python >=3.12. Making the tooling
+        installable by one command must not make it uninstallable on a supported interpreter."""
+        match = SKILLSPECTOR_REQUIREMENT.search(self.TEXT)
+        assert match is not None
+        marker = match.group(2)
+        self.assertIsNotNone(marker, "the requirement needs a python_version marker")
+        assert marker is not None
+        version = PYTHON_MARKER.search(marker)
+        self.assertIsNotNone(version, f"marker {marker!r} does not bound python_version")
+        assert version is not None
+        self.assertEqual((int(version.group(1)), int(version.group(2))), gate.MINIMUM_PYTHON)
+
+    def test_the_gate_names_the_interpreter_requirement_when_the_scanner_is_absent(self) -> None:
+        """On Python 3.10 the scanner is legitimately absent; the message must say so rather than
+        read as a setup someone skipped."""
+        message = gate.provenance_errors(None)[0]
+        self.assertIn(f"{gate.MINIMUM_PYTHON[0]}.{gate.MINIMUM_PYTHON[1]}", message)
+        self.assertIn("requirements-dev.txt", message)
 
     def test_the_requirement_is_pinned_to_a_tag_not_a_branch(self) -> None:
         """`@main` would let the scanner's detections change under a passing run."""

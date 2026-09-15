@@ -9,4 +9,8 @@ pre-commit==4.6.2
 # not the pinned one, because a scanner that changes what it detects changes the meaning of a
 # passing run. It lives here rather than in a separate install step so that one command makes a
 # fresh clone able to run every gate.
-skillspector @ git+https://github.com/NVIDIA/SkillSpector@v2.11.2
+# The marker is not optional: the scanner declares `requires-python = ">=3.12,<3.15"` and this
+# repository's test matrix still exercises Python 3.10, where an unconditional requirement makes
+# `pip install -r requirements-dev.txt` fail outright. pip skips it below 3.12; the gate then
+# refuses on those interpreters and says why. The pre-commit and lint jobs run on 3.14.
+skillspector @ git+https://github.com/NVIDIA/SkillSpector@v2.11.2 ; python_version >= "3.12"

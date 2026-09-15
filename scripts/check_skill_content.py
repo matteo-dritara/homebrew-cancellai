@@ -57,6 +57,11 @@ WAIVERS_FILE = PROJECT / "skill_content_waivers.json"
 # the same reason project/coverage_baseline.json records the toolchain that measured it.
 PINNED_SCANNER = "2.11.2"
 
+# The scanner's own `requires-python`. Recorded here because requirements-dev.txt carries the
+# matching marker and the two must not drift: without that marker, installing the development
+# tooling fails outright on the Python 3.10 leg of the test matrix (E28-S01).
+MINIMUM_PYTHON = (3, 12)
+
 # `skillspector --version` prints "SkillSpector v2.11.2", mixed with analyzer warnings. The
 # version is matched rather than positionally split: the first attempt split on "V" and raised on
 # the real output, which is a gate failing closed for the wrong reason.
@@ -161,7 +166,12 @@ def findings(report: dict[str, Any]) -> list[dict[str, Any]]:
 def provenance_errors(installed: str | None) -> list[str]:
     """Refuse before scanning when the scanner is absent or is not the pinned one."""
     if installed is None:
-        return ["skillspector is not installed. This gate draws no conclusion rather than reporting a clean pack it never scanned."]
+        return [
+            "skillspector is not installed. This gate draws no conclusion rather than reporting a "
+            "clean pack it never scanned. `pip install -r requirements-dev.txt` installs it on "
+            f"Python {MINIMUM_PYTHON[0]}.{MINIMUM_PYTHON[1]} and later; the scanner supports no "
+            "older interpreter, so on those this gate cannot run at all."
+        ]
     if installed != PINNED_SCANNER:
         return [
             f"skillspector {installed} is installed but this gate is pinned to {PINNED_SCANNER}. A "

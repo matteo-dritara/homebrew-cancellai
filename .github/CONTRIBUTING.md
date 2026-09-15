@@ -23,6 +23,11 @@ pip install -r requirements-dev.txt
 pre-commit install --install-hooks --hook-type pre-commit --hook-type commit-msg
 ```
 
+**Python 3.12 or later for the full gate set.** The shipping reference supports 3.10 and CI
+exercises it, but the skill-content scanner (`scripts/check_skill_content.py`) requires 3.12 and
+`pip` skips it below that. On an older interpreter every other gate runs and that one refuses,
+saying why - it does not report a pack it never scanned.
+
 **Install the hooks.** They are not decoration: they run the same checks CI runs, and the
 `commit-msg` hook is what keeps commit messages machine-readable. If you skip this step CI
 will simply fail later, having wasted a round trip - the `pre-commit` job runs the whole

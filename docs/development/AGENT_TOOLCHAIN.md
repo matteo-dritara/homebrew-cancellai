@@ -93,6 +93,11 @@ checking. The documented setup installs it, so a fresh clone can run every gate 
 pip install -r requirements-dev.txt
 ```
 
+The requirement carries a `python_version >= "3.12"` marker, which is not cosmetic: the scanner
+declares `requires-python = ">=3.12,<3.15"` and this repository's test matrix still exercises 3.10,
+where an unconditional requirement makes the whole development install fail. Below 3.12 `pip` skips
+it and the gate refuses with the reason, rather than passing as though nothing were missing.
+
 It was briefly a separate install step in two workflows and a line in this document, which is a
 step somebody does not take: the gate then passes for everyone who already has the tool and refuses
 for everyone who followed the instructions. `tests/test_dev_environment.py` asserts that the
