@@ -8,14 +8,15 @@
 
 ## Outcome
 
-PASS
+REPAIRED by the independent verifier: the document test only required the existing status words
+to occur somewhere in the policy, so code and assertion could widen together without a policy edit.
 
 ## Acceptance Criteria Evidence
 
 | AC | Evidence | Result |
 | --- | --- | --- |
 | AC1 | `tests/test_project_os.py::ClosedEpicDependencies::test_the_closing_set_is_exactly_these_two` asserts the exact set. | PASS |
-| AC2 | `docs/development/WORK_ITEM_MODEL.md` states that widening it is a policy change, and a test asserts the document and the set agree. `::test_the_policy_document_names_the_same_two` | PASS |
+| AC2 | The test pins the exact policy sentence defining the two closing statuses, so a widened code assertion cannot pass without its policy edit. `::test_the_policy_document_names_the_same_two` | REPAIRED |
 | AC3 | The behavioural refusal test is unchanged and still passes. `::test_an_unfinished_dependency_is_still_refused` | PASS |
 
 ## Safety Evidence
@@ -58,4 +59,4 @@ python3 scripts/check_evidence.py check
 
 ## Verifier verdict
 
-pending
+REPAIRED pending epic-round record
