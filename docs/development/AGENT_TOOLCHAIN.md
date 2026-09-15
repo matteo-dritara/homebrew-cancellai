@@ -177,8 +177,7 @@ and an ISO-8601 `taken_on` date - records a measurement taken on a machine where
 and it is read as **stale** the moment
 the component's version moves on. It is never required: CI passes with none recorded.
 
-**A licence names the revision it was read from** (E29-S06). A licence is the upstream's
-declaration at one moment, and nothing re-read it, so an upstream that relicenses leaves the
-manifest asserting something that was true and is not. `license_source_revision` is what makes a
-later comparison possible at all; E26-S02 already reaches these upstreams for versions and
-abandonment and degrades truthfully without a network, which is where the comparison belongs.
+**A licence names the revision it was read from** (E29-S06). `python3
+scripts/check_agent_toolchain.py updates` compares the recorded SPDX value with both that source
+revision and the upstream's current declaration. It reports a disagreement or inability to compare
+rather than treating either as agreement; the optional network report is not a passing gate.

@@ -405,7 +405,7 @@ class LocalMeasurementsForWhatCiCannotSee(unittest.TestCase):
 
 
 class LicenceEvidenceIsBoundToARevision(unittest.TestCase):
-    """A licence is the upstream's declaration at one moment, and nothing re-read it (E29-S06)."""
+    """A licence is checked at the recorded revision and against the live upstream (E29-S06)."""
 
     def test_a_licence_without_a_source_revision_is_reported(self) -> None:
         notes = toolchain.license_evidence_notes([component(license="MIT")])
@@ -424,6 +424,27 @@ class LicenceEvidenceIsBoundToARevision(unittest.TestCase):
         data = toolchain.load_manifest()
         stripped = [{k: v for k, v in c.items() if k != "license_source_revision"} for c in data["components"]]
         self.assertEqual(toolchain.license_errors(data, stripped), [])
+
+    def test_a_relicensed_upstream_is_reported(self) -> None:
+        entry = component(license="MIT", license_source_revision="github:owner/name@abc123")
+
+        def lookup(_owner: str, _name: str, ref: str | None) -> str | None:
+            return "MIT" if ref == "abc123" else "Apache-2.0"
+
+        result = toolchain.license_comparison(entry, lookup)
+        self.assertIn("upstream now declares 'Apache-2.0'", result)
+        self.assertIn("relicensed", result)
+
+    def test_a_disagreement_at_the_recorded_revision_names_both_values(self) -> None:
+        entry = component(license="MIT", license_source_revision="github:owner/name@abc123")
+        result = toolchain.license_comparison(entry, lambda *_args: "Apache-2.0")
+        self.assertIn("recorded licence 'MIT'", result)
+        self.assertIn("declares 'Apache-2.0'", result)
+
+    def test_no_network_evidence_is_not_reported_as_agreement(self) -> None:
+        entry = component(license="MIT", license_source_revision="github:owner/name@abc123")
+        result = toolchain.license_comparison(entry, lambda *_args: None)
+        self.assertIn("could not compare", result)
 
 
 if __name__ == "__main__":

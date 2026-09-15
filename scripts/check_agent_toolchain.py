@@ -43,6 +43,7 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -597,6 +598,55 @@ def upstream(source: str) -> tuple[str, str] | None:
     return (owner, name) if owner and name else None
 
 
+def license_source(revision: str) -> tuple[str, str, str] | None:
+    """The GitHub repository and immutable revision that supplied a recorded licence."""
+    if not revision.startswith("github:"):
+        return None
+    repository, separator, commit = revision.removeprefix("github:").partition("@")
+    owner, slash, name = repository.partition("/")
+    return (owner, name, commit) if separator and slash and owner and name and commit else None
+
+
+def license_comparison(component: dict[str, Any], lookup: Any) -> str:
+    """Compare a declared licence with its source revision and the current upstream declaration.
+
+    `lookup(owner, name, ref)` returns an SPDX identifier or `None` when that source could not be
+    read. A missing comparison is reported explicitly: lack of network evidence is never consent.
+    """
+    identifier = str(component.get("id", "<unnamed>"))
+    recorded = str(component.get("license", ""))
+    source = license_source(str(component.get("license_source_revision", "")))
+    if source is None:
+        return f"{identifier}: could not compare licence (no readable GitHub source revision)"
+    owner, name, revision = source
+    at_revision = lookup(owner, name, revision)
+    current = lookup(owner, name, None)
+    if at_revision is None or current is None:
+        return f"{identifier}: could not compare licence (source revision or current upstream unavailable)"
+    if at_revision != recorded:
+        return f"{identifier}: recorded licence {recorded!r}, but source revision {revision} declares {at_revision!r}"
+    if current != recorded:
+        return f"{identifier}: recorded licence {recorded!r} at {revision}, but upstream now declares {current!r} (relicensed)"
+    return f"{identifier}: licence {recorded!r} matches source revision {revision} and current upstream"
+
+
+def github_license_lookup(binary: str) -> Callable[[str, str, str | None], str | None]:
+    """Build the narrow GitHub query used by the optional, read-only licence comparison."""
+
+    def lookup(owner: str, name: str, ref: str | None) -> str | None:
+        command = [binary, "api", "--method", "GET", f"repos/{owner}/{name}/license", "--jq", ".license.spdx_id"]
+        if ref is not None:
+            command.extend(["-f", f"ref={ref}"])
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)  # noqa: S603
+        except OSError:
+            return None
+        value = result.stdout.strip()
+        return value if result.returncode == 0 and value else None
+
+    return lookup
+
+
 def cmd_updates(data: dict[str, Any]) -> int:
     """Compare each pinned version against upstream, and say so plainly when it cannot.
 
@@ -665,6 +715,10 @@ def cmd_updates(data: dict[str, Any]) -> int:
     print(f"\n  {checked} components have a comparable upstream.")
     print("  A new release that adds a hook or an MCP server turns prompt content into software with")
     print("  a shell. That is a new decision, not an update: re-record the capabilities before pinning it.")
+    print("\nLicence comparison\n")
+    lookup = github_license_lookup(binary)
+    for component in data.get("components", []):
+        print(f"  {license_comparison(component, lookup)}")
     return 0
 
 

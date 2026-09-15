@@ -8,16 +8,17 @@
 
 ## Outcome
 
-PASS
+REPAIRED by the independent verifier: the delivered binding did not re-read any upstream licence,
+despite the story requiring comparison and truthful no-network behaviour.
 
 ## Acceptance Criteria Evidence
 
 | AC | Evidence | Result |
 | --- | --- | --- |
 | AC1 | Every component records `license_source_revision`, resolved from the real upstreams. `tests/test_agent_toolchain.py::LicenceEvidenceIsBoundToARevision::test_every_committed_component_names_the_revision_it_was_read_from` | PASS |
-| AC2 | A licence without a revision is reported, naming what cannot be told. `::test_a_licence_without_a_source_revision_is_reported` | PASS |
-| AC3 | The binding is a warning and never an error, so no network is required to pass. `::test_the_report_is_a_warning_and_never_an_error` | PASS |
-| AC4 | Not discharged in this story: the comparison itself belongs with E26-S02's network check. Recorded as a residual. | PASS |
+| AC2 | The optional comparison names both the recorded and source-revision SPDX values when they disagree. `::test_a_disagreement_at_the_recorded_revision_names_both_values` | REPAIRED |
+| AC3 | The comparison explicitly reports `could not compare` on unavailable network evidence. `::test_no_network_evidence_is_not_reported_as_agreement` | REPAIRED |
+| AC4 | A re-licensing at the upstream's current declaration is reported rather than silently accepted. `::test_a_relicensed_upstream_is_reported` | REPAIRED |
 
 ## Safety Evidence
 
@@ -54,9 +55,8 @@ python3 scripts/check_evidence.py check
 
 ## Residual risks
 
-- The binding is recorded; the comparison is not implemented. Nothing yet re-reads an upstream licence, so this story makes the check possible rather than performing it - which is the shape the story declared and is still a gap between what is recorded and what is verified.
 - The revisions were resolved at HEAD of each upstream's default branch, not at the exact revision the plugins were installed from, because the manifest pins those as `unpinned`.
 
 ## Verifier verdict
 
-pending
+REPAIRED pending epic-round record
