@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "note": "Work-item identifiers that existed and no longer do, so that a document citing one as history is not confused with a document citing a typo. scripts/check_docs.py refuses an unresolvable id in prose unless it is recorded here, and refuses a record whose `became` does not itself resolve - a retirement record that rots is the defect this file exists to prevent.",
+  "retired": [
+    {
+      "id": "E07-S02",
+      "became": "E20-S01",
+      "reason": "The Windows native backend, moved to E20 by the same E07/E20 split in 8651a97 and keeping its title verbatim. Three evidence packets cite the old identifier in their reasoning about why E06-S04 was blocked, which is history and must stay readable as written.",
+      "recorded": "2026-09-15"
+    },
+    {
+      "id": "E07-S06",
+      "became": "E20-S04",
+      "reason": "E07 was split and the Windows work moved to E20 once it was clear it could not proceed without a real Windows environment to verify against. docs/architecture/PLATFORM_MODEL.md cites the old identifier deliberately, as `E20-S04 (formerly E07-S06)`.",
+      "recorded": "2026-09-15"
+    }
+  ]
+}

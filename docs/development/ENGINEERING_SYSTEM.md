@@ -153,3 +153,27 @@ The owner does not need to inspect every implementation detail to retain control
 - release gate summary.
 
 No agent is allowed to silently redefine these to make implementation easier.
+
+### Work-item citations are checked
+
+`scripts/check_docs.py` validates every local link and every `SI-0xx` a document names, and now
+also every work-item id it cites - the reference class these documents use most, and the one class
+the gate did not read. There are 424 distinct ones across the non-generated documentation; a
+renamed or removed story used to leave a citation pointing at nothing with no gate to say so
+(E31-S01).
+
+An identifier that existed and no longer does is recorded once in
+[`project/retired_work_items.json`](../../project/retired_work_items.json), with what it became and
+when. Two are recorded, both survivors of the E07/E20 split and both cited deliberately as history -
+`E20-S04 (formerly E07-S06)` in PLATFORM_MODEL.md, and `E07-S02` in three evidence packets
+explaining why E06-S04 was blocked. A record whose successor does not itself resolve is refused,
+because a retirement record that rots is the defect the file exists to prevent.
+
+**It checks existence, not currency.** A document may name a story that exists and say something
+about it that stopped being true, and this gate will not object - which is exactly what happened
+when RELEASE_GATES.md called `E16-S05` an outstanding dependency long after it closed. That claim
+now lives in the story's own `blocked_by` field, where a gate reads it (E30-S01). Free prose about
+work items remains prose.
+
+A citation of a **cancelled** work item passes. Seven documents explain why `E07-S07` was cancelled,
+and cancelling a story does not unwrite the documents that record the decision.

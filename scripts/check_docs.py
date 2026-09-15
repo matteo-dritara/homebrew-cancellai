@@ -10,6 +10,7 @@ separately.
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import shutil
 import subprocess
@@ -123,6 +124,69 @@ def safety_invariant_ids() -> set[str]:
     return ids
 
 
+# The reference class these documents lean on hardest, and the one class this gate did not read:
+# 424 distinct work-item ids across the non-generated documentation. A renamed or removed story
+# leaves a citation pointing at nothing and nothing says so (E31-S01).
+WORK_ITEM_REF = re.compile(r"\bE\d{2}(?:-S\d{2})?\b")
+RETIRED_FILE = ROOT / "project" / "retired_work_items.json"
+# Produced from the control plane, so they cannot disagree with it. Checking them would be
+# checking the generator against itself.
+GENERATED_DOCS = frozenset({"docs/DECISION_REGISTER.md", "docs/ROADMAP.md", "docs/BACKLOG.md", "project/generated/PROJECT_STATUS.md"})
+
+
+def work_item_ids() -> set[str]:
+    """Every epic and story id the control plane currently defines."""
+    ids: set[str] = set()
+    for path in sorted((ROOT / "project" / "epics").glob("*.json")):
+        epic = json.loads(path.read_text(encoding="utf-8"))
+        ids.add(epic["id"])
+        ids.update(story["id"] for story in epic["stories"])
+    return ids
+
+
+def retired_work_items() -> dict[str, dict[str, str]]:
+    """Identifiers that existed and no longer do, so history is not mistaken for a typo."""
+    if not RETIRED_FILE.exists():
+        return {}
+    data = json.loads(RETIRED_FILE.read_text(encoding="utf-8"))
+    return {entry["id"]: entry for entry in data.get("retired", [])}
+
+
+def work_item_reference_errors(files: list[Path]) -> list[str]:
+    """Work-item citations in prose that name nothing.
+
+    Deliberately checks existence and not truth. The defect that motivated this - RELEASE_GATES.md
+    naming a dependency that had closed - would not be caught here, because the id existed; E30-S01
+    closed that one by moving the claim into a field a gate reads. A citation of a *cancelled* item
+    passes, because cancelling a story does not unwrite the seven documents that explain why.
+    """
+    known = work_item_ids()
+    retired = retired_work_items()
+    errors: list[str] = []
+
+    for identifier, entry in sorted(retired.items()):
+        became = entry.get("became")
+        if became and became not in known:
+            errors.append(
+                f"project/retired_work_items.json: {identifier} is recorded as having become {became!r}, "
+                "which does not resolve either - a retirement record that rots is the defect this file exists to prevent"
+            )
+
+    for path in files:
+        relative = path.relative_to(ROOT).as_posix()
+        if relative in GENERATED_DOCS:
+            continue
+        for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            for identifier in sorted(set(WORK_ITEM_REF.findall(line))):
+                if identifier in known or identifier in retired:
+                    continue
+                errors.append(
+                    f"{relative}:{line_no}: cites work item {identifier}, which no epic or story defines. "
+                    "Fix the citation, or record it in project/retired_work_items.json with what it became"
+                )
+    return errors
+
+
 def is_exempt(path: Path) -> bool:
     relative = path.relative_to(ROOT).as_posix()
     return any(relative == item or relative.startswith(f"{item}/") for item in UNLINKED_BY_DESIGN)
@@ -145,6 +209,8 @@ def validate_docs() -> None:
         if path in linked or path.parent in linked:
             continue
         errors.append(f"{path.relative_to(ROOT)}: not reachable from any other document; link it or the reader will never find it")
+
+    errors.extend(work_item_reference_errors(files))
 
     invariant_ids = safety_invariant_ids()
     if not invariant_ids:

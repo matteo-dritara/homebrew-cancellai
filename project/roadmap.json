@@ -42,7 +42,8 @@
         "E27",
         "E28",
         "E29",
-        "E30"
+        "E30",
+        "E31"
       ]
     },
     {
@@ -151,6 +152,7 @@
     "project/epics/E27.json",
     "project/epics/E28.json",
     "project/epics/E29.json",
-    "project/epics/E30.json"
+    "project/epics/E30.json",
+    "project/epics/E31.json"
   ]
 }

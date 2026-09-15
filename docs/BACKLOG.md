@@ -3793,3 +3793,34 @@ The control plane can record that a story is blocked and cannot record by what. 
 
 - `docs/development/WORK_ITEM_MODEL.md`
 - `docs/development/RELEASE_GATES.md`
+
+## E31 - Prose Cites Work Items That Exist
+
+**Phase:** `P1` | **Status:** `done_no_release` | **Epic dependencies:** none
+
+`check_docs.py` validates every local link and every Safety Invariant id a document names, and does not validate the work-item ids - which is the class of reference these documents use most. There are 424 distinct ones across the non-generated documentation. A renamed or removed story leaves a citation pointing at nothing, and nothing says so; the only reason it has not bitten harder is that the documents were written carefully, which is not a property a gate can rely on. E30-S01 found the adjacent version of this - RELEASE_GATES.md naming a dependency that had closed - and closed it by moving that claim into a field a gate reads. This closes the part that stays in prose, and is explicit that it closes existence rather than truth.
+
+### E31-S01 - A work-item id in prose names something that exists
+
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
+
+**Outcome.** A document may cite any story or epic and nothing checks that the citation resolves. The gate that validates this repository's documentation already refuses a broken local link and an unknown `SI-0xx`, and work-item ids - the references these documents lean on hardest - were the one class it did not read. Measuring first found 424 distinct references and exactly one that does not resolve: `E07-S06` in PLATFORM_MODEL.md, which is a deliberate historical citation - `E20-S04 (formerly E07-S06)`, from when E07 and E20 were split. That single case is the whole design constraint: a gate that refuses it would be wrong, and a gate that cannot tell it apart from a typo is worthless. A retired identifier is therefore recorded once, with what it became and when, rather than being guessed at from the surrounding prose.
+
+**Acceptance criteria**
+
+- Every work-item id in non-generated documentation shall resolve to an epic or story in the control plane, and the gate shall refuse one that does not, naming the document and the id.
+- An identifier that existed and was renamed or removed shall be recordable once, with what it became and the date it was recorded, and shall then pass wherever it is cited.
+- If a recorded retirement names a replacement that does not itself resolve, then the gate shall refuse, so the record cannot rot into the same defect it exists to prevent.
+- Generated documentation shall be excluded, because it is produced from the control plane and cannot disagree with it.
+- A citation of a cancelled work item shall pass, because cancelling a story does not unwrite the documents that explain why.
+
+**Verification**
+
+- The gate is shown refusing an invented id planted in a real document before it is shown passing on the committed corpus.
+- The one real historical reference is shown failing without its record and passing with it.
+- A retirement pointing at a replacement that does not resolve is shown to be refused.
+- The seven documents citing the cancelled E07-S07 are shown to pass unchanged.
+
+**Documentation impact**
+
+- `docs/development/ENGINEERING_SYSTEM.md`
