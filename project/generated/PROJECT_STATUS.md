@@ -10,9 +10,8 @@ Epics: **32** | Stories: **165**
 
 - `blocked`: 2
 - `cancelled`: 1
-- `done`: 139
+- `done`: 140
 - `planned`: 22
-- `ready_for_review`: 1
 
 ## Change risk distribution
 
@@ -28,4 +27,4 @@ Epics: **32** | Stories: **165**
 
 ## Awaiting independent review
 
-- **E25-S16** - An anchor picked for stability by phase alone went stale within one epic close (CR2)
+- none

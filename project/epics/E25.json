@@ -5,7 +5,7 @@
   "title": "Engineering System Falsification",
   "objective": "cEOS has borrowed the artifact set of a safety standard without the mechanism that makes it work. In DO-178C, ISO 26262, IEC 61508 and NPR 7150.2 that mechanism is independence applied to the act of classification, and measurement applied to the process itself; cEOS has neither. This epic closes the gap the 2026-09-12 methodology review found, in the order the review prioritised: make the risk classification something other than self-assessment, prove the gates can catch a planted violation, make the evidence ledger checkable, and replace the fixed review ceiling with a rule the measurement can support. See docs/audits/2026-09-12-METHODOLOGY_REVIEW.md.",
   "dependencies": [],
-  "status": "in_progress",
+  "status": "done_no_release",
   "stories": [
     {
       "id": "E25-S01",
@@ -427,7 +427,7 @@
     {
       "id": "E25-S16",
       "title": "An anchor picked for stability by phase alone went stale within one epic close",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "The `story-status-forged` mutant was anchored on E11-S01, chosen - by the comment above the anchor itself - because E11 was 'a future phase' whose stories were 'stable', after an earlier anchor on a story this session was actively moving went stale within the hour. E11 closed as `done_no_release` in the same session, turning that story's status from `planned` to `done` and taking the anchor's match count from one to zero: `tests/test_governance_extras.py::MutantIntegrityTests` failed on main, and `story-status-forged` stopped being demonstrated at all. An initial repair merely moved the fixed anchor to E19-S02, whose nine unmet dependencies meant the resulting mutant was rejected by the dependency gate rather than the evidence gate it claimed to exercise. The repair now selects a planned story in the throwaway export at run time, clears its dependencies, and forges `done`: there is no fixed backlog id to go stale, and a test proves the rejection names missing committed evidence. If no planned story remains, the harness refuses to apply the mutant rather than certifying a claim it did not test.",
       "change_risk": "CR2",
       "dependencies": [
