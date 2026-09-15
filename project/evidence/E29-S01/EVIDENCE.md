@@ -55,6 +55,8 @@ python3 scripts/check_evidence.py check
 
 - none
 
+- **What happened**: the executor changed what `yield` counts in `process_metrics.py` - from rejections to findings - and left ADR-0025, the decision that defines the stopping rule, saying the old thing. The code and the decision it implements disagreed, and every gate stayed green because no gate compares them. Found by the round-1 verifier and repaired in `44d4bab`, which amended the ADR. **Prevented by**: none exists; nothing here requires a change to a mechanism an ADR specifies to update that ADR in the same commit, and the documentation-impact field of a story is prose nobody checks against the diff. **Disposition**: proposed 2026-09-15
+
 ## Residual risks
 
 - `REPAIRED` is a verdict a reviewer chooses to write. A reviewer who repairs and records `PASS` still measures zero, so the fix removes the tool's blindness and not the reporter's discretion.

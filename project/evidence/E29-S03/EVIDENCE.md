@@ -14,7 +14,7 @@ PASS
 
 | AC | Evidence | Result |
 | --- | --- | --- |
-| AC1 | ADR-0029 decides not to adopt per-role identities and states the residual verbatim. | PASS |
+| AC1 | ADR-0029 decides not to adopt per-role identities and states the residual verbatim. **Accepted by the owner on 2026-09-15**, which is what AC1 required and what the round-1 `FAIL` correctly refused to grant on the owner's behalf. | PASS |
 | AC2 | Not applicable: the decision is not to adopt, and the ADR says why rather than naming a mapping that will not exist. | PASS |
 | AC3 | ADR-0029's cost section treats squash merges explicitly - the commit introducing a verdict on `main` is routinely not the one signed. | PASS |
 | AC4 | ADR-0029 records why a single shared owner key answers a different question, so the shortcut is not re-proposed. | PASS |
@@ -56,7 +56,7 @@ python3 scripts/check_evidence.py check
 ## Residual risks
 
 - The decision is to accept the residual. Attribution in the evidence ledger stays a declaration, and the process-metrics independence split rests on the same declaration.
-- ADR-0029 is `Proposed`: the executor drafted it and acceptance is the owner's. Until accepted it records a recommendation, not a decision.
+- The decision was drafted by the party whose proposal it overturns. The owner accepted it, which is what makes it binding, but the argument in it is the executor's own and was not independently constructed.
 - The revisit conditions are stated but nothing watches for them.
 
 ## Verifier verdict

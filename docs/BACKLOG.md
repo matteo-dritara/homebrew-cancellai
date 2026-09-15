@@ -3604,13 +3604,13 @@ E26 made the agent toolchain a managed dependency: a manifest, a trust bar set b
 
 ## E29 - Toolchain Assurance Residuals
 
-**Phase:** `P1` | **Status:** `verification` | **Epic dependencies:** E26
+**Phase:** `P1` | **Status:** `done_no_release` | **Epic dependencies:** E26
 
 ADR-0025 says findings that survive a review become backlog items with the story id that carries them. E28's two review rounds produced eight residuals; three were judged inherent and accepted in `project/evidence/E28-VERIFIER-REVIEW-ROUND2.md`, and the five closable ones are here, together with two findings the review raised about the engineering system itself. The heaviest is not a residual of any story but of the measurement that governs review: E28's first round found four defects and the yield table reported nothing, because the tool skips a story-scoped record silently, cannot parse a standalone verdict, and counts only `FAIL` - so a reviewer who repairs rather than rejects measures zero having found something. Nothing here is started; the epic exists so that eight findings live in the backlog rather than inside a review record nobody re-reads.
 
 ### E29-S01 - The review-yield measurement can see a round that repaired instead of rejecting
 
-**Status:** `verification` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** ADR-0025 makes another review round mandatory while a round rejects 10% or more of the stories it judges, and `process_metrics.py` computes that fraction. E28's round 1 found four material defects across four of five stories and the measurement reported nothing at all - three independent causes. `process_metrics.py:143` skips a story-scoped record with a bare `continue`, so it never reaches the `unclassifiable` list that exists because 'a record that vanishes is worse than one that fails to parse'. `parse_verdicts` reads only a markdown table, so a standalone `## Verdict` heading yields nothing. And `REJECTING_VERDICTS = {"FAIL"}`, so a reviewer who repairs a defect rather than failing the story measures zero yield having found something. The counterfactual yield of that round was 80%; the tool read 0%. Which of those two numbers decides whether another round is required currently depends on how the reviewer chose to write, not on what the reviewer found - and that is the distinction E25 exists to preserve.
 
@@ -3634,7 +3634,7 @@ ADR-0025 says findings that survive a review become backlog items with the story
 
 ### E29-S02 - A scanner upgrade invalidates the waivers written against the old one
 
-**Status:** `verification` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** `project/skill_content_waivers.json` suppresses findings by `match_fingerprint`, which was measured stable across two runs of SkillSpector 2.11.2 and is untested across versions. The pin in `check_skill_content.py` is what protects it today, which means the protection disappears exactly when somebody bumps the pin - and a bump is a routine act that currently carries no obligation to revisit the waivers. A stale waiver that stops matching is reported; a waiver whose fingerprint drifted onto a different finding would not be.
 
@@ -3655,7 +3655,7 @@ ADR-0025 says findings that survive a review become backlog items with the story
 
 ### E29-S03 - Decide, by ADR, how a verdict's author is authenticated rather than declared
 
-**Status:** `verification` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** E28-S02 made the executor/verifier handoff auditable and stopped short of authenticating it: `Verifier:` and `Rendered-by:` are strings their own author writes. The round-2 review refused the obvious shortcut and was right to - this repository's commits are signed with a single owner key, which authenticates the owner and says nothing about which agent produced a verdict. Closing this needs distinct per-role signing identities and a mapping from key to role that the gate can check, which is an authority boundary and therefore an ADR before it is an implementation. This story is the decision, not the mechanism: it produces the ADR that settles whether per-role signing identities are worth their operational cost, what the key-to-role mapping is, and what happens to a verdict whose signature history was rewritten. The implementation that follows is a separate story, and the ADR sets its Change Risk Level - almost certainly CR4, which is precisely why it is not asserted here before anyone has decided what is being built.
 
@@ -3678,7 +3678,7 @@ ADR-0025 says findings that survive a review become backlog items with the story
 
 ### E29-S04 - A method defect left proposed is aged, not forgotten
 
-**Status:** `verification` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** E28-S03 requires every recorded method defect to carry a disposition, and `proposed` satisfies it with no expiry. That is the right resting state - it means the owner has the finding and has not ruled - and it is also a state an entry can sit in forever without any gate noticing. The toolchain manifest already solves the same problem for decisions: one older than the review cadence is reported as *unexamined* rather than wrong. The same treatment applies here, and nothing more: ageing a proposal must not convert it into a defect.
 
@@ -3699,7 +3699,7 @@ ADR-0025 says findings that survive a review become backlog items with the story
 
 ### E29-S05 - A user-scope component's cost is measured where it is installed
 
-**Status:** `verification` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** E28-S04 measures a component's always-on cost and ten of twelve components return `unmeasured`, because they live at user scope and CI cannot see them. The state is honest and it leaves most of the context budget resting on hand-entered numbers - the same budget that decided against carrying Task Observer. A measurement taken on a machine where the component is installed can be recorded the way `project/coverage_baseline.json` records the toolchain that produced it: dated, bound to a version, and refused when the provenance no longer matches.
 
@@ -3721,7 +3721,7 @@ ADR-0025 says findings that survive a review become backlog items with the story
 
 ### E29-S06 - A licence recorded once is revalidated against the source it was read from
 
-**Status:** `verification` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** E28-S04 made `license` a required field with an allow-list, and the value is the upstream's declaration read at one moment. Nothing re-reads it: an upstream that relicenses after the entry was written leaves the manifest asserting something that was true and no longer is. E26-S02 already checks versions and abandonment for the same components and does not check licences, so the mechanism to hang this on exists.
 
@@ -3743,7 +3743,7 @@ ADR-0025 says findings that survive a review become backlog items with the story
 
 ### E29-S07 - The set of statuses that close an epic cannot grow without a reviewed decision
 
-**Status:** `verification` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** E28-S05 made `CLOSED_EPIC_STATUS` the single definition of a finished epic and the tests assert behaviour against the statuses that exist today. A future edit adding a status to that set would satisfy every dependency in the backlog at once, silently, and no test would object - which is the same shape as the defect E28-S05 repaired, moved one level up. The round-2 review raised this after the round-1 verdict had recorded no residual for the story at all.
 

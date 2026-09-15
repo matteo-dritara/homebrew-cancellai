@@ -1,6 +1,6 @@
 # ADR-0029: A verdict's author is declared, not authenticated, and that is accepted for now
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-09-15
 - Owners: project owner / cEOS
 - Related: [ADR-0014](0014-epic-closure-is-a-release-and-review-is-bounded.md), [ADR-0025](0025-review-stops-on-yield-and-a-shippable-nothing-does-not-cut-a-release.md), E28-S02, E29-S03
