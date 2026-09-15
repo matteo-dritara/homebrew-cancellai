@@ -303,10 +303,24 @@ class ClosedEpicDependencies(unittest.TestCase):
         project_os.validate(model)  # would raise before the fix
 
     def test_an_unfinished_dependency_is_still_refused(self) -> None:
-        """The fix widened the accepted set; it did not remove the check."""
-        self.assertNotIn("planned", project_os.CLOSED_EPIC_STATUS)
-        self.assertNotIn("in_progress", project_os.CLOSED_EPIC_STATUS)
-        self.assertNotIn("blocked", project_os.CLOSED_EPIC_STATUS)
+        """The accepted set is exactly the closing set, not merely a few named exclusions."""
+        model = project_os.load_model()
+        gated = {"ready", "in_progress", "ready_for_review", "verification", "done"}
+        closed = next(
+            epic
+            for epic in model.epics
+            if epic["status"] == "done_no_release"
+            and any(epic["id"] in candidate["dependencies"] and candidate["status"] in gated for candidate in model.epics)
+        )
+        dependent = next(
+            epic for epic in model.epics if closed["id"] in epic["dependencies"] and epic["status"] in gated
+        )
+        for status in project_os.VALID_EPIC_STATUS - project_os.CLOSED_EPIC_STATUS:
+            with self.subTest(status=status):
+                epics = copy.deepcopy(model.epics)
+                next(epic for epic in epics if epic["id"] == closed["id"])["status"] = status
+                with self.assertRaisesRegex(project_os.GovernanceError, dependent["id"]):
+                    project_os.validate(project_os.Model(model.decisions, model.roadmap, epics))
 
     def test_a_story_dependency_still_requires_done(self) -> None:
         """`done_no_release` is an epic status: a story is finished or it is not."""

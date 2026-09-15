@@ -15,7 +15,7 @@ PASS
 | AC | Evidence | Result |
 | --- | --- | --- |
 | AC1 | `project_os.py` now tests epic dependencies against `CLOSED_EPIC_STATUS`. E28 behind `done_no_release` E26 advances; before the change `python3 scripts/project_os.py check` raised `E28: status ready_for_review but epic dependencies are not done: ['E26']`. `tests/test_project_os.py::ClosedEpicDependencies` | PASS |
-| AC2 | A dependency in any non-closing status still refuses and is named. `tests/test_project_os.py::ClosedEpicDependencies::test_an_unfinished_dependency_is_still_refused` | PASS |
+| AC2 | A dependency in every non-closing epic status is rejected by `validate()` and the dependent is named; the test mutates a real closed dependency through the full non-closing set, rather than asserting only that a few strings are absent from the constant. `tests/test_project_os.py::ClosedEpicDependencies::test_an_unfinished_dependency_is_still_refused` | PASS after verifier repair |
 | AC3 | Both dependency checks consult `CLOSED_EPIC_STATUS`; a test asserts the constant is used rather than only defined, which is what let the divergence live. `tests/test_project_os.py::ClosedEpicDependencies::test_the_definition_is_consulted_not_restated` | PASS |
 | AC4 | The story-level check distinguishes the two: an epic dependency is satisfied by either closing status, a story dependency only by `done`, because `done_no_release` is an epic status. `tests/test_project_os.py::ClosedEpicDependencies::test_a_story_dependency_still_requires_done` | PASS |
 
@@ -49,10 +49,11 @@ pre-commit run --all-files
 
 - **What happened**: `CLOSED_EPIC_STATUS` was defined, carried an explanatory comment, and was asserted by `tests/test_process.py::test_done_no_release_is_an_epic_status_and_not_a_story_status` - and was consulted by no code at all. The test checked the definition's contents, never that anything read it, so a constant that names the correct answer sat beside a literal giving the wrong one and every gate stayed green. **Prevented by**: none exists; nothing here says that a constant asserting a semantic rule must be shown to be consulted, and a test over a definition reads exactly like a test over a behaviour. **Disposition**: proposed
 - **What happened**: the defect was reported to the owner in a plan on 2026-09-15 as "E12 and E13 are ready now", derived from epic dependency states without running the transition that would have exposed it. The claim was wrong for the same reason E28 was blocked, and no gate contradicted it because nothing had tried. **Prevented by**: none exists; a readiness claim is currently allowed to be computed rather than demonstrated. **Disposition**: proposed
+- **What happened**: the regression for AC2 asserted that three status strings were absent from `CLOSED_EPIC_STATUS`; it never called `validate()` with an unfinished dependency. The implementation was correct, but the test repeated the definition-versus-behaviour shape that caused the story. **Prevented by**: none exists; the existing test-design rules did not require this gate widening to enumerate the rejected states through the real validator. **Disposition**: proposed
 
 ## Residual risks
 
-- The fix widens which states satisfy a dependency, and widening a gate is the direction that hides work rather than surfacing it. The compensating test refuses an unfinished dependency, but no test asserts that the accepted set is *minimal* - a future status added to `CLOSED_EPIC_STATUS` would silently satisfy every dependency in the backlog.
+- The fix widens which states satisfy a dependency, and widening a gate is the direction that hides work rather than surfacing it. The regression now drives every current non-closing status through the validator; a future status added to `CLOSED_EPIC_STATUS` remains a reviewed code/data change and is therefore still a semantic expansion to scrutinise.
 - Three epics were affected for as long as ADR-0025 has existed and nothing measured it. There may be other literals restating a definition that a constant already owns; only this one was looked for.
 - `E12` and `E13` are now able to advance, which is correct, and neither has been exercised beyond `project_os.py check`. The first story either of them opens is the real test of this change.
 
