@@ -47,6 +47,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   authority resolver uses, and `select_under_budget_pressure` chooses which artifacts to propose
   under storage pressure - restricted by construction to whatever `retention::build_actions`
   already marked eligible, so budget pressure can only narrow that set, never widen it.
+- Re-added identity-confirmed quarantine as a real mutation (E12-S01, CR4,
+  `docs/architecture/PERSISTENCE_MODEL.md` "Quarantine store",
+  `docs/architecture/PLATFORM_MODEL.md` "Boundary rules"):
+  `cancellai_platform::mutation::MutationOperation::Quarantine` mirrors `DeleteFile`'s
+  identity-confirmed, handle-relative shape but ends in a cross-directory `renameat` (via a new
+  `cancellai_sealedfs::rename_child_matching_unix_identity`) instead of an unlink, refusing
+  rather than clobbering an existing destination name. `ApprovedRoot::prepare_destination` and
+  `SealedPlan::seal_quarantine` add the destination a quarantine plan needs;
+  `mutation_executor::execute` explicitly compares the source and destination roots' device
+  identity before ever attempting a move (SI-018) - `renameat`'s own `EXDEV` is only the
+  backstop. A contentless restore-metadata sidecar is written atomically once the move
+  succeeds. Unix-only for now; Windows quarantine refuses explicitly as a disclosed residual,
+  matching `DeleteFile`'s own history before E20-S05.
 
 ### Fixed
 

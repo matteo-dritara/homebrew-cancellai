@@ -7,12 +7,12 @@
   "dependencies": [
     "E11"
   ],
-  "status": "planned",
+  "status": "in_progress",
   "stories": [
     {
       "id": "E12-S01",
       "title": "Quarantine store semantics",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Define same-volume move-first quarantine with explicit capacity and boundary checks.",
       "change_risk": "CR4",
       "dependencies": [

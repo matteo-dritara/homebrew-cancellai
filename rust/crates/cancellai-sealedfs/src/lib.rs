@@ -94,6 +94,10 @@ pub enum SealError {
     /// Refused rather than removed: deleting whatever happens to sit at a name is precisely the
     /// failure `cancellai-platform::mutation`'s identity confirmation exists to prevent.
     IdentityMismatch,
+    /// A rename's destination name already refers to something. Refused rather than replaced:
+    /// a quarantine move must never silently clobber an existing object at the destination
+    /// (E12-S01).
+    DestinationAlreadyExists,
     /// `establish` was given a relative path. There is no safe trusted anchor to walk a
     /// relative path from (it would resolve against the process's current directory, which
     /// this crate has no basis to trust) - refused rather than silently resolved against CWD.
@@ -128,6 +132,11 @@ impl std::fmt::Display for SealError {
                 f,
                 "the child no longer refers to the confirmed object; refusing to remove a \
                  different one"
+            ),
+            SealError::DestinationAlreadyExists => write!(
+                f,
+                "the destination name already refers to an existing object; refusing to \
+                 replace it"
             ),
             SealError::NotAbsolute => write!(f, "root path must be absolute"),
             SealError::PathNotNormalized => {
@@ -529,6 +538,94 @@ mod unix_impl {
             // non-directory entry only, so this cannot remove a directory even if one appeared
             // at this name.
             let rc = unsafe { libc::unlinkat(dirfd, cname.as_ptr(), 0) };
+            if rc != 0 {
+                return Err(SealError::Io(io::Error::last_os_error()));
+            }
+            Ok(())
+        }
+
+        /// Moves a direct child by name to a direct child of `destination`, relative to both
+        /// held directory descriptors, but only if the source name still resolves - without
+        /// following links - to the exact `(device, inode)` the caller confirmed, and only if
+        /// nothing already exists at the destination name (E12-S01).
+        ///
+        /// Mirrors [`Self::unlink_child_matching_unix_identity`]'s shape, extended to a second
+        /// directory: `renameat(2)`, like `unlinkat(2)`, resolves both names relative to the
+        /// directory descriptors that name them, never through a path - a rename or
+        /// symlink-swap of either directory's own original path, at any point after `self`/
+        /// `destination` were bound, cannot redirect this call.
+        ///
+        /// **Residual, stated rather than implied.** POSIX has no atomic "rename only if the
+        /// destination name is absent" primitive portable across this crate's target platforms,
+        /// so the destination-absence check and the rename remain two syscalls. What this closes
+        /// is either directory being swapped; what remains is an attacker with write access to
+        /// the destination directory planting an object at the destination name in that window -
+        /// a narrower surface than the source-side race the identity check on `name` already
+        /// prevents, and the destination directory here is cancellAI's own private quarantine
+        /// store, never a provider/user-writable location.
+        pub fn rename_child_matching_unix_identity(
+            &self,
+            name: &str,
+            destination: &SealedRoot,
+            destination_name: &str,
+            device: u64,
+            inode: u64,
+        ) -> Result<(), SealError> {
+            let cname = validate_child_name(name)?;
+            let dest_cname = validate_child_name(destination_name)?;
+            let dirfd = self.dir.as_raw_fd();
+            let dest_dirfd = destination.dir.as_raw_fd();
+
+            // SAFETY: `libc::stat` is a plain C aggregate of integers and fixed arrays with no
+            // niche and no validity invariant, so the all-zero bit pattern is a valid value;
+            // the `fstatat` call below overwrites it before anything reads it.
+            let mut stat: libc::stat = unsafe { std::mem::zeroed() };
+            // SAFETY: `dirfd` is a valid open directory descriptor for this call's duration
+            // (borrowed from `self.dir`); `cname` is a NUL-terminated bare filename validated
+            // above, so it cannot resolve outside the bound directory; `stat` is a valid,
+            // appropriately-sized out-parameter. `AT_SYMLINK_NOFOLLOW` keeps this a no-follow
+            // lookup, so a symlink planted at `name` is measured as the link itself.
+            let rc = unsafe {
+                libc::fstatat(dirfd, cname.as_ptr(), &mut stat, libc::AT_SYMLINK_NOFOLLOW)
+            };
+            if rc != 0 {
+                return Err(SealError::Io(io::Error::last_os_error()));
+            }
+            if stat.st_dev as u64 != device || stat.st_ino as u64 != inode {
+                return Err(SealError::IdentityMismatch);
+            }
+
+            // SAFETY: same all-zero-is-valid reasoning as `stat` above.
+            let mut dest_stat: libc::stat = unsafe { std::mem::zeroed() };
+            // SAFETY: `dest_dirfd` is a valid open directory descriptor for this call's
+            // duration (borrowed from `destination.dir`); `dest_cname` is a NUL-terminated bare
+            // filename validated above. `AT_SYMLINK_NOFOLLOW` keeps this a no-follow lookup, so
+            // an existing symlink at the destination name is detected as "present" here rather
+            // than followed and reported as an unrelated target's fact.
+            let dest_rc = unsafe {
+                libc::fstatat(
+                    dest_dirfd,
+                    dest_cname.as_ptr(),
+                    &mut dest_stat,
+                    libc::AT_SYMLINK_NOFOLLOW,
+                )
+            };
+            if dest_rc == 0 {
+                return Err(SealError::DestinationAlreadyExists);
+            }
+            let dest_err = io::Error::last_os_error();
+            if dest_err.kind() != io::ErrorKind::NotFound {
+                return Err(SealError::Io(dest_err));
+            }
+
+            // SAFETY: `dirfd`/`dest_dirfd` are both valid, held-open directory descriptors for
+            // the call's duration; `cname`/`dest_cname` are validated bare filenames. `renameat`
+            // resolves both names relative to their own descriptor, never through a path, and
+            // fails with `EXDEV` rather than silently copying if the two descriptors do not name
+            // directories on the same filesystem (SI-018's boundary check is performed
+            // explicitly by the caller before this is ever reached - this is only the backstop).
+            let rc =
+                unsafe { libc::renameat(dirfd, cname.as_ptr(), dest_dirfd, dest_cname.as_ptr()) };
             if rc != 0 {
                 return Err(SealError::Io(io::Error::last_os_error()));
             }
@@ -945,6 +1042,97 @@ mod unix_impl {
                     "expected InvalidChildName for {bad:?} as tmp_name"
                 );
             }
+        }
+
+        fn unix_identity(path: &std::path::Path) -> (u64, u64) {
+            use std::os::unix::fs::MetadataExt;
+            let meta = std::fs::symlink_metadata(path).expect("stat path for test identity");
+            (meta.dev(), meta.ino())
+        }
+
+        #[test]
+        fn rename_child_matching_unix_identity_moves_across_directories() {
+            let base = TempDir::new("rename-cross-dir");
+            let source_root = SealedRoot::establish(&base.path("source")).unwrap();
+            let dest_root = SealedRoot::establish(&base.path("dest")).unwrap();
+            let source_path = base.path("source").join("artifact.txt");
+            std::fs::write(&source_path, b"hello").unwrap();
+            let (device, inode) = unix_identity(&source_path);
+
+            source_root
+                .rename_child_matching_unix_identity(
+                    "artifact.txt",
+                    &dest_root,
+                    "quarantined",
+                    device,
+                    inode,
+                )
+                .expect("cross-directory rename should succeed");
+
+            assert!(
+                !source_path.exists(),
+                "the source name must no longer exist"
+            );
+            assert_eq!(
+                std::fs::read_to_string(base.path("dest").join("quarantined")).unwrap(),
+                "hello"
+            );
+        }
+
+        #[test]
+        fn rename_child_matching_unix_identity_refuses_when_source_identity_changed() {
+            let base = TempDir::new("rename-stale-identity");
+            let source_root = SealedRoot::establish(&base.path("source")).unwrap();
+            let dest_root = SealedRoot::establish(&base.path("dest")).unwrap();
+            let source_path = base.path("source").join("artifact.txt");
+            std::fs::write(&source_path, b"hello").unwrap();
+            let (device, _inode) = unix_identity(&source_path);
+
+            let err = source_root
+                .rename_child_matching_unix_identity(
+                    "artifact.txt",
+                    &dest_root,
+                    "quarantined",
+                    device,
+                    999_999, // wrong inode: stands in for "identity changed since confirmation"
+                )
+                .expect_err("a mismatched expected identity must refuse the move");
+            assert!(matches!(err, SealError::IdentityMismatch));
+            assert!(
+                source_path.exists(),
+                "the source must survive a refused move"
+            );
+        }
+
+        #[test]
+        fn rename_child_matching_unix_identity_refuses_to_clobber_an_existing_destination() {
+            let base = TempDir::new("rename-destination-exists");
+            let source_root = SealedRoot::establish(&base.path("source")).unwrap();
+            let dest_root = SealedRoot::establish(&base.path("dest")).unwrap();
+            let source_path = base.path("source").join("artifact.txt");
+            std::fs::write(&source_path, b"hello").unwrap();
+            std::fs::write(base.path("dest").join("quarantined"), b"already here").unwrap();
+            let (device, inode) = unix_identity(&source_path);
+
+            let err = source_root
+                .rename_child_matching_unix_identity(
+                    "artifact.txt",
+                    &dest_root,
+                    "quarantined",
+                    device,
+                    inode,
+                )
+                .expect_err("an existing destination name must never be silently replaced");
+            assert!(matches!(err, SealError::DestinationAlreadyExists));
+            assert!(
+                source_path.exists(),
+                "the source must survive a refused move"
+            );
+            assert_eq!(
+                std::fs::read_to_string(base.path("dest").join("quarantined")).unwrap(),
+                "already here",
+                "the pre-existing destination object must be untouched"
+            );
         }
     }
 }

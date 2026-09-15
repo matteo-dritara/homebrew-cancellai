@@ -205,6 +205,20 @@ entirely regardless of how carefully typed the "legitimate" path was. Repaired a
 governance check, not type-level visibility alone, is what actually keeps the capability
 reachable only through the safety kernel.
 
+E12-S01 is the "dedicated operation" the boundary rules above name for crossing a
+filesystem/volume boundary explicitly: `ApprovedRoot::prepare_destination` names a not-yet-
+existing quarantine destination under a *second* root (the quarantine store, distinct from the
+source provider root), and `SealedPlan::seal_quarantine`/`mutation_executor::execute` compare
+the two roots' identities (`IdentityToken::device()`) before ever attempting a move - the same
+comparison `bind` already performs within one root, applied here across two. The real move
+(`cancellai_platform::mutation::MutationOperation::Quarantine`) mirrors `DeleteFile`'s
+identity-confirmed, handle-relative shape (open-time check, immediately-before re-check, then
+the OS call via `cancellai-sealedfs`) but ends in a cross-directory `renameat` instead of an
+unlink, plus a contentless restore-metadata sidecar written once the move succeeds
+(`docs/architecture/PERSISTENCE_MODEL.md`'s quarantine store rules). Unix-only for now: Windows
+has no verified handle-relative rename yet and refuses `Quarantine` explicitly rather than
+falling back to an unconfirmed path-based move - a disclosed residual, not a silent gap.
+
 ### Default-root authority never rests on a lexical name alone
 
 `ApprovedRoot::establish`/`bind` bind to the object identity found *after* canonicalization

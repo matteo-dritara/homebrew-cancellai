@@ -27,10 +27,12 @@
 //! under a completely different root (the two were never previously connected by anything
 //! but caller-trusted, unverified strings).
 
+use std::path::{Path, PathBuf};
+
 use cancellai_model::{ActionClass, AuthorityLevel, Reversibility, RootFingerprint};
 use cancellai_platform::{IdentityObservation, IdentityToken};
 
-use crate::root_capability::{ApprovedRoot, BoundedPath};
+use crate::root_capability::{ApprovedRoot, BoundedPath, QuarantineDestination};
 
 /// An immutable, sealed mutating plan for exactly one target artifact.
 ///
@@ -57,6 +59,15 @@ pub struct SealedPlan {
     authority: AuthorityLevel,
     reversibility: Reversibility,
     process_guard: Option<&'static [&'static str]>,
+    /// The quarantine move destination (E12-S01) - `Some` only for a plan built by
+    /// [`Self::seal_quarantine`]. Every other action class carries `None`: there is nothing to
+    /// move anywhere else to.
+    destination_path: Option<PathBuf>,
+    /// The identity of the destination's own root, recorded the same way `root_identity` is -
+    /// from a real [`QuarantineDestination`], never a bare caller-suppliable value - so
+    /// `mutation_executor::execute` can compare it against `root_identity` before ever
+    /// attempting a move (SI-018).
+    destination_root_identity: Option<IdentityToken>,
 }
 
 impl SealedPlan {
@@ -70,6 +81,31 @@ impl SealedPlan {
         reversibility: Reversibility,
         process_guard: Option<&'static [&'static str]>,
     ) -> Self {
+        Self::new_with_destination(
+            root,
+            root_identity,
+            artifact_identity,
+            action_class,
+            authority,
+            reversibility,
+            process_guard,
+            None,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new_with_destination(
+        root: RootFingerprint,
+        root_identity: IdentityToken,
+        artifact_identity: IdentityToken,
+        action_class: ActionClass,
+        authority: AuthorityLevel,
+        reversibility: Reversibility,
+        process_guard: Option<&'static [&'static str]>,
+        destination_path: Option<PathBuf>,
+        destination_root_identity: Option<IdentityToken>,
+    ) -> Self {
         Self {
             root,
             root_identity,
@@ -78,6 +114,8 @@ impl SealedPlan {
             authority,
             reversibility,
             process_guard,
+            destination_path,
+            destination_root_identity,
         }
     }
 
@@ -131,6 +169,34 @@ impl SealedPlan {
         )
     }
 
+    /// Seal a quarantine plan for `target`, additionally recording `destination` (E12-S01) -
+    /// the field `mutation_executor::execute` needs to perform the move and to compare the
+    /// destination root's identity against `root`'s own (SI-018) before ever attempting it.
+    /// `destination_root_identity`/`destination_path` are read from a real
+    /// [`QuarantineDestination`] (produced only by [`ApprovedRoot::prepare_destination`]),
+    /// never accepted as bare caller-supplied values - the same principle [`Self::seal`]
+    /// already applies to `root_identity`/`artifact_identity`.
+    pub fn seal_quarantine(
+        root: &ApprovedRoot,
+        root_fingerprint: RootFingerprint,
+        target: &BoundedPath,
+        destination: &QuarantineDestination,
+        authority: AuthorityLevel,
+        reversibility: Reversibility,
+    ) -> Self {
+        Self::new_with_destination(
+            root_fingerprint,
+            root.identity().clone(),
+            target.identity().clone(),
+            ActionClass::Quarantine,
+            authority,
+            reversibility,
+            None,
+            Some(destination.path().to_path_buf()),
+            Some(destination.root_identity().clone()),
+        )
+    }
+
     pub fn root(&self) -> &RootFingerprint {
         &self.root
     }
@@ -165,6 +231,19 @@ impl SealedPlan {
     /// plan mutates anything - `None` when this plan carries no such precondition.
     pub fn process_guard(&self) -> Option<&'static [&'static str]> {
         self.process_guard
+    }
+
+    /// The quarantine move destination this plan was sealed against - `None` for every action
+    /// class except `Quarantine` (see [`Self::seal_quarantine`]).
+    pub fn destination_path(&self) -> Option<&Path> {
+        self.destination_path.as_deref()
+    }
+
+    /// The identity of the quarantine destination's own root - `None` for every action class
+    /// except `Quarantine`. Compared against [`Self::root_identity`] before a move is ever
+    /// attempted (SI-018).
+    pub fn destination_root_identity(&self) -> Option<&IdentityToken> {
+        self.destination_root_identity.as_ref()
     }
 }
 
@@ -377,5 +456,61 @@ mod tests {
         assert_eq!(plan.artifact_identity(), target.identity());
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn seal_quarantine_records_the_destination_from_a_real_capability() {
+        use cancellai_platform::{SystemIdentityObserver, SystemPathResolver};
+
+        let dir = std::env::temp_dir().join(format!(
+            "cancellai-sealed-plan-seal-quarantine-test-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let source_root_path = dir.join("source");
+        std::fs::create_dir_all(&source_root_path).expect("create source root");
+        let dest_root_path = dir.join("dest");
+        std::fs::create_dir_all(&dest_root_path).expect("create dest root");
+        let file = source_root_path.join("target.txt");
+        std::fs::write(&file, b"hello").expect("create file");
+
+        let resolver = SystemPathResolver;
+        let observer = SystemIdentityObserver;
+        let source_root =
+            ApprovedRoot::establish(&source_root_path, &resolver, &observer).expect("source root");
+        let target = source_root
+            .bind(&file, &resolver, &observer)
+            .expect("bind target");
+        let dest_root =
+            ApprovedRoot::establish(&dest_root_path, &resolver, &observer).expect("dest root");
+        let destination = dest_root
+            .prepare_destination("quarantined.txt", &observer)
+            .expect("prepare destination");
+
+        let plan = SealedPlan::seal_quarantine(
+            &source_root,
+            fingerprint(),
+            &target,
+            &destination,
+            AuthorityLevel::Quarantine,
+            Reversibility::Quarantinable,
+        );
+
+        assert_eq!(plan.action_class(), ActionClass::Quarantine);
+        assert_eq!(plan.destination_path(), Some(destination.path()));
+        assert_eq!(
+            plan.destination_root_identity(),
+            Some(destination.root_identity())
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_non_quarantine_plan_carries_no_destination() {
+        let plan = plan_with(token(1));
+        assert_eq!(plan.destination_path(), None);
+        assert_eq!(plan.destination_root_identity(), None);
     }
 }

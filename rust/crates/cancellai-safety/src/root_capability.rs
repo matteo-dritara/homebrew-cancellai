@@ -49,6 +49,12 @@ pub enum BoundaryError {
     CandidateIdentityUnsupported(String),
     /// The candidate resolves onto a different filesystem/volume than the root (SI-018).
     CrossesFilesystemBoundary,
+    /// A quarantine destination name is not a bare filename (empty, `.`/`..`, or contains a
+    /// path separator) - refused rather than resolved as a nested/traversing path (E12-S01).
+    InvalidDestinationName,
+    /// A quarantine destination already refers to something. Refused rather than replaced: a
+    /// quarantine move must never silently clobber an existing object (E12-S01).
+    DestinationAlreadyExists,
 }
 
 /// A provider root positively bound to the object identity observed for it (SI-002), not
@@ -133,6 +139,64 @@ impl ApprovedRoot {
                 Err(BoundaryError::CandidateIdentityUnsupported(reason))
             }
         }
+    }
+
+    /// Names `child_name` as a not-yet-existing quarantine move destination directly under this
+    /// root (E12-S01). Fails closed if the name is not a bare filename, or if anything already
+    /// exists there - a quarantine move must never silently clobber an existing object.
+    /// `cancellai-platform`'s own rename primitive checks destination absence again,
+    /// independently, immediately before the real move; this is the earlier, cheaper refusal,
+    /// not a substitute for it (defense in depth, matching this crate's existing checks).
+    pub fn prepare_destination(
+        &self,
+        child_name: &str,
+        observer: &dyn IdentityObserver,
+    ) -> Result<QuarantineDestination, BoundaryError> {
+        if child_name.is_empty()
+            || child_name == "."
+            || child_name == ".."
+            || child_name.contains(std::path::MAIN_SEPARATOR)
+        {
+            return Err(BoundaryError::InvalidDestinationName);
+        }
+        let candidate = self.path.join(child_name);
+        match observer.observe(&candidate) {
+            IdentityObservation::Absent => Ok(QuarantineDestination {
+                path: candidate,
+                root_identity: self.identity.clone(),
+            }),
+            IdentityObservation::Identity(_) => Err(BoundaryError::DestinationAlreadyExists),
+            IdentityObservation::Unreadable { reason } => {
+                Err(BoundaryError::CandidateUnreadable(reason))
+            }
+            IdentityObservation::Unsupported { reason } => {
+                Err(BoundaryError::CandidateIdentityUnsupported(reason))
+            }
+        }
+    }
+}
+
+/// A not-yet-existing quarantine move destination under an [`ApprovedRoot`] (E12-S01) - the
+/// destination-side counterpart to [`BoundedPath`]. There is no target [`IdentityToken`] to
+/// record (nothing exists there yet); what this carries is the *root's* identity, so
+/// [`crate::sealed_plan::SealedPlan::seal_quarantine`] can compare it against the plan's own
+/// source root identity before ever attempting a move (SI-018) - the same same-device
+/// comparison [`ApprovedRoot::bind`] already performs for a candidate inside a single root,
+/// applied here across two different roots (the provider root and the quarantine store root).
+/// The only public constructor is [`ApprovedRoot::prepare_destination`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QuarantineDestination {
+    path: PathBuf,
+    root_identity: IdentityToken,
+}
+
+impl QuarantineDestination {
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn root_identity(&self) -> &IdentityToken {
+        &self.root_identity
     }
 }
 
@@ -458,5 +522,105 @@ mod tests {
             err,
             BoundaryError::CandidateIdentityUnsupported(_)
         ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn prepare_destination_accepts_an_absent_child_name() {
+        let dir = TempDir::new("quarantine-destination-absent");
+        let resolver = SystemPathResolver;
+        let observer = SystemIdentityObserver;
+        let root = ApprovedRoot::establish(&dir.0, &resolver, &observer).expect("establish root");
+
+        let destination = root
+            .prepare_destination("quarantined-artifact", &observer)
+            .expect("an absent child name must be accepted as a destination");
+        assert_eq!(destination.path(), root.path().join("quarantined-artifact"));
+        assert_eq!(destination.root_identity(), root.identity());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn prepare_destination_refuses_a_name_that_already_exists() {
+        let dir = TempDir::new("quarantine-destination-exists");
+        let resolver = SystemPathResolver;
+        let observer = SystemIdentityObserver;
+        let root = ApprovedRoot::establish(&dir.0, &resolver, &observer).expect("establish root");
+        std::fs::write(dir.path("taken"), b"already here").expect("pre-populate destination");
+
+        let err = root
+            .prepare_destination("taken", &observer)
+            .expect_err("an existing child name must never be offered as a destination");
+        assert_eq!(err, BoundaryError::DestinationAlreadyExists);
+    }
+
+    #[test]
+    fn prepare_destination_refuses_names_that_are_not_bare_filenames() {
+        let dir = TempDir::new("quarantine-destination-invalid-name");
+        let resolver = SystemPathResolver;
+        let observer = SyntheticIdentityObserver::new();
+        let root = ApprovedRoot::establish(&dir.0, &resolver, &SystemIdentityObserver)
+            .expect("establish root");
+
+        for bad in ["", ".", "..", "nested/name"] {
+            assert_eq!(
+                root.prepare_destination(bad, &observer),
+                Err(BoundaryError::InvalidDestinationName),
+                "expected InvalidDestinationName for {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn prepare_destination_fails_closed_when_the_observation_is_unreadable() {
+        // The unknown-to-authority axis this crate cares about most: an *unreadable* fact
+        // must never be treated as "safe, nothing is there" - it is refused exactly like
+        // `bind`'s own `Unreadable`/`Unsupported` arms above.
+        let dir = TempDir::new("quarantine-destination-unreadable");
+        let resolver = SystemPathResolver;
+        let root = ApprovedRoot::establish(&dir.0, &resolver, &SystemIdentityObserver)
+            .expect("establish root");
+        let candidate = root.path().join("candidate");
+
+        let mut observer = SyntheticIdentityObserver::new();
+        observer.set(
+            &candidate,
+            IdentityObservation::Unreadable {
+                reason: "permission denied".into(),
+            },
+        );
+
+        let err = root
+            .prepare_destination("candidate", &observer)
+            .expect_err("an unreadable destination fact must never be offered as usable");
+        assert_eq!(
+            err,
+            BoundaryError::CandidateUnreadable("permission denied".into())
+        );
+    }
+
+    #[test]
+    fn prepare_destination_fails_closed_when_the_observation_is_unsupported() {
+        let dir = TempDir::new("quarantine-destination-unsupported");
+        let resolver = SystemPathResolver;
+        let root = ApprovedRoot::establish(&dir.0, &resolver, &SystemIdentityObserver)
+            .expect("establish root");
+        let candidate = root.path().join("candidate");
+
+        let mut observer = SyntheticIdentityObserver::new();
+        observer.set(
+            &candidate,
+            IdentityObservation::Unsupported {
+                reason: "no verified Windows identity yet".into(),
+            },
+        );
+
+        let err = root
+            .prepare_destination("candidate", &observer)
+            .expect_err("an unsupported destination fact must never be offered as usable");
+        assert_eq!(
+            err,
+            BoundaryError::CandidateIdentityUnsupported("no verified Windows identity yet".into())
+        );
     }
 }

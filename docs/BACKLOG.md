@@ -1283,13 +1283,13 @@ Compile human-readable policy into typed constraints and a fully explainable Eff
 
 ## E12 - Quarantine, Archive, Restore, Purge
 
-**Phase:** `P3` | **Status:** `planned` | **Epic dependencies:** E11
+**Phase:** `P3` | **Status:** `in_progress` | **Epic dependencies:** E11
 
 Introduce reversible lifecycle operations before expanding autonomy.
 
 ### E12-S01 - Quarantine store semantics
 
-**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E11-S02, E03-S05 | **Safety obligations:** SI-018, SI-020
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E11-S02, E03-S05 | **Safety obligations:** SI-018, SI-020
 
 **Outcome.** Define same-volume move-first quarantine with explicit capacity and boundary checks.
 

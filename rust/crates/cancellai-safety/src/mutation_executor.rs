@@ -38,13 +38,24 @@
 //!   confirmation technique is implemented for - directories and symlinks are refused rather
 //!   than deleted with a weaker guarantee.
 
-use cancellai_model::ActionClass;
+use cancellai_model::{ActionClass, RootFingerprint};
 use cancellai_platform::mutation::{MutationExecutor, MutationOperation};
 use cancellai_platform::{FileKind, IdentityObserver, IdentityToken, ProcessObserver};
 
 use crate::authority::{minimum_authority_for, reversibility_allowed};
 use crate::root_capability::BoundedPath;
 use crate::sealed_plan::{RevalidationOutcome, SealedPlan, revalidate};
+
+/// The contentless restore-metadata sidecar a quarantine move writes alongside the moved
+/// object (E12-S01, `docs/architecture/PERSISTENCE_MODEL.md`'s quarantine store rules) - never
+/// artifact payload content, only what a later restore needs to find and verify it: where it
+/// came from, and the identity it had there.
+#[derive(serde::Serialize)]
+struct QuarantineRecord<'a> {
+    original_path: &'a std::path::Path,
+    original_identity: &'a IdentityToken,
+    root: &'a RootFingerprint,
+}
 
 /// The outcome of attempting one [`SealedPlan`]. Every branch is explicit - there is no
 /// "probably fine" case, and a caller cannot mistake a safety block for a success (SI-014's
@@ -136,10 +147,40 @@ pub fn execute(
                 };
             }
         },
-        // AC's scope (see module/crate docs): Quarantine needs a destination `SealedPlan`
-        // does not carry yet, and Archive/Observe have no OS-primitive mapping this story
-        // defines. Refusing is the fail-closed answer, not a guess at what either would do.
-        ActionClass::Observe | ActionClass::Quarantine | ActionClass::Archive => {
+        // E12-S01: a quarantine plan now carries its own destination (`SealedPlan::
+        // seal_quarantine`). The same-device comparison below is the explicit boundary check
+        // `docs/architecture/PLATFORM_MODEL.md` asks for (SI-018) - `cancellai-platform`'s
+        // `renameat` call still refuses a cross-filesystem move on its own (`EXDEV`), but that
+        // is only the backstop; this is the designed refusal.
+        ActionClass::Quarantine => {
+            let (Some(destination_path), Some(destination_root_identity)) =
+                (plan.destination_path(), plan.destination_root_identity())
+            else {
+                return ActionResult::SafelyBlocked {
+                    reason: "quarantine plan carries no destination".to_string(),
+                };
+            };
+            if plan.root_identity().device() != destination_root_identity.device() {
+                return ActionResult::SafelyBlocked {
+                    reason: "quarantine destination is on a different filesystem/volume than \
+                             the source root"
+                        .to_string(),
+                };
+            }
+            let record = serde_json::to_vec(&QuarantineRecord {
+                original_path: target.path(),
+                original_identity: plan.artifact_identity(),
+                root: plan.root(),
+            })
+            .expect("quarantine record fields (paths, identity tokens, root fingerprint) are always serializable");
+            MutationOperation::Quarantine {
+                destination: destination_path.to_path_buf(),
+                record,
+            }
+        }
+        // Archive/Observe have no OS-primitive mapping this story defines. Refusing is the
+        // fail-closed answer, not a guess at what either would do.
+        ActionClass::Observe | ActionClass::Archive => {
             return ActionResult::SafelyBlocked {
                 reason: format!(
                     "{:?} is not an action class this executor performs yet",
@@ -300,6 +341,26 @@ mod tests {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn plan_with_quarantine_destination(
+        root_identity: IdentityToken,
+        artifact_identity: IdentityToken,
+        destination_path: Option<PathBuf>,
+        destination_root_identity: Option<IdentityToken>,
+    ) -> SealedPlan {
+        SealedPlan::new_with_destination(
+            fingerprint(),
+            root_identity,
+            artifact_identity,
+            ActionClass::Quarantine,
+            AuthorityLevel::Quarantine,
+            Reversibility::Quarantinable,
+            None,
+            destination_path,
+            destination_root_identity,
+        )
+    }
+
     struct TempDir(PathBuf);
 
     impl TempDir {
@@ -343,6 +404,21 @@ mod tests {
         let bound = root.bind(&file, &resolver, &observer).expect("bind file");
         let identity = bound.identity().clone();
         (dir, bound, identity)
+    }
+
+    /// A real, established quarantine store root and a not-yet-existing destination directly
+    /// under it (E12-S01) - the destination-side counterpart to `real_bounded_file`.
+    #[cfg(unix)]
+    fn real_quarantine_destination() -> (TempDir, crate::root_capability::QuarantineDestination) {
+        let dir = TempDir::new("quarantine-root");
+        let resolver = cancellai_platform::SystemPathResolver;
+        let observer = cancellai_platform::SystemIdentityObserver;
+        let root = crate::root_capability::ApprovedRoot::establish(&dir.0, &resolver, &observer)
+            .expect("establish quarantine root");
+        let destination = root
+            .prepare_destination("quarantined.txt", &observer)
+            .expect("prepare destination");
+        (dir, destination)
     }
 
     #[cfg(unix)]
@@ -451,6 +527,183 @@ mod tests {
             ActionResult::Failed {
                 reason: "No space left on device".to_string()
             }
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn execute_quarantines_a_real_file_through_the_full_stack() {
+        // Ties every piece this story added together with the real, OS-backed observer AND
+        // mutation executor: `ApprovedRoot::prepare_destination`, `SealedPlan::seal_quarantine`,
+        // and `execute`'s same-device check and operation-building, ending in a real filesystem
+        // move plus its restore-record sidecar.
+        let (_source_dir, target, _identity) = real_bounded_file();
+        let (_dest_dir, destination) = real_quarantine_destination();
+        let source_root = crate::root_capability::ApprovedRoot::establish(
+            &_source_dir.0,
+            &cancellai_platform::SystemPathResolver,
+            &cancellai_platform::SystemIdentityObserver,
+        )
+        .expect("re-establish source root");
+        let plan = SealedPlan::seal_quarantine(
+            &source_root,
+            fingerprint(),
+            &target,
+            &destination,
+            AuthorityLevel::Quarantine,
+            Reversibility::Quarantinable,
+        );
+
+        let observer = cancellai_platform::SystemIdentityObserver;
+        let executor = SystemMutationExecutor;
+        let process = SystemProcessObserver;
+
+        let result = execute(&plan, &target, &observer, &executor, &process);
+        assert_eq!(result, ActionResult::Succeeded);
+        assert!(!target.path().exists(), "the source must no longer exist");
+        assert_eq!(
+            std::fs::read_to_string(destination.path()).expect("destination content"),
+            "hello"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn execute_blocks_a_quarantine_plan_whose_destination_crosses_a_filesystem_boundary() {
+        // The explicit SI-018 check, exercised purely through synthetic identity tokens (a
+        // real second volume is not available to this executor - matching every other
+        // cross-device boundary test in this workspace, e.g. `root_capability.rs`'s own).
+        let (_dir, target, identity) = real_bounded_file();
+        let mismatched_destination_root = IdentityToken::Unix {
+            device: target.root_identity().device() + 1,
+            inode: 0,
+            kind: FileKind::Directory,
+            modified: FrozenClock::at(1_000).now(),
+            modified_nanos: 0,
+        };
+        let plan = plan_with_quarantine_destination(
+            target.root_identity().clone(),
+            identity.clone(),
+            Some(PathBuf::from("/quarantine/somewhere/dest.txt")),
+            Some(mismatched_destination_root),
+        );
+
+        let mut observer = SyntheticIdentityObserver::new();
+        observer.set(target.path(), IdentityObservation::Identity(identity));
+        let mut executor = SyntheticMutationExecutor::new();
+        executor.set(
+            target.path(),
+            Err(MutationError(
+                "this must never be observed - mutate() should not have been called".into(),
+            )),
+        );
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
+
+        let result = execute(&plan, &target, &observer, &executor, &process);
+        assert_eq!(
+            result,
+            ActionResult::SafelyBlocked {
+                reason: "quarantine destination is on a different filesystem/volume than the \
+                         source root"
+                    .to_string()
+            }
+        );
+        assert!(
+            target.path().exists(),
+            "the target must survive a refused quarantine move"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn execute_blocks_a_quarantine_plan_carrying_no_destination() {
+        let (_dir, target, identity) = real_bounded_file();
+        let plan = plan_with_quarantine_destination(
+            target.root_identity().clone(),
+            identity.clone(),
+            None,
+            None,
+        );
+
+        let mut observer = SyntheticIdentityObserver::new();
+        observer.set(target.path(), IdentityObservation::Identity(identity));
+        let executor = SyntheticMutationExecutor::new();
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
+
+        let result = execute(&plan, &target, &observer, &executor, &process);
+        assert_eq!(
+            result,
+            ActionResult::SafelyBlocked {
+                reason: "quarantine plan carries no destination".to_string()
+            }
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn execute_reports_failed_when_the_quarantine_mutation_itself_fails() {
+        let (_dir, target, identity) = real_bounded_file();
+        let plan = plan_with_quarantine_destination(
+            target.root_identity().clone(),
+            identity.clone(),
+            Some(PathBuf::from("/quarantine/dest.txt")),
+            Some(target.root_identity().clone()),
+        );
+
+        let mut observer = SyntheticIdentityObserver::new();
+        observer.set(target.path(), IdentityObservation::Identity(identity));
+        let mut executor = SyntheticMutationExecutor::new();
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
+        executor.set(
+            target.path(),
+            Err(MutationError("No space left on device".into())),
+        );
+
+        let result = execute(&plan, &target, &observer, &executor, &process);
+        assert_eq!(
+            result,
+            ActionResult::Failed {
+                reason: "No space left on device".to_string()
+            }
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn execute_refuses_a_quarantine_plan_with_insufficient_authority() {
+        // The Quarantine-side counterpart of `e03_verifier_round1_observe_authority_cannot_
+        // execute_a_delete`: authority/reversibility gating runs before this story's own
+        // destination/boundary logic is ever reached, exactly as it does for every other
+        // action class - this proves the Quarantine arm did not open a second path around it.
+        let (_dir, target, identity) = real_bounded_file();
+        let plan = SealedPlan::new_with_destination(
+            fingerprint(),
+            target.root_identity().clone(),
+            identity.clone(),
+            ActionClass::Quarantine,
+            AuthorityLevel::Observe,
+            Reversibility::Quarantinable,
+            None,
+            Some(PathBuf::from("/quarantine/dest.txt")),
+            Some(target.root_identity().clone()),
+        );
+
+        let mut observer = SyntheticIdentityObserver::new();
+        observer.set(target.path(), IdentityObservation::Identity(identity));
+        let mut executor = SyntheticMutationExecutor::new();
+        executor.set(
+            target.path(),
+            Err(MutationError(
+                "this must never be observed - mutate() should not have been called".into(),
+            )),
+        );
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
+
+        let result = execute(&plan, &target, &observer, &executor, &process);
+        assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
+        assert!(
+            target.path().exists(),
+            "the target must survive an insufficiently-authorized quarantine plan"
         );
     }
 

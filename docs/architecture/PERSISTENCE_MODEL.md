@@ -77,6 +77,14 @@ Rules:
 - surface quarantine footprint separately from "reclaimed from active provider" and "net free disk";
 - quarantine expiry/purge remains a policy-controlled destructive event.
 
+E12-S01 implements the move itself: an identity-confirmed, handle-relative rename (never a
+copy) from the provider root to a second, explicitly-checked quarantine-store root
+(`docs/architecture/PLATFORM_MODEL.md`'s boundary rules) - refusing rather than falling back to
+a copy when the two roots are on different filesystems/volumes, or when the destination name
+already exists. A contentless restore-metadata sidecar (original path, original identity, root
+fingerprint - never artifact payload content) is written atomically alongside the moved object.
+Unix only for now; Windows quarantine is a disclosed residual.
+
 ## Archive
 
 Archive is for artifacts the user wants to retain cheaply. Archive integrity must be verified before any source purge. Compression never changes risk class or authority ceiling by itself.

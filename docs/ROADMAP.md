@@ -83,7 +83,7 @@ Add deterministic policy, budgets, quarantine/restore/archive, and bounded persi
 **Epics**
 
 - **E11 - Deterministic Policy Engine** (`done_no_release`): Compile human-readable policy into typed constraints and a fully explainable Effective Policy.
-- **E12 - Quarantine, Archive, Restore, Purge** (`planned`): Introduce reversible lifecycle operations before expanding autonomy.
+- **E12 - Quarantine, Archive, Restore, Purge** (`in_progress`): Introduce reversible lifecycle operations before expanding autonomy.
 - **E13 - Local State, Event Ledger, Analytical Memory** (`planned`): Persist only bounded metadata required for lifecycle, audit, undo, and Guardian intelligence.
 
 ## P4 - Guardian
