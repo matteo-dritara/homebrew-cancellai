@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "scanner": "2.11.2",
+  "note": "A waiver suppresses one finding, named by the match_fingerprint that scripts/check_skill_content.py reports. It is dated and carries a reason; 'it is a false positive' is not a reason, the argument for why is. A waiver that stops matching is reported as stale rather than ignored, because a fingerprint that drifted means the finding is back and nobody was told.",
+  "waivers": [
+    {
+      "fingerprint": "cce4276d56063d8d083a5d84aa8710cc20763902060e9f13d880d306c741b113",
+      "skill": "adversarial-cases",
+      "file": "SKILL.md",
+      "category": "Rogue Agent",
+      "pattern": "Session Persistence",
+      "severity": "MEDIUM",
+      "reason": "The rule matched the prohibition as though it were the act. The flagged line is the skill's own instruction not to touch real user data - 'Never target real ~/.claude or ~/.codex data, and never commit real transcripts, prompts, auth material, secrets, or home paths' - and the pattern fired on the home paths inside a sentence forbidding their use. The skill establishes no persistence: it has no cron, no startup script, and writes no state. Kept below the refusal line anyway, so this waiver records the judgement rather than deciding the gate.",
+      "date": "2026-09-15",
+      "by": "owner"
+    }
+  ]
+}

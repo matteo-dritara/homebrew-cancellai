@@ -69,3 +69,49 @@ Judge a candidate on capability surface, trust tier, always-on cost, and whether
 second source of truth for something this repository already defines. That last one refuses
 otherwise excellent packages: two definitions of Done in one repository is the defect class the
 E00 review took three rounds to close. Popularity is not one of the four.
+
+## What a component contains
+
+The manifest answers a question about provenance - was this declared, and is its trust tier high
+enough for what it claims? That is the right question and only half of it. A skill is prompt
+content injected into the agent that writes a tool which deletes files, and prompt content can
+carry an instruction to ignore a rule, a path that exfiltrates a key, or a tool permission far
+wider than its purpose. None of those change a trust tier or a pinned version. `cargo deny` does
+not ask who published a crate; it reads the crate. `scripts/check_skill_content.py` does the same
+for the pack (E28-S01).
+
+```sh
+python3 scripts/check_skill_content.py check    # fails at HIGH or above
+python3 scripts/check_skill_content.py report   # every finding, with the fingerprint a waiver names
+```
+
+The instrument is [SkillSpector](https://github.com/NVIDIA/SkillSpector), pinned at 2.11.2 and
+installed as a development dependency - **not** as a component in the manifest it is checking:
+
+```sh
+uv tool install 'git+https://github.com/NVIDIA/SkillSpector@v2.11.2'
+```
+
+It runs with `--no-llm`, so no file content leaves the machine and the semantic analysers do not
+run. That is a real reduction in reach and the gate prints it on every run rather than letting a
+static-only pass read as a full one.
+
+**Three things the gate deliberately does not read**, each measured rather than assumed:
+
+- **the exit code.** A skill planted with SSH-key exfiltration and `eval "$(curl ...)"` produced
+  two HIGH findings and still exited 0.
+- **`risk_recommendation`.** On that same planted skill it read `SAFE`, while this repository's
+  own clean pack read `CAUTION`. The per-skill `issues` are correct; the rolled-up field is not
+  something to gate on.
+- **`finding_id`.** It is regenerated per run - two consecutive scans of an unchanged pack
+  produced different ones. Waivers key on `match_fingerprint`, which was stable.
+
+A waiver lives in `project/skill_content_waivers.json`, names one `match_fingerprint`, and carries
+a date and an argument. "It is a false positive" is not an argument; why it is one is. A waiver
+that stops matching is reported as **stale** rather than dropped, because a drifted fingerprint
+means the finding is back and nobody was told.
+
+The pack's one standing waiver is worth reading as a caution about scanners generally: the
+`adversarial-cases` skill was flagged for session persistence because it contains the words
+`~/.claude` and `~/.codex` - inside the sentence forbidding anyone to touch them. The rule matched
+the prohibition as though it were the act.
