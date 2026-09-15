@@ -167,7 +167,7 @@ carry no licence file, so by default all rights are reserved.
 **Waivers are bound to the scanner that produced them** (E29-S02). A waiver names a
 `match_fingerprint`, which was measured stable across two runs of one scanner version and is
 untested across two versions. `project/skill_content_waivers.json` records the version it was
-written against and the date somebody last revalidated it; the gate refuses when that differs from
+written against and the ISO-8601 date somebody last revalidated it; the gate refuses when that differs from
 the pin. Bumping the pin is routine and used to carry no obligation to revisit the waivers, which
 is exactly when a drifted fingerprint would start suppressing a different finding in silence.
 

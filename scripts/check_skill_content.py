@@ -39,6 +39,7 @@ Stdlib-only, like every other governance checker here.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import re
 import shutil
@@ -176,6 +177,21 @@ def waiver_provenance_errors(waivers: dict[str, Any]) -> list[str]:
         return []
     against = waivers.get("scanner")
     if against == PINNED_SCANNER:
+        raw_revalidated = waivers.get("revalidated")
+        if not isinstance(raw_revalidated, str) or not raw_revalidated:
+            return [
+                "the waivers match the pinned scanner but record no revalidated date. Revalidation must be "
+                "an explicit dated act, not an inferred consequence of a passing scan"
+            ]
+        try:
+            revalidated = dt.date.fromisoformat(raw_revalidated)
+        except ValueError:
+            return [f"the waivers record revalidated {raw_revalidated!r}, not an ISO-8601 date. Revalidation must be an explicit dated act"]
+        if revalidated > dt.date.today():
+            return [
+                f"the waivers record revalidated {raw_revalidated}, which is in the future. A future date "
+                "cannot attest that the current scanner's findings were reviewed"
+            ]
         return []
     return [
         f"the waivers were written against skillspector {against!r} and this gate is pinned to "

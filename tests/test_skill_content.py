@@ -41,7 +41,12 @@ def report(*issues: dict[str, Any], **top: Any) -> dict[str, Any]:
 
 
 def waivers(*entries: dict[str, Any]) -> dict[str, Any]:
-    return {"schema_version": 1, "scanner": gate.PINNED_SCANNER, "waivers": list(entries)}
+    return {
+        "schema_version": 1,
+        "scanner": gate.PINNED_SCANNER,
+        "revalidated": "2026-09-15",
+        "waivers": list(entries),
+    }
 
 
 class SeverityLadder(unittest.TestCase):
@@ -191,6 +196,21 @@ class WaiversAreBoundToTheScannerThatProducedThem(unittest.TestCase):
     def test_matching_versions_pass(self) -> None:
         waived = waivers({"fingerprint": "fp", "reason": "argued", "date": "2026-09-15"})
         self.assertEqual(gate.waiver_provenance_errors(waived), [])
+
+    def test_matching_versions_without_a_revalidation_date_still_refuse(self) -> None:
+        """Changing only `scanner` would otherwise make revalidation a claim with no dated act."""
+        waived = waivers({"fingerprint": "fp", "reason": "argued", "date": "2026-09-15"})
+        waived.pop("revalidated")
+        errors = gate.waiver_provenance_errors(waived)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("no revalidated date", errors[0])
+
+    def test_an_invalid_revalidation_date_does_not_pass(self) -> None:
+        waived = waivers({"fingerprint": "fp", "reason": "argued", "date": "2026-09-15"})
+        waived["revalidated"] = "not-a-date"
+        errors = gate.waiver_provenance_errors(waived)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("ISO-8601", errors[0])
 
     def test_a_file_with_no_waivers_has_nothing_to_invalidate(self) -> None:
         """Nothing is being suppressed, so a version difference suppresses nothing."""
