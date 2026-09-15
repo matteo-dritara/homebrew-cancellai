@@ -208,6 +208,33 @@ def describe(report: dict[str, Any]) -> list[str]:
     return lines
 
 
+def completeness_errors(report: dict[str, Any]) -> list[str]:
+    """Refuse when the scanner confirms it skipped a skill or file entirely.
+
+    ``--no-llm`` deliberately leaves this scan partially inspected: static analysis cannot make
+    the stronger semantic claim without sending prompt content to a provider. That is an explicit
+    residual. A skill or file omitted altogether is different: it is outside even the static scan,
+    so reporting it while passing would contradict the promise to scan every carried skill.
+    """
+    errors: list[str] = []
+    omitted = report.get("skills_omitted")
+    if not isinstance(omitted, int):
+        errors.append("skillspector report has no integer skills_omitted count; scan coverage cannot be determined")
+    elif omitted:
+        errors.append(f"skillspector omitted {omitted} skill(s); every carried prompt-bearing skill must be scanned")
+
+    completeness = report.get("analysis_completeness")
+    if not isinstance(completeness, dict):
+        errors.append("skillspector report has no analysis_completeness record; file coverage cannot be determined")
+    else:
+        uninspected = completeness.get("entirely_uninspected_files")
+        if not isinstance(uninspected, int):
+            errors.append("skillspector report has no integer entirely_uninspected_files count; file coverage cannot be determined")
+        elif uninspected:
+            errors.append(f"skillspector entirely skipped {uninspected} file(s); a file outside the scan cannot be treated as clean")
+    return errors
+
+
 def render(refusals: list[dict[str, Any]], waived: list[dict[str, Any]], stale: list[str]) -> None:
     for finding in refusals:
         line = f":{finding['line']}" if finding["line"] else ""
@@ -230,11 +257,16 @@ def cmd_check() -> int:
             print(f"SKILL CONTENT ERROR: {error}", file=sys.stderr)
         return 2
     report = scan(SKILL_PACK)
+    coverage_errors = completeness_errors(report)
     refusals, waived, stale = evaluate(findings(report), load_waivers())
     print(f"skill content scanned by skillspector {installed}")
     for line in describe(report):
         print(line)
     render(refusals, waived, stale)
+    for error in coverage_errors:
+        print(f"SKILL CONTENT ERROR: {error}", file=sys.stderr)
+    if coverage_errors:
+        return 1
     if refusals:
         print(
             f"\nSKILL CONTENT ERROR: {len(refusals)} finding(s) at {REFUSE_AT} or above. Repair the "

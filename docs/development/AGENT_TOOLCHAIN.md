@@ -93,8 +93,9 @@ uv tool install 'git+https://github.com/NVIDIA/SkillSpector@v2.11.2'
 ```
 
 It runs with `--no-llm`, so no file content leaves the machine and the semantic analysers do not
-run. That is a real reduction in reach and the gate prints it on every run rather than letting a
-static-only pass read as a full one.
+run. That is a real reduction in reach: static-only analysis remains explicitly `partial`, but the
+gate refuses if SkillSpector omitted a carried skill or entirely skipped a file rather than letting
+that absence read as a clean result.
 
 **Three things the gate deliberately does not read**, each measured rather than assumed:
 

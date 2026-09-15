@@ -33,7 +33,8 @@ def issue(**overrides: Any) -> dict[str, Any]:
 def report(*issues: dict[str, Any], **top: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
         "skills": [{"name": "example", "issues": list(issues)}],
-        "analysis_completeness": {"status": "complete"},
+        "skills_omitted": 0,
+        "analysis_completeness": {"status": "complete", "entirely_uninspected_files": 0},
     }
     base.update(top)
     return base
@@ -155,6 +156,26 @@ class Reporting(unittest.TestCase):
         joined = "\n".join(lines)
         self.assertIn("partial", joined)
         self.assertIn("semantic analysis: not run", joined)
+
+
+class ScanCoverage(unittest.TestCase):
+    """A clean result only means something when every carried skill entered the static scan."""
+
+    def test_an_omitted_skill_refuses_instead_of_hiding_its_findings(self) -> None:
+        errors = gate.completeness_errors(report(skills_omitted=1))
+        self.assertEqual(len(errors), 1)
+        self.assertIn("omitted 1 skill", errors[0])
+
+    def test_an_entirely_uninspected_file_refuses(self) -> None:
+        errors = gate.completeness_errors(report(analysis_completeness={"status": "partial", "entirely_uninspected_files": 1}))
+        self.assertEqual(len(errors), 1)
+        self.assertIn("entirely skipped 1 file", errors[0])
+
+    def test_partial_static_analysis_remains_an_explicit_residual_not_a_false_coverage_error(self) -> None:
+        self.assertEqual(
+            gate.completeness_errors(report(analysis_completeness={"status": "partial", "entirely_uninspected_files": 0})),
+            [],
+        )
 
 
 if __name__ == "__main__":
