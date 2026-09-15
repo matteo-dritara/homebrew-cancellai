@@ -55,6 +55,11 @@ CHECKSUM_LINE = re.compile(r"^Brief-Checksum:\s*([0-9a-f]{64})\s*$", re.MULTILIN
 RENDERED_BY = re.compile(r"^Rendered-by:\s*(.+?)\s*$", re.MULTILINE)
 VERIFIER_LINE = re.compile(r"^Verifier:\s*(.+?)\s*$", re.MULTILINE)
 STORY_ID = re.compile(r"^E\d{2}-S\d{2}$")
+EPIC_SCOPE = re.compile(r"^Review-Scope:\s*epic\s*$", re.MULTILINE | re.IGNORECASE)
+EPIC_CHECKSUM = re.compile(
+    r"^\|\s*(E\d{2}-S\d{2})\s*\|[^\n]*?Brief-Checksum:\s*([0-9a-f]{64})\s*\|?\s*$",
+    re.MULTILINE,
+)
 
 # A verdict lives in one of these next to the story's packet. Both names are already conventions in
 # project/evidence/; this reads them rather than introducing a third.
@@ -146,7 +151,24 @@ def verdicts_for(story_id: str) -> list[Path]:
     # Epic-level reviews sit beside the story directories and name the story in the filename.
     for pattern in VERDICT_GLOBS:
         found.extend(p for p in EVIDENCE.glob(pattern) if p.name.startswith(story_id))
+    # An epic-scoped round is one record for every story it judges. Its table carries each
+    # brief checksum, so the record must be checked for every named story rather than becoming
+    # invisible to the handoff gate merely because its filename begins with the epic id.
+    for pattern in VERDICT_GLOBS:
+        for path in EVIDENCE.glob(pattern):
+            text = path.read_text(encoding="utf-8")
+            if EPIC_SCOPE.search(text) and any(row_story == story_id for row_story, _ in EPIC_CHECKSUM.findall(text)):
+                found.append(path)
     return sorted(set(found))
+
+
+def checksum_for_story(text: str, story_id: str) -> str | None:
+    """The checksum a verdict declares for one story, including the epic-table form."""
+    for row_story, checksum in EPIC_CHECKSUM.findall(text):
+        if row_story == story_id:
+            return str(checksum)
+    claimed = CHECKSUM_LINE.search(text)
+    return str(claimed.group(1)) if claimed else None
 
 
 def check_story(story_id: str) -> list[str]:
@@ -167,7 +189,7 @@ def check_story(story_id: str) -> list[str]:
 
     for verdict in verdicts_for(story_id):
         text = verdict.read_text(encoding="utf-8")
-        claimed = CHECKSUM_LINE.search(text)
+        claimed = checksum_for_story(text, story_id)
         author = VERIFIER_LINE.search(text)
         name = verdict.relative_to(ROOT)
         if claimed is None:
@@ -180,9 +202,9 @@ def check_story(story_id: str) -> list[str]:
         if brief is None:
             problems.append(f"{name}: names a brief checksum, but {story_id} has no {BRIEF} to answer")
             continue
-        if claimed.group(1) != brief["actual"]:
+        if claimed != brief["actual"]:
             problems.append(
-                f"{name}: answers checksum {claimed.group(1)[:12]}, but {story_id}'s brief hashes to "
+                f"{name}: answers checksum {claimed[:12]}, but {story_id}'s brief hashes to "
                 f"{brief['actual'][:12]} - this verdict answers a document that is not the committed brief"
             )
         if author is None:

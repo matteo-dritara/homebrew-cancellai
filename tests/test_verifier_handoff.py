@@ -138,6 +138,21 @@ class TheSeparationSurvivesTheAutomation(unittest.TestCase):
         (self.evidence / "E00-S01" / "E00-S01-VERIFIER-REVIEW.md").write_text("# Review\n\nVerifier: Codex\n\nPASS\n", encoding="utf-8")
         self.assertEqual(handoff.check_story("E00-S01"), [])
 
+    def test_an_epic_round_answers_each_named_story_brief(self) -> None:
+        checksum = handoff.digest(BODY)
+        (self.evidence / "E00-S01" / handoff.BRIEF).write_text(
+            f"Rendered-by: Claude\nBrief-Checksum: {checksum}\n\n{handoff.HEADER_END}\n{BODY}",
+            encoding="utf-8",
+        )
+        record = self.evidence / "E00-VERIFIER-REVIEW.md"
+        record.write_text(
+            "Review-Scope: epic\nVerifier: Codex\n\n"
+            "| Story | Verdict | evidence |\n| --- | --- | --- |\n"
+            f"| E00-S01 | PASS | Brief-Checksum: {checksum} |\n",
+            encoding="utf-8",
+        )
+        self.assertEqual(handoff.check_story("E00-S01"), [])
+
     def test_the_module_never_writes_a_verdict(self) -> None:
         source = (Path(handoff.__file__)).read_text(encoding="utf-8")
         for name in ("VERDICT", "VERIFIER-REVIEW"):
