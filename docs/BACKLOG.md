@@ -3463,13 +3463,13 @@ Nobody had measured this codebase. Twenty-seven gates, 143 stories and a risk mo
 
 ## E28 - Toolchain Assurance
 
-**Phase:** `P1` | **Status:** `verification` | **Epic dependencies:** E26
+**Phase:** `P1` | **Status:** `done_no_release` | **Epic dependencies:** E26
 
 E26 made the agent toolchain a managed dependency: a manifest, a trust bar set by capability, decisions that expire, a context budget. It governs whether a component was declared and at what trust - it never looks inside one. `trust: Vendor` is a human judgement with no measurement under it, and the pinned version of a prompt-bearing component can change what the agent is told without changing a single line this repository's gates can see. The second gap is older and is not about third parties at all: executor/verifier separation is this project's central method, and its handoff is entirely manual. `project_os.py brief <ID> --role verifier` produces the verifier's input and nothing carries it anywhere; a human copies it into the other agent and copies the verdict back. That was the route for E16, E17, E09/E10, E27-S01 and E27-S06 - the load-bearing step of the method is the one step with no mechanism and no evidence of its own. A third thing is assumed in the same way: the skill pack changes only when somebody sits down to rewrite it, never because real work exposed a rule that was missing or wrong - the friction is noticed in a session and dies with it. This epic closes all three: what a component contains becomes measurable, the handoff becomes an artifact the ledger can check, and the method improves from recorded evidence rather than from recollection. It closes neither by adopting a package. A census of 342 community repositories found that the fourteen most-starred, 1.7 million stars between them, yield no installable component for this codebase - they are catalogues, method packs that define Done a second time, or domains this product does not touch. What survived was two ideas and one first-party language server, and ideas are cheaper to implement than packages are to carry.
 
 ### E28-S01 - What a toolchain component contains is scanned, not trusted
 
-**Status:** `verification` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** The manifest records a trust tier per component and `check_agent_toolchain.py` enforces that a component which runs code, reaches the network or touches credentials is FirstParty or Vendor. That bar is about provenance, which is the right question and only half of it: nothing reads the component. A skill is prompt content injected into the agent that writes a file-deletion tool, and prompt content can carry instructions to ignore a rule, an exfiltration path, or a tool permission far wider than its purpose - none of which change its trust tier or its pinned version. The same argument this repository already accepts for crates (`cargo deny` reads the dependency, it does not ask who published it) applies here and has not been applied. NVIDIA's SkillSpector is the instrument: a CLI, Apache-2.0, 71 patterns across 17 categories, JSON and SARIF output, exit codes, and `--no-llm` to keep every file local. It enters as a pinned development dependency behind a gate script, in the shape every other gate here already has - not as a component in the manifest it would be checking.
 
@@ -3497,7 +3497,7 @@ E26 made the agent toolchain a managed dependency: a manifest, a trust bar set b
 
 ### E28-S02 - The verifier handoff is a mechanism, not a manual step
 
-**Status:** `verification` | **Change Risk:** `CR2` | **Dependencies:** E28-S01 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E28-S01 | **Safety obligations:** none
 
 **Outcome.** Executor/verifier separation is the method this repository is built on, and it is the only part of the method with no mechanism. `project_os.py brief <ID> --role verifier` renders the verifier's input; a human then carries it to the other agent, carries the verdict back, and the evidence packet records a review whose transport nobody can audit. Two things follow that the ledger cannot currently see: whether the verifier was given the brief the gate rendered or a paraphrase of it, and whether the verdict committed is the verdict the verifier produced. The handoff becomes an artifact - a rendered brief with a checksum, and a verdict recorded against it - so `check_evidence.py` can assert the pairing. What must not change is who may write what: the executor's session may render, transport and record, and may never author a verdict or move a story past ready_for_review. Automating a handoff between two roles is the most direct way to collapse them, so the story's main obligation is that it does not.
 
@@ -3525,7 +3525,7 @@ E26 made the agent toolchain a managed dependency: a manifest, a trust bar set b
 
 ### E28-S03 - The method improves from recorded friction, not from recollection
 
-**Status:** `verification` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** Every rule in AGENTS.md that is worth having was written after something went wrong, and the record of what went wrong is nowhere. A session notices that a rule is missing, wrong, or unreachable; the correction happens in chat; the session ends and the observation is gone. Two from the E27 work alone: an executor nearly reverted a correct verifier repair because it read the wrong version of a dependency, and rebuilt a defect class it had fixed days earlier because nothing recorded that the environment, not the code, had been the cause. Both were caught, neither left an artifact, and a third session can make either again. The evidence packet already records residual risks about the product; this adds the same discipline for defects in the method itself, in the packet where the work lives rather than in a new store. The idea comes from rebelytics/one-skill-to-rule-them-all, which was rejected as a package - 14,460 tokens, always-on by its own instruction, and it generates skill edits - and kept as a concept. The concept survives only if the generation does not: a recorded defect produces a proposal the owner decides, never an edit to a skill or a canonical document.
 
@@ -3553,7 +3553,7 @@ E26 made the agent toolchain a managed dependency: a manifest, a trust bar set b
 
 ### E28-S04 - The manifest's own fields are measured or constrained, not merely recorded
 
-**Status:** `verification` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** E26 built a manifest whose fields are judgements, and E28-S01 measures one of them. Two others are still asserted. `always_on_tokens` is a number a person typed: `check_agent_toolchain.py` sums it and compares the total to the budget, and nothing compares any entry to the component's real description - the 3206-of-6000 figure that decided against Task Observer rests on inputs nobody verified, and a number wrong by a factor of ten would pass. `license` does not exist at all: this repository keeps a licence allow-list in `deny.toml` for Rust crates and governs nothing for the prompt content it carries into the agent. The 2026-09-15 census made that concrete - `anthropics/skills` (176k stars), `vercel-labs/agent-skills` and `hamelsmu/claude-review-loop` carry no licence file, so by default all rights are reserved; one candidate was GPL-3.0; and the pack already installed, `trailofbits/skills`, is CC-BY-SA-4.0, a share-alike licence that matters because AGENTS.md records harvesting patterns from external packs into `.claude/skills/`. The two are one change because they are one defect on one file: a manifest that records what somebody believed.
 
@@ -3580,7 +3580,7 @@ E26 made the agent toolchain a managed dependency: a manifest, a trust bar set b
 
 ### E28-S05 - An epic that closed without a release still satisfies a dependency
 
-**Status:** `verification` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** ADR-0025 gave an epic a second way to close: `done_no_release`, for an epic whose work is finished and which changed nothing in the shipped artifact. `project_os.py` defines the pair as `CLOSED_EPIC_STATUS`, and a test asserts its contents - and no code consults it. The dependency check compares against the literal string `done`, so an epic closed the second way satisfies nothing that depends on it, permanently. Three epics have closed that way (E11, E24, E26) and three depend on them (E12, E13, E28): the entire quarantine and local-state line of the product backlog is unreachable, and so is this epic. It was found by trying to move E28 to ready_for_review, not by any gate - the constant that names the correct answer has sat beside the wrong one since ADR-0025 landed, protected by a test that checks the definition rather than its use.
 
@@ -3597,6 +3597,166 @@ E26 made the agent toolchain a managed dependency: a manifest, a trust bar set b
 - A test asserts that the constant is used and not merely defined, so the same divergence cannot reappear by restating the literal.
 - An unfinished dependency is still refused, proving the fix widened the accepted set rather than removing the check.
 - The three epics currently blocked by this - E12, E13 and E28 - are shown to advance afterwards.
+
+**Documentation impact**
+
+- `docs/development/WORK_ITEM_MODEL.md`
+
+## E29 - Toolchain Assurance Residuals
+
+**Phase:** `P1` | **Status:** `planned` | **Epic dependencies:** E26
+
+ADR-0025 says findings that survive a review become backlog items with the story id that carries them. E28's two review rounds produced eight residuals; three were judged inherent and accepted in `project/evidence/E28-VERIFIER-REVIEW-ROUND2.md`, and the five closable ones are here, together with two findings the review raised about the engineering system itself. The heaviest is not a residual of any story but of the measurement that governs review: E28's first round found four defects and the yield table reported nothing, because the tool skips a story-scoped record silently, cannot parse a standalone verdict, and counts only `FAIL` - so a reviewer who repairs rather than rejects measures zero having found something. Nothing here is started; the epic exists so that eight findings live in the backlog rather than inside a review record nobody re-reads.
+
+### E29-S01 - The review-yield measurement can see a round that repaired instead of rejecting
+
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
+
+**Outcome.** ADR-0025 makes another review round mandatory while a round rejects 10% or more of the stories it judges, and `process_metrics.py` computes that fraction. E28's round 1 found four material defects across four of five stories and the measurement reported nothing at all - three independent causes. `process_metrics.py:143` skips a story-scoped record with a bare `continue`, so it never reaches the `unclassifiable` list that exists because 'a record that vanishes is worse than one that fails to parse'. `parse_verdicts` reads only a markdown table, so a standalone `## Verdict` heading yields nothing. And `REJECTING_VERDICTS = {"FAIL"}`, so a reviewer who repairs a defect rather than failing the story measures zero yield having found something. The counterfactual yield of that round was 80%; the tool read 0%. Which of those two numbers decides whether another round is required currently depends on how the reviewer chose to write, not on what the reviewer found - and that is the distinction E25 exists to preserve.
+
+**Acceptance criteria**
+
+- Every review record this tool declines to count shall be reported by name, because a record that vanishes is worse than one that fails to parse and the tool already says so about a different case.
+- A round record shall be identified by what it declares itself to be, rather than inferred from where its file sits.
+- If a round found a defect and repaired it rather than rejecting the story, then the measurement shall distinguish that from a round that found nothing.
+- If the definition of a rejecting verdict changes, then the yield figures it produces shall be recomputed from the records rather than carried forward.
+
+**Verification**
+
+- The E28 round 1 records are used as the fixture: the tool is shown reporting zero rounds before the change and the real round after it.
+- A round record with a repaired-in-review finding is shown to produce a non-zero yield.
+- A record the tool cannot classify is shown by name in the output, not merely absent.
+
+**Documentation impact**
+
+- `docs/adrs/`
+- `docs/development/AGENT_PROTOCOL.md`
+
+### E29-S02 - A scanner upgrade invalidates the waivers written against the old one
+
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
+
+**Outcome.** `project/skill_content_waivers.json` suppresses findings by `match_fingerprint`, which was measured stable across two runs of SkillSpector 2.11.2 and is untested across versions. The pin in `check_skill_content.py` is what protects it today, which means the protection disappears exactly when somebody bumps the pin - and a bump is a routine act that currently carries no obligation to revisit the waivers. A stale waiver that stops matching is reported; a waiver whose fingerprint drifted onto a different finding would not be.
+
+**Acceptance criteria**
+
+- The waiver file shall record the scanner version its fingerprints were computed against.
+- If the gate's pinned scanner differs from the version the waivers were written against, then the gate shall refuse until the waivers are explicitly revalidated.
+- Revalidation shall be an explicit dated act recorded in the waiver file, not a side effect of the gate passing once.
+
+**Verification**
+
+- An old waiver is shown unable to suppress a finding after a pin change, before the revalidation is recorded and after.
+- The refusal names both versions, so the reader knows what changed.
+
+**Documentation impact**
+
+- `docs/development/AGENT_TOOLCHAIN.md`
+
+### E29-S03 - Decide, by ADR, how a verdict's author is authenticated rather than declared
+
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
+
+**Outcome.** E28-S02 made the executor/verifier handoff auditable and stopped short of authenticating it: `Verifier:` and `Rendered-by:` are strings their own author writes. The round-2 review refused the obvious shortcut and was right to - this repository's commits are signed with a single owner key, which authenticates the owner and says nothing about which agent produced a verdict. Closing this needs distinct per-role signing identities and a mapping from key to role that the gate can check, which is an authority boundary and therefore an ADR before it is an implementation. This story is the decision, not the mechanism: it produces the ADR that settles whether per-role signing identities are worth their operational cost, what the key-to-role mapping is, and what happens to a verdict whose signature history was rewritten. The implementation that follows is a separate story, and the ADR sets its Change Risk Level - almost certainly CR4, which is precisely why it is not asserted here before anyone has decided what is being built.
+
+**Acceptance criteria**
+
+- The ADR shall state whether authenticated per-role identities are adopted, and if they are not, what residual is accepted in their place.
+- If adopted, the ADR shall name the key-to-role mapping, where it lives, and what makes adding a key an explicit owner act.
+- The ADR shall say what a rewritten or squashed verdict commit means for an attribution that was valid before the rewrite.
+- The ADR shall record why a single shared owner signing key does not answer this, so the shortcut is not re-proposed.
+
+**Verification**
+
+- The ADR is reviewed against the round-2 finding it answers, and the finding is shown to be discharged or explicitly accepted as residual.
+- The follow-on implementation story is created with the Change Risk Level the ADR sets, rather than one assumed in advance.
+
+**Documentation impact**
+
+- `docs/adrs/`
+- `docs/development/AGENT_PROTOCOL.md`
+
+### E29-S04 - A method defect left proposed is aged, not forgotten
+
+**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
+
+**Outcome.** E28-S03 requires every recorded method defect to carry a disposition, and `proposed` satisfies it with no expiry. That is the right resting state - it means the owner has the finding and has not ruled - and it is also a state an entry can sit in forever without any gate noticing. The toolchain manifest already solves the same problem for decisions: one older than the review cadence is reported as *unexamined* rather than wrong. The same treatment applies here, and nothing more: ageing a proposal must not convert it into a defect.
+
+**Acceptance criteria**
+
+- A proposal older than a stated cadence shall be reported as unexamined, naming its age and the story that carries it.
+- An aged proposal shall not be declared invalid, and the report shall not fail the gate on age alone.
+- An accepted or declined entry shall stay visible after its disposition, so the record of what was considered survives.
+
+**Verification**
+
+- A proposal dated past the cadence is shown to be reported, and one inside it is shown not to be.
+- An aged proposal is shown not to fail the gate.
+
+**Documentation impact**
+
+- `docs/development/AGENT_PROTOCOL.md`
+
+### E29-S05 - A user-scope component's cost is measured where it is installed
+
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
+
+**Outcome.** E28-S04 measures a component's always-on cost and ten of twelve components return `unmeasured`, because they live at user scope and CI cannot see them. The state is honest and it leaves most of the context budget resting on hand-entered numbers - the same budget that decided against carrying Task Observer. A measurement taken on a machine where the component is installed can be recorded the way `project/coverage_baseline.json` records the toolchain that produced it: dated, bound to a version, and refused when the provenance no longer matches.
+
+**Acceptance criteria**
+
+- A locally taken measurement shall be recordable, bound to the component version and the date it was taken.
+- If a recorded measurement's component version no longer matches the manifest, then the gate shall report it as stale rather than treat it as current.
+- A component with no recorded measurement shall still report as unmeasured, because the absence of a measurement is not a measurement of zero.
+- The gate shall not require a local measurement to pass, so CI remains able to run without one.
+
+**Verification**
+
+- A stale measurement is shown reported as stale, and a current one as current.
+- CI is shown to pass with no local measurements recorded at all.
+
+**Documentation impact**
+
+- `docs/development/AGENT_TOOLCHAIN.md`
+
+### E29-S06 - A licence recorded once is revalidated against the source it was read from
+
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
+
+**Outcome.** E28-S04 made `license` a required field with an allow-list, and the value is the upstream's declaration read at one moment. Nothing re-reads it: an upstream that relicenses after the entry was written leaves the manifest asserting something that was true and no longer is. E26-S02 already checks versions and abandonment for the same components and does not check licences, so the mechanism to hang this on exists.
+
+**Acceptance criteria**
+
+- A recorded licence shall name the source revision it was read from.
+- If the upstream's licence at that revision no longer matches what was recorded, then the check shall report the disagreement and name both values.
+- The check shall degrade truthfully with no network, reporting that it could not compare rather than that nothing changed.
+- A licence that cannot be re-read shall not silently become permissive.
+
+**Verification**
+
+- A component whose upstream licence has changed is shown to be reported, using a synthetic manifest entry.
+- The no-network path is exercised and shown to report inability rather than agreement.
+
+**Documentation impact**
+
+- `docs/development/AGENT_TOOLCHAIN.md`
+
+### E29-S07 - The set of statuses that close an epic cannot grow without a reviewed decision
+
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
+
+**Outcome.** E28-S05 made `CLOSED_EPIC_STATUS` the single definition of a finished epic and the tests assert behaviour against the statuses that exist today. A future edit adding a status to that set would satisfy every dependency in the backlog at once, silently, and no test would object - which is the same shape as the defect E28-S05 repaired, moved one level up. The round-2 review raised this after the round-1 verdict had recorded no residual for the story at all.
+
+**Acceptance criteria**
+
+- The exact set of statuses that close an epic shall be asserted, so adding one fails until the assertion is consciously updated.
+- If the set is widened, then the change shall require a reviewed policy edit alongside the test, rather than a test update alone.
+- The behavioural test that an unfinished dependency is still refused shall remain, because an exact-set assertion alone would not catch a wrong member.
+
+**Verification**
+
+- Adding a status to the set is shown to fail the suite until both the policy record and the assertion are updated.
+- The existing behavioural refusal test is shown still to pass.
 
 **Documentation impact**
 

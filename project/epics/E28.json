@@ -7,12 +7,12 @@
   "dependencies": [
     "E26"
   ],
-  "status": "verification",
+  "status": "done_no_release",
   "stories": [
     {
       "id": "E28-S01",
       "title": "What a toolchain component contains is scanned, not trusted",
-      "status": "verification",
+      "status": "done",
       "outcome": "The manifest records a trust tier per component and `check_agent_toolchain.py` enforces that a component which runs code, reaches the network or touches credentials is FirstParty or Vendor. That bar is about provenance, which is the right question and only half of it: nothing reads the component. A skill is prompt content injected into the agent that writes a file-deletion tool, and prompt content can carry instructions to ignore a rule, an exfiltration path, or a tool permission far wider than its purpose - none of which change its trust tier or its pinned version. The same argument this repository already accepts for crates (`cargo deny` reads the dependency, it does not ask who published it) applies here and has not been applied. NVIDIA's SkillSpector is the instrument: a CLI, Apache-2.0, 71 patterns across 17 categories, JSON and SARIF output, exit codes, and `--no-llm` to keep every file local. It enters as a pinned development dependency behind a gate script, in the shape every other gate here already has - not as a component in the manifest it would be checking.",
       "change_risk": "CR1",
       "dependencies": [],
@@ -40,7 +40,7 @@
     {
       "id": "E28-S02",
       "title": "The verifier handoff is a mechanism, not a manual step",
-      "status": "verification",
+      "status": "done",
       "outcome": "Executor/verifier separation is the method this repository is built on, and it is the only part of the method with no mechanism. `project_os.py brief <ID> --role verifier` renders the verifier's input; a human then carries it to the other agent, carries the verdict back, and the evidence packet records a review whose transport nobody can audit. Two things follow that the ledger cannot currently see: whether the verifier was given the brief the gate rendered or a paraphrase of it, and whether the verdict committed is the verdict the verifier produced. The handoff becomes an artifact - a rendered brief with a checksum, and a verdict recorded against it - so `check_evidence.py` can assert the pairing. What must not change is who may write what: the executor's session may render, transport and record, and may never author a verdict or move a story past ready_for_review. Automating a handoff between two roles is the most direct way to collapse them, so the story's main obligation is that it does not.",
       "change_risk": "CR2",
       "dependencies": [
@@ -70,7 +70,7 @@
     {
       "id": "E28-S03",
       "title": "The method improves from recorded friction, not from recollection",
-      "status": "verification",
+      "status": "done",
       "outcome": "Every rule in AGENTS.md that is worth having was written after something went wrong, and the record of what went wrong is nowhere. A session notices that a rule is missing, wrong, or unreachable; the correction happens in chat; the session ends and the observation is gone. Two from the E27 work alone: an executor nearly reverted a correct verifier repair because it read the wrong version of a dependency, and rebuilt a defect class it had fixed days earlier because nothing recorded that the environment, not the code, had been the cause. Both were caught, neither left an artifact, and a third session can make either again. The evidence packet already records residual risks about the product; this adds the same discipline for defects in the method itself, in the packet where the work lives rather than in a new store. The idea comes from rebelytics/one-skill-to-rule-them-all, which was rejected as a package - 14,460 tokens, always-on by its own instruction, and it generates skill edits - and kept as a concept. The concept survives only if the generation does not: a recorded defect produces a proposal the owner decides, never an edit to a skill or a canonical document.",
       "change_risk": "CR1",
       "dependencies": [],
@@ -98,7 +98,7 @@
     {
       "id": "E28-S04",
       "title": "The manifest's own fields are measured or constrained, not merely recorded",
-      "status": "verification",
+      "status": "done",
       "outcome": "E26 built a manifest whose fields are judgements, and E28-S01 measures one of them. Two others are still asserted. `always_on_tokens` is a number a person typed: `check_agent_toolchain.py` sums it and compares the total to the budget, and nothing compares any entry to the component's real description - the 3206-of-6000 figure that decided against Task Observer rests on inputs nobody verified, and a number wrong by a factor of ten would pass. `license` does not exist at all: this repository keeps a licence allow-list in `deny.toml` for Rust crates and governs nothing for the prompt content it carries into the agent. The 2026-09-15 census made that concrete - `anthropics/skills` (176k stars), `vercel-labs/agent-skills` and `hamelsmu/claude-review-loop` carry no licence file, so by default all rights are reserved; one candidate was GPL-3.0; and the pack already installed, `trailofbits/skills`, is CC-BY-SA-4.0, a share-alike licence that matters because AGENTS.md records harvesting patterns from external packs into `.claude/skills/`. The two are one change because they are one defect on one file: a manifest that records what somebody believed.",
       "change_risk": "CR1",
       "dependencies": [],
@@ -125,7 +125,7 @@
     {
       "id": "E28-S05",
       "title": "An epic that closed without a release still satisfies a dependency",
-      "status": "verification",
+      "status": "done",
       "outcome": "ADR-0025 gave an epic a second way to close: `done_no_release`, for an epic whose work is finished and which changed nothing in the shipped artifact. `project_os.py` defines the pair as `CLOSED_EPIC_STATUS`, and a test asserts its contents - and no code consults it. The dependency check compares against the literal string `done`, so an epic closed the second way satisfies nothing that depends on it, permanently. Three epics have closed that way (E11, E24, E26) and three depend on them (E12, E13, E28): the entire quarantine and local-state line of the product backlog is unreachable, and so is this epic. It was found by trying to move E28 to ready_for_review, not by any gate - the constant that names the correct answer has sat beside the wrong one since ADR-0025 landed, protected by a test that checks the definition rather than its use.",
       "change_risk": "CR2",
       "dependencies": [],
