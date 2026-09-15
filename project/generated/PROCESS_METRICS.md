@@ -41,6 +41,7 @@ distinguished by the next round, which is why the ceiling matters.
 | E22 | 1 | independent | 6 | 5 | 83% |
 | E23 | 1 | independent | 1 | 1 | 100% |
 | E24 | 1 | **self** | 3 | 2 | 67% |
+| E28 | 2 | independent | 5 | 0 | 0% |
 
 ## First-pass rejection rate
 
