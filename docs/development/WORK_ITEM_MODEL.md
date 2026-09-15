@@ -241,3 +241,18 @@ Write an RFC before coding when a story proposes:
 ## ADR trigger
 
 Write an ADR when the team/owner has chosen among significant alternatives and the rationale must survive. An RFC explores; an ADR records the accepted architectural decision.
+
+### What satisfies a dependency
+
+An epic dependency is satisfied by **either** closing status - `done` or `done_no_release`. Both
+mean the work is finished; the second adds only that nothing in the shipped artifact changed
+(ADR-0025), which is not a fact a dependent epic cares about. A story dependency is satisfied only
+by `done`, because `done_no_release` is an epic status: a story is finished or it is not.
+
+`project_os.py` owns that definition once, as `CLOSED_EPIC_STATUS`, and both dependency checks
+consult it. They did not always. The constant was defined, commented, and asserted by a test that
+checked its contents but never that anything read it, while the dependency check compared against
+the literal `"done"` - so three epics that closed as `done_no_release` (E11, E24, E26) satisfied
+nothing depending on them, and three more (E12, E13, E28) could not advance at all. Every gate
+stayed green throughout, because the definition and its use had diverged in the one direction no
+test was looking (E28-S05).

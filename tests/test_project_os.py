@@ -4,6 +4,7 @@ import copy
 import tempfile
 import unittest
 from pathlib import Path
+from typing import ClassVar
 
 from scripts import project_os
 
@@ -271,6 +272,46 @@ class ProjectOSTests(unittest.TestCase):
         model = project_os.load_model()
         story = project_os.story_by_id(model, "E00-S01")
         self.assertEqual(story["id"], "E00-S01")
+
+
+class ClosedEpicDependencies(unittest.TestCase):
+    """ADR-0025's second closing status has to mean `finished` everywhere (E28-S05).
+
+    `done_no_release` closes an epic whose work is complete and which shipped nothing. The
+    dependency check compared against the literal "done", so three closed epics satisfied nothing
+    that depended on them and three more could never advance. The constant naming the correct
+    answer already existed and no code read it.
+    """
+
+    SOURCE: ClassVar[str] = (Path(project_os.__file__)).read_text(encoding="utf-8")
+
+    def test_the_definition_is_consulted_not_restated(self) -> None:
+        """A test over a definition reads like a test over a behaviour; this one is not."""
+        uses = self.SOURCE.count("CLOSED_EPIC_STATUS")
+        self.assertGreaterEqual(uses, 3, "CLOSED_EPIC_STATUS must be read, not only declared and asserted")
+
+    def test_no_dependency_check_compares_against_the_literal(self) -> None:
+        self.assertNotIn('epic_status[dep] != "done"', self.SOURCE)
+
+    def test_an_epic_behind_a_done_no_release_dependency_advances(self) -> None:
+        model = project_os.load_model()
+        statuses = {epic["id"]: epic["status"] for epic in model.epics}
+        closed_without_release = {i for i, s in statuses.items() if s == "done_no_release"}
+        self.assertTrue(closed_without_release, "this case needs a real done_no_release epic to be meaningful")
+        dependents = [e for e in model.epics if set(e["dependencies"]) & closed_without_release]
+        self.assertTrue(dependents, "and a real epic depending on one")
+        project_os.validate(model)  # would raise before the fix
+
+    def test_an_unfinished_dependency_is_still_refused(self) -> None:
+        """The fix widened the accepted set; it did not remove the check."""
+        self.assertNotIn("planned", project_os.CLOSED_EPIC_STATUS)
+        self.assertNotIn("in_progress", project_os.CLOSED_EPIC_STATUS)
+        self.assertNotIn("blocked", project_os.CLOSED_EPIC_STATUS)
+
+    def test_a_story_dependency_still_requires_done(self) -> None:
+        """`done_no_release` is an epic status: a story is finished or it is not."""
+        self.assertNotIn("done_no_release", project_os.VALID_STORY_STATUS)
+        self.assertIn('story_status[dep] == "done"', self.SOURCE)
 
 
 if __name__ == "__main__":

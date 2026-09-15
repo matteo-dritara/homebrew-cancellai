@@ -4,21 +4,21 @@
 
 Current phase: **P1**
 
-Epics: **29** | Stories: **155**
+Epics: **29** | Stories: **156**
 
 ## Story status
 
 - `blocked`: 2
 - `cancelled`: 1
 - `done`: 125
-- `planned`: 26
-- `ready_for_review`: 1
+- `planned`: 22
+- `ready_for_review`: 6
 
 ## Change risk distribution
 
 - `CR0`: 14
 - `CR1`: 37
-- `CR2`: 44
+- `CR2`: 45
 - `CR3`: 28
 - `CR4`: 32
 
@@ -29,3 +29,8 @@ Epics: **29** | Stories: **155**
 ## Awaiting independent review
 
 - **E25-S16** - An anchor picked for stability by phase alone went stale within one epic close (CR2)
+- **E28-S01** - What a toolchain component contains is scanned, not trusted (CR1)
+- **E28-S02** - The verifier handoff is a mechanism, not a manual step (CR2)
+- **E28-S03** - The method improves from recorded friction, not from recollection (CR1)
+- **E28-S04** - The manifest's own fields are measured or constrained, not merely recorded (CR1)
+- **E28-S05** - An epic that closed without a release still satisfies a dependency (CR2)

@@ -345,7 +345,10 @@ def validate(model: Model) -> list[str]:
     dependency_gated_statuses = {"ready", "in_progress", "ready_for_review", "verification", "done"}
     for epic in model.epics:
         if epic["status"] in dependency_gated_statuses:
-            unfinished = [dep for dep in epic["dependencies"] if epic_status[dep] != "done"]
+            # CLOSED_EPIC_STATUS, not the literal "done": an epic that closed as
+            # `done_no_release` has finished its work, which is all a dependency asserts. The
+            # literal here made three closed epics satisfy nothing that depended on them (E28-S05).
+            unfinished = [dep for dep in epic["dependencies"] if epic_status[dep] not in CLOSED_EPIC_STATUS]
             if unfinished:
                 raise GovernanceError(f"{epic['id']}: status {epic['status']} but epic dependencies are not done: {unfinished}")
         if epic["status"] == "done":
@@ -365,8 +368,11 @@ def validate(model: Model) -> list[str]:
                         if story_status[dep] not in SAME_EPIC_DEPENDENCY_SATISFIED_STATUSES:
                             unfinished_story_deps.append(dep)
                     else:
-                        dep_status = epic_status[dep] if dep in epic_status else story_status[dep]
-                        if dep_status != "done":
+                        # An epic dependency is satisfied by either closing status; a story
+                        # dependency only by `done`, because `done_no_release` is an epic status
+                        # and a story is either finished or is not (E28-S05).
+                        satisfied = epic_status[dep] in CLOSED_EPIC_STATUS if dep in epic_status else story_status[dep] == "done"
+                        if not satisfied:
                             unfinished_story_deps.append(dep)
                 if unfinished_story_deps:
                     raise GovernanceError(f"{story['id']}: status {story['status']} but dependencies are not satisfied: {unfinished_story_deps}")

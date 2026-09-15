@@ -5,12 +5,12 @@ verifier was given this document or a paraphrase of it. -->
 Story: E28-S01
 Rendered-by: Claude Opus 5 (executor)
 Rendered-on: 2026-09-15
-Brief-Checksum: 0b2c2eaa9bc3d09342f957065542951d21ec725e0f9fc0c2b8e5ce8173cbb0c3
+Brief-Checksum: 941d7f0de0e0cd153057c2fd44cdcfd7a4087af4dcee343360d9e5c1e1278b59
 
 <!-- end handoff header -->
 # Verifier Brief - E28-S01 - What a toolchain component contains is scanned, not trusted
 
-Status: planned | Change Risk: CR1
+Status: ready_for_review | Change Risk: CR1
 Outcome: The manifest records a trust tier per component and `check_agent_toolchain.py` enforces that a component which runs code, reaches the network or touches credentials is FirstParty or Vendor. That bar is about provenance, which is the right question and only half of it: nothing reads the component. A skill is prompt content injected into the agent that writes a file-deletion tool, and prompt content can carry instructions to ignore a rule, an exfiltration path, or a tool permission far wider than its purpose - none of which change its trust tier or its pinned version. The same argument this repository already accepts for crates (`cargo deny` reads the dependency, it does not ask who published it) applies here and has not been applied. NVIDIA's SkillSpector is the instrument: a CLI, Apache-2.0, 71 patterns across 17 categories, JSON and SARIF output, exit codes, and `--no-llm` to keep every file local. It enters as a pinned development dependency behind a gate script, in the shape every other gate here already has - not as a component in the manifest it would be checking.
 Dependencies: none
 
