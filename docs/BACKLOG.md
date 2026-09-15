@@ -3465,7 +3465,7 @@ Nobody had measured this codebase. Twenty-seven gates, 143 stories and a risk mo
 
 **Phase:** `P1` | **Status:** `planned` | **Epic dependencies:** E26
 
-E26 made the agent toolchain a managed dependency: a manifest, a trust bar set by capability, decisions that expire, a context budget. It governs whether a component was declared and at what trust - it never looks inside one. `trust: Vendor` is a human judgement with no measurement under it, and the pinned version of a prompt-bearing component can change what the agent is told without changing a single line this repository's gates can see. The second gap is older and is not about third parties at all: executor/verifier separation is this project's central method, and its handoff is entirely manual. `project_os.py brief <ID> --role verifier` produces the verifier's input and nothing carries it anywhere; a human copies it into the other agent and copies the verdict back. That was the route for E16, E17, E09/E10, E27-S01 and E27-S06 - the load-bearing step of the method is the one step with no mechanism and no evidence of its own. This epic closes both: what a component contains becomes measurable, and the handoff becomes an artifact the ledger can check. It closes neither by adopting a package. A census of 342 community repositories found that the fourteen most-starred, 1.7 million stars between them, yield no installable component for this codebase - they are catalogues, method packs that define Done a second time, or domains this product does not touch. What survived was two ideas and one first-party language server, and ideas are cheaper to implement than packages are to carry.
+E26 made the agent toolchain a managed dependency: a manifest, a trust bar set by capability, decisions that expire, a context budget. It governs whether a component was declared and at what trust - it never looks inside one. `trust: Vendor` is a human judgement with no measurement under it, and the pinned version of a prompt-bearing component can change what the agent is told without changing a single line this repository's gates can see. The second gap is older and is not about third parties at all: executor/verifier separation is this project's central method, and its handoff is entirely manual. `project_os.py brief <ID> --role verifier` produces the verifier's input and nothing carries it anywhere; a human copies it into the other agent and copies the verdict back. That was the route for E16, E17, E09/E10, E27-S01 and E27-S06 - the load-bearing step of the method is the one step with no mechanism and no evidence of its own. A third thing is assumed in the same way: the skill pack changes only when somebody sits down to rewrite it, never because real work exposed a rule that was missing or wrong - the friction is noticed in a session and dies with it. This epic closes all three: what a component contains becomes measurable, the handoff becomes an artifact the ledger can check, and the method improves from recorded evidence rather than from recollection. It closes neither by adopting a package. A census of 342 community repositories found that the fourteen most-starred, 1.7 million stars between them, yield no installable component for this codebase - they are catalogues, method packs that define Done a second time, or domains this product does not touch. What survived was two ideas and one first-party language server, and ideas are cheaper to implement than packages are to carry.
 
 ### E28-S01 - What a toolchain component contains is scanned, not trusted
 
@@ -3522,3 +3522,31 @@ E26 made the agent toolchain a managed dependency: a manifest, a trust bar set b
 - `docs/development/AGENT_PROTOCOL.md`
 - `AGENTS.md`
 - `project/templates/`
+
+### E28-S03 - The method improves from recorded friction, not from recollection
+
+**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
+
+**Outcome.** Every rule in AGENTS.md that is worth having was written after something went wrong, and the record of what went wrong is nowhere. A session notices that a rule is missing, wrong, or unreachable; the correction happens in chat; the session ends and the observation is gone. Two from the E27 work alone: an executor nearly reverted a correct verifier repair because it read the wrong version of a dependency, and rebuilt a defect class it had fixed days earlier because nothing recorded that the environment, not the code, had been the cause. Both were caught, neither left an artifact, and a third session can make either again. The evidence packet already records residual risks about the product; this adds the same discipline for defects in the method itself, in the packet where the work lives rather than in a new store. The idea comes from rebelytics/one-skill-to-rule-them-all, which was rejected as a package - 14,460 tokens, always-on by its own instruction, and it generates skill edits - and kept as a concept. The concept survives only if the generation does not: a recorded defect produces a proposal the owner decides, never an edit to a skill or a canonical document.
+
+**Acceptance criteria**
+
+- A defect in the method shall be recorded against the story where it was observed, with what was expected, what happened, and the correction - not in a free-floating log detached from the work.
+- A recorded defect shall name the document, gate or skill that would have prevented it, or state explicitly that none exists, so the record either points somewhere or says it does not.
+- A recorded defect shall carry a disposition, and if it carries none then the evidence gate shall refuse the packet, because an observation nobody dispositioned is a note rather than a finding.
+- Nothing in this mechanism shall modify a skill, AGENTS.md or any canonical document automatically; a defect produces a proposal the owner decides.
+- If the owner declines a proposal, then the decline shall be recorded with its date, so a later session does not re-propose it as though it were new.
+- The record shall live inside the evidence packet the story already commits, and shall not create a second store of truth about the method.
+
+**Verification**
+
+- The gate is shown refusing a packet whose method-defect record has no disposition, before it is shown accepting one that has.
+- A test asserts that no path in the mechanism writes to .claude/skills/ or to a canonical document, so the property survives someone later adding a convenience.
+- The format is exercised on the two real defects from E27 named in the outcome - a format that cannot carry the cases that motivated it is the wrong format, and this is the cheapest way to find that out.
+- A declined proposal is shown to remain visible rather than disappearing, so the record of what was considered and rejected survives.
+
+**Documentation impact**
+
+- `docs/development/AGENT_PROTOCOL.md`
+- `project/templates/`
+- `AGENTS.md`

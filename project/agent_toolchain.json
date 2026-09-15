@@ -33,64 +33,6 @@
       ]
     },
     {
-      "id": "hook:guard-generated-docs",
-      "kind": "hook",
-      "scope": "project",
-      "source": ".claude/hooks/guard-generated-docs.sh",
-      "version": "tracked-in-repo",
-      "trust": "FirstParty",
-      "capabilities": [
-        "executes-code"
-      ],
-      "always_on_tokens": 0,
-      "purpose": "PreToolUse guard refusing a hand-edit to a generated document at the moment it is attempted. Fails open on anything it cannot parse.",
-      "decision": {
-        "status": "approved",
-        "by": "owner",
-        "date": "2026-09-12",
-        "rationale": "Authored here, executes only this repository's own shell script, and the CI drift check remains the authority regardless of whether it runs."
-      }
-    },
-    {
-      "id": "variant-analysis@trailofbits",
-      "kind": "plugin",
-      "scope": "user",
-      "source": "github:trailofbits/skills",
-      "version": "2.0.2",
-      "trust": "Vendor",
-      "capabilities": [
-        "prompt"
-      ],
-      "always_on_tokens": 193,
-      "purpose": "Given one defect, find its variants across the codebase. Automates the lesson of the E00 review history: close the class, not the reported case.",
-      "decision": {
-        "status": "approved",
-        "by": "owner",
-        "date": "2026-09-12",
-        "rationale": "Trail of Bits is a named security vendor with a public track record. Ships one skill, no hooks, no MCP server: prompt content only."
-      }
-    },
-    {
-      "id": "rust-review@trailofbits",
-      "kind": "plugin",
-      "scope": "user",
-      "source": "github:trailofbits/skills",
-      "version": "1.6.0",
-      "trust": "Vendor",
-      "capabilities": [
-        "prompt",
-        "subagent"
-      ],
-      "always_on_tokens": 405,
-      "purpose": "Rust security review with a worker/judge pipeline, including a false-positive judge. The highest-value component for this project: review throughput is bounded by rounds, and filtering false positives buys more than another reviewer would.",
-      "decision": {
-        "status": "approved",
-        "by": "owner",
-        "date": "2026-09-12",
-        "rationale": "Vendor trust. Ships three subagents and no hooks or MCP servers, so it can read and reason but cannot install anything or reach the network on its own."
-      }
-    },
-    {
       "id": "differential-review@trailofbits",
       "kind": "plugin",
       "scope": "user",
@@ -108,6 +50,25 @@
         "by": "owner",
         "date": "2026-09-12",
         "rationale": "Vendor trust; prompt and subagents only."
+      }
+    },
+    {
+      "id": "hook:guard-generated-docs",
+      "kind": "hook",
+      "scope": "project",
+      "source": ".claude/hooks/guard-generated-docs.sh",
+      "version": "tracked-in-repo",
+      "trust": "FirstParty",
+      "capabilities": [
+        "executes-code"
+      ],
+      "always_on_tokens": 0,
+      "purpose": "PreToolUse guard refusing a hand-edit to a generated document at the moment it is attempted. Fails open on anything it cannot parse.",
+      "decision": {
+        "status": "approved",
+        "by": "owner",
+        "date": "2026-09-12",
+        "rationale": "Authored here, executes only this repository's own shell script, and the CI drift check remains the authority regardless of whether it runs."
       }
     },
     {
@@ -146,6 +107,84 @@
         "by": "owner",
         "date": "2026-09-12",
         "rationale": "Vendor trust; prompt only."
+      }
+    },
+    {
+      "id": "pyright-lsp@claude-plugins-official",
+      "kind": "lsp",
+      "scope": "user",
+      "source": "marketplace:claude-plugins-official",
+      "version": "unpinned",
+      "trust": "FirstParty",
+      "capabilities": [
+        "executes-code"
+      ],
+      "always_on_tokens": 0,
+      "purpose": "Language-server intelligence for the Python surface: 51 files, 17,919 lines, 27 modules in scripts/ implementing the governance gates.",
+      "decision": {
+        "status": "approved",
+        "by": "owner",
+        "date": "2026-09-15",
+        "rationale": "First-party marketplace, the symmetric counterpart of rust-analyzer-lsp: the Rust side had a language server and the side holding every gate did not. Carries no prompt content, so it costs nothing in any session. Pyright is code intelligence only - mypy remains the repository's type-check gate, and a Pyright diagnostic is not a gate verdict."
+      }
+    },
+    {
+      "id": "rust-analyzer-lsp@claude-plugins-official",
+      "kind": "lsp",
+      "scope": "user",
+      "source": "marketplace:claude-plugins-official",
+      "version": "unpinned",
+      "trust": "FirstParty",
+      "capabilities": [
+        "executes-code"
+      ],
+      "always_on_tokens": 0,
+      "purpose": "Language-server intelligence for the Rust workspace.",
+      "decision": {
+        "status": "approved",
+        "by": "owner",
+        "date": "2026-09-12",
+        "rationale": "First-party marketplace. Runs rust-analyzer, which the developer already runs."
+      }
+    },
+    {
+      "id": "rust-review@trailofbits",
+      "kind": "plugin",
+      "scope": "user",
+      "source": "github:trailofbits/skills",
+      "version": "1.6.0",
+      "trust": "Vendor",
+      "capabilities": [
+        "prompt",
+        "subagent"
+      ],
+      "always_on_tokens": 405,
+      "purpose": "Rust security review with a worker/judge pipeline, including a false-positive judge. The highest-value component for this project: review throughput is bounded by rounds, and filtering false positives buys more than another reviewer would.",
+      "decision": {
+        "status": "approved",
+        "by": "owner",
+        "date": "2026-09-12",
+        "rationale": "Vendor trust. Ships three subagents and no hooks or MCP servers, so it can read and reason but cannot install anything or reach the network on its own."
+      }
+    },
+    {
+      "id": "spec-to-code-compliance@trailofbits",
+      "kind": "plugin",
+      "scope": "user",
+      "source": "github:trailofbits/skills",
+      "version": "2.0.0",
+      "trust": "Vendor",
+      "capabilities": [
+        "prompt",
+        "subagent"
+      ],
+      "always_on_tokens": 190,
+      "purpose": "Checks code against the documents that specify it. This repository has 260 specifying documents and no mechanical link from a requirement to the code that implements it.",
+      "decision": {
+        "status": "approved",
+        "by": "owner",
+        "date": "2026-09-12",
+        "rationale": "Vendor trust; prompt and one subagent."
       }
     },
     {
@@ -188,42 +227,22 @@
       }
     },
     {
-      "id": "spec-to-code-compliance@trailofbits",
+      "id": "variant-analysis@trailofbits",
       "kind": "plugin",
       "scope": "user",
       "source": "github:trailofbits/skills",
-      "version": "2.0.0",
+      "version": "2.0.2",
       "trust": "Vendor",
       "capabilities": [
-        "prompt",
-        "subagent"
+        "prompt"
       ],
-      "always_on_tokens": 190,
-      "purpose": "Checks code against the documents that specify it. This repository has 260 specifying documents and no mechanical link from a requirement to the code that implements it.",
+      "always_on_tokens": 193,
+      "purpose": "Given one defect, find its variants across the codebase. Automates the lesson of the E00 review history: close the class, not the reported case.",
       "decision": {
         "status": "approved",
         "by": "owner",
         "date": "2026-09-12",
-        "rationale": "Vendor trust; prompt and one subagent."
-      }
-    },
-    {
-      "id": "rust-analyzer-lsp@claude-plugins-official",
-      "kind": "lsp",
-      "scope": "user",
-      "source": "marketplace:claude-plugins-official",
-      "version": "unpinned",
-      "trust": "FirstParty",
-      "capabilities": [
-        "executes-code"
-      ],
-      "always_on_tokens": 0,
-      "purpose": "Language-server intelligence for the Rust workspace.",
-      "decision": {
-        "status": "approved",
-        "by": "owner",
-        "date": "2026-09-12",
-        "rationale": "First-party marketplace. Runs rust-analyzer, which the developer already runs."
+        "rationale": "Trail of Bits is a named security vendor with a public track record. Ships one skill, no hooks, no MCP server: prompt content only."
       }
     }
   ],
