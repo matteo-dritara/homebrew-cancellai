@@ -144,6 +144,7 @@
             "description": "What holds a blocked item, and where the argument for it lives. Required when status is 'blocked' and refused otherwise: a status nobody can interrogate is a status nobody can act on, and a reason left behind on an unblocked item is worse than none.",
             "required": [
               "summary",
+              "argument",
               "recorded"
             ],
             "additionalProperties": false,
@@ -178,6 +179,7 @@
       "description": "What holds a blocked item, and where the argument for it lives. Required when status is 'blocked' and refused otherwise: a status nobody can interrogate is a status nobody can act on, and a reason left behind on an unblocked item is worse than none.",
       "required": [
         "summary",
+        "argument",
         "recorded"
       ],
       "additionalProperties": false,

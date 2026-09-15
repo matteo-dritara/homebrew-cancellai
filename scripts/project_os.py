@@ -223,8 +223,22 @@ def blocked_by_errors(items: list[dict[str, Any]], kind: str, closed: set[str], 
                 continue
             if not recorded:
                 continue
+            argument = recorded.get("argument")
+            if not isinstance(argument, str) or not argument.strip():
+                errors.append(f"{identifier}: blocked_by names no argument. A blocker must point at where its reason can be read")
+            else:
+                argument_path = (ROOT / argument).resolve()
+                try:
+                    argument_path.relative_to(ROOT)
+                except ValueError:
+                    errors.append(f"{identifier}: blocked_by argument {argument!r} escapes the repository")
+                else:
+                    if not argument_path.is_file():
+                        errors.append(f"{identifier}: blocked_by argument {argument!r} is not a readable repository file")
             for waiting in recorded.get("waiting_on", []):
-                if waiting in closed:
+                if waiting not in status_of:
+                    errors.append(f"{identifier}: blocked_by waits on unknown work item {waiting}")
+                elif waiting in closed:
                     errors.append(
                         f"{identifier}: blocked_by waits on {waiting}, which has closed. This is exactly how "
                         "the prose went wrong - RELEASE_GATES.md still named E16-S05 long after it was done"
@@ -387,7 +401,7 @@ def validate(model: Model) -> list[str]:
     story_status = {story["id"]: story["status"] for story in model.stories}
 
     closed_items = {i for i, s in epic_status.items() if s in CLOSED_EPIC_STATUS}
-    closed_items |= {i for i, s in story_status.items() if s == "done"}
+    closed_items |= {i for i, s in story_status.items() if s in {"done", "cancelled"}}
     dependency_gated_statuses = {"ready", "in_progress", "ready_for_review", "verification", "done"}
     for epic in model.epics:
         if epic["status"] in dependency_gated_statuses:

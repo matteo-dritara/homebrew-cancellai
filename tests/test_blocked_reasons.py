@@ -41,7 +41,11 @@ class ABlockNamesWhatHoldsIt(unittest.TestCase):
         self.assertIn("nothing says what holds it", problems[0])
 
     def test_a_recorded_reason_makes_it_pass(self) -> None:
-        reason = {"summary": "waiting on the Guardian runtime", "recorded": "2026-09-15"}
+        reason = {
+            "summary": "waiting on the Guardian runtime",
+            "argument": "docs/development/RELEASE_GATES.md",
+            "recorded": "2026-09-15",
+        }
         self.assertEqual(errors(item(blocked_by=reason)), [])
 
     def test_an_open_dependency_is_reason_enough_on_its_own(self) -> None:
@@ -51,7 +55,7 @@ class ABlockNamesWhatHoldsIt(unittest.TestCase):
 
 class AStaleReasonIsWorseThanNone(unittest.TestCase):
     def test_an_unblocked_item_carrying_a_reason_is_refused(self) -> None:
-        reason = {"summary": "an old reason", "recorded": "2026-01-01"}
+        reason = {"summary": "an old reason", "argument": "AGENTS.md", "recorded": "2026-01-01"}
         for status in ("planned", "in_progress", "ready_for_review", "done"):
             problems = errors(item(status=status, blocked_by=reason))
             self.assertEqual(len(problems), 1, status)
@@ -59,14 +63,37 @@ class AStaleReasonIsWorseThanNone(unittest.TestCase):
 
     def test_waiting_on_something_that_has_closed_is_reported(self) -> None:
         """This is how the prose went wrong: E16-S05 stayed named long after it was done."""
-        reason = {"summary": "s", "recorded": "2026-01-01", "waiting_on": ["E99-S99"]}
+        reason = {"summary": "s", "argument": "AGENTS.md", "recorded": "2026-01-01", "waiting_on": ["E99-S99"]}
         problems = errors(item(blocked_by=reason))
         self.assertEqual(len(problems), 1)
         self.assertIn("has closed", problems[0])
 
     def test_waiting_on_something_still_open_is_fine(self) -> None:
-        reason = {"summary": "s", "recorded": "2026-09-15", "waiting_on": ["E88"]}
+        reason = {"summary": "s", "argument": "AGENTS.md", "recorded": "2026-09-15", "waiting_on": ["E88"]}
         self.assertEqual(errors(item(blocked_by=reason)), [])
+
+    def test_waiting_on_a_cancelled_work_item_is_refused(self) -> None:
+        reason = {"summary": "s", "argument": "AGENTS.md", "recorded": "2026-09-15", "waiting_on": ["E99-S99"]}
+        problems = project_os.blocked_by_errors([item(blocked_by=reason)], "story", {"E99-S99"}, {"E99-S99": "cancelled"})
+        self.assertEqual(len(problems), 1)
+        self.assertIn("has closed", problems[0])
+
+    def test_a_recorded_reason_without_an_argument_is_refused(self) -> None:
+        problems = errors(item(blocked_by={"summary": "s", "recorded": "2026-09-15"}))
+        self.assertEqual(len(problems), 1)
+        self.assertIn("names no argument", problems[0])
+
+    def test_an_argument_that_does_not_name_a_file_is_refused(self) -> None:
+        reason = {"summary": "s", "argument": "docs/no-such-file.md", "recorded": "2026-09-15"}
+        problems = errors(item(blocked_by=reason))
+        self.assertEqual(len(problems), 1)
+        self.assertIn("not a readable repository file", problems[0])
+
+    def test_waiting_on_an_unknown_work_item_is_refused(self) -> None:
+        reason = {"summary": "s", "argument": "AGENTS.md", "recorded": "2026-09-15", "waiting_on": ["E77-S77"]}
+        problems = errors(item(blocked_by=reason))
+        self.assertEqual(len(problems), 1)
+        self.assertIn("unknown work item", problems[0])
 
 
 class TheCommittedControlPlane(unittest.TestCase):

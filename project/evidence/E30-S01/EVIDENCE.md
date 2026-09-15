@@ -57,8 +57,13 @@ pre-commit run --all-files
 - The rule is narrow by design: an open dependency counts as explanation, so an item blocked for a reason *other* than its open dependency can still hide behind it. That is the price of not duplicating the dependency graph in prose, and it is a real gap rather than a theoretical one.
 - `blocked_by.summary` is prose. The gate checks that it exists and that `waiting_on` does not name something closed; it cannot check that the summary is true, and the two recorded summaries are the executor's reading of the checklist rather than an independent one.
 - `check_docs.py` still does not validate work-item references in prose, so another document can go stale the same way. Recorded as a method defect rather than fixed here.
-- No independent verification. The owner waived it for this story; the CR2 level would normally carry one, and the packet records that it did not.
+- The owner initially waived independent review. A retrospective independent review subsequently
+  repaired the implementation; see `E30-S01-VERIFIER-REVIEW.md` (Codex, 2026-09-15).
 
 ## Verifier verdict
 
-not sought - independent review waived by the owner
+REPAIRED — the retrospective independent review found that the schema and runtime checker accepted
+`blocked_by` without its required argument path, and that `waiting_on` could name an unknown or
+cancelled work item. The repair requires a readable repository file and a current, open work item;
+see `E30-S01-VERIFIER-REVIEW.md` (Codex, 2026-09-15). The initial waiver remains historical, not
+the final review state.
