@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "id": "E28",
+  "phase": "P1",
+  "title": "Toolchain Assurance",
+  "objective": "E26 made the agent toolchain a managed dependency: a manifest, a trust bar set by capability, decisions that expire, a context budget. It governs whether a component was declared and at what trust - it never looks inside one. `trust: Vendor` is a human judgement with no measurement under it, and the pinned version of a prompt-bearing component can change what the agent is told without changing a single line this repository's gates can see. The second gap is older and is not about third parties at all: executor/verifier separation is this project's central method, and its handoff is entirely manual. `project_os.py brief <ID> --role verifier` produces the verifier's input and nothing carries it anywhere; a human copies it into the other agent and copies the verdict back. That was the route for E16, E17, E09/E10, E27-S01 and E27-S06 - the load-bearing step of the method is the one step with no mechanism and no evidence of its own. This epic closes both: what a component contains becomes measurable, and the handoff becomes an artifact the ledger can check. It closes neither by adopting a package. A census of 342 community repositories found that the fourteen most-starred, 1.7 million stars between them, yield no installable component for this codebase - they are catalogues, method packs that define Done a second time, or domains this product does not touch. What survived was two ideas and one first-party language server, and ideas are cheaper to implement than packages are to carry.",
+  "dependencies": [
+    "E26"
+  ],
+  "status": "planned",
+  "stories": [
+    {
+      "id": "E28-S01",
+      "title": "What a toolchain component contains is scanned, not trusted",
+      "status": "planned",
+      "outcome": "The manifest records a trust tier per component and `check_agent_toolchain.py` enforces that a component which runs code, reaches the network or touches credentials is FirstParty or Vendor. That bar is about provenance, which is the right question and only half of it: nothing reads the component. A skill is prompt content injected into the agent that writes a file-deletion tool, and prompt content can carry instructions to ignore a rule, an exfiltration path, or a tool permission far wider than its purpose - none of which change its trust tier or its pinned version. The same argument this repository already accepts for crates (`cargo deny` reads the dependency, it does not ask who published it) applies here and has not been applied. NVIDIA's SkillSpector is the instrument: a CLI, Apache-2.0, 71 patterns across 17 categories, JSON and SARIF output, exit codes, and `--no-llm` to keep every file local. It enters as a pinned development dependency behind a gate script, in the shape every other gate here already has - not as a component in the manifest it would be checking.",
+      "change_risk": "CR1",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "The content of every prompt-bearing component the repository carries shall be scanned by a gate, and the gate's verdict shall come from a real scan rather than from the manifest's trust field.",
+        "If the scanner reports a finding at or above a stated severity, then the gate shall refuse and name the component, the file and the pattern, so the owner decides against evidence rather than against a score.",
+        "If the scanner is not installed, then the gate shall say so and refuse, rather than reporting a clean result it did not obtain.",
+        "A finding the owner has accepted shall be recorded as an explicit, dated waiver naming the component and the pattern, and an unwaived finding shall not be silently inherited from a previous run.",
+        "The scanner shall run without sending file contents to any third party by default, and any mode that does shall be opt-in and named in the evidence.",
+        "The scanner's own version shall be pinned and recorded, because a scanner that changes what it detects changes the meaning of a passing run."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "The gate is shown failing on a deliberately planted malicious pattern in a scratch copy of a skill before it is shown passing on the real pack - a gate demonstrated only by passing is a gate whose failure path was never executed.",
+        "A waiver is shown to suppress exactly the finding it names and no other.",
+        "The 'scanner absent' path is exercised by running the gate with the tool removed from PATH, asserting refusal rather than a clean report.",
+        "The recorded scanner version is asserted against the installed binary, the way scripts/check_coverage.py asserts its measurement toolchain."
+      ],
+      "documentation_impact": [
+        "docs/development/AGENT_TOOLCHAIN.md",
+        "AGENTS.md",
+        ".pre-commit-config.yaml"
+      ]
+    },
+    {
+      "id": "E28-S02",
+      "title": "The verifier handoff is a mechanism, not a manual step",
+      "status": "planned",
+      "outcome": "Executor/verifier separation is the method this repository is built on, and it is the only part of the method with no mechanism. `project_os.py brief <ID> --role verifier` renders the verifier's input; a human then carries it to the other agent, carries the verdict back, and the evidence packet records a review whose transport nobody can audit. Two things follow that the ledger cannot currently see: whether the verifier was given the brief the gate rendered or a paraphrase of it, and whether the verdict committed is the verdict the verifier produced. The handoff becomes an artifact - a rendered brief with a checksum, and a verdict recorded against it - so `check_evidence.py` can assert the pairing. What must not change is who may write what: the executor's session may render, transport and record, and may never author a verdict or move a story past ready_for_review. Automating a handoff between two roles is the most direct way to collapse them, so the story's main obligation is that it does not.",
+      "change_risk": "CR2",
+      "dependencies": [
+        "E28-S01"
+      ],
+      "acceptance_criteria": [
+        "A verifier brief shall be rendered to a durable artifact with a content checksum, so the input a verdict claims to answer is identifiable rather than asserted.",
+        "A recorded verdict shall name the brief it answers, and if it names a brief that does not exist or whose checksum does not match, then the evidence gate shall refuse.",
+        "The executor's session shall not be able to author a verdict or advance a story beyond ready_for_review, and the gate shall refuse such an attempt rather than rely on the executor declining to make it.",
+        "If the verifier agent is unavailable or returns nothing, then the handoff shall leave the story at ready_for_review with the failure recorded, and shall never fall back to the executor's own judgement.",
+        "A CR4 Safety Verdict shall remain attributable to the verifier that produced it, and the mechanism shall not make an unattributed verdict expressible.",
+        "The mechanism shall be optional: a handoff performed by a human shall remain valid, because the method is the separation and not the automation of it."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "An adversarial case attempts to record a verdict from the executor's own session and is shown to be refused by the gate, not merely discouraged by documentation.",
+        "A verdict is recorded against a brief whose checksum has been altered by one byte, and the evidence gate is shown to refuse it.",
+        "The verifier-unavailable path is exercised deliberately, asserting that the story stays at ready_for_review and that no verdict is written.",
+        "The existing manual route is exercised unchanged on a real story, proving the mechanism did not become mandatory."
+      ],
+      "documentation_impact": [
+        "docs/development/AGENT_PROTOCOL.md",
+        "AGENTS.md",
+        "project/templates/"
+      ]
+    }
+  ]
+}
