@@ -169,9 +169,14 @@ def check_story(story_id: str) -> list[str]:
         text = verdict.read_text(encoding="utf-8")
         claimed = CHECKSUM_LINE.search(text)
         author = VERIFIER_LINE.search(text)
-        if claimed is None:
-            continue  # A verdict that claims no brief is a manual handoff; it is not failed here.
         name = verdict.relative_to(ROOT)
+        if claimed is None:
+            if brief is not None:
+                problems.append(
+                    f"{name}: {BRIEF} exists for {story_id}, but this verdict carries no Brief-Checksum. "
+                    "A manual handoff remains valid only when no rendered brief exists."
+                )
+            continue  # A verdict that claims no brief is a manual handoff; it is not failed here.
         if brief is None:
             problems.append(f"{name}: names a brief checksum, but {story_id} has no {BRIEF} to answer")
             continue

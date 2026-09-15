@@ -223,7 +223,8 @@ python3 scripts/verifier_handoff.py check
 The brief is written to `project/evidence/<STORY-ID>/VERIFIER_BRIEF.md` with a checksum over its
 own body. A verdict answering it repeats that checksum on a `Brief-Checksum:` line and names
 itself on a `Verifier:` line. `check` refuses a verdict that answers a checksum which is not the
-committed brief's, a brief edited after it was rendered, and a verdict with no author.
+committed brief's, a brief edited after it was rendered, a verdict that ignores an existing brief,
+and a verdict with no author.
 
 **The refusal that matters most** is the one that keeps the two roles apart: a verdict whose
 `Verifier:` is the party that rendered the brief is refused outright. Automating a handoff between
@@ -239,4 +240,5 @@ Three properties a more convenient design would have lost:
   unattributed verdict is not expressible.
 - **The mechanism is optional.** A handoff performed by a human stays valid - the method is the
   separation, not the automation of it. A story with no brief is reported as having used the
-  manual route, not failed.
+  manual route, not failed. Once a brief exists, however, a verdict cannot ignore it and claim the
+  manual route after the fact.

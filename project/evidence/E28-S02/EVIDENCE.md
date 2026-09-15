@@ -15,7 +15,7 @@ PASS
 | AC | Evidence | Result |
 | --- | --- | --- |
 | AC1 | `verifier_handoff.py brief <ID>` writes `project/evidence/<ID>/VERIFIER_BRIEF.md` with a SHA-256 over its own body, excluding the header that carries it. `tests/test_verifier_handoff.py::Checksums` | PASS |
-| AC2 | A verdict repeats the checksum on `Brief-Checksum:`; a mismatch or a missing brief refuses. `tests/test_verifier_handoff.py::HandoffCases::test_a_verdict_answering_a_different_document_is_refused` and `::test_a_verdict_naming_a_brief_that_does_not_exist_is_refused` | PASS |
+| AC2 | A verdict repeats the checksum on `Brief-Checksum:`; a mismatch, a missing brief, or a verdict that omits the checksum despite an existing brief refuses. `tests/test_verifier_handoff.py::HandoffCases::test_a_verdict_answering_a_different_document_is_refused`, `::test_a_verdict_naming_a_brief_that_does_not_exist_is_refused`, and `::test_a_verdict_cannot_bypass_a_rendered_brief_by_omitting_its_checksum` | PASS after verifier repair |
 | AC3 | A verdict whose `Verifier:` equals the brief's `Rendered-by:` is refused outright. `tests/test_verifier_handoff.py::HandoffCases::test_the_executor_may_not_author_the_verdict` | PASS |
 | AC4 | A brief with no verdict passes and no verdict is written; there is no fallback path. `tests/test_verifier_handoff.py::TheSeparationSurvivesTheAutomation::test_an_unavailable_verifier_leaves_no_verdict_behind` | PASS |
 | AC5 | `Verifier:` is required, not defaulted; an unattributed verdict refuses. `tests/test_verifier_handoff.py::HandoffCases::test_an_unattributed_verdict_is_refused` | PASS |

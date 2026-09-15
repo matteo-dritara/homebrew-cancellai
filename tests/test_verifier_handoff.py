@@ -97,6 +97,14 @@ class HandoffCases(unittest.TestCase):
         self.assertEqual(len(problems), 1)
         self.assertIn("unattributed", problems[0])
 
+    def test_a_verdict_cannot_bypass_a_rendered_brief_by_omitting_its_checksum(self) -> None:
+        """The manual route is no brief at all, not a verdict that ignores a committed brief."""
+        self.write_brief()
+        self.write_verdict(checksum=None, verifier="Codex")
+        problems = handoff.check_story("E00-S01")
+        self.assertEqual(len(problems), 1)
+        self.assertIn("carries no Brief-Checksum", problems[0])
+
     def test_a_verdict_naming_a_brief_that_does_not_exist_is_refused(self) -> None:
         self.write_verdict(checksum=handoff.digest(BODY))
         problems = handoff.check_story("E00-S01")
@@ -127,7 +135,7 @@ class TheSeparationSurvivesTheAutomation(unittest.TestCase):
 
     def test_the_manual_route_stays_valid(self) -> None:
         """The method is the separation, not the automation of it: a story with no brief is fine."""
-        (self.evidence / "E00-S01" / "E00-S01-VERIFIER-REVIEW.md").write_text("# Review\n\nPASS\n", encoding="utf-8")
+        (self.evidence / "E00-S01" / "E00-S01-VERIFIER-REVIEW.md").write_text("# Review\n\nVerifier: Codex\n\nPASS\n", encoding="utf-8")
         self.assertEqual(handoff.check_story("E00-S01"), [])
 
     def test_the_module_never_writes_a_verdict(self) -> None:
