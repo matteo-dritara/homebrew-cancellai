@@ -173,6 +173,7 @@ story-scoped records carrying four real findings, and it produced no row and no 
 - `project/evidence/E07-S09-VERIFIER-REVIEW.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
 - `project/evidence/E16-S07-VERIFIER-REVIEW.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
 - `project/evidence/E17-S08-VERIFIER-REVIEW.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
+- `project/evidence/E25-S16/E25-S16-VERIFIER-REVIEW.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
 - `project/evidence/E27-S01-VERIFIER-REVIEW.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
 - `project/evidence/E27-S06-VERIFIER-REVIEW.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
 - `project/evidence/E28-S01/E28-S01-VERIFIER-REVIEW.md (story-scoped; add `Review-Scope: epic` to count it as a round)`

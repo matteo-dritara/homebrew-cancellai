@@ -428,21 +428,21 @@
       "id": "E25-S16",
       "title": "An anchor picked for stability by phase alone went stale within one epic close",
       "status": "ready_for_review",
-      "outcome": "The `story-status-forged` mutant was anchored on E11-S01, chosen - by the comment above the anchor itself - because E11 was 'a future phase' whose stories were 'stable', after an earlier anchor on a story this session was actively moving went stale within the hour. E11 closed as `done_no_release` in this same session, turning that story's status from `planned` to `done` and taking the anchor's match count from one to zero: `tests/test_governance_extras.py::MutantIntegrityTests` failed on main, and `story-status-forged` stopped being demonstrated at all rather than being demonstrated on the wrong thing, which is the same class of silent gate loss E25-S12 found for SI-008 and E25-S06 exists to catch in general. Phase is not a stability signal this backlog can rely on - the project reached a 'future' phase's epic inside one session - so the replacement anchor is chosen by a measurable property instead: E19-S02 sits behind more unmet transitive dependencies (9) than any other planned story in the backlog, computed from `project/epics/*.json`, and carries no evidence packet.",
+      "outcome": "The `story-status-forged` mutant was anchored on E11-S01, chosen - by the comment above the anchor itself - because E11 was 'a future phase' whose stories were 'stable', after an earlier anchor on a story this session was actively moving went stale within the hour. E11 closed as `done_no_release` in the same session, turning that story's status from `planned` to `done` and taking the anchor's match count from one to zero: `tests/test_governance_extras.py::MutantIntegrityTests` failed on main, and `story-status-forged` stopped being demonstrated at all. An initial repair merely moved the fixed anchor to E19-S02, whose nine unmet dependencies meant the resulting mutant was rejected by the dependency gate rather than the evidence gate it claimed to exercise. The repair now selects a planned story in the throwaway export at run time, clears its dependencies, and forges `done`: there is no fixed backlog id to go stale, and a test proves the rejection names missing committed evidence. If no planned story remains, the harness refuses to apply the mutant rather than certifying a claim it did not test.",
       "change_risk": "CR2",
       "dependencies": [
         "E25-S06",
         "E25-S12"
       ],
       "acceptance_criteria": [
-        "The `story-status-forged` mutant in scripts/gate_sensitivity.py anchors on E19-S02 rather than E11-S01, and the anchor text matches exactly one site in project/epics/E19.json.",
-        "The reasoning for the chosen anchor - the measurable property used, not just the story id - is recorded next to the mutant definition, so a third failure updates the same record instead of re-deriving the pattern from scratch.",
-        "project/generated/GATE_SENSITIVITY.md and the committed sensitivity report are regenerated against the new anchor.",
+        "The `story-status-forged` mutant in scripts/gate_sensitivity.py shall select its target from the throwaway export rather than anchoring on a fixed backlog work item, and it shall refuse if no target is available.",
+        "The mutant shall clear the selected story's dependencies before forging `done`, and a test shall prove that project_os rejects the result for missing committed evidence rather than for an earlier dependency error.",
+        "project/generated/GATE_SENSITIVITY.md and the committed sensitivity report are regenerated against the dynamic mutation.",
         "If the `tests` workflow is re-run on main after this change, then it shall report success, because a fix that leaves the same job red has not fixed the finding it was opened for."
       ],
       "safety_obligations": [],
       "verification": [
-        "tests/test_governance_extras.py::MutantIntegrityTests passes locally against the current working tree.",
+        "tests/test_governance_extras.py::MutantIntegrityTests passes locally against the current working tree, including the assertion that the forged status reaches the evidence gate.",
         "scripts/gate_sensitivity.py check reproduces the committed report byte-for-byte.",
         "A manual replay of `python3 -m pytest tests -v` no longer shows story-status-forged failing."
       ],

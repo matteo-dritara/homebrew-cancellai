@@ -74,12 +74,10 @@ python3 scripts/check_ears.py check                                    -> EARS O
 
 ## Residual risks
 
-- **This anchor will eventually go stale too.** E19-S02 is the deepest planned story in the backlog
-  *today*; nothing prevents the project from reaching it, or from restructuring E19's dependencies,
-  before it does. The mitigation this story adds is not permanence - it is a documented, recomputable
-  selection rule, so the next failure is a five-minute fix instead of a rediscovery. A third
-  recurrence should consider whether the mutant's claim can be tested without pointing at a real,
-  evolving story at all.
+- **The initial E19-S02 repair was insufficient.** Its nine unmet dependencies made the mutant
+  fail earlier than its claimed evidence obligation. The independent verifier replaced the fixed
+  anchor with a dynamic mutation and added a test for the evidence-specific diagnostic; see
+  `E25-S16-VERIFIER-REVIEW.md`.
 - **AC4 is confirmed locally, not yet by a live CI run.** The GitHub Actions confirmation requires
   this change to land on `origin/main`; recorded as PASS (local) above rather than claimed as a full
   live-CI PASS.
@@ -88,4 +86,4 @@ python3 scripts/check_ears.py check                                    -> EARS O
 
 ## Verifier verdict
 
-pending
+REPAIRED — `E25-S16-VERIFIER-REVIEW.md` (Codex, 2026-09-15).

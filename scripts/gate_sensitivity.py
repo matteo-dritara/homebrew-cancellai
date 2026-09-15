@@ -60,6 +60,7 @@ class Mutant:
     find: str
     replace: str
     gates: tuple[str, ...]
+    dynamic: bool = False
 
 
 # The gate commands a mutant may be checked against. Fast and hermetic: no cargo, no network.
@@ -187,18 +188,18 @@ MUTANTS: tuple[Mutant, ...] = (
         identifier="story-status-forged",
         invariant="process",
         claim="A story cannot sit past ready_for_review without committed evidence",
-        path="project/epics/E19.json",
-        # Anchored on a story that is planned and has no evidence packet, so forging its status
-        # is exactly the violation this gate exists to catch. The first anchor was on a story this
-        # session was actively moving, and went stale within the hour; the second was picked for
-        # sitting in "a future phase" and went stale when that phase closed within one session
-        # anyway (E25-S16) - phase is not a stability signal this backlog can rely on. This one is
-        # picked by a measurable property instead: E19-S02 sits behind more unmet transitive
-        # dependencies than any other planned story in the backlog at the time of writing, which
-        # does not make it permanent, only re-computable the next time this goes stale.
-        find='"id": "E19-S02",\n      "title": "Cross-platform desktop shell",\n      "status": "planned"',
-        replace='"id": "E19-S02",\n      "title": "Cross-platform desktop shell",\n      "status": "done"',
+        path="project/epics",
+        # This used to be anchored on individual planned stories. One moved within an hour and a
+        # second, supposedly stable because it was deep in a future phase, was also dependent on
+        # nine unmet prerequisites - so its forged status failed the dependency gate, not the
+        # evidence gate it purported to test. Select a live planned story in the exported tree,
+        # remove its dependencies, and forge `done`. The target is intentionally not a backlog id:
+        # if no planned story remains, application fails loudly rather than silently certifying a
+        # stale anchor. The project-os error must then be about missing evidence (unit-tested).
+        find="",
+        replace="",
         gates=("project-os",),
+        dynamic=True,
     ),
 )
 
@@ -218,6 +219,9 @@ def export_tree(destination: Path) -> None:
 
 
 def apply_mutant(tree: Path, mutant: Mutant) -> None:
+    if mutant.dynamic:
+        apply_dynamic_mutant(tree, mutant)
+        return
     target = tree / mutant.path
     if not target.is_file():
         raise SensitivityError(f"{mutant.identifier}: {mutant.path} does not exist")
@@ -239,6 +243,26 @@ def apply_mutant(tree: Path, mutant: Mutant) -> None:
             "this mutant aims it - make the anchor unique"
         )
     target.write_text(text.replace(mutant.find, mutant.replace, 1), encoding="utf-8")
+
+
+def apply_dynamic_mutant(tree: Path, mutant: Mutant) -> None:
+    """Apply a state-shaped mutant without tying it to a moving work-item id."""
+    if mutant.identifier != "story-status-forged":
+        raise SensitivityError(f"{mutant.identifier}: has no dynamic mutation implementation")
+    for path in sorted((tree / mutant.path).glob("*.json")):
+        epic = json.loads(path.read_text(encoding="utf-8"))
+        for story in epic["stories"]:
+            if story["status"] == "planned":
+                # Clearing dependencies isolates the evidence obligation: the resulting project-os
+                # failure demonstrates missing evidence rather than an earlier dependency error.
+                story["status"] = "done"
+                story["dependencies"] = []
+                path.write_text(json.dumps(epic, indent=2) + "\n", encoding="utf-8")
+                return
+    raise SensitivityError(
+        "story-status-forged: no planned story remains to forge. Add a deliberate fixture or revise "
+        "the mutant; do not report this claim as covered"
+    )
 
 
 def run_gate(tree: Path, name: str) -> bool:

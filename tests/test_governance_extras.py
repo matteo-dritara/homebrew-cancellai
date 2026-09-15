@@ -12,6 +12,7 @@ from __future__ import annotations
 import datetime as dt
 import inspect
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -29,12 +30,15 @@ class MutantIntegrityTests(unittest.TestCase):
     def test_every_mutant_targets_a_file_that_exists(self):
         for mutant in sensitivity.MUTANTS:
             with self.subTest(mutant=mutant.identifier):
-                self.assertTrue((sensitivity.ROOT / mutant.path).is_file(), mutant.path)
+                target = sensitivity.ROOT / mutant.path
+                self.assertTrue(target.is_dir() if mutant.dynamic else target.is_file(), mutant.path)
 
     def test_every_mutant_anchor_is_still_present(self):
         # The check that keeps this harness honest as the code moves underneath it.
         for mutant in sensitivity.MUTANTS:
             with self.subTest(mutant=mutant.identifier):
+                if mutant.dynamic:
+                    continue
                 text = (sensitivity.ROOT / mutant.path).read_text(encoding="utf-8")
                 self.assertIn(mutant.find, text)
 
@@ -45,6 +49,8 @@ class MutantIntegrityTests(unittest.TestCase):
         # completeness channel.
         for mutant in sensitivity.MUTANTS:
             with self.subTest(mutant=mutant.identifier):
+                if mutant.dynamic:
+                    continue
                 text = (sensitivity.ROOT / mutant.path).read_text(encoding="utf-8")
                 self.assertEqual(1, text.count(mutant.find), f"{mutant.identifier}: anchor is not unique")
 
@@ -67,7 +73,41 @@ class MutantIntegrityTests(unittest.TestCase):
     def test_every_mutant_actually_changes_the_file(self):
         for mutant in sensitivity.MUTANTS:
             with self.subTest(mutant=mutant.identifier):
+                if mutant.dynamic:
+                    continue
                 self.assertNotEqual(mutant.find, mutant.replace)
+
+    def test_story_status_mutant_is_not_anchored_on_a_moving_backlog_item(self):
+        mutant = next(m for m in sensitivity.MUTANTS if m.identifier == "story-status-forged")
+        self.assertTrue(mutant.dynamic)
+        self.assertEqual("project/epics", mutant.path)
+
+    def test_story_status_mutant_reaches_the_evidence_gate_not_the_dependency_gate(self):
+        mutant = next(m for m in sensitivity.MUTANTS if m.identifier == "story-status-forged")
+        with tempfile.TemporaryDirectory() as tmp:
+            tree = Path(tmp) / "repo"
+            sensitivity.export_tree(tree)
+            sensitivity.apply_mutant(tree, mutant)
+            result = subprocess.run(
+                ("python3", "scripts/project_os.py", "check"),  # noqa: S607 -- exported repository checker
+                cwd=tree,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("requires committed evidence", result.stdout + result.stderr)
+
+    def test_story_status_mutant_refuses_when_no_planned_story_exists(self):
+        mutant = next(m for m in sensitivity.MUTANTS if m.identifier == "story-status-forged")
+        with tempfile.TemporaryDirectory() as tmp:
+            tree = Path(tmp)
+            epics = tree / "project" / "epics"
+            epics.mkdir(parents=True)
+            (epics / "E99.json").write_text(json.dumps({"stories": [{"id": "E99-S01", "status": "done", "dependencies": []}]}), encoding="utf-8")
+            with self.assertRaises(sensitivity.SensitivityError) as caught:
+                sensitivity.apply_mutant(tree, mutant)
+        self.assertIn("no planned story remains", str(caught.exception))
 
     def test_every_named_gate_exists(self):
         for mutant in sensitivity.MUTANTS:

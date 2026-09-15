@@ -50,14 +50,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Re-anchored the `story-status-forged` gate-sensitivity mutant from E11-S01 to E19-S02 (E25-S16,
-  CR2): the anchor was chosen for sitting in "a future phase," and E11 closed within the same
-  session that reasoning was written, turning E11-S01's status from `planned` to `done` and taking
-  the anchor's match count to zero - `tests/test_governance_extras.py::MutantIntegrityTests` failed
-  on `main`, and the mutant stopped demonstrating anything rather than demonstrating the wrong
-  thing. The replacement is chosen by a measurable property instead of a phase guess: E19-S02 sits
-  behind more unmet transitive dependencies (9) than any other planned story in the backlog, and
-  the reasoning is recorded next to the mutant so a third failure updates the same record.
+- Replaced the fixed `story-status-forged` gate-sensitivity anchor (E25-S16, CR2) with a dynamic
+  mutation in the throwaway export. The E11-S01 anchor went stale when its supposedly future phase
+  closed; the interim E19-S02 anchor had nine unmet dependencies, so it exercised dependency
+  rejection rather than the required-evidence gate. The new mutation clears a selected planned
+  story's dependencies before forging `done`, verifies the evidence-specific rejection, and fails
+  loudly if no target exists.
 
 ## [1.14.0] - 2026-09-14
 
