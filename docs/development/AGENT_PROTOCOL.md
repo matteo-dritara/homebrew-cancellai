@@ -109,7 +109,7 @@ An executor's work is finished at `ready_for_review`. It does not set `verificat
 ## Verifier procedure
 
 Review runs at **epic** scope, when every story in the epic is `ready_for_review`. It stops on
-**measured yield**, not on a round count: another round is required while a round rejects 10% or
+**measured yield**, not on a round count: another round is required while a round finds defects in 10% or
 more of the stories it judges, and two rounds whose findings do not overlap escalate to the owner
 rather than closing ([ADR-0025](../adrs/0025-review-stops-on-yield-and-a-shippable-nothing-does-not-cut-a-release.md),
 amending ADR-0014 / PD-022, which fixed the number at two). Three rounds is a cost ceiling that

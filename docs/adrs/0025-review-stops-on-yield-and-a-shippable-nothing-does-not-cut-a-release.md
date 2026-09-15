@@ -57,6 +57,16 @@ backlog items with the story id that carries them, exactly as ADR-0014 decided.
 `scripts/process_metrics.py` computes the yield and the overlap, so the rule is evaluable rather
 than asserted.
 
+#### E29-S01 clarification: yield counts findings, not only rejections
+
+`REPAIRED` was added after the first E28 review found four defects but reported a zero yield:
+the reviewer repaired them rather than sending their stories back. For the stopping rule, a
+round's yield is therefore the fraction of judged stories in which it found a defect (`FAIL` or
+`REPAIRED`). `Rejected` remains separately measured as the fraction sent back (`FAIL` only),
+because that is the first-pass rejection rate rather than the question of whether another review
+round is productive. Historical figures are recomputed from their records; no pre-E29 record uses
+`REPAIRED`.
+
 ### An epic that changes nothing shippable does not cut a release
 
 An epic whose stories are all `done` may hold one of two terminal states:

@@ -387,7 +387,7 @@ def render(stories: dict[str, dict[str, Any]], rounds: dict[str, list[Round]]) -
         "",
         "## Review yield per round",
         "",
-        "A round that rejects nothing has either nothing to reject or is not looking. The two are",
+        "A round that finds nothing has either nothing to find or is not looking. The two are",
         "distinguished by the next round, which is why the ceiling matters.",
         "",
         "| Epic | Round | Reviewer | Stories judged | Found | Rejected | Yield |",

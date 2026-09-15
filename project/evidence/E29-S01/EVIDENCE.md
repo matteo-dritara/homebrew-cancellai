@@ -8,7 +8,9 @@
 
 ## Outcome
 
-PASS
+REPAIRED by the independent verifier: ADR-0025 still defined yield as rejections while the
+implementation correctly measured findings. The clarification now makes the stopping rule and
+the report agree.
 
 ## Acceptance Criteria Evidence
 
@@ -17,7 +19,7 @@ PASS
 | AC1 | `NOT_COUNTED` lists every recognised-but-uncounted record by name and the report prints it. `tests/test_review_yield.py::RecordsThisToolDoesNotCount::test_a_skipped_record_is_named_rather_than_dropped` | PASS |
 | AC2 | `Review-Scope: epic` and `Round: N` in a record's header make it countable whatever its filename. `tests/test_review_yield.py::RecordsThisToolDoesNotCount::test_a_record_declaring_epic_scope_is_counted_whatever_its_filename` | PASS |
 | AC3 | `REPAIRED` is a verdict and `found` is separate from `rejected`; the yield column reads `found`. `tests/test_review_yield.py::FindingIsNotRejecting` | PASS |
-| AC4 | Every figure is computed from the records on each run, and no committed record uses `REPAIRED`, so historical yields are unchanged. `tests/test_review_yield.py::FindingIsNotRejecting::test_the_new_verdict_changes_no_historical_number` | PASS |
+| AC4 | Every figure is computed from the records on each run, and no pre-E29 committed record uses `REPAIRED`, so historical yields are unchanged. `tests/test_review_yield.py::FindingIsNotRejecting::test_the_new_verdict_changes_no_historical_number` | PASS |
 
 ## Safety Evidence
 
@@ -60,4 +62,4 @@ python3 scripts/check_evidence.py check
 
 ## Verifier verdict
 
-pending
+REPAIRED pending epic-round record
