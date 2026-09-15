@@ -256,3 +256,11 @@ the literal `"done"` - so three epics that closed as `done_no_release` (E11, E24
 nothing depending on them, and three more (E12, E13, E28) could not advance at all. Every gate
 stayed green throughout, because the definition and its use had diverged in the one direction no
 test was looking (E28-S05).
+
+**Widening the closing set is a policy change, not a test update.** `CLOSED_EPIC_STATUS` holds
+exactly `done` and `done_no_release`. Adding a third status would satisfy every dependency in the
+backlog at once, silently, and a behavioural test over the statuses that exist today would not
+object - which is the shape of the defect E28-S05 repaired, one level up. `tests/test_project_os.py`
+therefore asserts the exact set as well as the behaviour, so adding a member fails until somebody
+changes this paragraph and the assertion together, having decided that the new status really does
+mean a dependent epic may proceed (E29-S07).

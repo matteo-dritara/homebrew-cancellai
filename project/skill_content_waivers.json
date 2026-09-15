@@ -1,7 +1,8 @@
 {
   "schema_version": 1,
   "scanner": "2.11.2",
-  "note": "A waiver suppresses one finding, named by the match_fingerprint that scripts/check_skill_content.py reports. It is dated and carries a reason; 'it is a false positive' is not a reason, the argument for why is. A waiver that stops matching is reported as stale rather than ignored, because a fingerprint that drifted means the finding is back and nobody was told.",
+  "revalidated": "2026-09-15",
+  "note": "A waiver suppresses one finding, named by the match_fingerprint that scripts/check_skill_content.py reports. It is dated and carries a reason; 'it is a false positive' is not a reason, the argument for why is. A waiver that stops matching is reported as stale rather than ignored, because a fingerprint that drifted means the finding is back and nobody was told. The `scanner` field is the version these fingerprints were computed against: the gate refuses when it differs from the version it pins, because stability across versions is untested and a drifted fingerprint would suppress a different finding in silence. `revalidated` is the date somebody last confirmed each waiver still names the finding it describes.",
   "waivers": [
     {
       "fingerprint": "cce4276d56063d8d083a5d84aa8710cc20763902060e9f13d880d306c741b113",

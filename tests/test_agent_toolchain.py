@@ -350,5 +350,62 @@ class ComponentLicences(unittest.TestCase):
         self.assertIn("CC-BY-SA-4.0", data["license_allowlist"], "the pack carried under it must be expressible")
 
 
+class LocalMeasurementsForWhatCiCannotSee(unittest.TestCase):
+    """Ten of twelve components are user-scope, so most of the budget rested on hand entry (E29-S05)."""
+
+    def test_a_measurement_bound_to_the_current_version_counts(self) -> None:
+        entry = component(scope="user", version="1.0.0", measured={"tokens": 250, "component_version": "1.0.0", "taken_on": "2026-09-15"})
+        tokens, staleness = toolchain.recorded_measurement(entry)
+        self.assertEqual(tokens, 250)
+        self.assertIsNone(staleness)
+
+    def test_a_measurement_taken_against_another_version_is_stale_not_current(self) -> None:
+        entry = component(scope="user", version="2.0.0", measured={"tokens": 250, "component_version": "1.0.0", "taken_on": "2026-09-15"})
+        tokens, staleness = toolchain.recorded_measurement(entry)
+        self.assertIsNone(tokens, "a stale measurement must not be read as a current one")
+        assert staleness is not None
+        self.assertIn("stale", staleness)
+
+    def test_no_measurement_stays_unmeasured_rather_than_zero(self) -> None:
+        """The absence of a measurement is not a measurement of zero."""
+        tokens, staleness = toolchain.recorded_measurement(component(scope="user"))
+        self.assertIsNone(tokens)
+        self.assertIsNone(staleness)
+
+    def test_a_stale_measurement_warns_and_does_not_fail(self) -> None:
+        entry = component(scope="user", version="2.0.0", always_on_tokens=10, measured={"tokens": 999, "component_version": "1.0.0"})
+        errors, notes = toolchain.token_errors([entry])
+        self.assertEqual(errors, [], "staleness is reported, not refused")
+        self.assertTrue(any("stale" in note for note in notes))
+
+    def test_ci_passes_with_no_local_measurements_at_all(self) -> None:
+        data = toolchain.load_manifest()
+        stripped = [{k: v for k, v in c.items() if k != "measured"} for c in data["components"]]
+        errors, _ = toolchain.token_errors(stripped)
+        self.assertEqual(errors, [])
+
+
+class LicenceEvidenceIsBoundToARevision(unittest.TestCase):
+    """A licence is the upstream's declaration at one moment, and nothing re-read it (E29-S06)."""
+
+    def test_a_licence_without_a_source_revision_is_reported(self) -> None:
+        notes = toolchain.license_evidence_notes([component(license="MIT")])
+        self.assertEqual(len(notes), 1)
+        self.assertIn("relicensed", notes[0])
+
+    def test_a_licence_bound_to_a_revision_is_not_reported(self) -> None:
+        entry = component(license="MIT", license_source_revision="github:owner/name@abc123")
+        self.assertEqual(toolchain.license_evidence_notes([entry]), [])
+
+    def test_every_committed_component_names_the_revision_it_was_read_from(self) -> None:
+        self.assertEqual(toolchain.license_evidence_notes(toolchain.load_manifest()["components"]), [])
+
+    def test_the_report_is_a_warning_and_never_an_error(self) -> None:
+        """Binding the evidence is the mechanism; refusing on its absence is a later decision."""
+        data = toolchain.load_manifest()
+        stripped = [{k: v for k, v in c.items() if k != "license_source_revision"} for c in data["components"]]
+        self.assertEqual(toolchain.license_errors(data, stripped), [])
+
+
 if __name__ == "__main__":
     unittest.main()

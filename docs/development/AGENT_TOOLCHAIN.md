@@ -161,3 +161,23 @@ A source with **no licence** is its own refusal, distinct from a licence not yet
 fact about the upstream, the other is work not done here. The 2026-09-15 census made that concrete -
 `anthropics/skills` at 176k stars, `vercel-labs/agent-skills` and `hamelsmu/claude-review-loop` all
 carry no licence file, so by default all rights are reserved.
+
+## Three things the manifest now binds to their evidence
+
+**Waivers are bound to the scanner that produced them** (E29-S02). A waiver names a
+`match_fingerprint`, which was measured stable across two runs of one scanner version and is
+untested across two versions. `project/skill_content_waivers.json` records the version it was
+written against and the date somebody last revalidated it; the gate refuses when that differs from
+the pin. Bumping the pin is routine and used to carry no obligation to revisit the waivers, which
+is exactly when a drifted fingerprint would start suppressing a different finding in silence.
+
+**A cost CI cannot observe can be measured where it is installed** (E29-S05). Ten of twelve
+components are user-scope. A `measured` block - `tokens`, `component_version`, `taken_on` - records
+a measurement taken on a machine where the component exists, and it is read as **stale** the moment
+the component's version moves on. It is never required: CI passes with none recorded.
+
+**A licence names the revision it was read from** (E29-S06). A licence is the upstream's
+declaration at one moment, and nothing re-read it, so an upstream that relicenses leaves the
+manifest asserting something that was true and is not. `license_source_revision` is what makes a
+later comparison possible at all; E26-S02 already reaches these upstreams for versions and
+abandonment and degrades truthfully without a network, which is where the comparison belongs.

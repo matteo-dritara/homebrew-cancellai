@@ -244,3 +244,26 @@ Three properties a more convenient design would have lost:
   separation, not the automation of it. A story with no brief is reported as having used the
   manual route, not failed. Once a brief exists, however, a verdict cannot ignore it and claim the
   manual route after the fact.
+
+## What a review round measures
+
+ADR-0025 makes another round mandatory while a round's yield is at or above 10%, and
+`scripts/process_metrics.py` computes it. E28's first round found four defects across four of five
+stories and the table reported nothing, for three reasons now closed (E29-S01):
+
+- **a record is named when it is not counted.** A story-scoped record is still not an epic round,
+  but the report lists it rather than skipping it in silence - the same argument the tool already
+  made about records it cannot classify.
+- **a record can declare what it is.** `Review-Scope: epic` and `Round: N` in the record's header
+  make it countable whatever its filename says.
+- **`REPAIRED` is a verdict.** A reviewer who repairs a defect instead of failing the story found
+  something, and the yield column now says so. `Rejected` stays a separate column, because the
+  first-pass rejection rate asks a different question - whether the story was sent back.
+
+A verdict of `REPAIRED` belongs in a round record whenever the reviewer fixed what it found. Using
+`PASS` there makes a productive round indistinguishable from an empty one, which is the confusion
+this repository measures itself to avoid.
+
+A method-defect proposal carries a date, and one older than 90 days is reported as **unexamined**
+rather than wrong (E29-S04). It never fails the gate: ageing a proposal must not convert it into a
+defect.

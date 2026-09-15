@@ -323,6 +323,23 @@ class ClosedEpicDependencies(unittest.TestCase):
                 with self.assertRaisesRegex(project_os.GovernanceError, dependent["id"]):
                     project_os.validate(project_os.Model(model.decisions, model.roadmap, epics))
 
+    def test_the_closing_set_is_exactly_these_two(self) -> None:
+        """An exact assertion, not a few named exclusions.
+
+        A behavioural test over today's statuses cannot object to a third member being added, and a
+        third member would satisfy every dependency in the backlog at once. Widening this is a
+        policy change: docs/development/WORK_ITEM_MODEL.md has to change alongside the assertion,
+        which is the point of making it fail (E29-S07).
+        """
+        self.assertEqual({"done", "done_no_release"}, project_os.CLOSED_EPIC_STATUS)
+
+    def test_the_policy_document_names_the_same_two(self) -> None:
+        """So the assertion and the decision it encodes cannot drift apart."""
+        policy = (Path(project_os.__file__).parent.parent / "docs" / "development" / "WORK_ITEM_MODEL.md").read_text(encoding="utf-8")
+        self.assertIn("`CLOSED_EPIC_STATUS` holds", policy)
+        for status in project_os.CLOSED_EPIC_STATUS:
+            self.assertIn(status, policy)
+
     def test_a_story_dependency_still_requires_done(self) -> None:
         """`done_no_release` is an epic status: a story is finished or it is not."""
         self.assertNotIn("done_no_release", project_os.VALID_STORY_STATUS)

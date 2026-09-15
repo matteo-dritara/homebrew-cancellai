@@ -141,6 +141,28 @@ def measured_tokens(component: dict[str, Any]) -> int | None:
     return round(total / CHARS_PER_TOKEN)
 
 
+def recorded_measurement(component: dict[str, Any]) -> tuple[int | None, str | None]:
+    """A measurement taken where the component is installed, or why it does not count.
+
+    Ten of twelve components are user-scope: CI cannot observe them, so the declared figure rests
+    on hand entry - the same figure that decided this project would not carry Task Observer. A
+    measurement taken on a machine where the component *is* installed can be recorded, the way
+    project/coverage_baseline.json records the toolchain that produced it: bound to a version and a
+    date, and treated as stale the moment the binding stops holding. It never becomes a
+    requirement, so CI still passes with none recorded at all (E29-S05).
+    """
+    recorded = component.get("measured")
+    if not recorded:
+        return None, None
+    if recorded.get("component_version") != component.get("version"):
+        return None, (
+            f"{component.get('id')}: recorded measurement was taken against version "
+            f"{recorded.get('component_version')!r} and the manifest now says {component.get('version')!r} - "
+            "stale, so the declared cost is unmeasured again rather than confirmed"
+        )
+    return int(recorded["tokens"]), None
+
+
 def token_errors(components: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
     """Declared always-on cost against a measurement of it.
 
@@ -160,8 +182,13 @@ def token_errors(components: list[dict[str, Any]]) -> tuple[list[str], list[str]
                     "A carried skill that does not enter the measurement cannot pass as unmeasured"
                 )
             else:
-                notes.append(f"{identifier}: always-on cost is unmeasured (not present in this repository), declared {declared}")
-            continue
+                measured, staleness = recorded_measurement(component)
+                if staleness:
+                    notes.append(staleness)
+                if measured is None:
+                    notes.append(f"{identifier}: always-on cost is unmeasured (not observable here), declared {declared}")
+            if measured is None:
+                continue
         allowed = max(TOKEN_TOLERANCE * measured, 1.0)
         if abs(declared - measured) > allowed:
             errors.append(
@@ -170,6 +197,24 @@ def token_errors(components: list[dict[str, Any]]) -> tuple[list[str], list[str]
                 "correct the declaration rather than the measurement"
             )
     return errors, notes
+
+
+def license_evidence_notes(components: list[dict[str, Any]]) -> list[str]:
+    """Report a licence recorded without the revision it was read from.
+
+    A licence is the upstream's declaration at one moment, and nothing re-reads it: an upstream
+    that relicenses afterwards leaves the manifest asserting something that was true and is not.
+    Binding the record to a source revision is what makes a later comparison possible at all.
+    E26-S02 already reaches these same upstreams over the network for versions and abandonment, and
+    degrades truthfully without one; that is where the comparison belongs once the binding exists
+    (E29-S06).
+    """
+    return [
+        f"{component.get('id')}: licence {component.get('license')!r} is recorded without the source revision "
+        "it was read from, so nothing can tell whether the upstream has relicensed since"
+        for component in components
+        if not component.get("license_source_revision")
+    ]
 
 
 def license_errors(data: dict[str, Any], components: list[dict[str, Any]]) -> list[str]:
@@ -404,6 +449,7 @@ def evaluate(data: dict[str, Any], installed: dict[str, str], today: dt.date) ->
     errors.extend(declared_errors)
     warnings.extend(unmeasured)
     errors.extend(license_errors(data, live))
+    warnings.extend(license_evidence_notes(live))
 
     budget = int(data.get("context_budget_tokens", 0))
     total = sum(int(c.get("always_on_tokens", 0)) for c in components if c.get("decision", {}).get("status") != "retired")

@@ -57,7 +57,12 @@ OUTPUT = PROJECT / "generated" / "PROCESS_METRICS.md"
 # capitalised word, so a review record whose second column held the Change Risk Level was read
 # as three PASS verdicts - a measurement tool reporting a confident wrong number, which is the
 # one failure mode it may never have.
-VERDICTS = ("PASS_WITH_RESIDUALS", "PASS", "FAIL")
+# `REPAIRED` exists because E28 round 1 found four defects across four of five stories and this
+# tool reported a yield of zero. The mandate told the reviewer to repair rather than reject, and
+# with only `FAIL` counting, a productive round and an empty one are indistinguishable - the
+# exact confusion E25 exists to remove. No historical record uses it, so every number computed
+# before it existed is unchanged (E29-S01).
+VERDICTS = ("PASS_WITH_RESIDUALS", "PASS", "REPAIRED", "FAIL")
 FENCED = re.compile(r"^```.*?^```", re.MULTILINE | re.DOTALL)
 
 
@@ -78,11 +83,27 @@ AC_ROW = re.compile(r"^\|\s*AC\s*(\d+)", re.MULTILINE | re.IGNORECASE)
 # epic round would invent rounds that never happened and corrupt every number below it.
 REVIEW_FILE = re.compile(r"^(E\d{2})(?P<story>-S\d{2})?-(?:VERIFIER|SELF)-REVIEW(?:-ROUND(?P<round>\d+))?\.md$", re.IGNORECASE)
 SELF_REVIEW = re.compile(r"SELF-REVIEW", re.IGNORECASE)
+# Two different questions, deliberately not one. `REJECTING` is "the story was sent back", which
+# is what the first-pass rejection rate measures. `FINDING` is "the round found something",
+# which is what ADR-0025's yield threshold is actually about: whether another round is worth
+# running. A defect repaired inside the round is a finding and is not a rejection.
 REJECTING_VERDICTS = {"FAIL"}
+FINDING_VERDICTS = {"FAIL", "REPAIRED"}
 ACCEPTED_STATUSES = {"ready_for_review", "verification", "done"}
 # Review records under `project/evidence/` whose filename this tool cannot classify. Reported, not
 # dropped: a record that vanishes is worse than one that fails to parse, because nothing says so.
 UNCLASSIFIABLE: list[str] = []
+# Records this tool recognised and deliberately did not count. It used to `continue` past them
+# in silence, so E28's whole first round - five story-scoped records carrying four real findings
+# - produced no row and no warning. The same argument the line above makes about unclassifiable
+# records applies to deliberate skips: a record that vanishes is worse than one that fails to
+# parse, because nothing says so (E29-S01).
+NOT_COUNTED: list[str] = []
+
+# A record may declare what it is instead of being judged by its filename. `Review-Scope: epic`
+# makes a story-scoped filename countable, which is what E28's records needed and could not say.
+SCOPE_LINE = re.compile(r"^Review-Scope:\s*(epic|story)\s*$", re.MULTILINE | re.IGNORECASE)
+ROUND_LINE = re.compile(r"^Round:\s*(\d+)\s*$", re.MULTILINE)
 
 
 @dataclass
@@ -94,7 +115,18 @@ class Round:
 
     @property
     def rejected(self) -> set[str]:
+        """Stories this round sent back. Feeds the first-pass rejection rate."""
         return {story for story, verdict in self.verdicts.items() if verdict in REJECTING_VERDICTS}
+
+    @property
+    def found(self) -> set[str]:
+        """Stories in which this round found a defect, whether it sent them back or repaired them.
+
+        This is what ADR-0025's threshold asks about. A reviewer who repairs rather than rejects is
+        doing the job better, not finding less, and a measurement that cannot tell the two apart
+        decides whether another round is required on the strength of how somebody chose to write.
+        """
+        return {story for story, verdict in self.verdicts.items() if verdict in FINDING_VERDICTS}
 
 
 def load_stories() -> dict[str, dict[str, Any]]:
@@ -132,6 +164,7 @@ def load_rounds() -> dict[str, list[Round]]:
     """
     rounds: dict[str, list[Round]] = {}
     unclassifiable: list[str] = []
+    not_counted: list[str] = []
     for path in sorted(EVIDENCE.rglob("*REVIEW*.md")):
         match = REVIEW_FILE.match(path.name)
         if not match:
@@ -140,19 +173,29 @@ def load_rounds() -> dict[str, list[Round]]:
             # depends on getting right.
             unclassifiable.append(str(path.relative_to(ROOT)))
             continue
-        if match.group("story"):
+        text = path.read_text(encoding="utf-8")
+        scope = SCOPE_LINE.search(prose_only(text))
+        declared_epic = scope is not None and scope.group(1).lower() == "epic"
+        if match.group("story") and not declared_epic:
+            # Named, not dropped. A story-scoped record is still not an epic round - counting one
+            # would invent rounds that never happened - but the reader now learns it exists and can
+            # see that a real review produced no row.
+            not_counted.append(f"{path.relative_to(ROOT)} (story-scoped; add `Review-Scope: epic` to count it as a round)")
             continue
+        declared_round = ROUND_LINE.search(prose_only(text))
         record = Round(
-            number=int(match.group("round") or 1),
+            number=int(declared_round.group(1)) if declared_round else int(match.group("round") or 1),
             path=path,
             independent=not SELF_REVIEW.search(path.name),
-            verdicts=parse_verdicts(path.read_text(encoding="utf-8")),
+            verdicts=parse_verdicts(text),
         )
         rounds.setdefault(match.group(1), []).append(record)
     for records in rounds.values():
         records.sort(key=lambda record: record.number)
     UNCLASSIFIABLE.clear()
     UNCLASSIFIABLE.extend(sorted(unclassifiable))
+    NOT_COUNTED.clear()
+    NOT_COUNTED.extend(sorted(not_counted))
     return rounds
 
 
@@ -347,18 +390,21 @@ def render(stories: dict[str, dict[str, Any]], rounds: dict[str, list[Round]]) -
         "A round that rejects nothing has either nothing to reject or is not looking. The two are",
         "distinguished by the next round, which is why the ceiling matters.",
         "",
-        "| Epic | Round | Reviewer | Stories judged | Rejected | Yield |",
-        "| --- | --- | --- | --- | --- | --- |",
+        "| Epic | Round | Reviewer | Stories judged | Found | Rejected | Yield |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
     ]
     for epic in sorted(rounds):
         for record in rounds[epic]:
             reviewer = "independent" if record.independent else "**self**"
             if not record.verdicts:
-                lines.append(f"| {epic} | {record.number} | {reviewer} | - | - | **not machine-readable** |")
+                lines.append(f"| {epic} | {record.number} | {reviewer} | - | - | - | **not machine-readable** |")
                 continue
             judged = len(record.verdicts)
+            found = len(record.found)
             rejected = len(record.rejected)
-            lines.append(f"| {epic} | {record.number} | {reviewer} | {judged} | {rejected} | {100 * rejected / judged:.0f}% |")
+            # ADR-0025's threshold asks whether the round found anything, not whether it sent
+            # anything back. Both columns are shown so the two are never conflated again.
+            lines.append(f"| {epic} | {record.number} | {reviewer} | {judged} | {found} | {rejected} | {100 * found / judged:.0f}% |")
 
     independent_judged = sum(len(r.verdicts) for rs in rounds.values() for r in rs if r.independent and r.number == 1 and r.verdicts)
     independent_rejected = sum(len(r.rejected) for rs in rounds.values() for r in rs if r.independent and r.number == 1 and r.verdicts)
@@ -456,6 +502,13 @@ def render(stories: dict[str, dict[str, Any]], rounds: dict[str, list[Round]]) -
         "## Review records this tool could not classify",
         "",
         *([f"- `{path}`" for path in UNCLASSIFIABLE] or ["- none"]),
+        "",
+        "## Review records this tool recognised and did not count",
+        "",
+        "A deliberate skip used to be as silent as a dropped record. E28's first round was five",
+        "story-scoped records carrying four real findings, and it produced no row and no warning.",
+        "",
+        *([f"- `{path}`" for path in NOT_COUNTED] or ["- none"]),
         "",
         "## Rework proxy",
         "",

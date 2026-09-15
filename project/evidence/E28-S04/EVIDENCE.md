@@ -51,7 +51,7 @@ pre-commit run --all-files
 
 ## Method defects
 
-- **What happened**: `measured_tokens()` read `members` as bare skill names when they are written `skill:.claude/skills/<name>`. It found no files, returned `None`, and the component reported itself **unmeasured** - a silent non-measurement passing as a green gate, which is the exact defect class this story exists to remove. It was caught by printing the measurement rather than by the gate, which stayed green throughout. **Prevented by**: none exists; a gate that can report 'unmeasurable' needs a case proving it measures something when it should. **Disposition**: proposed
+- **What happened**: `measured_tokens()` read `members` as bare skill names when they are written `skill:.claude/skills/<name>`. It found no files, returned `None`, and the component reported itself **unmeasured** - a silent non-measurement passing as a green gate, which is the exact defect class this story exists to remove. It was caught by printing the measurement rather than by the gate, which stayed green throughout. **Prevented by**: none exists; a gate that can report 'unmeasurable' needs a case proving it measures something when it should. **Disposition**: proposed 2026-09-15
 
 ## Residual risks
 

@@ -178,5 +178,30 @@ class ScanCoverage(unittest.TestCase):
         )
 
 
+class WaiversAreBoundToTheScannerThatProducedThem(unittest.TestCase):
+    """A fingerprint was measured stable across two runs of one version, never across two (E29-S02)."""
+
+    def test_a_pin_change_refuses_until_the_waivers_are_revalidated(self) -> None:
+        waived = waivers({"fingerprint": "fp", "reason": "argued", "date": "2026-09-15"})
+        errors = gate.waiver_provenance_errors({**waived, "scanner": "2.10.0"})
+        self.assertEqual(len(errors), 1)
+        self.assertIn("2.10.0", errors[0])
+        self.assertIn(gate.PINNED_SCANNER, errors[0])
+
+    def test_matching_versions_pass(self) -> None:
+        waived = waivers({"fingerprint": "fp", "reason": "argued", "date": "2026-09-15"})
+        self.assertEqual(gate.waiver_provenance_errors(waived), [])
+
+    def test_a_file_with_no_waivers_has_nothing_to_invalidate(self) -> None:
+        """Nothing is being suppressed, so a version difference suppresses nothing."""
+        self.assertEqual(gate.waiver_provenance_errors({"scanner": "2.10.0", "waivers": []}), [])
+
+    def test_the_committed_file_is_bound_to_the_pinned_version(self) -> None:
+        self.assertEqual(gate.load_waivers()["scanner"], gate.PINNED_SCANNER)
+
+    def test_the_committed_file_records_when_it_was_revalidated(self) -> None:
+        self.assertTrue(gate.load_waivers().get("revalidated"), "revalidation is a dated act, not a side effect")
+
+
 if __name__ == "__main__":
     unittest.main()

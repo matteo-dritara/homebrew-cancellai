@@ -91,5 +91,44 @@ class TheMechanismProposesAndNeverWrites(unittest.TestCase):
         self.assertIn("Disposition", template)
 
 
+class AProposalIsAgedNotForgotten(unittest.TestCase):
+    """`proposed` is the right resting state and also one an entry can sit in forever (E29-S04)."""
+
+    TODAY = __import__("datetime").date(2026, 9, 15)
+
+    def aged(self, disposition: str):
+        text = packet(f"- **What happened**: x **Prevented by**: none exists **Disposition**: {disposition}")
+        return evidence.aged_proposals("E00-S01", text, self.TODAY)
+
+    def test_a_proposal_past_the_cadence_is_reported(self) -> None:
+        reported = self.aged("proposed 2026-01-01")
+        self.assertEqual(len(reported), 1)
+        self.assertIn("unexamined, not invalid", reported[0])
+
+    def test_a_recent_proposal_is_not_reported(self) -> None:
+        self.assertEqual(self.aged("proposed 2026-09-01"), [])
+
+    def test_an_aged_proposal_is_not_an_error(self) -> None:
+        """Ageing must not convert a proposal into a defect."""
+        text = packet("- **What happened**: x **Prevented by**: none exists **Disposition**: proposed 2026-01-01")
+        self.assertEqual(evidence.method_defect_problems("E00-S01", text), [])
+
+    def test_a_disposed_entry_is_never_aged(self) -> None:
+        for disposition in ("accepted 2026-01-01", "declined 2026-01-01 - too narrow"):
+            self.assertEqual(self.aged(disposition), [], disposition)
+
+    def test_an_undated_proposal_says_its_age_cannot_be_reported(self) -> None:
+        reported = self.aged("proposed")
+        self.assertEqual(len(reported), 1)
+        self.assertIn("no date", reported[0])
+
+    def test_every_committed_proposal_carries_a_date(self) -> None:
+        from pathlib import Path as _P
+
+        for pkt in sorted((_P(__file__).resolve().parent.parent / "project" / "evidence").glob("*/EVIDENCE.md")):
+            for warning in evidence.aged_proposals(pkt.parent.name, pkt.read_text(encoding="utf-8"), self.TODAY):
+                self.assertNotIn("no date", warning, f"{pkt.parent.name} has an undated proposal")
+
+
 if __name__ == "__main__":
     unittest.main()

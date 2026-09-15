@@ -11,8 +11,8 @@ Epics: **30** | Stories: **163**
 - `blocked`: 2
 - `cancelled`: 1
 - `done`: 130
-- `planned`: 29
-- `ready_for_review`: 1
+- `planned`: 22
+- `ready_for_review`: 8
 
 ## Change risk distribution
 
@@ -29,3 +29,10 @@ Epics: **30** | Stories: **163**
 ## Awaiting independent review
 
 - **E25-S16** - An anchor picked for stability by phase alone went stale within one epic close (CR2)
+- **E29-S01** - The review-yield measurement can see a round that repaired instead of rejecting (CR2)
+- **E29-S02** - A scanner upgrade invalidates the waivers written against the old one (CR2)
+- **E29-S03** - Decide, by ADR, how a verdict's author is authenticated rather than declared (CR2)
+- **E29-S04** - A method defect left proposed is aged, not forgotten (CR1)
+- **E29-S05** - A user-scope component's cost is measured where it is installed (CR2)
+- **E29-S06** - A licence recorded once is revalidated against the source it was read from (CR2)
+- **E29-S07** - The set of statuses that close an epic cannot grow without a reviewed decision (CR2)

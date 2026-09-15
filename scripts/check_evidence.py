@@ -34,6 +34,7 @@ Stdlib-only, like every other governance checker here.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import re
 import sys
@@ -53,7 +54,13 @@ RESIDUAL_SECTION = re.compile(r"##\s*Residual risks?\s*\n(.*?)(?=\n##|\Z)", re.D
 METHOD_SECTION = re.compile(r"##\s*Method defects?\s*\n(.*?)(?=\n##|\Z)", re.DOTALL | re.IGNORECASE)
 # A disposition is what turns an observation into a finding somebody decided. `proposed` is a
 # legitimate resting state - it means the owner has it and has not ruled - but absence is not.
-DISPOSITION = re.compile(r"\*{0,2}Disposition\*{0,2}\s*:\s*(proposed|accepted|declined)\b", re.IGNORECASE)
+DISPOSITION = re.compile(r"\*{0,2}Disposition\*{0,2}\s*:\s*(proposed|accepted|declined)\b\s*(\d{4}-\d{2}-\d{2})?", re.IGNORECASE)
+# A proposal is a legitimate resting state - the owner has the finding and has not ruled - and it
+# is also a state an entry can sit in forever with no gate noticing. The toolchain manifest
+# already answers this for decisions: one past the cadence is reported as *unexamined* rather
+# than wrong. Ageing a proposal must not convert it into a defect, so this warns and never fails
+# (E29-S04).
+PROPOSAL_CADENCE_DAYS = 90
 PREVENTED_BY = re.compile(r"\*{0,2}Prevented by\*{0,2}\s*:", re.IGNORECASE)
 SCRIPT_COMMAND = re.compile(r"python3\s+(scripts/[\w./-]+\.py)")
 FENCED = re.compile(r"^```.*?^```", re.MULTILINE | re.DOTALL)
@@ -139,6 +146,26 @@ def method_defect_entries(text: str) -> list[str]:
     return entries
 
 
+def aged_proposals(story_id: str, text: str, today: dt.date) -> list[str]:
+    """Method-defect proposals older than the cadence, reported as unexamined rather than wrong."""
+    warnings: list[str] = []
+    for entry in method_defect_entries(text):
+        match = DISPOSITION.search(entry)
+        if match is None or match.group(1).lower() != "proposed":
+            continue
+        raw = match.group(2)
+        if not raw:
+            warnings.append(f"{story_id}: method defect proposal carries no date, so its age cannot be reported")
+            continue
+        age = (today - dt.date.fromisoformat(raw)).days
+        if age > PROPOSAL_CADENCE_DAYS:
+            warnings.append(
+                f"{story_id}: method defect proposed {age} days ago, past the "
+                f'{PROPOSAL_CADENCE_DAYS}-day cadence - unexamined, not invalid: "{entry[:60]}"'
+            )
+    return warnings
+
+
 def method_defect_problems(story_id: str, text: str) -> list[str]:
     """A recorded defect that nobody dispositioned, or that points nowhere."""
     problems: list[str] = []
@@ -210,6 +237,9 @@ def evaluate(stories: dict[str, dict[str, Any]], root: Path) -> tuple[list[str],
         if story["status"] not in ACCEPTED_STATUSES:
             continue
         considered += 1
+        packet = root / "project" / "evidence" / story_id / PACKET
+        if packet.is_file():
+            warnings.extend(aged_proposals(story_id, packet.read_text(encoding="utf-8"), dt.date.today()))
         problems = check_story(story, root)
         if not problems:
             continue

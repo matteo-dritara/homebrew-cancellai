@@ -31,7 +31,8 @@
         "by": "owner",
         "date": "2026-09-12",
         "rationale": "Authored in this repository under E24. Carries no code and no credentials; a skill is prompt text the agent may load."
-      }
+      },
+      "license_source_revision": "self:37dcede8f728afc852644c934845d04186193700"
     },
     {
       "id": "differential-review@trailofbits",
@@ -52,7 +53,8 @@
         "by": "owner",
         "date": "2026-09-12",
         "rationale": "Vendor trust; prompt and subagents only."
-      }
+      },
+      "license_source_revision": "github:trailofbits/skills@027bc47a69a276c340717bafdc3708263094b9a4"
     },
     {
       "id": "hook:guard-generated-docs",
@@ -72,7 +74,8 @@
         "by": "owner",
         "date": "2026-09-12",
         "rationale": "Authored here, executes only this repository's own shell script, and the CI drift check remains the authority regardless of whether it runs."
-      }
+      },
+      "license_source_revision": "self:37dcede8f728afc852644c934845d04186193700"
     },
     {
       "id": "mutation-testing@trailofbits",
@@ -92,7 +95,8 @@
         "by": "owner",
         "date": "2026-09-12",
         "rationale": "Vendor trust; prompt only."
-      }
+      },
+      "license_source_revision": "github:trailofbits/skills@027bc47a69a276c340717bafdc3708263094b9a4"
     },
     {
       "id": "property-based-testing@trailofbits",
@@ -112,7 +116,8 @@
         "by": "owner",
         "date": "2026-09-12",
         "rationale": "Vendor trust; prompt only."
-      }
+      },
+      "license_source_revision": "github:trailofbits/skills@027bc47a69a276c340717bafdc3708263094b9a4"
     },
     {
       "id": "pyright-lsp@claude-plugins-official",
@@ -132,7 +137,8 @@
         "by": "owner",
         "date": "2026-09-15",
         "rationale": "First-party marketplace, the symmetric counterpart of rust-analyzer-lsp: the Rust side had a language server and the side holding every gate did not. Carries no prompt content, so it costs nothing in any session. Pyright is code intelligence only - mypy remains the repository's type-check gate, and a Pyright diagnostic is not a gate verdict."
-      }
+      },
+      "license_source_revision": "github:anthropics/claude-plugins-official@da823e86c8feef13b73b6712af11eadd38c992f6"
     },
     {
       "id": "rust-analyzer-lsp@claude-plugins-official",
@@ -152,7 +158,8 @@
         "by": "owner",
         "date": "2026-09-12",
         "rationale": "First-party marketplace. Runs rust-analyzer, which the developer already runs."
-      }
+      },
+      "license_source_revision": "github:anthropics/claude-plugins-official@da823e86c8feef13b73b6712af11eadd38c992f6"
     },
     {
       "id": "rust-review@trailofbits",
@@ -173,7 +180,8 @@
         "by": "owner",
         "date": "2026-09-12",
         "rationale": "Vendor trust. Ships three subagents and no hooks or MCP servers, so it can read and reason but cannot install anything or reach the network on its own."
-      }
+      },
+      "license_source_revision": "github:trailofbits/skills@027bc47a69a276c340717bafdc3708263094b9a4"
     },
     {
       "id": "spec-to-code-compliance@trailofbits",
@@ -194,7 +202,8 @@
         "by": "owner",
         "date": "2026-09-12",
         "rationale": "Vendor trust; prompt and one subagent."
-      }
+      },
+      "license_source_revision": "github:trailofbits/skills@027bc47a69a276c340717bafdc3708263094b9a4"
     },
     {
       "id": "static-analysis@trailofbits",
@@ -215,7 +224,8 @@
         "by": "owner",
         "date": "2026-09-12",
         "rationale": "Vendor trust. Runs scanner binaries, which is code execution, so it carries the highest capability of the set and the largest always-on cost. Reconsider at the next review if it is not being used."
-      }
+      },
+      "license_source_revision": "github:trailofbits/skills@027bc47a69a276c340717bafdc3708263094b9a4"
     },
     {
       "id": "supply-chain-risk-auditor@trailofbits",
@@ -235,7 +245,8 @@
         "by": "owner",
         "date": "2026-09-12",
         "rationale": "Vendor trust; prompt only."
-      }
+      },
+      "license_source_revision": "github:trailofbits/skills@027bc47a69a276c340717bafdc3708263094b9a4"
     },
     {
       "id": "variant-analysis@trailofbits",
@@ -255,7 +266,8 @@
         "by": "owner",
         "date": "2026-09-12",
         "rationale": "Trail of Bits is a named security vendor with a public track record. Ships one skill, no hooks, no MCP server: prompt content only."
-      }
+      },
+      "license_source_revision": "github:trailofbits/skills@027bc47a69a276c340717bafdc3708263094b9a4"
     }
   ],
   "rejected": [

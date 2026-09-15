@@ -12,36 +12,36 @@ these are diagnostics for the owner, not scores for the executor.
 A round that rejects nothing has either nothing to reject or is not looking. The two are
 distinguished by the next round, which is why the ceiling matters.
 
-| Epic | Round | Reviewer | Stories judged | Rejected | Yield |
-| --- | --- | --- | --- | --- | --- |
-| E00 | 1 | independent | 7 | 6 | 86% |
-| E00 | 2 | independent | 7 | 7 | 100% |
-| E00 | 3 | independent | - | - | **not machine-readable** |
-| E01 | 1 | independent | 6 | 1 | 17% |
-| E02 | 1 | independent | 4 | 2 | 50% |
-| E03 | 1 | independent | 5 | 3 | 60% |
-| E04 | 1 | independent | 4 | 1 | 25% |
-| E05 | 1 | independent | 5 | 1 | 20% |
-| E06 | 1 | independent | 4 | 3 | 75% |
-| E06 | 2 | independent | 3 | 2 | 67% |
-| E07 | 1 | independent | - | - | **not machine-readable** |
-| E08 | 1 | independent | 4 | 1 | 25% |
-| E09 | 1 | **self** | 4 | 0 | 0% |
-| E09 | 1 | independent | 5 | 0 | 0% |
-| E10 | 1 | **self** | 2 | 1 | 50% |
-| E10 | 1 | independent | 3 | 1 | 33% |
-| E11 | 1 | **self** | 3 | 0 | 0% |
-| E11 | 1 | independent | 4 | 2 | 50% |
-| E11 | 2 | independent | 2 | 0 | 0% |
-| E16 | 1 | independent | 6 | 0 | 0% |
-| E17 | 1 | independent | 6 | 0 | 0% |
-| E20 | 1 | independent | 3 | 3 | 100% |
-| E20 | 2 | independent | 1 | 0 | 0% |
-| E21 | 1 | independent | 7 | 5 | 71% |
-| E22 | 1 | independent | 6 | 5 | 83% |
-| E23 | 1 | independent | 1 | 1 | 100% |
-| E24 | 1 | **self** | 3 | 2 | 67% |
-| E28 | 2 | independent | 5 | 0 | 0% |
+| Epic | Round | Reviewer | Stories judged | Found | Rejected | Yield |
+| --- | --- | --- | --- | --- | --- | --- |
+| E00 | 1 | independent | 7 | 6 | 6 | 86% |
+| E00 | 2 | independent | 7 | 7 | 7 | 100% |
+| E00 | 3 | independent | - | - | - | **not machine-readable** |
+| E01 | 1 | independent | 6 | 1 | 1 | 17% |
+| E02 | 1 | independent | 4 | 2 | 2 | 50% |
+| E03 | 1 | independent | 5 | 3 | 3 | 60% |
+| E04 | 1 | independent | 4 | 1 | 1 | 25% |
+| E05 | 1 | independent | 5 | 1 | 1 | 20% |
+| E06 | 1 | independent | 4 | 3 | 3 | 75% |
+| E06 | 2 | independent | 3 | 2 | 2 | 67% |
+| E07 | 1 | independent | - | - | - | **not machine-readable** |
+| E08 | 1 | independent | 4 | 1 | 1 | 25% |
+| E09 | 1 | **self** | 4 | 0 | 0 | 0% |
+| E09 | 1 | independent | 5 | 0 | 0 | 0% |
+| E10 | 1 | **self** | 2 | 1 | 1 | 50% |
+| E10 | 1 | independent | 3 | 1 | 1 | 33% |
+| E11 | 1 | **self** | 3 | 0 | 0 | 0% |
+| E11 | 1 | independent | 4 | 2 | 2 | 50% |
+| E11 | 2 | independent | 2 | 0 | 0 | 0% |
+| E16 | 1 | independent | 6 | 0 | 0 | 0% |
+| E17 | 1 | independent | 6 | 0 | 0 | 0% |
+| E20 | 1 | independent | 3 | 3 | 3 | 100% |
+| E20 | 2 | independent | 1 | 0 | 0 | 0% |
+| E21 | 1 | independent | 7 | 5 | 5 | 71% |
+| E22 | 1 | independent | 6 | 5 | 5 | 83% |
+| E23 | 1 | independent | 1 | 1 | 1 | 100% |
+| E24 | 1 | **self** | 3 | 2 | 2 | 67% |
+| E28 | 2 | independent | 5 | 0 | 0 | 0% |
 
 ## First-pass rejection rate
 
@@ -78,7 +78,7 @@ independent samples, and the population estimate collapses to what one round alr
 
 ## Evidence-ledger integrity
 
-- **116 of 131** story packets past `ready_for_review` carry a row per acceptance criterion.
+- **123 of 138** story packets past `ready_for_review` carry a row per acceptance criterion.
 - Packets that do not:
   - E00-S01 (CR4): 0 rows for 3 criteria
   - E00-S02 (CR4): 0 rows for 3 criteria
@@ -160,6 +160,25 @@ load-bearing rather than academic.
 
 - `project/evidence/E25-E26-SELF-REVIEW-ROUND2.md`
 - `project/evidence/E25-E26-SELF-REVIEW.md`
+
+## Review records this tool recognised and did not count
+
+A deliberate skip used to be as silent as a dropped record. E28's first round was five
+story-scoped records carrying four real findings, and it produced no row and no warning.
+
+- `project/evidence/E00-S03-VERIFIER-REVIEW.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
+- `project/evidence/E07-S07-VERIFIER-REVIEW-ROUND2.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
+- `project/evidence/E07-S07-VERIFIER-REVIEW.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
+- `project/evidence/E07-S09-VERIFIER-REVIEW.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
+- `project/evidence/E16-S07-VERIFIER-REVIEW.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
+- `project/evidence/E17-S08-VERIFIER-REVIEW.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
+- `project/evidence/E27-S01-VERIFIER-REVIEW.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
+- `project/evidence/E27-S06-VERIFIER-REVIEW.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
+- `project/evidence/E28-S01/E28-S01-VERIFIER-REVIEW.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
+- `project/evidence/E28-S02/E28-S02-VERIFIER-REVIEW.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
+- `project/evidence/E28-S03/E28-S03-VERIFIER-REVIEW.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
+- `project/evidence/E28-S04/E28-S04-VERIFIER-REVIEW.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
+- `project/evidence/E28-S05/E28-S05-VERIFIER-REVIEW.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
 
 ## Rework proxy
 

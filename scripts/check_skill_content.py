@@ -163,6 +163,29 @@ def findings(report: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+def waiver_provenance_errors(waivers: dict[str, Any]) -> list[str]:
+    """Refuse when the waivers were written against a different scanner than the one pinned.
+
+    A waiver names a `match_fingerprint`, measured stable across two runs of one version and
+    untested across versions. The pin is what protects it, so the protection disappears exactly
+    when somebody bumps the pin - a routine act that carried no obligation to revisit the waivers.
+    A drifted fingerprint landing on a different finding would suppress it silently, which is the
+    one failure a waiver file must not have (E29-S02).
+    """
+    if not waivers.get("waivers"):
+        return []
+    against = waivers.get("scanner")
+    if against == PINNED_SCANNER:
+        return []
+    return [
+        f"the waivers were written against skillspector {against!r} and this gate is pinned to "
+        f"{PINNED_SCANNER!r}. Fingerprint stability across versions is untested, so a waiver may now "
+        "suppress a different finding than the one it was argued for. Run "
+        "`python3 scripts/check_skill_content.py report`, confirm each waiver still names the finding "
+        "it describes, then set `scanner` to the new version and `revalidated` to today"
+    ]
+
+
 def provenance_errors(installed: str | None) -> list[str]:
     """Refuse before scanning when the scanner is absent or is not the pinned one."""
     if installed is None:
@@ -266,9 +289,17 @@ def cmd_check() -> int:
         for error in errors:
             print(f"SKILL CONTENT ERROR: {error}", file=sys.stderr)
         return 2
+    waivers = load_waivers()
+    # Before scanning: a waiver file written against a different scanner cannot be trusted to
+    # suppress the findings it was argued for, and the scan would be read through it.
+    waiver_errors = waiver_provenance_errors(waivers)
+    if waiver_errors:
+        for error in waiver_errors:
+            print(f"SKILL CONTENT ERROR: {error}", file=sys.stderr)
+        return 2
     report = scan(SKILL_PACK)
     coverage_errors = completeness_errors(report)
-    refusals, waived, stale = evaluate(findings(report), load_waivers())
+    refusals, waived, stale = evaluate(findings(report), waivers)
     print(f"skill content scanned by skillspector {installed}")
     for line in describe(report):
         print(line)
