@@ -181,6 +181,7 @@ story-scoped records carrying four real findings, and it produced no row and no 
 - `project/evidence/E28-S04/E28-S04-VERIFIER-REVIEW.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
 - `project/evidence/E28-S05/E28-S05-VERIFIER-REVIEW.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
 - `project/evidence/E30-S01/E30-S01-VERIFIER-REVIEW.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
+- `project/evidence/E31-S01/E31-S01-VERIFIER-REVIEW.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
 
 ## Rework proxy
 

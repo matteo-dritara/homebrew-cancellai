@@ -55,8 +55,10 @@ pre-commit run --all-files
 - **This checks existence, not currency**, and the defect that motivated the story was a currency defect: RELEASE_GATES.md called `E16-S05` an outstanding dependency long after it closed, and this gate would not have objected because the id existed. E30-S01 closed that one by moving the claim into a machine-read field. Free prose about work items is still unverifiable, and the story closes a neighbouring defect rather than the one that prompted it.
 - A retired identifier passes everywhere once recorded, including in a document that cites it wrongly. The record says what it became; nothing checks that the citing sentence says so too.
 - The regex matches `E##` and `E##-S##` anywhere in a line, including inside code fences and URLs. No current document is affected, and a future one containing such a token would fail for a reason its author would not expect.
-- No independent verification. The owner waived it for this story; a CR1 would normally still carry one at epic scope, and the packet records that it did not.
+- The owner initially waived independent review. A retrospective independent review subsequently
+  repaired the retirement validator so an incomplete or duplicate record cannot silently pass;
+  see `E31-S01-VERIFIER-REVIEW.md` (Codex, 2026-09-15).
 
 ## Verifier verdict
 
-not sought - independent review waived by the owner
+REPAIRED — `E31-S01-VERIFIER-REVIEW.md` (Codex, 2026-09-15).

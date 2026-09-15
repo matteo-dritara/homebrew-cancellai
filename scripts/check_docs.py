@@ -144,12 +144,19 @@ def work_item_ids() -> set[str]:
     return ids
 
 
-def retired_work_items() -> dict[str, dict[str, str]]:
+def retired_work_items() -> list[dict[str, object]]:
     """Identifiers that existed and no longer do, so history is not mistaken for a typo."""
     if not RETIRED_FILE.exists():
-        return {}
+        return []
     data = json.loads(RETIRED_FILE.read_text(encoding="utf-8"))
-    return {entry["id"]: entry for entry in data.get("retired", [])}
+    if not isinstance(data, dict) or data.get("schema_version") != 1:
+        raise DocsError("project/retired_work_items.json: expected schema_version 1")
+    entries = data.get("retired")
+    if not isinstance(entries, list):
+        raise DocsError("project/retired_work_items.json: retired must be a list")
+    if not all(isinstance(entry, dict) for entry in entries):
+        raise DocsError("project/retired_work_items.json: every retirement must be an object")
+    return entries
 
 
 def work_item_reference_errors(files: list[Path]) -> list[str]:
@@ -161,16 +168,36 @@ def work_item_reference_errors(files: list[Path]) -> list[str]:
     passes, because cancelling a story does not unwrite the seven documents that explain why.
     """
     known = work_item_ids()
-    retired = retired_work_items()
+    retired_entries = retired_work_items()
     errors: list[str] = []
+    retired: set[str] = set()
 
-    for identifier, entry in sorted(retired.items()):
+    for index, entry in enumerate(retired_entries, start=1):
+        where = f"project/retired_work_items.json: retirement {index}"
+        identifier = entry.get("id")
+        if not isinstance(identifier, str) or not WORK_ITEM_REF.fullmatch(identifier):
+            errors.append(f"{where}: id must be one work-item identifier")
+            continue
+        if identifier in retired:
+            errors.append(f"{where}: {identifier} is recorded more than once; a retirement is recorded once")
+            continue
+        retired.add(identifier)
+        if identifier in known:
+            errors.append(f"{where}: {identifier} still resolves and is not retired")
         became = entry.get("became")
-        if became and became not in known:
+        if not isinstance(became, str) or not became:
+            errors.append(f"{where}: {identifier} records no successor")
+        elif became not in known:
             errors.append(
                 f"project/retired_work_items.json: {identifier} is recorded as having become {became!r}, "
                 "which does not resolve either - a retirement record that rots is the defect this file exists to prevent"
             )
+        recorded = entry.get("recorded")
+        if not isinstance(recorded, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", recorded):
+            errors.append(f"{where}: {identifier} records no valid date")
+        reason = entry.get("reason")
+        if not isinstance(reason, str) or not reason.strip():
+            errors.append(f"{where}: {identifier} records no reason")
 
     for path in files:
         relative = path.relative_to(ROOT).as_posix()

@@ -76,6 +76,32 @@ class RetiredIdentifiers(unittest.TestCase):
         finally:
             path.write_text(original, encoding="utf-8")
 
+    def test_a_retirement_without_a_successor_or_date_is_refused(self) -> None:
+        path = ROOT / "project" / "retired_work_items.json"
+        original = path.read_text(encoding="utf-8")
+        try:
+            broken = json.loads(original)
+            broken["retired"][0].pop("became")
+            broken["retired"][0].pop("recorded")
+            path.write_text(json.dumps(broken, indent=2) + "\n", encoding="utf-8")
+            errors = check_docs.work_item_reference_errors(check_docs.markdown_files())
+            self.assertTrue(any("records no successor" in error for error in errors))
+            self.assertTrue(any("records no valid date" in error for error in errors))
+        finally:
+            path.write_text(original, encoding="utf-8")
+
+    def test_a_retirement_cannot_be_recorded_twice(self) -> None:
+        path = ROOT / "project" / "retired_work_items.json"
+        original = path.read_text(encoding="utf-8")
+        try:
+            broken = json.loads(original)
+            broken["retired"].append(broken["retired"][0].copy())
+            path.write_text(json.dumps(broken, indent=2) + "\n", encoding="utf-8")
+            errors = check_docs.work_item_reference_errors(check_docs.markdown_files())
+            self.assertTrue(any("recorded more than once" in error for error in errors))
+        finally:
+            path.write_text(original, encoding="utf-8")
+
     def test_each_successor_resolves_today(self) -> None:
         known = check_docs.work_item_ids()
         for entry in self.RETIRED["retired"]:
