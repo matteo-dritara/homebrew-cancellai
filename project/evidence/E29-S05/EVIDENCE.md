@@ -8,13 +8,14 @@
 
 ## Outcome
 
-PASS
+REPAIRED by the independent verifier: a `measured` record without a valid `taken_on` date was
+accepted as current. Incomplete records are now explicitly unmeasured.
 
 ## Acceptance Criteria Evidence
 
 | AC | Evidence | Result |
 | --- | --- | --- |
-| AC1 | A `measured` block records tokens bound to a component version and a date. `tests/test_agent_toolchain.py::LocalMeasurementsForWhatCiCannotSee::test_a_measurement_bound_to_the_current_version_counts` | PASS |
+| AC1 | A `measured` block records tokens bound to a component version and a valid date; missing or malformed dates are unmeasured. `tests/test_agent_toolchain.py::LocalMeasurementsForWhatCiCannotSee::test_a_measurement_without_a_taken_on_date_is_unmeasured` | REPAIRED |
 | AC2 | A version mismatch reads as stale, not current. `::test_a_measurement_taken_against_another_version_is_stale_not_current` | PASS |
 | AC3 | No measurement stays unmeasured rather than zero. `::test_no_measurement_stays_unmeasured_rather_than_zero` | PASS |
 | AC4 | CI passes with none recorded at all. `::test_ci_passes_with_no_local_measurements_at_all` | PASS |
@@ -59,4 +60,4 @@ python3 scripts/check_evidence.py check
 
 ## Verifier verdict
 
-pending
+REPAIRED pending epic-round record

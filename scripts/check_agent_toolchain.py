@@ -160,7 +160,26 @@ def recorded_measurement(component: dict[str, Any]) -> tuple[int | None, str | N
             f"{recorded.get('component_version')!r} and the manifest now says {component.get('version')!r} - "
             "stale, so the declared cost is unmeasured again rather than confirmed"
         )
-    return int(recorded["tokens"]), None
+    tokens = recorded.get("tokens")
+    taken_on = recorded.get("taken_on")
+    if not isinstance(tokens, int) or isinstance(tokens, bool) or tokens < 0:
+        return None, (
+            f"{component.get('id')}: recorded measurement has tokens {tokens!r}, not a non-negative integer - "
+            "incomplete, so the declared cost is unmeasured again rather than confirmed"
+        )
+    if not isinstance(taken_on, str):
+        return None, (
+            f"{component.get('id')}: recorded measurement has no taken_on date - incomplete, so the declared "
+            "cost is unmeasured again rather than confirmed"
+        )
+    try:
+        dt.date.fromisoformat(taken_on)
+    except ValueError:
+        return None, (
+            f"{component.get('id')}: recorded measurement was taken_on {taken_on!r}, not an ISO-8601 date - "
+            "incomplete, so the declared cost is unmeasured again rather than confirmed"
+        )
+    return tokens, None
 
 
 def token_errors(components: list[dict[str, Any]]) -> tuple[list[str], list[str]]:

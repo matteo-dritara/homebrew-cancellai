@@ -172,8 +172,9 @@ the pin. Bumping the pin is routine and used to carry no obligation to revisit t
 is exactly when a drifted fingerprint would start suppressing a different finding in silence.
 
 **A cost CI cannot observe can be measured where it is installed** (E29-S05). Ten of twelve
-components are user-scope. A `measured` block - `tokens`, `component_version`, `taken_on` - records
-a measurement taken on a machine where the component exists, and it is read as **stale** the moment
+components are user-scope. A `measured` block - a non-negative integer `tokens`, `component_version`,
+and an ISO-8601 `taken_on` date - records a measurement taken on a machine where the component exists,
+and it is read as **stale** the moment
 the component's version moves on. It is never required: CI passes with none recorded.
 
 **A licence names the revision it was read from** (E29-S06). A licence is the upstream's

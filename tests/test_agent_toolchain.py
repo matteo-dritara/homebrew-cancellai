@@ -366,6 +366,25 @@ class LocalMeasurementsForWhatCiCannotSee(unittest.TestCase):
         assert staleness is not None
         self.assertIn("stale", staleness)
 
+    def test_a_measurement_without_a_taken_on_date_is_unmeasured(self) -> None:
+        """A version alone cannot attest to when the local observation was made."""
+        entry = component(scope="user", version="1.0.0", measured={"tokens": 250, "component_version": "1.0.0"})
+        tokens, staleness = toolchain.recorded_measurement(entry)
+        self.assertIsNone(tokens)
+        assert staleness is not None
+        self.assertIn("no taken_on date", staleness)
+
+    def test_a_measurement_with_an_invalid_taken_on_date_is_unmeasured(self) -> None:
+        entry = component(
+            scope="user",
+            version="1.0.0",
+            measured={"tokens": 250, "component_version": "1.0.0", "taken_on": "not-a-date"},
+        )
+        tokens, staleness = toolchain.recorded_measurement(entry)
+        self.assertIsNone(tokens)
+        assert staleness is not None
+        self.assertIn("ISO-8601", staleness)
+
     def test_no_measurement_stays_unmeasured_rather_than_zero(self) -> None:
         """The absence of a measurement is not a measurement of zero."""
         tokens, staleness = toolchain.recorded_measurement(component(scope="user"))
