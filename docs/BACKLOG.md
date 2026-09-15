@@ -1328,7 +1328,7 @@ Introduce reversible lifecycle operations before expanding autonomy.
 
 ### E12-S03 - Archive/compression lifecycle
 
-**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E12-S01 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E12-S01 | **Safety obligations:** SI-018, SI-019, SI-020
 
 **Outcome.** Support cold archival for eligible artifacts with verifiable archive integrity.
 

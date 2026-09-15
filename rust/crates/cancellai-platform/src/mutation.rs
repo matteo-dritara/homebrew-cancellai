@@ -73,6 +73,23 @@
 //! (mirroring `confirmed_delete_file`'s own Windows/Unix split before E20-S05 closed that gap
 //! for deletion) and refuses explicitly rather than falling back to an unconfirmed path-based
 //! move - a disclosed residual, not a silent gap.
+//!
+//! ## Archive (E12-S03)
+//!
+//! [`MutationOperation::Archive`] moves an artifact into cancellAI's own archive store using
+//! the exact same confirmed move `Quarantine` does (both now share one `confirmed_move_inner`).
+//! What differs is what gets recorded: a real, compressed archive format needs a kernel-ring
+//! dependency this workspace does not carry yet (ADR-0019 requires a dedicated, reviewed ADR
+//! for that - the same bar `libc`/`cancellai-sealedfs` cleared under ADR-0017, not yet spent
+//! here), so this story does not implement byte compression. What it does implement, with zero
+//! new dependencies, is the cheapest real integrity signal available from information this seam
+//! already observes: the source's byte length, captured at the same open-time identity check
+//! every move already performs, written as a plain-decimal sidecar
+//! (`<destination>.archive-length.json`, `str`/`u64` only - no serialization dependency).
+//! [`verify_archive_integrity`] re-derives the archived copy's current length and compares it -
+//! a length mismatch is exactly what a truncation or in-place corruption produces, though it
+//! cannot detect every possible content change a cryptographic hash would (disclosed above and
+//! in that function's own doc, not overclaimed as more than it is).
 
 use std::path::{Path, PathBuf};
 
@@ -111,6 +128,15 @@ pub enum MutationOperation {
     /// (E12-S02). The reverse of `Quarantine`'s move, without its sidecar - the destination
     /// here is the artifact's original provider location, not cancellAI's own store.
     Restore { destination: PathBuf },
+    /// Move an artifact into cancellAI's own archive store (E12-S03). Same shape as
+    /// `Quarantine` - `record` is the same kind of caller-composed, contentless metadata
+    /// sidecar - plus a second, platform-authored length sidecar this seam writes on its own
+    /// (see module docs, "Archive (E12-S03)"): a real compressed archive format is a disclosed
+    /// residual, not implemented here (no new kernel-ring dependency without a dedicated ADR).
+    Archive {
+        destination: PathBuf,
+        record: Vec<u8>,
+    },
 }
 
 /// Why a real mutation attempt failed. Always the underlying OS error text, or this seam's
@@ -153,6 +179,10 @@ impl MutationExecutor for SystemMutationExecutor {
             MutationOperation::Restore { destination } => {
                 confirmed_restore_move(target, expected, &destination)
             }
+            MutationOperation::Archive {
+                destination,
+                record,
+            } => confirmed_archive_move(target, expected, &destination, &record),
         }
     }
 }
@@ -336,29 +366,15 @@ fn confirmed_quarantine_move_inner(
     record: &[u8],
     between_open_and_move: impl FnOnce(),
 ) -> Result<(), MutationError> {
-    let dest_sealed = confirmed_move_inner(source, expected, destination, between_open_and_move)?;
-
-    // Contentless restore-metadata sidecar, written atomically next to the moved object once
-    // the move itself has already succeeded - its own bytes never carry artifact payload
-    // content (docs/architecture/PERSISTENCE_MODEL.md's quarantine store rules), only what a
-    // later restore needs to find and verify it. A failure here does not undo the move: the
-    // artifact is already safely quarantined (non-destructive), it is simply missing a restore
-    // record until repaired - a disclosed residual, not silent data loss.
-    let dest_name = destination
-        .file_name()
-        .and_then(|n| n.to_str())
-        .expect("already validated by confirmed_move_inner above");
-    let record_name = format!("{dest_name}.quarantine-record.json");
-    let tmp_name = format!("{dest_name}.quarantine-record.json.tmp");
-    dest_sealed
-        .write_new_child_atomically(&tmp_name, &record_name, record)
-        .map_err(|e| {
-            MutationError(format!(
-                "quarantine move succeeded but the restore record could not be written: {e}"
-            ))
-        })?;
-
-    Ok(())
+    let (dest_sealed, _source_length) =
+        confirmed_move_inner(source, expected, destination, between_open_and_move)?;
+    write_move_record(
+        &dest_sealed,
+        destination,
+        "quarantine-record",
+        record,
+        "quarantine move",
+    )
 }
 
 /// The restore counterpart of [`confirmed_quarantine_move`] (E12-S02): the identical
@@ -386,20 +402,102 @@ fn confirmed_restore_move_inner(
     Ok(())
 }
 
+/// The archive counterpart of [`confirmed_quarantine_move`] (E12-S03): the identical
+/// identity-confirmed, no-clobber move, plus two sidecars written atomically once it succeeds -
+/// the caller-supplied opaque `record` (format/version/identity metadata, exactly like
+/// `Quarantine`'s own) and a second, platform-authored `.archive-length` sidecar recording the
+/// source's byte length observed at open time. That length is this seam's own contribution to
+/// "verifiable archive integrity" (the story's AC) without a new dependency: no cryptographic
+/// content hash is computed here (that would need a reviewed kernel-ring crate addition - see
+/// module docs and [`verify_archive_integrity`]'s own doc for the disclosed residual this
+/// leaves), but a later truncation or corruption of the archived copy changes its length, which
+/// this plain-decimal sidecar - written with zero new dependencies, `str`/`u64` only - is
+/// enough to detect.
+#[cfg(unix)]
+fn confirmed_archive_move(
+    source: &Path,
+    expected: &IdentityToken,
+    destination: &Path,
+    record: &[u8],
+) -> Result<(), MutationError> {
+    refuse_unverified_wsl2_mutation(SystemEnvironmentObserver.detect())?;
+    confirmed_archive_move_inner(source, expected, destination, record, || {})
+}
+
+#[cfg(unix)]
+fn confirmed_archive_move_inner(
+    source: &Path,
+    expected: &IdentityToken,
+    destination: &Path,
+    record: &[u8],
+    between_open_and_move: impl FnOnce(),
+) -> Result<(), MutationError> {
+    let (dest_sealed, source_length) =
+        confirmed_move_inner(source, expected, destination, between_open_and_move)?;
+    write_move_record(
+        &dest_sealed,
+        destination,
+        "archive-record",
+        record,
+        "archive",
+    )?;
+    write_move_record(
+        &dest_sealed,
+        destination,
+        ARCHIVE_LENGTH_SIDECAR_SUFFIX,
+        source_length.to_string().as_bytes(),
+        "archive",
+    )
+}
+
+/// The suffix [`confirmed_archive_move_inner`] writes the length sidecar under and
+/// [`verify_archive_integrity`] reads it back from - one constant so the writer and reader
+/// cannot silently drift apart by naming convention alone. Not itself platform-gated: the
+/// verify side is plain, portable `std::fs` and has no OS-specific requirement of its own.
+const ARCHIVE_LENGTH_SIDECAR_SUFFIX: &str = "archive-length";
+
+/// Writes `bytes` atomically as `<destination's file name>.<suffix>.json` next to an already-
+/// moved object, against the destination's own already-held [`cancellai_sealedfs::SealedRoot`]
+/// (no second, separately-racy `bind_existing`). Shared by [`confirmed_quarantine_move_inner`]
+/// and [`confirmed_archive_move_inner`]; `verb` names the move in the error text only.
+#[cfg(unix)]
+fn write_move_record(
+    dest_sealed: &cancellai_sealedfs::SealedRoot,
+    destination: &Path,
+    suffix: &str,
+    bytes: &[u8],
+    verb: &str,
+) -> Result<(), MutationError> {
+    let dest_name = destination
+        .file_name()
+        .and_then(|n| n.to_str())
+        .expect("already validated by confirmed_move_inner above");
+    let record_name = format!("{dest_name}.{suffix}.json");
+    let tmp_name = format!("{dest_name}.{suffix}.json.tmp");
+    dest_sealed
+        .write_new_child_atomically(&tmp_name, &record_name, bytes)
+        .map_err(|e| {
+            MutationError(format!(
+                "{verb} succeeded but its {suffix} sidecar could not be written: {e}"
+            ))
+        })
+}
+
 /// The shared identity-confirmed, handle-relative move: open-time and immediately-before
 /// checks around `between_open_and_move` (mirroring [`confirmed_delete_file_inner`]'s own two
 /// checks around the unlink), then a no-clobber `renameat` via
 /// `cancellai_sealedfs::rename_child_matching_unix_identity`. Returns the destination's own
-/// held [`cancellai_sealedfs::SealedRoot`] so [`confirmed_quarantine_move_inner`] can write its
-/// sidecar against the same handle without a second, separately-racy `bind_existing` call;
-/// [`confirmed_restore_move_inner`] simply discards it.
+/// held [`cancellai_sealedfs::SealedRoot`] (so a caller writing a sidecar can do it against the
+/// same handle, without a second, separately-racy `bind_existing` call) and the source's byte
+/// length observed at the same open-time check (E12-S03: the cheapest integrity signal this
+/// seam can record without a new dependency - see [`confirmed_archive_move_inner`]).
 #[cfg(unix)]
 fn confirmed_move_inner(
     source: &Path,
     expected: &IdentityToken,
     destination: &Path,
     between_open_and_move: impl FnOnce(),
-) -> Result<cancellai_sealedfs::SealedRoot, MutationError> {
+) -> Result<(cancellai_sealedfs::SealedRoot, u64), MutationError> {
     use std::os::unix::fs::MetadataExt;
 
     // This Unix-only move path has no verified interpretation of a `Windows` identity token -
@@ -431,6 +529,7 @@ fn confirmed_move_inner(
             "target identity changed between revalidation and move (open-time check)".to_string(),
         ));
     }
+    let source_length = before.len();
 
     between_open_and_move();
 
@@ -499,7 +598,7 @@ fn confirmed_move_inner(
         )
         .map_err(|e| MutationError(format!("move failed: {e}")))?;
 
-    Ok(dest_sealed)
+    Ok((dest_sealed, source_length))
 }
 
 /// No verified handle-relative rename exists for Windows yet (mirroring `confirmed_delete_file`'s
@@ -555,6 +654,35 @@ fn confirmed_restore_move(
 ) -> Result<(), MutationError> {
     Err(MutationError(
         "confirmed restore move is not implemented on this platform".to_string(),
+    ))
+}
+
+/// No verified handle-relative rename exists for Windows yet - the archive-side counterpart
+/// of `confirmed_quarantine_move`'s own Windows refusal (E12-S03 residual, disclosed rather
+/// than silently gapped).
+#[cfg(windows)]
+fn confirmed_archive_move(
+    _source: &Path,
+    _expected: &IdentityToken,
+    _destination: &Path,
+    _record: &[u8],
+) -> Result<(), MutationError> {
+    Err(MutationError(
+        "confirmed archive move is not implemented on this platform yet (E12-S03 residual - \
+         Windows archive is a follow-up story)"
+            .to_string(),
+    ))
+}
+
+#[cfg(not(any(unix, windows)))]
+fn confirmed_archive_move(
+    _source: &Path,
+    _expected: &IdentityToken,
+    _destination: &Path,
+    _record: &[u8],
+) -> Result<(), MutationError> {
+    Err(MutationError(
+        "confirmed archive move is not implemented on this platform".to_string(),
     ))
 }
 
@@ -674,6 +802,63 @@ fn confirmed_delete_file(_target: &Path, _expected: &IdentityToken) -> Result<()
     Err(MutationError(
         "confirmed file deletion is not implemented on this platform".to_string(),
     ))
+}
+
+/// What checking an archived artifact's own length sidecar (E12-S03) found. Every branch other
+/// than [`Self::Verified`] is a named refusal - there is no fallback that treats "could not
+/// check" as "probably fine" (this workspace's fail-closed posture, applied to integrity
+/// verification rather than to a mutation decision).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ArchiveIntegrity {
+    /// The archived copy's current length matches what was recorded when it was archived.
+    Verified,
+    /// The archived copy's current length differs from what was recorded at archive time - a
+    /// truncation, extension, or other in-place modification since then. Refuse to trust it.
+    LengthMismatch { recorded: u64, actual: u64 },
+    /// The archived copy no longer exists, or could not be examined, where the sidecar says it
+    /// should.
+    ArchivedCopyUnreadable(String),
+    /// The length sidecar itself is missing or could not be read.
+    RecordUnreadable(String),
+    /// The length sidecar's content is not a valid recorded length.
+    RecordMalformed(String),
+}
+
+/// Verifies an archived artifact's recorded byte length still matches its current one - this
+/// story's disclosed, dependency-free interpretation of "verifiable archive integrity"
+/// (`docs/architecture/PERSISTENCE_MODEL.md`'s "Archive integrity must be verified before any
+/// source purge"; see this module's own "Archive (E12-S03)" docs for why a cryptographic
+/// content hash is not implemented here). Not wired to a real purge caller yet, since none
+/// exists - E12-S04 is blocked on E13-S02.
+///
+/// Plain, portable `std::fs` reads, not the handle-relative no-follow discipline the move side
+/// uses: this function is read-only inspection with no side effect to protect, unlike a real
+/// mutation.
+pub fn verify_archive_integrity(archived_path: &Path) -> ArchiveIntegrity {
+    let mut sidecar_name = archived_path
+        .file_name()
+        .map(std::ffi::OsStr::to_os_string)
+        .unwrap_or_default();
+    sidecar_name.push(format!(".{ARCHIVE_LENGTH_SIDECAR_SUFFIX}.json"));
+    let sidecar_path = archived_path.with_file_name(sidecar_name);
+
+    let recorded_text = match std::fs::read_to_string(&sidecar_path) {
+        Ok(text) => text,
+        Err(e) => return ArchiveIntegrity::RecordUnreadable(e.to_string()),
+    };
+    let recorded: u64 = match recorded_text.trim().parse() {
+        Ok(value) => value,
+        Err(e) => return ArchiveIntegrity::RecordMalformed(e.to_string()),
+    };
+    let actual = match std::fs::metadata(archived_path) {
+        Ok(meta) => meta.len(),
+        Err(e) => return ArchiveIntegrity::ArchivedCopyUnreadable(e.to_string()),
+    };
+    if actual == recorded {
+        ArchiveIntegrity::Verified
+    } else {
+        ArchiveIntegrity::LengthMismatch { recorded, actual }
+    }
 }
 
 /// Test-only seam: synthesize a mutation outcome for a specific path without touching the
@@ -1246,7 +1431,7 @@ mod tests {
             )
             .expect_err("a sidecar write failure must be reported, not silently swallowed");
         assert!(
-            err.0.contains("restore record could not be written"),
+            err.0.contains("sidecar could not be written"),
             "reason was: {}",
             err.0
         );
@@ -1398,6 +1583,217 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn system_executor_archives_a_real_file_and_writes_both_sidecars() {
+        let source_dir = TempDir::new("archive-source");
+        let dest_dir = TempDir::new("archive-dest");
+        let file = source_dir.path("artifact.txt");
+        std::fs::write(&file, b"hello world").expect("create file");
+        let expected = identity_of(&file);
+        let destination = dest_dir.path("archived-artifact.txt");
+
+        let executor = SystemMutationExecutor;
+        executor
+            .mutate(
+                &file,
+                &expected,
+                MutationOperation::Archive {
+                    destination: destination.clone(),
+                    record: br#"{"format":"cancellai-archive","format_version":1}"#.to_vec(),
+                },
+            )
+            .expect("archive move should succeed");
+
+        assert!(!file.exists(), "the source must no longer exist");
+        assert_eq!(
+            std::fs::read_to_string(&destination).expect("destination content"),
+            "hello world"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dest_dir.path("archived-artifact.txt.archive-record.json"))
+                .expect("archive record must exist"),
+            r#"{"format":"cancellai-archive","format_version":1}"#
+        );
+        assert_eq!(
+            std::fs::read_to_string(dest_dir.path("archived-artifact.txt.archive-length.json"))
+                .expect("length sidecar must exist"),
+            "11",
+            "length sidecar must record the source's real byte length"
+        );
+
+        assert_eq!(
+            verify_archive_integrity(&destination),
+            ArchiveIntegrity::Verified
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn verify_archive_integrity_detects_a_truncated_or_corrupted_archive() {
+        // The story's own "corruption" verification-contract item: the archived copy is
+        // modified after archiving (here, truncated) - integrity must be refused, not assumed.
+        let source_dir = TempDir::new("archive-corruption-source");
+        let dest_dir = TempDir::new("archive-corruption-dest");
+        let file = source_dir.path("artifact.txt");
+        std::fs::write(&file, b"hello world").expect("create file");
+        let expected = identity_of(&file);
+        let destination = dest_dir.path("archived-artifact.txt");
+
+        SystemMutationExecutor
+            .mutate(
+                &file,
+                &expected,
+                MutationOperation::Archive {
+                    destination: destination.clone(),
+                    record: b"{}".to_vec(),
+                },
+            )
+            .expect("archive move should succeed");
+
+        std::fs::write(&destination, b"corrupted").expect("simulate post-archive corruption");
+
+        assert_eq!(
+            verify_archive_integrity(&destination),
+            ArchiveIntegrity::LengthMismatch {
+                recorded: 11,
+                actual: 9
+            }
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn verify_archive_integrity_fails_closed_when_the_length_sidecar_is_missing() {
+        let dir = TempDir::new("archive-no-sidecar");
+        let path = dir.path("orphan.txt");
+        std::fs::write(&path, b"hello").expect("create file with no sidecar");
+
+        assert!(matches!(
+            verify_archive_integrity(&path),
+            ArchiveIntegrity::RecordUnreadable(_)
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn verify_archive_integrity_fails_closed_when_the_archived_copy_is_gone() {
+        let dir = TempDir::new("archive-copy-gone");
+        let path = dir.path("gone.txt");
+        // Write only the sidecar - the "archived copy" itself never existed at this path.
+        std::fs::write(dir.path("gone.txt.archive-length.json"), b"5").expect("write sidecar");
+
+        assert!(matches!(
+            verify_archive_integrity(&path),
+            ArchiveIntegrity::ArchivedCopyUnreadable(_)
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn verify_archive_integrity_fails_closed_when_the_sidecar_content_is_malformed() {
+        let dir = TempDir::new("archive-malformed-sidecar");
+        let path = dir.path("artifact.txt");
+        std::fs::write(&path, b"hello").expect("create file");
+        std::fs::write(
+            dir.path("artifact.txt.archive-length.json"),
+            b"not-a-number",
+        )
+        .expect("write malformed sidecar");
+
+        assert!(matches!(
+            verify_archive_integrity(&path),
+            ArchiveIntegrity::RecordMalformed(_)
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn confirmed_archive_move_refuses_to_clobber_an_existing_destination() {
+        let source_dir = TempDir::new("archive-destination-exists-source");
+        let dest_dir = TempDir::new("archive-destination-exists-dest");
+        let file = source_dir.path("artifact.txt");
+        std::fs::write(&file, b"hello").expect("create file");
+        let expected = identity_of(&file);
+        let destination = dest_dir.path("archived.txt");
+        std::fs::write(&destination, b"already here").expect("pre-populate destination");
+
+        let err = SystemMutationExecutor
+            .mutate(
+                &file,
+                &expected,
+                MutationOperation::Archive {
+                    destination: destination.clone(),
+                    record: b"{}".to_vec(),
+                },
+            )
+            .expect_err("an existing destination must never be silently replaced");
+        assert!(err.0.contains("move failed"), "reason was: {}", err.0);
+        assert!(file.exists(), "the source must survive a refused move");
+        assert_eq!(
+            std::fs::read_to_string(&destination).expect("destination content"),
+            "already here"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn confirmed_archive_move_rejects_a_target_already_swapped_before_open() {
+        let source_dir = TempDir::new("archive-swapped-before-open");
+        let dest_dir = TempDir::new("archive-swapped-before-open-dest");
+        let file = source_dir.path("artifact.txt");
+        std::fs::write(&file, b"original").expect("create original");
+        let expected = identity_of(&file);
+        let destination = dest_dir.path("archived.txt");
+
+        std::fs::remove_file(&file).expect("remove original");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        std::fs::write(&file, b"replacement").expect("create replacement");
+
+        let err = SystemMutationExecutor
+            .mutate(
+                &file,
+                &expected,
+                MutationOperation::Archive {
+                    destination: destination.clone(),
+                    record: b"{}".to_vec(),
+                },
+            )
+            .expect_err("a target swapped before open must be rejected, not archived");
+        assert!(err.0.contains("open-time check"), "reason was: {}", err.0);
+        assert!(
+            file.exists(),
+            "the replacement must survive - it was never the intended target"
+        );
+        assert!(!destination.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn confirmed_archive_move_detects_a_target_swapped_between_open_and_move() {
+        let source_dir = TempDir::new("archive-swapped-mid-flight");
+        let dest_dir = TempDir::new("archive-swapped-mid-flight-dest");
+        let file = source_dir.path("artifact.txt");
+        std::fs::write(&file, b"original").expect("create original");
+        let expected = identity_of(&file);
+        let destination = dest_dir.path("archived.txt");
+
+        let result = confirmed_archive_move_inner(&file, &expected, &destination, b"{}", || {
+            std::fs::remove_file(&file).expect("simulate concurrent removal of the original");
+            std::fs::write(&file, b"replacement").expect("simulate concurrent replacement");
+        });
+
+        assert!(
+            result.is_err(),
+            "a mid-flight swap must never be reported as a successful archive"
+        );
+        assert!(
+            file.exists(),
+            "the replacement must survive - only the confirmed original may ever be archived"
+        );
+        assert!(!destination.exists());
+    }
+
     #[cfg(windows)]
     struct WindowsTempDir(std::path::PathBuf);
 
@@ -1504,6 +1900,34 @@ mod tests {
                 },
             )
             .expect_err("restore on Windows must be refused, not silently attempted");
+        assert!(
+            err.0.contains("not implemented on this platform"),
+            "reason was: {}",
+            err.0
+        );
+        assert!(file.exists(), "the source must survive the refusal");
+        assert!(!destination.exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_system_executor_refuses_an_archive_move_as_a_disclosed_residual() {
+        let dir = WindowsTempDir::new("archive-not-implemented");
+        let file = dir.path("artifact.txt");
+        std::fs::write(&file, b"hello").expect("create file");
+        let expected = windows_identity_of(&file);
+        let destination = dir.path("archived.txt");
+
+        let err = SystemMutationExecutor
+            .mutate(
+                &file,
+                &expected,
+                MutationOperation::Archive {
+                    destination: destination.clone(),
+                    record: b"{}".to_vec(),
+                },
+            )
+            .expect_err("archive on Windows must be refused, not silently attempted");
         assert!(
             err.0.contains("not implemented on this platform"),
             "reason was: {}",

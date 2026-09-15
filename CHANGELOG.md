@@ -74,6 +74,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   already goes through. `ApprovedRoot::prepare_destination`'s return type is renamed
   `MoveDestination`, since it now serves both directions. Unix-only for now, matching
   `Quarantine`'s own residual.
+- Wired archive as a real mutation, without byte compression (E12-S03, CR3,
+  `docs/architecture/PERSISTENCE_MODEL.md` "Archive"): `ActionClass::Archive` (previously
+  refused unconditionally) now builds a real
+  `cancellai_platform::mutation::MutationOperation::Archive`, sharing the same
+  identity-confirmed, no-clobber move `Quarantine`/`Restore` use. A real compressed archive
+  format needs a kernel-ring dependency this workspace does not carry yet
+  (`docs/adrs/0019-dependency-rings-per-crate.md` requires a dedicated, reviewed ADR for one) -
+  deliberately out of scope here. What ships instead, with zero new dependencies: an explicit
+  format/version record (`SealedPlan::seal_archive`'s AC1), and
+  `verify_archive_integrity`, which compares an archived artifact's current byte length against
+  a length sidecar captured at archive time - the cheapest real corruption/truncation signal
+  available without a new dependency, disclosed as weaker than a cryptographic hash rather than
+  overclaimed. `mutation_executor::execute` requires `Reversibility::Archivable` specifically
+  for an archive plan (pre-existing gate, now actually reachable), which is what keeps
+  "compression never changes semantic classification to disposable" true by construction.
+  Unix-only for now, matching `Quarantine`/`Restore`'s own residual.
 
 ### Fixed
 

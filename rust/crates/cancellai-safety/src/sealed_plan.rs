@@ -59,9 +59,9 @@ pub struct SealedPlan {
     authority: AuthorityLevel,
     reversibility: Reversibility,
     process_guard: Option<&'static [&'static str]>,
-    /// The move destination (E12-S01/E12-S02) - `Some` only for a plan built by
-    /// [`Self::seal_quarantine`] or [`Self::seal_restore`]. Every other action class carries
-    /// `None`: there is nothing to move anywhere else to.
+    /// The move destination (E12-S01/E12-S02/E12-S03) - `Some` only for a plan built by
+    /// [`Self::seal_quarantine`], [`Self::seal_restore`] or [`Self::seal_archive`]. Every other
+    /// action class carries `None`: there is nothing to move anywhere else to.
     destination_path: Option<PathBuf>,
     /// The identity of the destination's own root, recorded the same way `root_identity` is -
     /// from a real [`MoveDestination`], never a bare caller-suppliable value - so
@@ -216,6 +216,30 @@ impl SealedPlan {
             root.identity().clone(),
             target.identity().clone(),
             ActionClass::Restore,
+            authority,
+            reversibility,
+            None,
+            Some(destination.path().to_path_buf()),
+            Some(destination.root_identity().clone()),
+        )
+    }
+
+    /// Seal an archive plan for `target`, additionally recording `destination` (E12-S03) -
+    /// same shape as [`Self::seal_quarantine`]: a second, cancellAI-controlled root (the
+    /// archive store), the same SI-018 same-device comparison at execution time.
+    pub fn seal_archive(
+        root: &ApprovedRoot,
+        root_fingerprint: RootFingerprint,
+        target: &BoundedPath,
+        destination: &MoveDestination,
+        authority: AuthorityLevel,
+        reversibility: Reversibility,
+    ) -> Self {
+        Self::new_with_destination(
+            root_fingerprint,
+            root.identity().clone(),
+            target.identity().clone(),
+            ActionClass::Archive,
             authority,
             reversibility,
             None,
@@ -574,6 +598,55 @@ mod tests {
         );
 
         assert_eq!(plan.action_class(), ActionClass::Restore);
+        assert_eq!(plan.destination_path(), Some(destination.path()));
+        assert_eq!(
+            plan.destination_root_identity(),
+            Some(destination.root_identity())
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn seal_archive_records_the_destination_from_a_real_capability() {
+        use cancellai_platform::{SystemIdentityObserver, SystemPathResolver};
+
+        let dir = std::env::temp_dir().join(format!(
+            "cancellai-sealed-plan-seal-archive-test-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let source_root_path = dir.join("source");
+        std::fs::create_dir_all(&source_root_path).expect("create source root");
+        let archive_root_path = dir.join("archive");
+        std::fs::create_dir_all(&archive_root_path).expect("create archive root");
+        let file = source_root_path.join("artifact.txt");
+        std::fs::write(&file, b"hello").expect("create file");
+
+        let resolver = SystemPathResolver;
+        let observer = SystemIdentityObserver;
+        let source_root =
+            ApprovedRoot::establish(&source_root_path, &resolver, &observer).expect("source root");
+        let target = source_root
+            .bind(&file, &resolver, &observer)
+            .expect("bind target");
+        let archive_root = ApprovedRoot::establish(&archive_root_path, &resolver, &observer)
+            .expect("archive root");
+        let destination = archive_root
+            .prepare_destination("archived.txt", &observer)
+            .expect("prepare destination");
+
+        let plan = SealedPlan::seal_archive(
+            &source_root,
+            fingerprint(),
+            &target,
+            &destination,
+            AuthorityLevel::Quarantine,
+            Reversibility::Archivable,
+        );
+
+        assert_eq!(plan.action_class(), ActionClass::Archive);
         assert_eq!(plan.destination_path(), Some(destination.path()));
         assert_eq!(
             plan.destination_root_identity(),

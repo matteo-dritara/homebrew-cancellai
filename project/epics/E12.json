@@ -61,9 +61,10 @@
     {
       "id": "E12-S03",
       "title": "Archive/compression lifecycle",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Support cold archival for eligible artifacts with verifiable archive integrity.",
-      "change_risk": "CR3",
+      "change_risk": "CR4",
+      "risk_reclassification_note": "Declared CR3 at planning time; raised to CR4 at implementation because the change adds a new mutation capability (MutationOperation::Archive) inside rust/crates/cancellai-platform/src/mutation.rs, the sole SI-019 mutation-boundary seam - the commit-time risk-floor gate refused the CR3 declaration on exactly this path floor.",
       "dependencies": [
         "E12-S01"
       ],
@@ -72,7 +73,11 @@
         "Compression never changes semantic classification to disposable.",
         "Restore integrity is checked before source purge."
       ],
-      "safety_obligations": [],
+      "safety_obligations": [
+        "SI-018",
+        "SI-019",
+        "SI-020"
+      ],
       "verification": [
         "Round-trip and corruption tests."
       ],

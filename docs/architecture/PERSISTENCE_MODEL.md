@@ -89,6 +89,17 @@ Unix only for now; Windows quarantine is a disclosed residual.
 
 Archive is for artifacts the user wants to retain cheaply. Archive integrity must be verified before any source purge. Compression never changes risk class or authority ceiling by itself.
 
+E12-S03 implements the move (the same identity-confirmed, no-clobber move E12-S01's quarantine
+uses, into a second, cancellAI-controlled archive store) and an explicit format/version record,
+but not real byte compression: that needs a kernel-ring dependency this workspace does not carry
+yet (`docs/adrs/0019-dependency-rings-per-crate.md` requires a dedicated, reviewed ADR for one,
+the same bar `libc`/`cancellai-sealedfs` cleared - not yet spent here). "Verifiable archive
+integrity" is discharged for now by the cheapest real signal available without a new dependency:
+the source's byte length, captured at open time and compared again on demand
+(`cancellai_platform::mutation::verify_archive_integrity`) - a truncation or in-place corruption
+changes length and is refused, though this is weaker than a cryptographic content hash and is
+recorded as a disclosed residual, not overclaimed as more.
+
 ## Tombstones
 
 After permanent purge, retain only an allowlisted metadata tombstone such as:

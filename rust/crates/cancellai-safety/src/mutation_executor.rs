@@ -57,6 +57,21 @@ struct QuarantineRecord<'a> {
     root: &'a RootFingerprint,
 }
 
+/// The caller-composed, contentless archive-record sidecar (E12-S03) - the same shape
+/// [`QuarantineRecord`] carries, plus an explicit format/version (the story's own AC1). The
+/// platform layer treats this as opaque bytes, exactly like `QuarantineRecord`; it additionally
+/// writes its own, separately-authored length sidecar (see `cancellai_platform::mutation`'s
+/// module docs, "Archive (E12-S03)") - this struct carries no integrity signal of its own,
+/// since composing it requires no file-content access, which this crate does not perform.
+#[derive(serde::Serialize)]
+struct ArchiveRecord<'a> {
+    format: &'static str,
+    format_version: u32,
+    original_path: &'a std::path::Path,
+    original_identity: &'a IdentityToken,
+    root: &'a RootFingerprint,
+}
+
 /// The outcome of attempting one [`SealedPlan`]. Every branch is explicit - there is no
 /// "probably fine" case, and a caller cannot mistake a safety block for a success (SI-014's
 /// same principle, applied to a single action rather than a whole run).
@@ -178,9 +193,31 @@ pub fn execute(
             };
             MutationOperation::Restore { destination }
         }
-        // Archive/Observe have no OS-primitive mapping this story defines. Refusing is the
-        // fail-closed answer, not a guess at what either would do.
-        ActionClass::Observe | ActionClass::Archive => {
+        // E12-S03: same destination/boundary check as Quarantine, moving into cancellAI's own
+        // archive store instead. `format`/`format_version` are this story's AC1 ("Archive
+        // format/version is explicit") - no real compression is implemented (module docs,
+        // "Archive (E12-S03)"), so `format_version` names this exact, uncompressed shape.
+        ActionClass::Archive => {
+            let destination = match destination_for(plan) {
+                Ok(destination) => destination,
+                Err(reason) => return ActionResult::SafelyBlocked { reason },
+            };
+            let record = serde_json::to_vec(&ArchiveRecord {
+                format: "cancellai-archive-uncompressed",
+                format_version: 1,
+                original_path: target.path(),
+                original_identity: plan.artifact_identity(),
+                root: plan.root(),
+            })
+            .expect("archive record fields (paths, identity tokens, root fingerprint) are always serializable");
+            MutationOperation::Archive {
+                destination,
+                record,
+            }
+        }
+        // Observe has no OS-primitive mapping this story defines. Refusing is the fail-closed
+        // answer, not a guess at what it would do.
+        ActionClass::Observe => {
             return ActionResult::SafelyBlocked {
                 reason: format!(
                     "{:?} is not an action class this executor performs yet",
@@ -756,6 +793,163 @@ mod tests {
             target.path().exists(),
             "the target must survive a stale restore plan"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn execute_archives_a_real_file_through_the_full_stack() {
+        let (_source_dir, target, _identity) = real_bounded_file();
+        let (_dest_dir, destination) = real_move_destination("archive-root");
+        let source_root = crate::root_capability::ApprovedRoot::establish(
+            &_source_dir.0,
+            &cancellai_platform::SystemPathResolver,
+            &cancellai_platform::SystemIdentityObserver,
+        )
+        .expect("re-establish source root");
+        let plan = SealedPlan::seal_archive(
+            &source_root,
+            fingerprint(),
+            &target,
+            &destination,
+            AuthorityLevel::Quarantine,
+            Reversibility::Archivable,
+        );
+
+        let observer = cancellai_platform::SystemIdentityObserver;
+        let executor = SystemMutationExecutor;
+        let process = SystemProcessObserver;
+
+        let result = execute(&plan, &target, &observer, &executor, &process);
+        assert_eq!(result, ActionResult::Succeeded);
+        assert!(!target.path().exists(), "the source must no longer exist");
+        assert_eq!(
+            std::fs::read_to_string(destination.path()).expect("destination content"),
+            "hello"
+        );
+        assert_eq!(
+            cancellai_platform::mutation::verify_archive_integrity(destination.path()),
+            cancellai_platform::mutation::ArchiveIntegrity::Verified
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn execute_blocks_an_archive_plan_whose_destination_crosses_a_filesystem_boundary() {
+        let (_dir, target, identity) = real_bounded_file();
+        let mismatched_destination_root = IdentityToken::Unix {
+            device: target.root_identity().device() + 1,
+            inode: 0,
+            kind: FileKind::Directory,
+            modified: FrozenClock::at(1_000).now(),
+            modified_nanos: 0,
+        };
+        let plan = SealedPlan::new_with_destination(
+            fingerprint(),
+            target.root_identity().clone(),
+            identity.clone(),
+            ActionClass::Archive,
+            AuthorityLevel::Quarantine,
+            Reversibility::Archivable,
+            None,
+            Some(PathBuf::from("/archive/somewhere/dest.txt")),
+            Some(mismatched_destination_root),
+        );
+
+        let mut observer = SyntheticIdentityObserver::new();
+        observer.set(target.path(), IdentityObservation::Identity(identity));
+        let mut executor = SyntheticMutationExecutor::new();
+        executor.set(
+            target.path(),
+            Err(MutationError(
+                "this must never be observed - mutate() should not have been called".into(),
+            )),
+        );
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
+
+        let result = execute(&plan, &target, &observer, &executor, &process);
+        assert_eq!(
+            result,
+            ActionResult::SafelyBlocked {
+                reason: "destination is on a different filesystem/volume than the source root"
+                    .to_string()
+            }
+        );
+        assert!(
+            target.path().exists(),
+            "the target must survive a refused archive move"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn execute_refuses_an_archive_plan_with_insufficient_authority() {
+        let (_dir, target, identity) = real_bounded_file();
+        let plan = SealedPlan::new_with_destination(
+            fingerprint(),
+            target.root_identity().clone(),
+            identity.clone(),
+            ActionClass::Archive,
+            AuthorityLevel::Observe,
+            Reversibility::Archivable,
+            None,
+            Some(PathBuf::from("/archive/dest.txt")),
+            Some(target.root_identity().clone()),
+        );
+
+        let mut observer = SyntheticIdentityObserver::new();
+        observer.set(target.path(), IdentityObservation::Identity(identity));
+        let mut executor = SyntheticMutationExecutor::new();
+        executor.set(
+            target.path(),
+            Err(MutationError(
+                "this must never be observed - mutate() should not have been called".into(),
+            )),
+        );
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
+
+        let result = execute(&plan, &target, &observer, &executor, &process);
+        assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
+        assert!(
+            target.path().exists(),
+            "the target must survive an insufficiently-authorized archive plan"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn execute_blocks_an_archive_plan_claiming_quarantinable_reversibility_instead_of_archivable() {
+        // AC2's own guard, exercised at the executor level rather than only in authority.rs's
+        // own unit tests: an Archive plan must carry Reversibility::Archivable specifically -
+        // this is what keeps "compression never changes semantic classification to disposable"
+        // true by construction, since a plan claiming the wrong reversibility is refused before
+        // any move is ever attempted.
+        let (_dir, target, identity) = real_bounded_file();
+        let plan = SealedPlan::new_with_destination(
+            fingerprint(),
+            target.root_identity().clone(),
+            identity.clone(),
+            ActionClass::Archive,
+            AuthorityLevel::Quarantine,
+            Reversibility::Quarantinable,
+            None,
+            Some(PathBuf::from("/archive/dest.txt")),
+            Some(target.root_identity().clone()),
+        );
+
+        let mut observer = SyntheticIdentityObserver::new();
+        observer.set(target.path(), IdentityObservation::Identity(identity));
+        let mut executor = SyntheticMutationExecutor::new();
+        executor.set(
+            target.path(),
+            Err(MutationError(
+                "this must never be observed - mutate() should not have been called".into(),
+            )),
+        );
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
+
+        let result = execute(&plan, &target, &observer, &executor, &process);
+        assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
+        assert!(target.path().exists());
     }
 
     #[cfg(unix)]

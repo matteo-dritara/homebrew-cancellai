@@ -11,16 +11,16 @@ Epics: **32** | Stories: **165**
 - `blocked`: 2
 - `cancelled`: 1
 - `done`: 140
-- `planned`: 20
-- `ready_for_review`: 2
+- `planned`: 19
+- `ready_for_review`: 3
 
 ## Change risk distribution
 
 - `CR0`: 14
 - `CR1`: 39
 - `CR2`: 52
-- `CR3`: 28
-- `CR4`: 32
+- `CR3`: 27
+- `CR4`: 33
 
 ## Explicitly ready work
 
@@ -30,3 +30,4 @@ Epics: **32** | Stories: **165**
 
 - **E12-S01** - Quarantine store semantics (CR4)
 - **E12-S02** - Restore protocol (CR4)
+- **E12-S03** - Archive/compression lifecycle (CR4)
