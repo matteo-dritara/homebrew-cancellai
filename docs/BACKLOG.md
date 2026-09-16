@@ -1412,7 +1412,7 @@ Persist only bounded metadata required for lifecycle, audit, undo, and Guardian 
 
 ### E13-S03 - Analytical rollups and retention
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E13-S01 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E13-S01 | **Safety obligations:** none
 
 **Outcome.** Aggregate fine-grained measurements into hourly/daily/long-term statistics with bounded retention.
 

@@ -106,6 +106,46 @@ Indicative retention strategy:
 
 Exact periods and budgets are product policy, not hard-coded architecture constants.
 
+E13-S03 implements this layer: `cancellai_store::rollup::AnalyticalMemory`, a third, independent
+bundled-SQLite database in this crate (its own `Connection`/file/`PRAGMA user_version` history,
+alongside `CurrentStateStore` and `EventLedger`) that owns its own ingestion
+(`AnalyticalMemory::record_sample`) rather than deriving from Layer 2's ledger events - the two
+layers record different kinds of things (a discrete significant event versus a repeated numeric
+reading) and stay independently retained under their own self-budgets. `RetentionPolicy` carries
+the recent/medium/long window lengths named above as explicit, caller-supplied durations in
+seconds - `RetentionPolicy::DEFAULT` (one day / one week / ninety days) is one reasonable choice,
+not the only legal one, and `RetentionPolicy::new` rejects a policy whose windows are not
+non-decreasing.
+
+`MetricKind` is a closed, exhaustive enum naming the measurements this layer accepts
+(`ArtifactCount`, `ProviderFootprintBytes`, `ReclaimableBytes`, `OrphanCount`, named for
+`docs/architecture/GUARDIAN_MODEL.md`'s own "Detection" signals without committing to its full
+future taxonomy) - a caller cannot smuggle a path, transcript, or other content through the
+metric name, because the type does not admit one. `SampleScope` (`provider_id`, `category`) is
+the same closed, allowlisted dimension shape Layer 2's `EventMetadata` already uses; a sample's
+`value` is a plain number. `tests::rollup_tables_have_only_the_allowlisted_columns` pins the
+actual schema of all four tables (`raw_samples`, `hourly_rollups`, `daily_rollups`,
+`long_term_aggregates`) against this closed set.
+
+`AnalyticalMemory::compact(policy, now)` is the one explicit primitive that ever moves a sample
+or rollup out of its tier - there is no implicit background expiry. One call runs the full raw
+-> hourly -> daily -> long-term cascade in a single transaction: it promotes every raw sample
+whose age has reached the recent window into an hourly bucket (grouped by `metric`, `provider_id`,
+`category`, and the hour it was recorded in - an inclusive boundary, so a sample exactly
+`recent_window_secs` old is promoted, not retained one more cycle), then promotes every hourly
+rollup old enough to leave the medium window into a daily bucket the same way, then promotes every
+daily rollup old enough to leave the long window into one long-term aggregate per `(metric,
+scope)` with no further time bucketing - `PERSISTENCE_MODEL.md`'s own "bounded statistics/
+tombstone aggregates" beyond the long window. Because the cascade runs in that order within one
+call, a `now` that has advanced past more than one window boundary since the last compaction does
+not strand a sample in an intermediate tier: newly promoted hourly/daily rows are themselves
+checked against the next cutoff before the transaction commits. Grouping keys on each row's own
+recorded time (or the bucket it already carries), never on insertion order, so a backdated or
+clock-skewed sample lands in its historically correct bucket instead of corrupting whichever
+bucket happens to be "current." A second `compact` call over unchanged data finds nothing newly
+eligible in any tier and is a no-op - promoting a row and deleting its source happen in the same
+transaction, so nothing is ever double-counted by a later call.
+
 ## Self-budget
 
 cancellAI enforces explicit budgets for:

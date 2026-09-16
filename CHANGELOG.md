@@ -137,6 +137,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   construction, per `docs/architecture/PERSISTENCE_MODEL.md`'s own constraint. `read_all`
   returns events in append order (SQLite's own never-reused `AUTOINCREMENT` id), independent of
   each event's caller-supplied `recorded_at`.
+- Implemented analytical rollups and retention (E13-S03, CR2,
+  `docs/architecture/PERSISTENCE_MODEL.md` "Layer 3: Analytical Memory"): a third, independent
+  bundled-SQLite database, `cancellai_store::rollup::AnalyticalMemory`, alongside
+  `CurrentStateStore` and `EventLedger` in the same crate. `record_sample` ingests fine-grained
+  numeric measurements; `compact(policy, now)` is the one explicit primitive that ages them
+  through the recent/medium/long windows `PERSISTENCE_MODEL.md` names - raw samples into hourly
+  rollups, hourly into daily, daily into one bounded long-term aggregate per `(metric, scope)`
+  beyond the long window - cascading through more than one window boundary in a single call
+  rather than stranding data in an intermediate tier, and grouping every promotion by each
+  sample's own recorded time (never insertion order), so a backdated or clock-skewed sample
+  lands in its historically correct bucket. `RetentionPolicy` carries the three window lengths
+  as explicit, caller-supplied durations (`DEFAULT`: one day / one week / ninety days) rather
+  than hard-coded constants. `MetricKind` is a closed, exhaustive enum (`ArtifactCount`,
+  `ProviderFootprintBytes`, `ReclaimableBytes`, `OrphanCount`) and `SampleScope`
+  (`provider_id`/`category`) mirrors `EventMetadata`'s closed, allowlisted shape - an aggregate
+  stays contentless by construction, never a path/transcript, because the types do not admit one.
 
 ### Fixed
 

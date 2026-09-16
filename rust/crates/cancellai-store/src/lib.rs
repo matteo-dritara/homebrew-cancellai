@@ -7,6 +7,9 @@
 //! [`ledger`] (E13-S02) adds Layer 2, the append-only operational event ledger - a distinct
 //! module with its own `EventLedger`/`Connection`/schema, described in its own module doc.
 //!
+//! [`rollup`] (E13-S03) adds Layer 3, analytical rollups and retention - a third, independent
+//! module with its own `AnalyticalMemory`/`Connection`/schema, described in its own module doc.
+//!
 //! ## Why a bundled `rusqlite` (ADR-0019)
 //!
 //! `cancellai-store` is in ADR-0019's outer ring, which named `rusqlite` with a bundled SQLite
@@ -60,6 +63,12 @@ use std::path::Path;
 /// `CurrentStateStore` - see [`ledger`]'s own module doc for why they stay independent
 /// despite sharing this crate and its `rusqlite` dependency.
 pub mod ledger;
+
+/// Analytical rollups and retention (E13-S03) - Layer 3 of `docs/architecture/PERSISTENCE_MODEL.md`.
+/// A third module and a third independent `AnalyticalMemory`/`Connection` from this file's own
+/// `CurrentStateStore` and [`ledger`]'s `EventLedger` - see [`rollup`]'s own module doc for why
+/// each layer keeps its own schema, file and retention shape despite sharing this crate.
+pub mod rollup;
 
 /// Why a [`CurrentStateStore`] operation failed. Always the underlying SQLite error or a
 /// stored row's own content failing to round-trip as JSON - this crate does not otherwise

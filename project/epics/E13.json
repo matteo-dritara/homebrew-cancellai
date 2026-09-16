@@ -56,7 +56,7 @@
     {
       "id": "E13-S03",
       "title": "Analytical rollups and retention",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Aggregate fine-grained measurements into hourly/daily/long-term statistics with bounded retention.",
       "change_risk": "CR2",
       "dependencies": [
