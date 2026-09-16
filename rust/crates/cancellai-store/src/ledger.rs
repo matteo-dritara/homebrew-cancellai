@@ -627,6 +627,96 @@ impl EventLedger {
         Ok(result)
     }
 
+    /// The oldest and newest [`EventId`] currently present in the ledger, and the total row
+    /// count - `None` when the ledger holds no events. One query (`MIN`/`MAX`/`COUNT` together)
+    /// rather than three separate reads, so a concurrent append or compaction between two
+    /// queries cannot produce a bound that never actually held together at any single instant.
+    /// `docs/architecture/PERSISTENCE_MODEL.md`'s "Self-budget" (SI-026);
+    /// [`EventLedger::compact_oldest_to_fit`] is this method's own caller.
+    pub fn event_id_bounds(&self) -> Result<Option<(EventId, EventId, u64)>, LedgerError> {
+        let (min, max, count): (Option<i64>, Option<i64>, i64) = self.conn.query_row(
+            "SELECT MIN(event_id), MAX(event_id), COUNT(*) FROM ledger_events",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+        Ok(match (min, max) {
+            (Some(min), Some(max)) => Some((
+                EventId(min),
+                EventId(max),
+                u64::try_from(count).unwrap_or(0),
+            )),
+            _ => None,
+        })
+    }
+
+    /// Compacts just enough of the oldest events to bring the ledger's row count down to at most
+    /// `keep_at_most`, or does nothing (`Ok(None)`) if it is already at or under that count -
+    /// `docs/architecture/PERSISTENCE_MODEL.md`'s "Self-budget" (SI-026): the "invoke the
+    /// compaction that already exists before growth continues" side of self-budget enforcement,
+    /// [`crate::budget::enforce_ledger_budget`]'s own implementation. Always targets the oldest
+    /// contiguous prefix - the exact `[from, to]` [`EventLedger::compact_range`] this method
+    /// itself computes from the ledger's current bounds, rather than asking a caller to name
+    /// event ids directly. Fails - leaving the ledger completely unchanged, matching
+    /// `compact_range`'s own atomicity - if the oldest `count - keep_at_most` events are not
+    /// exactly and contiguously present (e.g. an earlier compaction of a non-prefix range left a
+    /// gap in front of what remains): the same fail-closed behavior `compact_range` already gives
+    /// any caller, never a silent partial compaction that leaves the ledger in a state worse than
+    /// the budget overrun it was trying to fix.
+    pub fn compact_oldest_to_fit(
+        &mut self,
+        keep_at_most: u64,
+        now: u64,
+    ) -> Result<Option<CompactionSummary>, LedgerError> {
+        let Some((min_id, _max_id, count)) = self.event_id_bounds()? else {
+            return Ok(None);
+        };
+        if count <= keep_at_most {
+            return Ok(None);
+        }
+        let excess = count - keep_at_most;
+        let excess_i64 = i64::try_from(excess).map_err(|_| {
+            LedgerError(format!(
+                "excess event count {excess} does not fit in a signed 64-bit range"
+            ))
+        })?;
+        let to = EventId(min_id.0 + excess_i64 - 1);
+        self.compact_range(min_id, to, now).map(Some)
+    }
+
+    /// Empties the ledger completely - every event and every compaction summary - and restores
+    /// its schema to freshly migrated, all in one transaction (this crate's own
+    /// "`reset --local-state`" primitive, `docs/architecture/PERSISTENCE_MODEL.md`'s
+    /// "Self-budget", SI-026). Unlike [`EventLedger::compact_range`], which can never remove a
+    /// `ledger_compactions` row (that table's own `BEFORE DELETE` trigger refuses
+    /// unconditionally - "compaction summaries are immutable"), a reset is a deliberate,
+    /// whole-store wipe a caller asked for by name, not a compaction - so it uses
+    /// `DROP TABLE`/re-migrate (DDL, which the `BEFORE DELETE` triggers do not intercept, since
+    /// they fire only on `DELETE` statements against a table that still exists) rather than
+    /// `DELETE FROM` against the tables those triggers guard. The whole operation - drop,
+    /// recreate, reseed `ledger_control` - runs in one transaction: a failure at any point (a
+    /// concurrent writer holding the file lock, for instance) leaves the ledger exactly as it
+    /// was, never half-dropped. `PRAGMA user_version` ends at the same value it started at (every
+    /// migration in [`MIGRATIONS`] re-runs against the freshly empty schema), so a caller can
+    /// keep using this same open connection immediately afterward - no re-open, no partial
+    /// migration state to reconcile. Takes no path and no caller-supplied target: the only thing
+    /// this method can ever act on is the connection it already owns (AC "`reset --local-state`
+    /// cannot target provider roots" - this crate never touches a provider path at all, this
+    /// module's own doc).
+    pub fn reset(&mut self) -> Result<(), LedgerError> {
+        let tx = self.conn.transaction()?;
+        tx.execute_batch(
+            "DROP TABLE IF EXISTS ledger_events;
+             DROP TABLE IF EXISTS ledger_control;
+             DROP TABLE IF EXISTS ledger_compactions;",
+        )?;
+        for migration in MIGRATIONS {
+            tx.execute_batch(migration)?;
+        }
+        tx.execute_batch(&format!("PRAGMA user_version = {}", MIGRATIONS.len()))?;
+        tx.commit()?;
+        Ok(())
+    }
+
     /// Test-only, crate-visible raw access to the underlying connection - used to attempt a
     /// bypass of the immutability guarantee directly against the database, independent of
     /// whatever public methods this type happens to expose today. Never part of the public
@@ -1038,5 +1128,238 @@ mod tests {
             ledger.read_all().is_err(),
             "a corrupted evidence_ids column must surface as an error from read_all, not a panic"
         );
+    }
+
+    #[test]
+    fn event_id_bounds_is_none_for_an_empty_ledger() {
+        let ledger = EventLedger::open_in_memory().expect("open");
+        assert_eq!(ledger.event_id_bounds().expect("event_id_bounds"), None);
+    }
+
+    #[test]
+    fn event_id_bounds_reports_min_max_and_count() {
+        let mut ledger = EventLedger::open_in_memory().expect("open");
+        let a = ledger.append(discovered(1)).expect("append a");
+        ledger.append(discovered(2)).expect("append b");
+        let c = ledger.append(discovered(3)).expect("append c");
+        assert_eq!(
+            ledger.event_id_bounds().expect("event_id_bounds"),
+            Some((a, c, 3))
+        );
+    }
+
+    #[test]
+    fn compact_oldest_to_fit_does_not_compact_exactly_at_the_limit() {
+        // Falsifier: budget exactly at the limit must not trigger compaction.
+        let mut ledger = EventLedger::open_in_memory().expect("open");
+        for i in 0..5 {
+            ledger.append(discovered(i)).expect("append");
+        }
+        let result = ledger
+            .compact_oldest_to_fit(5, 1_000)
+            .expect("compact_oldest_to_fit");
+        assert_eq!(result, None, "exactly at the limit must not compact");
+        assert_eq!(ledger.read_all().expect("read_all").len(), 5);
+        assert!(ledger.compactions().expect("compactions").is_empty());
+    }
+
+    #[test]
+    fn compact_oldest_to_fit_compacts_exactly_the_excess_one_event_over_the_limit() {
+        // Falsifier: one event over the limit must trigger compaction of exactly the excess,
+        // never more, never a silent no-op that lets growth continue unchecked.
+        let mut ledger = EventLedger::open_in_memory().expect("open");
+        for i in 0..6 {
+            ledger.append(discovered(i)).expect("append");
+        }
+        let summary = ledger
+            .compact_oldest_to_fit(5, 1_000)
+            .expect("compact_oldest_to_fit")
+            .expect("one event over the limit must compact");
+        assert_eq!(summary.event_count, 1, "must compact only the excess");
+        assert_eq!(
+            ledger
+                .event_id_bounds()
+                .expect("event_id_bounds")
+                .unwrap()
+                .2,
+            5,
+            "the ledger must end at exactly the configured limit, not below or above it"
+        );
+    }
+
+    #[test]
+    fn compact_oldest_to_fit_fails_closed_when_the_computed_prefix_has_a_gap() {
+        // Falsifier: a compaction that fails partway (here: the computed range is not
+        // contiguous, because an earlier non-prefix compaction already removed the middle of
+        // it) must not leave the ledger worse off than the original budget overrun - nothing is
+        // deleted, no summary is written.
+        let mut ledger = EventLedger::open_in_memory().expect("open");
+        ledger.append(discovered(0)).expect("append a");
+        let b = ledger.append(discovered(1)).expect("append b");
+        let c = ledger.append(discovered(2)).expect("append c");
+        ledger.append(discovered(3)).expect("append d");
+        ledger.append(discovered(4)).expect("append e");
+        // Compact a middle range directly, leaving a gap in what would otherwise be the oldest
+        // contiguous prefix.
+        ledger
+            .compact_range(b, c, 500)
+            .expect("seed a non-prefix compaction to create a gap");
+
+        let before = ledger.read_all().expect("read_all before");
+        let result = ledger.compact_oldest_to_fit(1, 1_000);
+        assert!(
+            result.is_err(),
+            "a non-contiguous computed prefix must be refused, not silently compacted partially"
+        );
+        assert_eq!(
+            ledger.read_all().expect("read_all after"),
+            before,
+            "a refused compact_oldest_to_fit must leave every remaining event untouched"
+        );
+        assert_eq!(
+            ledger.compactions().expect("compactions").len(),
+            1,
+            "only the seeded compaction must be recorded, never a second, wrong one"
+        );
+    }
+
+    #[test]
+    fn reset_empties_every_table_including_compaction_summaries() {
+        let mut ledger = EventLedger::open_in_memory().expect("open");
+        let a = ledger.append(discovered(1)).expect("append a");
+        ledger.append(discovered(2)).expect("append b");
+        ledger.compact_range(a, a, 100).expect("compact one event");
+        assert_eq!(ledger.read_all().expect("read_all").len(), 1);
+        assert_eq!(ledger.compactions().expect("compactions").len(), 1);
+
+        ledger.reset().expect("reset");
+
+        assert!(
+            ledger.read_all().expect("read_all after reset").is_empty(),
+            "reset must remove every remaining event"
+        );
+        assert!(
+            ledger
+                .compactions()
+                .expect("compactions after reset")
+                .is_empty(),
+            "reset must also remove compaction summaries, even though compact_range itself \
+             can never touch ledger_compactions (its BEFORE DELETE trigger is unconditional) - \
+             reset uses DDL, not DELETE, precisely to reach this table"
+        );
+    }
+
+    #[test]
+    fn reset_leaves_user_version_at_the_same_fully_migrated_value_and_the_ledger_reusable() {
+        let mut ledger = EventLedger::open_in_memory().expect("open");
+        let version_before: i64 = ledger
+            .raw_conn()
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("read user_version before reset");
+        ledger.append(discovered(1)).expect("append before reset");
+
+        ledger.reset().expect("reset");
+
+        let version_after: i64 = ledger
+            .raw_conn()
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("read user_version after reset");
+        assert_eq!(
+            version_before, version_after,
+            "reset must leave user_version at the same fully-migrated value, not stuck at 0 \
+             or requiring a fresh open() to become usable again"
+        );
+
+        // The store must be immediately reusable on the same open connection, with no re-open.
+        let id = ledger.append(discovered(2)).expect("append after reset");
+        assert_eq!(ledger.read_all().expect("read_all").len(), 1);
+        assert_eq!(id.0, 1, "a fresh schema must not carry over old event ids");
+    }
+
+    #[test]
+    fn reset_never_touches_a_provider_path() {
+        // AC2/SI-026: reset takes no path at all - it can only ever act on the connection it
+        // already owns. This proves that structurally by placing a real "provider artifact" file
+        // next to the ledger's own database file and asserting reset leaves it completely alone.
+        let dir = std::env::temp_dir().join(format!(
+            "cancellai-store-ledger-test-reset-provider-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        let provider_artifact_path = dir.join("provider-artifact.jsonl");
+        std::fs::write(
+            &provider_artifact_path,
+            b"a real provider session transcript",
+        )
+        .expect("create the provider artifact");
+        let db_path = dir.join("ledger.sqlite3");
+
+        {
+            let mut ledger = EventLedger::open(&db_path).expect("open");
+            ledger.append(discovered(1)).expect("append");
+            ledger.reset().expect("reset");
+        }
+
+        assert!(
+            provider_artifact_path.exists(),
+            "reset must never delete a provider artifact"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&provider_artifact_path).expect("read provider artifact"),
+            "a real provider session transcript",
+            "reset must never touch a provider artifact's content"
+        );
+
+        std::fs::remove_dir_all(&dir).expect("clean up test dir");
+    }
+
+    #[test]
+    fn reset_under_a_held_write_lock_fails_closed_without_corrupting_existing_data() {
+        // Concurrency falsifier: a reset that cannot acquire the write lock (another connection
+        // is mid-transaction) must fail cleanly - never panic, never partially apply.
+        let dir = std::env::temp_dir().join(format!(
+            "cancellai-store-ledger-test-reset-concurrent-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        let db_path = dir.join("ledger.sqlite3");
+
+        let mut ledger = EventLedger::open(&db_path).expect("open");
+        ledger.append(discovered(1)).expect("append");
+
+        // A second connection to the same file holds an exclusive write lock open.
+        let blocker = Connection::open(&db_path).expect("open blocking connection");
+        blocker
+            .execute_batch("BEGIN IMMEDIATE;")
+            .expect("hold a write lock via a second connection");
+
+        let result = ledger.reset();
+        assert!(
+            result.is_err(),
+            "reset must fail, not panic or block forever, while a competing writer holds the lock"
+        );
+
+        blocker
+            .execute_batch("COMMIT;")
+            .expect("release the blocking connection's lock");
+
+        assert_eq!(
+            ledger
+                .read_all()
+                .expect("read_all after failed reset")
+                .len(),
+            1,
+            "a failed reset must leave the ledger's prior content completely unchanged"
+        );
+
+        std::fs::remove_dir_all(&dir).expect("clean up test dir");
     }
 }

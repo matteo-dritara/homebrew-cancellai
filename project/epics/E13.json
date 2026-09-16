@@ -77,7 +77,7 @@
     {
       "id": "E13-S04",
       "title": "Self-budget and local reset",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Enforce cancellAI state/log budgets and provide reset of cancellAI state only.",
       "change_risk": "CR3",
       "dependencies": [

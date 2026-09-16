@@ -983,6 +983,61 @@ impl AnalyticalMemory {
         Ok(result)
     }
 
+    /// The number of raw samples currently held, before any compaction promotes or expires them -
+    /// `docs/architecture/PERSISTENCE_MODEL.md`'s "Self-budget" (SI-026);
+    /// [`AnalyticalMemory::compact_if_over`] is this method's own caller.
+    pub fn raw_sample_count(&self) -> Result<u64, RollupError> {
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM raw_samples", [], |row| row.get(0))?;
+        Ok(u64::try_from(count).unwrap_or(0))
+    }
+
+    /// Runs [`AnalyticalMemory::compact`] only if `raw_samples` currently holds more than
+    /// `max_raw_samples` rows, and is a no-op (`Ok(None)`) otherwise -
+    /// `docs/architecture/PERSISTENCE_MODEL.md`'s "Self-budget" (SI-026), [`crate::budget::
+    /// enforce_rollup_budget`]'s own implementation: "invoke the compaction that already exists
+    /// before growth continues," never a silent overrun. Being over the row-count budget does
+    /// not, by itself, promote a sample that has not yet reached `policy.recent_window_secs()` -
+    /// this still ages samples out strictly by `policy`'s time windows, exactly like an
+    /// unconditional `compact` call. A budget whose windows cannot keep the raw tier under its
+    /// row limit at the caller's actual ingestion rate is a policy/budget mismatch this method
+    /// surfaces (it runs `compact` and the returned [`CompactionReport`] can show zero
+    /// promotions) rather than one it silently resolves by inventing an eligibility rule
+    /// `AnalyticalMemory::compact` does not itself have.
+    pub fn compact_if_over(
+        &mut self,
+        max_raw_samples: u64,
+        policy: &RetentionPolicy,
+        now: u64,
+    ) -> Result<Option<CompactionReport>, RollupError> {
+        if self.raw_sample_count()? <= max_raw_samples {
+            return Ok(None);
+        }
+        self.compact(policy, now).map(Some)
+    }
+
+    /// Empties every tier - raw samples, hourly rollups, daily rollups, long-term aggregates - in
+    /// one transaction (this crate's own "`reset --local-state`" primitive,
+    /// `docs/architecture/PERSISTENCE_MODEL.md`'s "Self-budget", SI-026). Unlike
+    /// [`crate::ledger::EventLedger::reset`], no table here carries an immutability trigger (this
+    /// module's own doc never claimed one - unlike Layer 2's audit trail, a rollup statistic
+    /// carries no audit obligation), so a plain `DELETE FROM` per table is enough to reach every
+    /// row; no schema drop/recreate is needed the way the ledger's reset needs one to reach
+    /// `ledger_compactions`. Takes no path and no caller-supplied target: the only thing this
+    /// method can ever act on is the connection it already owns.
+    pub fn reset(&mut self) -> Result<(), RollupError> {
+        let tx = self.conn.transaction()?;
+        tx.execute_batch(
+            "DELETE FROM raw_samples;
+             DELETE FROM hourly_rollups;
+             DELETE FROM daily_rollups;
+             DELETE FROM long_term_aggregates;",
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
     /// Test-only, crate-visible raw access to the underlying connection - used to inspect the
     /// actual schema directly, independent of whatever read methods this type happens to expose
     /// today. Never part of the public API, matching `crate::ledger::EventLedger::raw_conn`'s
@@ -1457,6 +1512,151 @@ mod tests {
                 .expect("long_term_aggregates after reopen");
             assert_eq!(long_term.len(), 1, "reopening must preserve promoted data");
         }
+
+        std::fs::remove_dir_all(&dir).expect("clean up test dir");
+    }
+
+    #[test]
+    fn raw_sample_count_reports_the_current_row_count() {
+        let mut memory = AnalyticalMemory::open_in_memory().expect("open");
+        assert_eq!(memory.raw_sample_count().expect("count"), 0);
+        memory
+            .record_sample(sample(MetricKind::ArtifactCount, 1, 1.0))
+            .expect("record");
+        memory
+            .record_sample(sample(MetricKind::ArtifactCount, 2, 2.0))
+            .expect("record");
+        assert_eq!(memory.raw_sample_count().expect("count"), 2);
+    }
+
+    #[test]
+    fn compact_if_over_does_not_compact_exactly_at_the_limit() {
+        // Falsifier: budget exactly at the limit must not trigger compaction.
+        let mut memory = AnalyticalMemory::open_in_memory().expect("open");
+        let policy = RetentionPolicy::new(10, 20, 30).expect("policy");
+        for i in 0..5 {
+            memory
+                .record_sample(sample(MetricKind::ArtifactCount, i, 1.0))
+                .expect("record");
+        }
+        let result = memory
+            .compact_if_over(5, &policy, 1_000_000)
+            .expect("compact_if_over");
+        assert_eq!(result, None, "exactly at the limit must not compact");
+        assert_eq!(memory.raw_sample_count().expect("count"), 5);
+    }
+
+    #[test]
+    fn compact_if_over_runs_compact_when_one_sample_over_the_limit_and_promotes_aged_samples() {
+        // Falsifier: one sample over the limit must trigger compaction, never a silent overrun.
+        let mut memory = AnalyticalMemory::open_in_memory().expect("open");
+        let policy = RetentionPolicy::new(10, 20, 30).expect("policy");
+        for i in 0..6 {
+            memory
+                .record_sample(sample(MetricKind::ArtifactCount, i, 1.0))
+                .expect("record");
+        }
+        // now is far past the recent window, so every sample is eligible for promotion.
+        let report = memory
+            .compact_if_over(5, &policy, 1_000_000)
+            .expect("compact_if_over")
+            .expect("one sample over the limit must run compact");
+        assert_eq!(report.raw_samples_promoted, 6);
+        assert_eq!(
+            memory.raw_sample_count().expect("count"),
+            0,
+            "every aged-eligible raw sample must be promoted out of the raw tier"
+        );
+    }
+
+    #[test]
+    fn compact_if_over_can_run_with_zero_promotions_when_no_sample_has_aged_yet() {
+        // Documents the policy/budget interaction rather than hiding it: being over budget
+        // triggers compact, but compact still only promotes samples old enough per policy.
+        let mut memory = AnalyticalMemory::open_in_memory().expect("open");
+        let policy = RetentionPolicy::new(1_000, 2_000, 3_000).expect("policy");
+        for i in 1..7 {
+            memory
+                .record_sample(sample(MetricKind::ArtifactCount, i, 1.0))
+                .expect("record");
+        }
+        // now is only just past the samples' own recorded_at, well inside the recent window
+        // (cutoff = now.saturating_sub(recent_window_secs) = 0, and every recorded_at > 0).
+        let report = memory
+            .compact_if_over(5, &policy, 1)
+            .expect("compact_if_over")
+            .expect("still runs compact when over budget");
+        assert_eq!(
+            report.raw_samples_promoted, 0,
+            "compact runs but promotes nothing when no sample has reached the recent window"
+        );
+        assert_eq!(
+            memory.raw_sample_count().expect("count"),
+            6,
+            "the raw tier stays over budget until the retention policy actually ages a sample"
+        );
+    }
+
+    #[test]
+    fn reset_empties_every_tier() {
+        let mut memory = AnalyticalMemory::open_in_memory().expect("open");
+        let policy = RetentionPolicy::new(10, 20, 30).expect("policy");
+        memory
+            .record_sample(sample(MetricKind::ArtifactCount, 0, 1.0))
+            .expect("record");
+        memory.compact(&policy, 1_000_000).expect("compact");
+        assert!(!memory.long_term_aggregates().expect("long_term").is_empty());
+
+        memory.reset().expect("reset");
+
+        assert!(memory.raw_samples().expect("raw_samples").is_empty());
+        assert!(memory.hourly_rollups().expect("hourly_rollups").is_empty());
+        assert!(memory.daily_rollups().expect("daily_rollups").is_empty());
+        assert!(
+            memory
+                .long_term_aggregates()
+                .expect("long_term_aggregates")
+                .is_empty(),
+            "reset must clear the long-term tier too, not only the raw/hourly/daily ones"
+        );
+    }
+
+    #[test]
+    fn reset_never_touches_a_provider_path() {
+        let dir = std::env::temp_dir().join(format!(
+            "cancellai-store-rollup-test-reset-provider-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        let provider_artifact_path = dir.join("provider-artifact.jsonl");
+        std::fs::write(
+            &provider_artifact_path,
+            b"a real provider session transcript",
+        )
+        .expect("create the provider artifact");
+        let db_path = dir.join("rollup.sqlite3");
+
+        {
+            let mut memory = AnalyticalMemory::open(&db_path).expect("open");
+            memory
+                .record_sample(sample(MetricKind::ArtifactCount, 0, 1.0))
+                .expect("record");
+            memory.reset().expect("reset");
+        }
+
+        assert!(
+            provider_artifact_path.exists(),
+            "reset must never delete a provider artifact"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&provider_artifact_path).expect("read provider artifact"),
+            "a real provider session transcript",
+            "reset must never touch a provider artifact's content"
+        );
 
         std::fs::remove_dir_all(&dir).expect("clean up test dir");
     }

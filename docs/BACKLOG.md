@@ -1431,7 +1431,7 @@ Persist only bounded metadata required for lifecycle, audit, undo, and Guardian 
 
 ### E13-S04 - Self-budget and local reset
 
-**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E13-S02, E13-S03 | **Safety obligations:** SI-026
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E13-S02, E13-S03 | **Safety obligations:** SI-026
 
 **Outcome.** Enforce cancellAI state/log budgets and provide reset of cancellAI state only.
 

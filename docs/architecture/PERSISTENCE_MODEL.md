@@ -158,6 +158,67 @@ cancellAI enforces explicit budgets for:
 
 When approaching its budget, cancellAI compacts/rotates its own data before collecting more optional history. Safety-critical current facts may force analytical sampling to degrade rather than exceed the budget.
 
+E13-S04 implements self-budget enforcement and local-state reset for the three layers above that
+this crate holds: `cancellai_store::budget`, a fourth module that adds no schema, file or
+connection of its own - it is a thin policy layer over the compaction/reset primitives Layer 1/2/3
+already expose (E13-S01/S02/S03), deciding *when* to act, never *how*. `BudgetLimits` carries one
+explicit, caller-supplied threshold per layer (`max_current_state_rows`/`max_ledger_events`/
+`max_raw_samples`) - "exact periods and budgets are product policy, not hard-coded architecture
+constants" (this document's own words for Layer 3's retention windows, extended here to budgets);
+`BudgetLimits::DEFAULT` is one reasonable choice, not the only legal one, matching
+`RetentionPolicy::DEFAULT`'s own documented status.
+
+`enforce_ledger_budget`/`enforce_rollup_budget` call `EventLedger::compact_oldest_to_fit`/
+`AnalyticalMemory::compact_if_over` - each new, but each doing nothing except deciding whether to
+invoke a compaction primitive that already existed (`compact_range`/`compact`) - before growth
+continues: a store already exactly at its limit is left untouched, and a store one row over
+compacts exactly the excess, never more, never a silent overrun. `EventLedger::compact_oldest_to_fit`
+always targets the oldest contiguous prefix and fails closed, leaving the ledger completely
+unchanged, if that computed range is not exactly and contiguously present - the same atomicity
+`compact_range` itself already guarantees, so a self-budget enforcement call can never leave the
+ledger worse off than the overrun it was trying to fix. `AnalyticalMemory::compact_if_over` still
+only ages a sample out by `RetentionPolicy`'s own time windows; being over the row-count budget
+does not, by itself, promote a sample that has not yet reached `recent_window_secs` - a budget
+whose windows cannot keep the raw tier under its row limit at the caller's ingestion rate is a
+policy/budget mismatch this surfaces (zero promotions despite running) rather than one it silently
+resolves. `check_current_state_budget` only observes `CurrentStateStore::row_count` against its
+limit - Layer 1 has no compaction action of its own, because its content is entirely determined by
+the last external `rebuild`; this section's own "safety-critical current facts may force analytical
+sampling to degrade" already names Layer 3 sampling, not Layer 1 itself, as what yields under
+Layer 1 budget pressure, and wiring that cross-layer degradation decision needs a live (Guardian)
+caller this workspace does not have yet.
+
+`reset --local-state` (SI-026: "cancellAI reset/self-budget cannot target provider payload") is
+`cancellai_store::budget::reset_local_state`, sequencing `CurrentStateStore::reset`,
+`EventLedger::reset` and `AnalyticalMemory::reset` - one per layer, since each layer owns an
+independent file/connection and cannot share one SQLite transaction. Every one of those three
+methods takes no path and no caller-supplied target at all: the only thing any of them can act on
+is the connection it already owns, which discharges SI-026 by construction, not by convention -
+there is no parameter anywhere in this call chain a provider path could even be passed through.
+Layer 1 and Layer 3 reset by a plain `DELETE FROM` per table inside one transaction (matching
+`CurrentStateStore::rebuild`'s own pattern - `reset` is exactly `rebuild` given nothing). Layer 2 is
+different: `ledger_compactions`' `BEFORE DELETE` trigger refuses unconditionally (compaction
+summaries are immutable, by design - see "Layer 2" above), so a `DELETE FROM` can never empty it.
+`EventLedger::reset` therefore uses `DROP TABLE`/re-migrate (DDL, which that trigger does not
+intercept) in one transaction, ending at the same fully-migrated `PRAGMA user_version` it started
+at, so the connection stays immediately usable with no re-open and no partial migration state.
+`reset_local_state` calls the three layers' own `reset()` in sequence and is not itself atomic
+across all three files - a failure partway leaves whichever layers already reset empty and the rest
+unchanged, `ResetError` names which layer failed, and retrying is always safe because resetting an
+already-empty layer is a no-op.
+
+AC3 ("ephemeral inspect performs no persistent writes") is discharged by the three layers'
+pre-existing `open_in_memory` constructors (E13-S01/S02/S03): a SQLite `:memory:` connection cannot
+create a file, by construction, not merely by convention - this story adds the falsification test
+proving that holds across many operations, rather than a new wrapper type with no caller yet to use
+it.
+
+No CLI/TUI/Guardian surface calls any of this yet - `cancellai-cli` and `cancellai-guardian` both
+already depend on `cancellai-store` in their `Cargo.toml` (declared ahead of this story, unrelated
+to it), but neither references it from source; orchestrating self-budget checks and wiring a real
+`reset --local-state` flag is a later story's scope, matching `CurrentStateStore`'s and
+`EventLedger`'s own state at their own `ready_for_review`.
+
 ## Quarantine store
 
 Quarantine is logically separate from cancellAI metadata because it contains the user's original provider artifact. It is therefore governed by separate capacity and retention policy.

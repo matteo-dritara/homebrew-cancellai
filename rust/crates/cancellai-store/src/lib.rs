@@ -70,6 +70,13 @@ pub mod ledger;
 /// each layer keeps its own schema, file and retention shape despite sharing this crate.
 pub mod rollup;
 
+/// Self-budget enforcement and local-state reset (E13-S04) - `docs/architecture/
+/// PERSISTENCE_MODEL.md`'s "Self-budget", SI-026. A fourth module that adds no schema/file/
+/// connection of its own: it is a thin policy layer over the compaction/reset primitives
+/// [`CurrentStateStore`], [`ledger::EventLedger`] and [`rollup::AnalyticalMemory`] already
+/// expose, deciding *when* to compact/reset, never *how* - see [`budget`]'s own module doc.
+pub mod budget;
+
 /// Why a [`CurrentStateStore`] operation failed. Always the underlying SQLite error or a
 /// stored row's own content failing to round-trip as JSON - this crate does not otherwise
 /// interpret or classify failures.
@@ -218,6 +225,33 @@ impl CurrentStateStore {
             Some(row) => Ok(Some(serde_json::from_str(&row.get::<_, String>(0)?)?)),
             None => Ok(None),
         }
+    }
+
+    /// The number of artifacts this store currently holds - `docs/architecture/
+    /// PERSISTENCE_MODEL.md`'s "Self-budget" (SI-026), an observation [`crate::budget`] uses.
+    /// Layer 1 has no compaction primitive of its own to pair this with (this module's own doc,
+    /// "Reconstructible by construction": its content is entirely determined by the last
+    /// `rebuild` a caller performed, so this crate autonomously discarding rows here would
+    /// silently diverge from the last scan rather than compact anything) - `docs/architecture/
+    /// PERSISTENCE_MODEL.md`'s own "Safety-critical current facts may force analytical sampling
+    /// to degrade rather than exceed the budget" names Layer 3 sampling, not Layer 1 itself, as
+    /// what yields under Layer 1 budget pressure.
+    pub fn row_count(&self) -> Result<u64, StoreError> {
+        let count: i64 =
+            self.conn
+                .query_row("SELECT COUNT(*) FROM agent_artifacts", [], |row| row.get(0))?;
+        Ok(u64::try_from(count).unwrap_or(0))
+    }
+
+    /// Empties this store completely - this crate's own "`reset --local-state`" primitive for
+    /// Layer 1 (`docs/architecture/PERSISTENCE_MODEL.md`'s "Self-budget", SI-026). Exactly
+    /// [`CurrentStateStore::rebuild`] given an empty slice: the same one transaction, `DELETE
+    /// FROM agent_artifacts`, this store's content depending only on what it is given (nothing).
+    /// Takes no path and no caller-supplied target - the only thing this method can ever act on
+    /// is the connection it already owns, matching this module's own doc, "Reconstructible by
+    /// construction."
+    pub fn reset(&mut self) -> Result<(), StoreError> {
+        self.rebuild(&[])
     }
 }
 
@@ -495,5 +529,75 @@ mod tests {
             store.get(&ArtifactId::new("artifact-0001")).is_err(),
             "a corrupted row must surface as an error from get()"
         );
+    }
+
+    #[test]
+    fn row_count_reports_the_current_row_count() {
+        let mut store = CurrentStateStore::open_in_memory().expect("open");
+        assert_eq!(store.row_count().expect("row_count"), 0);
+        store
+            .rebuild(&[
+                artifact("artifact-0001", "codex", ActivityState::Active),
+                artifact("artifact-0002", "claude", ActivityState::Idle),
+            ])
+            .expect("rebuild");
+        assert_eq!(store.row_count().expect("row_count"), 2);
+    }
+
+    #[test]
+    fn reset_empties_the_store_and_is_equivalent_to_rebuild_with_no_artifacts() {
+        let mut store = CurrentStateStore::open_in_memory().expect("open");
+        store
+            .rebuild(&[artifact("artifact-0001", "codex", ActivityState::Active)])
+            .expect("rebuild");
+        assert_eq!(store.row_count().expect("row_count"), 1);
+
+        store.reset().expect("reset");
+
+        assert_eq!(store.row_count().expect("row_count"), 0);
+        assert!(store.all().expect("all").is_empty());
+    }
+
+    #[test]
+    fn reset_never_touches_a_provider_path() {
+        // AC2/SI-026: reset takes no path at all - the same falsifier
+        // `deleting_the_database_file_never_touches_a_provider_artifact` already proves for a
+        // raw filesystem delete, exercised here against `reset` itself.
+        let dir = std::env::temp_dir().join(format!(
+            "cancellai-store-test-reset-provider-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        let provider_artifact_path = dir.join("provider-artifact.jsonl");
+        std::fs::write(
+            &provider_artifact_path,
+            b"a real provider session transcript",
+        )
+        .expect("create the provider artifact");
+        let db_path = dir.join("current-state.sqlite3");
+
+        {
+            let mut store = CurrentStateStore::open(&db_path).expect("open");
+            store
+                .rebuild(&[artifact("artifact-0001", "codex", ActivityState::Active)])
+                .expect("rebuild");
+            store.reset().expect("reset");
+        }
+
+        assert!(
+            provider_artifact_path.exists(),
+            "reset must never delete a provider artifact"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&provider_artifact_path).expect("read provider artifact"),
+            "a real provider session transcript",
+            "reset must never touch a provider artifact's content"
+        );
+
+        std::fs::remove_dir_all(&dir).expect("clean up test dir");
     }
 }

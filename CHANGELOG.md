@@ -153,6 +153,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ProviderFootprintBytes`, `ReclaimableBytes`, `OrphanCount`) and `SampleScope`
   (`provider_id`/`category`) mirrors `EventMetadata`'s closed, allowlisted shape - an aggregate
   stays contentless by construction, never a path/transcript, because the types do not admit one.
+- Enforced self-budgets and added local-state reset for the current-state store, event ledger and
+  analytical memory (E13-S04, CR3, `docs/architecture/PERSISTENCE_MODEL.md` "Self-budget", SI-026
+  "cancellAI reset/self-budget cannot target provider payload"): `cancellai_store::budget` is a
+  thin policy layer over each layer's own compaction/reset primitives - `BudgetLimits` carries one
+  explicit, caller-supplied threshold per layer (not a hard-coded constant), and
+  `enforce_ledger_budget`/`enforce_rollup_budget` compact the oldest/aged-out data before growth
+  continues once a layer is strictly over its limit, never at exactly the limit. `reset_local_state`
+  sequences a new `reset()` on each of `CurrentStateStore`/`EventLedger`/`AnalyticalMemory`; every
+  one takes no path and no caller-supplied target at all, so it cannot target a provider root by
+  construction, not merely by convention. `EventLedger::reset` uses `DROP TABLE`/re-migrate rather
+  than `DELETE FROM`, because `ledger_compactions`' immutability trigger refuses `DELETE`
+  unconditionally by design - ending at the same fully-migrated `PRAGMA user_version` it started
+  at. "Ephemeral inspect performs no persistent writes" is discharged by the three layers'
+  pre-existing `open_in_memory` (`:memory:`) constructors, now with a falsification test proving
+  zero files are created across many operations. No CLI/TUI/Guardian surface wires this yet -
+  library-level primitives only, matching `CurrentStateStore`'s and `EventLedger`'s own state at
+  their own `ready_for_review`.
 
 ### Fixed
 
