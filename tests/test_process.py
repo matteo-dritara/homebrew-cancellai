@@ -53,7 +53,13 @@ class ProcessConventionTests(unittest.TestCase):
             (base / "E12-S01-VERIFIER-REVIEW.md").write_text("x", encoding="utf-8")
             errors: list[str] = []
             warnings: list[str] = []
-            with mock.patch.object(check_process, "EVIDENCE", base):
+            # E12 now has a real, owner-authorized fourth-round exception. This fixture
+            # verifies the generic ceiling behavior, so keep its synthetic E12 independent
+            # of that repository-specific exception.
+            with (
+                mock.patch.object(check_process, "EVIDENCE", base),
+                mock.patch.object(check_process, "REVIEW_ROUND_EXCEPTIONS", {}),
+            ):
                 check_process.check_review_rounds(errors, warnings)
             self.assertTrue(errors, "a round past the cost ceiling, even a story-scoped one, must fail an epic with no exception")
             self.assertEqual(warnings, [])

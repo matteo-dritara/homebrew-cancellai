@@ -173,6 +173,15 @@ an alternate destination or a provider-specific restore path is the caller's pol
 made by calling `prepare_destination` again for a different location - this mechanism does not
 choose one on its own.
 
+**E12-S02 round-1 independent verifier review** found that the move itself performed the
+destination-absence check and the rename as two separate syscalls, so provider state created in
+that exact window - after the check, before the move - was silently replaced rather than
+refused: the narrower, genuinely concurrent form of this same threat, not merely "recreated
+before quarantine ran." `rename_child_matching_unix_identity` now performs one atomic no-replace
+rename per platform (`renameat2`/`RENAME_NOREPLACE` on Linux, `renameatx_np`/`RENAME_EXCL` on
+macOS) instead of check-then-act, closing that window; it refuses outright, rather than falling
+back to the old two-syscall shape, wherever that platform guarantee is unavailable.
+
 ### TM-15 Guardian panic escalation
 
 Critical disk pressure causes an emergency path that skips ordinary safety.

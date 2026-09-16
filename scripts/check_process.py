@@ -70,6 +70,23 @@ REVIEW_ROUND_EXCEPTIONS = {
     "2, E07-S09 round 1, plus the epic-level closing round) - the first three predate the "
     "epic-level round that owner-authorized combined verify+fix+close and superseded them; "
     "see E07-VERIFIER-REVIEW.md's Process exception note",
+    # Round 1 and round 2 each found a genuine CR4 defect (crash-recovery, then a
+    # non-collision-resistant digest); round 3 - the ADR-0025 cost ceiling - found a further
+    # genuine defect in round 3's own crash-recovery repair (pending-sidecar recovery trusted
+    # filename presence over identity), rather than a residual an owner could accept as-is.
+    # The owner explicitly authorized a fourth round after that specific finding, in the same
+    # conversation directing the round-4 identity-witness repair - recorded here rather than
+    # silently exceeding the ceiling.
+    "E12": "beyond the 3-round ceiling: rounds 3, 4 and 5 each found a genuine, distinct CR4 "
+    "correctness hazard in three successive attempts at one automated crash-recovery scanner "
+    "(recover_pending_moves) - filename-only proof, then an unrelated operation's finalized "
+    "witness accepted as proof, then a finalization-ordering hazard within one operation's own "
+    "group. The owner explicitly authorized each round to close what the previous one found, "
+    "then, after round 5, decided three defects in one mechanism was itself a signal and "
+    "removed that mechanism outright rather than authorize a fourth repair attempt - round 6 "
+    "reviews that scope reduction, not a further patch. See "
+    "E12-VERIFIER-REVIEW-ROUND3.md/-ROUND4.md/-ROUND5.md and the E12-S01/E12-S02/E12-S03 "
+    "evidence packets' own 'round N' sections",
 }
 # Matches both an epic-scoped record (`E07-VERIFIER-REVIEW.md`) and a story-scoped one
 # (`E07-S07-VERIFIER-REVIEW.md`), counting both against the *epic's* ceiling (captured

@@ -33,6 +33,12 @@ distinguished by the next round, which is why the ceiling matters.
 | E11 | 1 | **self** | 3 | 0 | 0 | 0% |
 | E11 | 1 | independent | 4 | 2 | 2 | 50% |
 | E11 | 2 | independent | 2 | 0 | 0 | 0% |
+| E12 | 1 | independent | 3 | 3 | 3 | 100% |
+| E12 | 2 | independent | 3 | 2 | 2 | 67% |
+| E12 | 3 | independent | 3 | 2 | 2 | 67% |
+| E12 | 4 | independent | 3 | 2 | 2 | 67% |
+| E12 | 5 | independent | 3 | 2 | 2 | 67% |
+| E12 | 6 | independent | 3 | 0 | 0 | 0% |
 | E16 | 1 | independent | 6 | 0 | 0 | 0% |
 | E17 | 1 | independent | 6 | 0 | 0 | 0% |
 | E20 | 1 | independent | 3 | 3 | 3 | 100% |
@@ -49,7 +55,7 @@ distinguished by the next round, which is why the ceiling matters.
 The gap between *every gate passed* and *the work is right*. Each rejected story below had
 already been declared `ready_for_review` by an executor who ran the full gate set green.
 
-- **Independent reviewer:** 36 of 87 round-1 verdicts were `FAIL` - **41%**.
+- **Independent reviewer:** 39 of 90 round-1 verdicts were `FAIL` - **43%**.
 - **Self-review (same agent as executor):** 3 of 12 round-1 verdicts were `FAIL` - **25%**.
 
 - **Round-1 records excluded as unreadable:** 1. Their verdicts are in neither denominator above, so both rates are computed over the subset of records that use a machine-readable verdict table.
@@ -75,6 +81,7 @@ independent samples, and the population estimate collapses to what one round alr
 | E09 | 1 and 1 | 0 | 0 | 0 | undefined - disjoint findings | at least 0 were present |
 | E10 | 1 | 1 | 1 | 1.0 | 0.0 |
 | E11 | 1 and 1 | 0 | 2 | 0 | undefined - disjoint findings | at least 2 were present |
+| E12 | 3 | 2 | 2 | 3.0 | 0.0 |
 | E20 | 1 and 2 | 3 | 0 | 0 | undefined - disjoint findings | at least 3 were present |
 
 ## Evidence-ledger integrity

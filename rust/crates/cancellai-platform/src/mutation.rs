@@ -74,22 +74,56 @@
 //! for deletion) and refuses explicitly rather than falling back to an unconfirmed path-based
 //! move - a disclosed residual, not a silent gap.
 //!
+//! ## Crash recovery for `Quarantine`/`Archive` sidecars (E12-S01/E12-S03 rounds 3-5)
+//!
+//! Round 1 independent verifier review found that writing a move's sidecar *after* the move
+//! left a real gap on a genuine crash (not merely a synchronous write failure, which round 1's
+//! rollback repair handled correctly): nothing durable existed yet for a restart to recover
+//! from. Round 3 inverts the ordering instead of patching around it: [`commit_move_with_sidecars`]
+//! writes every sidecar's real, final content to a `.pending` name - durably (`fsync`ed content
+//! *and*, since this repair, `fsync`ed directory entry) - *before* the move is even attempted.
+//! The move becomes a plain rename; finalizing is a second, same-directory rename with no new
+//! content write. A failure before the move means nothing was attempted at all.
+//!
+//! **What happens if finalizing fails after a successful move is a disclosed, deferred residual,
+//! not an automated capability.** Rounds 3, 4 and 5 of independent verifier review each found a
+//! genuine correctness hazard in three successive attempts at an automated recovery scanner that
+//! would complete an interrupted finalize on restart (round 3: a destination name existing was
+//! treated as proof a given pending sidecar belonged to it, letting a conflicting operation's
+//! stale leftovers overwrite a legitimate record; round 4: the fix for that accepted an
+//! already-finalized witness from an unrelated, older, completed operation as if it were a newer
+//! operation's own proof; round 5: even a same-operation fix could finalize a witness before a
+//! sibling's own finalize had succeeded, so a later retry discarded that sibling as an orphan).
+//! Three real defects in the same mechanism was itself read as a signal rather than bad luck, and
+//! the owner's decision was to stop iterating on an automated scanner here. What
+//! [`commit_move_with_sidecars`] still guarantees on its own: a sidecar whose finalize failed is
+//! left with its full, correct content durably recorded under its own `.pending` name - never
+//! silently lost or silently wrong - so completing it (renaming each `.pending` name to its real
+//! one) stays safe to do, by a human operator today and by a properly, independently verified
+//! automated tool in a dedicated future story that can give this state machine the scrutiny three
+//! rounds already showed it needs.
+//!
 //! ## Archive (E12-S03)
 //!
 //! [`MutationOperation::Archive`] moves an artifact into cancellAI's own archive store using
-//! the exact same confirmed move `Quarantine` does (both now share one `confirmed_move_inner`).
-//! What differs is what gets recorded: a real, compressed archive format needs a kernel-ring
-//! dependency this workspace does not carry yet (ADR-0019 requires a dedicated, reviewed ADR
-//! for that - the same bar `libc`/`cancellai-sealedfs` cleared under ADR-0017, not yet spent
-//! here), so this story does not implement byte compression. What it does implement, with zero
-//! new dependencies, is the cheapest real integrity signal available from information this seam
-//! already observes: the source's byte length, captured at the same open-time identity check
-//! every move already performs, written as a plain-decimal sidecar
-//! (`<destination>.archive-length.json`, `str`/`u64` only - no serialization dependency).
-//! [`verify_archive_integrity`] re-derives the archived copy's current length and compares it -
-//! a length mismatch is exactly what a truncation or in-place corruption produces, though it
-//! cannot detect every possible content change a cryptographic hash would (disclosed above and
-//! in that function's own doc, not overclaimed as more than it is).
+//! the exact same confirmed move `Quarantine` does (both share the same `confirmed_move_prepare`/
+//! [`commit_move_with_sidecars`]). What differs is what gets recorded: a real, compressed
+//! archive format needs a kernel-ring dependency this workspace does not carry (ADR-0019
+//! requires a dedicated, reviewed ADR for one - the same bar `libc`/`cancellai-sealedfs` cleared
+//! under ADR-0017), so this story does not implement byte compression. What it does implement:
+//! the source's byte length, captured at the same open-time identity check every move already
+//! performs, written as a plain-decimal sidecar (`<destination>.archive-length.json`); and,
+//! since ADR-0030, a real SHA-256 digest of the source's bytes, also captured at open time and
+//! written hex-encoded (`<destination>.archive-digest.json`).
+//!
+//! **E12-S03 round-1 independent verifier review** found that a length-only check accepted an
+//! equal-length in-place corruption (all bytes changed, length untouched) as `Verified` - a
+//! length mismatch alone is only ever a truncation/extension signal, not a content one. Round 1
+//! repaired this with a fast, non-cryptographic FNV-1a fingerprint; round 2 independent verifier
+//! review judged that insufficient for a CR4 predicate meant to authorize a future irreversible
+//! source purge, and named the required repair: a reviewed kernel-ring digest decision (ADR-0030)
+//! followed by a real collision-resistant digest. [`verify_archive_integrity`] now requires both
+//! the recorded length *and* the recorded SHA-256 digest to match before returning `Verified`.
 
 use std::path::{Path, PathBuf};
 
@@ -366,14 +400,14 @@ fn confirmed_quarantine_move_inner(
     record: &[u8],
     between_open_and_move: impl FnOnce(),
 ) -> Result<(), MutationError> {
-    let (dest_sealed, _source_length) =
-        confirmed_move_inner(source, expected, destination, between_open_and_move)?;
-    write_move_record(
-        &dest_sealed,
-        destination,
-        "quarantine-record",
-        record,
-        "quarantine move",
+    let prepared =
+        confirmed_move_prepare(source, expected, destination, false, between_open_and_move)?;
+    commit_move_with_sidecars(
+        prepared,
+        &[Sidecar {
+            suffix: "quarantine-record",
+            bytes: record.to_vec(),
+        }],
     )
 }
 
@@ -398,21 +432,21 @@ fn confirmed_restore_move_inner(
     destination: &Path,
     between_open_and_move: impl FnOnce(),
 ) -> Result<(), MutationError> {
-    confirmed_move_inner(source, expected, destination, between_open_and_move)?;
-    Ok(())
+    let prepared =
+        confirmed_move_prepare(source, expected, destination, false, between_open_and_move)?;
+    commit_prepared_move(&prepared)
 }
 
 /// The archive counterpart of [`confirmed_quarantine_move`] (E12-S03): the identical
-/// identity-confirmed, no-clobber move, plus two sidecars written atomically once it succeeds -
-/// the caller-supplied opaque `record` (format/version/identity metadata, exactly like
-/// `Quarantine`'s own) and a second, platform-authored `.archive-length` sidecar recording the
-/// source's byte length observed at open time. That length is this seam's own contribution to
-/// "verifiable archive integrity" (the story's AC) without a new dependency: no cryptographic
-/// content hash is computed here (that would need a reviewed kernel-ring crate addition - see
-/// module docs and [`verify_archive_integrity`]'s own doc for the disclosed residual this
-/// leaves), but a later truncation or corruption of the archived copy changes its length, which
-/// this plain-decimal sidecar - written with zero new dependencies, `str`/`u64` only - is
-/// enough to detect.
+/// identity-confirmed, no-clobber move, plus three sidecars - the caller-supplied opaque
+/// `record` (format/version/identity metadata, exactly like `Quarantine`'s own), a
+/// platform-authored `.archive-length` sidecar recording the source's byte length observed at
+/// open time, and a platform-authored `.archive-digest` sidecar recording a SHA-256 digest of
+/// the source's bytes, also observed at open time (ADR-0030, E12-S03 round-2 independent
+/// verifier review: a length-only check accepted an equal-length in-place corruption as
+/// `Verified`, and round 1's own FNV-1a fingerprint repair was itself judged insufficient for a
+/// CR4 pre-purge predicate - see [`digest_content`]'s own doc, and [`verify_archive_integrity`]
+/// for how all three sidecars are checked together before any future purge).
 #[cfg(unix)]
 fn confirmed_archive_move(
     source: &Path,
@@ -432,21 +466,28 @@ fn confirmed_archive_move_inner(
     record: &[u8],
     between_open_and_move: impl FnOnce(),
 ) -> Result<(), MutationError> {
-    let (dest_sealed, source_length) =
-        confirmed_move_inner(source, expected, destination, between_open_and_move)?;
-    write_move_record(
-        &dest_sealed,
-        destination,
-        "archive-record",
-        record,
-        "archive",
-    )?;
-    write_move_record(
-        &dest_sealed,
-        destination,
-        ARCHIVE_LENGTH_SIDECAR_SUFFIX,
-        source_length.to_string().as_bytes(),
-        "archive",
+    let prepared =
+        confirmed_move_prepare(source, expected, destination, true, between_open_and_move)?;
+    let digest = prepared
+        .digest
+        .expect("archive always requests compute_digest = true");
+    let source_length = prepared.source_length;
+    commit_move_with_sidecars(
+        prepared,
+        &[
+            Sidecar {
+                suffix: "archive-record",
+                bytes: record.to_vec(),
+            },
+            Sidecar {
+                suffix: ARCHIVE_LENGTH_SIDECAR_SUFFIX,
+                bytes: source_length.to_string().into_bytes(),
+            },
+            Sidecar {
+                suffix: ARCHIVE_DIGEST_SIDECAR_SUFFIX,
+                bytes: encode_hex(&digest).into_bytes(),
+            },
+        ],
     )
 }
 
@@ -456,48 +497,51 @@ fn confirmed_archive_move_inner(
 /// verify side is plain, portable `std::fs` and has no OS-specific requirement of its own.
 const ARCHIVE_LENGTH_SIDECAR_SUFFIX: &str = "archive-length";
 
-/// Writes `bytes` atomically as `<destination's file name>.<suffix>.json` next to an already-
-/// moved object, against the destination's own already-held [`cancellai_sealedfs::SealedRoot`]
-/// (no second, separately-racy `bind_existing`). Shared by [`confirmed_quarantine_move_inner`]
-/// and [`confirmed_archive_move_inner`]; `verb` names the move in the error text only.
-#[cfg(unix)]
-fn write_move_record(
-    dest_sealed: &cancellai_sealedfs::SealedRoot,
-    destination: &Path,
-    suffix: &str,
-    bytes: &[u8],
-    verb: &str,
-) -> Result<(), MutationError> {
-    let dest_name = destination
-        .file_name()
-        .and_then(|n| n.to_str())
-        .expect("already validated by confirmed_move_inner above");
-    let record_name = format!("{dest_name}.{suffix}.json");
-    let tmp_name = format!("{dest_name}.{suffix}.json.tmp");
-    dest_sealed
-        .write_new_child_atomically(&tmp_name, &record_name, bytes)
-        .map_err(|e| {
-            MutationError(format!(
-                "{verb} succeeded but its {suffix} sidecar could not be written: {e}"
-            ))
-        })
+/// The suffix the SHA-256 digest sidecar is written under and read back from (ADR-0030,
+/// E12-S03 round-2 repair) - see [`digest_content`] for what it guarantees.
+const ARCHIVE_DIGEST_SIDECAR_SUFFIX: &str = "archive-digest";
+
+/// Hex-encodes `bytes` in lowercase, one `%02x` pair per byte - the same convention
+/// `cancellai-safety::knowledge_bundle`'s own `encode_hex` uses for its content digests, kept
+/// as a small local copy rather than a cross-crate dependency in the wrong direction
+/// (`cancellai-safety` depends on `cancellai-platform`, not the reverse).
+fn encode_hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// The shared identity-confirmed, handle-relative move: open-time and immediately-before
-/// checks around `between_open_and_move` (mirroring [`confirmed_delete_file_inner`]'s own two
-/// checks around the unlink), then a no-clobber `renameat` via
-/// `cancellai_sealedfs::rename_child_matching_unix_identity`. Returns the destination's own
-/// held [`cancellai_sealedfs::SealedRoot`] (so a caller writing a sidecar can do it against the
-/// same handle, without a second, separately-racy `bind_existing` call) and the source's byte
-/// length observed at the same open-time check (E12-S03: the cheapest integrity signal this
-/// seam can record without a new dependency - see [`confirmed_archive_move_inner`]).
+/// Everything [`confirmed_move_prepare`] confirms and binds before the actual OS-level move is
+/// attempted: both ends' held [`cancellai_sealedfs::SealedRoot`]s, the bare child names on each
+/// side, the source's byte length, and - only when requested - a SHA-256 digest of the source's
+/// content, all captured at the one open-time, already-identity-confirmed read this seam
+/// performs. Splitting "confirm and prepare" from "commit" ([`commit_prepared_move`]) is what
+/// makes it possible to write a move's sidecar content *before* the move itself rather than
+/// after - see [`commit_move_with_sidecars`] for why that ordering is what actually closes the
+/// crash-recovery gap E12-S01/E12-S03 round 2 independent verifier review found.
 #[cfg(unix)]
-fn confirmed_move_inner(
+struct PreparedMove {
+    source_sealed: cancellai_sealedfs::SealedRoot,
+    dest_sealed: cancellai_sealedfs::SealedRoot,
+    source_name: String,
+    dest_name: String,
+    source_length: u64,
+    digest: Option<[u8; 32]>,
+    device: u64,
+    inode: u64,
+}
+
+/// The shared identity-confirmed checks and binding every move (`Quarantine`/`Restore`/
+/// `Archive`) performs before the actual `renameat`: open-time and immediately-before checks
+/// around `between_open_and_move` (mirroring [`confirmed_delete_file_inner`]'s own two checks
+/// around the unlink), then binding both ends' [`cancellai_sealedfs::SealedRoot`]s. Stops short
+/// of performing the move itself - see [`commit_prepared_move`]/[`commit_move_with_sidecars`].
+#[cfg(unix)]
+fn confirmed_move_prepare(
     source: &Path,
     expected: &IdentityToken,
     destination: &Path,
+    compute_digest: bool,
     between_open_and_move: impl FnOnce(),
-) -> Result<(cancellai_sealedfs::SealedRoot, u64), MutationError> {
+) -> Result<PreparedMove, MutationError> {
     use std::os::unix::fs::MetadataExt;
 
     // This Unix-only move path has no verified interpretation of a `Windows` identity token -
@@ -530,6 +574,20 @@ fn confirmed_move_inner(
         ));
     }
     let source_length = before.len();
+
+    // Read here, against the same already-open, already-identity-confirmed descriptor the
+    // checks above just validated - not a second, separately-racy open of `source` by path -
+    // and strictly before `between_open_and_move`, so the digest always describes the exact
+    // bytes those checks confirmed, never a later, possibly swapped, object.
+    let digest = if compute_digest {
+        Some(digest_content(&file).map_err(|e| {
+            MutationError(format!(
+                "could not read target content for archive digest: {e}"
+            ))
+        })?)
+    } else {
+        None
+    };
 
     between_open_and_move();
 
@@ -588,17 +646,143 @@ fn confirmed_move_inner(
         ))
     })?;
 
-    source_sealed
-        .rename_child_matching_unix_identity(
-            source_name,
-            &dest_sealed,
-            dest_name,
-            *expected_device,
-            *expected_inode,
-        )
-        .map_err(|e| MutationError(format!("move failed: {e}")))?;
+    Ok(PreparedMove {
+        source_sealed,
+        dest_sealed,
+        source_name: source_name.to_string(),
+        dest_name: dest_name.to_string(),
+        source_length,
+        digest,
+        device: *expected_device,
+        inode: *expected_inode,
+    })
+}
 
-    Ok((dest_sealed, source_length))
+/// Performs the actual OS-level move [`confirmed_move_prepare`] already confirmed and bound -
+/// a no-clobber `renameat` via `cancellai_sealedfs::rename_child_matching_unix_identity`. Used
+/// directly by `Restore` (no sidecar); [`commit_move_with_sidecars`] wraps it for
+/// `Quarantine`/`Archive`.
+#[cfg(unix)]
+fn commit_prepared_move(prepared: &PreparedMove) -> Result<(), MutationError> {
+    prepared
+        .source_sealed
+        .rename_child_matching_unix_identity(
+            &prepared.source_name,
+            &prepared.dest_sealed,
+            &prepared.dest_name,
+            prepared.device,
+            prepared.inode,
+        )
+        .map_err(|e| MutationError(format!("move failed: {e}")))
+}
+
+/// One sidecar a move needs to write, named by its suffix (`<destination>.<suffix>.json`) and
+/// content.
+#[cfg(unix)]
+struct Sidecar {
+    suffix: &'static str,
+    bytes: Vec<u8>,
+}
+
+/// Writes every sidecar in `sidecars` durably *before* the move, performs the move, then
+/// finalizes each sidecar's name (E12-S01/E12-S03 round-3 repair, SI-020).
+///
+/// Round 1 wrote sidecars *after* the move and rolled the move back if a write then failed -
+/// which correctly turned a synchronous write failure into "nothing changed," but round 2
+/// independent verifier review found the gap rollback cannot close: a real crash or power loss
+/// between a successful rename and its sidecar write leaves a moved, unrecorded object with no
+/// restart recovery, because nothing durable existed yet to recover *from*.
+///
+/// The fix inverts the ordering. Each sidecar's real, final content is written to a `.pending`
+/// name - durably (`write_new_child_atomically` `fsync`s both the file's content and, since the
+/// E12-S01/E12-S03 round-3 repair, the directory entry too) - *before* the move is even
+/// attempted, so the content is already crash-safe no matter what happens next. The move is
+/// then just a rename; finalizing is a second, same-directory rename (pending name -> real
+/// name, [`cancellai_sealedfs::SealedRoot::finalize_own_child`]) that writes no new content and
+/// so has almost nothing left to fail. If the move itself fails, every pending sidecar is
+/// removed ([`cancellai_sealedfs::SealedRoot::remove_own_child`]) and nothing has changed
+/// externally - the same "refuse and leave things exactly as they were" shape as every other
+/// check in this seam.
+///
+/// **Automated restart recovery after a successful move but a failed/interrupted finalize is a
+/// disclosed, deferred residual, not implemented here.** Rounds 3-5 of this epic's independent
+/// verifier review each found a genuine correctness hazard in three successive attempts at an
+/// automated recovery scanner (identity confusion between unrelated operations sharing a
+/// destination name, then a finalization-ordering hazard within one operation's own group) -
+/// three real defects in the same mechanism is itself a signal, not merely bad luck, and the
+/// owner's decision was to stop iterating on it here rather than ship a fourth attempt. What
+/// this function still guarantees on its own: if finalizing fails, every sidecar's content is
+/// already durably recorded under its own `.pending` name - self-describing, correct, and never
+/// silently wrong - so completing the operation (renaming each `.pending` name to its real one)
+/// is always safe to do, by a human operator today and by a properly independently-verified
+/// automated tool in a dedicated future story.
+#[cfg(unix)]
+fn commit_move_with_sidecars(
+    prepared: PreparedMove,
+    sidecars: &[Sidecar],
+) -> Result<(), MutationError> {
+    let names: Vec<(String, String)> = sidecars
+        .iter()
+        .map(|s| {
+            (
+                format!("{}.{}.json.pending", prepared.dest_name, s.suffix),
+                format!("{}.{}.json", prepared.dest_name, s.suffix),
+            )
+        })
+        .collect();
+
+    let mut written_pending_names: Vec<&str> = Vec::new();
+    for (sidecar, (pending_name, _)) in sidecars.iter().zip(names.iter()) {
+        let tmp_name = format!("{pending_name}.tmp");
+        if let Err(e) =
+            prepared
+                .dest_sealed
+                .write_new_child_atomically(&tmp_name, pending_name, &sidecar.bytes)
+        {
+            // A later sidecar failing to write durably must not leave the earlier ones - which
+            // did already succeed - behind: best-effort cleanup, since a stray pending sidecar
+            // left here is merely untidy, not unsafe (its content never becomes visible under a
+            // real name unless something later finalizes it).
+            for already_written in &written_pending_names {
+                let _ = prepared.dest_sealed.remove_own_child(already_written);
+            }
+            return Err(MutationError(format!(
+                "could not durably record the {} sidecar ahead of the move: {e}",
+                sidecar.suffix
+            )));
+        }
+        written_pending_names.push(pending_name);
+    }
+
+    if let Err(move_err) = commit_prepared_move(&prepared) {
+        for (pending_name, _) in &names {
+            // Best-effort: the move itself already failed and nothing external changed - a
+            // pending sidecar left behind here is merely untidy, not unsafe.
+            let _ = prepared.dest_sealed.remove_own_child(pending_name);
+        }
+        return Err(move_err);
+    }
+
+    let mut finalize_errors = Vec::new();
+    for (pending_name, final_name) in &names {
+        if let Err(e) = prepared
+            .dest_sealed
+            .finalize_own_child(pending_name, final_name)
+        {
+            finalize_errors.push(format!("{final_name}: {e}"));
+        }
+    }
+    if finalize_errors.is_empty() {
+        Ok(())
+    } else {
+        Err(MutationError(format!(
+            "the move itself succeeded and every sidecar's content was already durably \
+             recorded before it, but finalizing its name did not complete for: {} - the \
+             artifact is not lost; its content is durably recorded under its own pending name \
+             and completing the rename is always safe to retry",
+            finalize_errors.join("; ")
+        )))
+    }
 }
 
 /// No verified handle-relative rename exists for Windows yet (mirroring `confirmed_delete_file`'s
@@ -804,60 +988,124 @@ fn confirmed_delete_file(_target: &Path, _expected: &IdentityToken) -> Result<()
     ))
 }
 
-/// What checking an archived artifact's own length sidecar (E12-S03) found. Every branch other
-/// than [`Self::Verified`] is a named refusal - there is no fallback that treats "could not
-/// check" as "probably fine" (this workspace's fail-closed posture, applied to integrity
-/// verification rather than to a mutation decision).
+/// What checking an archived artifact's length and content-digest sidecars (E12-S03) found.
+/// Every branch other than [`Self::Verified`] is a named refusal - there is no fallback that
+/// treats "could not check" as "probably fine" (this workspace's fail-closed posture, applied to
+/// integrity verification rather than to a mutation decision).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ArchiveIntegrity {
-    /// The archived copy's current length matches what was recorded when it was archived.
+    /// The archived copy's current length and content digest both match what was recorded
+    /// when it was archived.
     Verified,
     /// The archived copy's current length differs from what was recorded at archive time - a
-    /// truncation, extension, or other in-place modification since then. Refuse to trust it.
+    /// truncation or extension since then. Refuse to trust it.
     LengthMismatch { recorded: u64, actual: u64 },
-    /// The archived copy no longer exists, or could not be examined, where the sidecar says it
+    /// The archived copy's length is unchanged but its content digest is not (E12-S03 round-1
+    /// independent verifier review's exact finding: an equal-length in-place corruption that a
+    /// length-only check accepted as `Verified`). Refuse to trust it.
+    DigestMismatch { recorded: String, actual: String },
+    /// The archived copy no longer exists, or could not be examined, where the sidecars say it
     /// should.
     ArchivedCopyUnreadable(String),
-    /// The length sidecar itself is missing or could not be read.
+    /// A sidecar (length or digest) is missing or could not be read.
     RecordUnreadable(String),
-    /// The length sidecar's content is not a valid recorded length.
+    /// A sidecar's content is not a validly recorded value.
     RecordMalformed(String),
 }
 
-/// Verifies an archived artifact's recorded byte length still matches its current one - this
-/// story's disclosed, dependency-free interpretation of "verifiable archive integrity"
-/// (`docs/architecture/PERSISTENCE_MODEL.md`'s "Archive integrity must be verified before any
-/// source purge"; see this module's own "Archive (E12-S03)" docs for why a cryptographic
-/// content hash is not implemented here). Not wired to a real purge caller yet, since none
-/// exists - E12-S04 is blocked on E13-S02.
-///
-/// Plain, portable `std::fs` reads, not the handle-relative no-follow discipline the move side
-/// uses: this function is read-only inspection with no side effect to protect, unlike a real
-/// mutation.
-pub fn verify_archive_integrity(archived_path: &Path) -> ArchiveIntegrity {
-    let mut sidecar_name = archived_path
-        .file_name()
-        .map(std::ffi::OsStr::to_os_string)
-        .unwrap_or_default();
-    sidecar_name.push(format!(".{ARCHIVE_LENGTH_SIDECAR_SUFFIX}.json"));
-    let sidecar_path = archived_path.with_file_name(sidecar_name);
+/// Streams `reader`'s full content through SHA-256 in bounded-size chunks, so digesting a large
+/// archived artifact never has to hold its entire content in memory at once (ADR-0030, E12-S03
+/// round-2 repair). Supersedes round 1's FNV-1a `fingerprint_content`, which round 2 independent
+/// verifier review judged insufficient for a CR4 predicate meant to authorize a future
+/// irreversible source purge - this is a genuine cryptographic digest, not merely a fast
+/// fingerprint, so it is not run alongside the one it replaces.
+fn digest_content(mut reader: impl std::io::Read) -> std::io::Result<[u8; 32]> {
+    use sha2::{Digest, Sha256};
 
-    let recorded_text = match std::fs::read_to_string(&sidecar_path) {
-        Ok(text) => text,
-        Err(e) => return ArchiveIntegrity::RecordUnreadable(e.to_string()),
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 8192];
+    loop {
+        let n = reader.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        let chunk = buf
+            .get(..n)
+            .expect("std::io::Read::read never returns more than the buffer it was given");
+        hasher.update(chunk);
+    }
+    let mut digest = [0u8; 32];
+    digest.copy_from_slice(&hasher.finalize());
+    Ok(digest)
+}
+
+/// Verifies an archived artifact's recorded length and content digest both still match its
+/// current ones (`docs/architecture/PERSISTENCE_MODEL.md`'s "Archive integrity must be verified
+/// before any source purge"). Not wired to a real purge caller yet, since none exists - E12-S04
+/// is blocked on E13-S02.
+///
+/// Plain, portable `std::fs`/`std::io` reads, not the handle-relative no-follow discipline the
+/// move side uses: this function is read-only inspection with no side effect to protect, unlike
+/// a real mutation.
+pub fn verify_archive_integrity(archived_path: &Path) -> ArchiveIntegrity {
+    let sidecar_path = |suffix: &str| {
+        let mut name = archived_path
+            .file_name()
+            .map(std::ffi::OsStr::to_os_string)
+            .unwrap_or_default();
+        name.push(format!(".{suffix}.json"));
+        archived_path.with_file_name(name)
     };
-    let recorded: u64 = match recorded_text.trim().parse() {
+
+    let recorded_length_text =
+        match std::fs::read_to_string(sidecar_path(ARCHIVE_LENGTH_SIDECAR_SUFFIX)) {
+            Ok(text) => text,
+            Err(e) => return ArchiveIntegrity::RecordUnreadable(e.to_string()),
+        };
+    let recorded_length: u64 = match recorded_length_text.trim().parse() {
         Ok(value) => value,
         Err(e) => return ArchiveIntegrity::RecordMalformed(e.to_string()),
     };
-    let actual = match std::fs::metadata(archived_path) {
+    let recorded_digest_text =
+        match std::fs::read_to_string(sidecar_path(ARCHIVE_DIGEST_SIDECAR_SUFFIX)) {
+            Ok(text) => text.trim().to_string(),
+            Err(e) => return ArchiveIntegrity::RecordUnreadable(e.to_string()),
+        };
+    if recorded_digest_text.len() != 64
+        || !recorded_digest_text.bytes().all(|b| b.is_ascii_hexdigit())
+    {
+        return ArchiveIntegrity::RecordMalformed(
+            "archive-digest sidecar is not exactly 64 lowercase hex characters".to_string(),
+        );
+    }
+
+    let actual_length = match std::fs::metadata(archived_path) {
         Ok(meta) => meta.len(),
         Err(e) => return ArchiveIntegrity::ArchivedCopyUnreadable(e.to_string()),
     };
-    if actual == recorded {
+    if actual_length != recorded_length {
+        return ArchiveIntegrity::LengthMismatch {
+            recorded: recorded_length,
+            actual: actual_length,
+        };
+    }
+
+    let archived_file = match std::fs::File::open(archived_path) {
+        Ok(f) => f,
+        Err(e) => return ArchiveIntegrity::ArchivedCopyUnreadable(e.to_string()),
+    };
+    let actual_digest = match digest_content(archived_file) {
+        Ok(value) => value,
+        Err(e) => return ArchiveIntegrity::ArchivedCopyUnreadable(e.to_string()),
+    };
+    let actual_digest_text = encode_hex(&actual_digest);
+    if actual_digest_text == recorded_digest_text {
         ArchiveIntegrity::Verified
     } else {
-        ArchiveIntegrity::LengthMismatch { recorded, actual }
+        ArchiveIntegrity::DigestMismatch {
+            recorded: recorded_digest_text,
+            actual: actual_digest_text,
+        }
     }
 }
 
@@ -1399,12 +1647,16 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn a_quarantine_move_that_succeeds_but_cannot_write_its_restore_record_reports_failure_honestly()
-     {
-        // Crash/failure axis: the move itself is already durable (the artifact really is
-        // quarantined, non-destructively) by the time the sidecar write is attempted, so a
-        // failure there must never be swallowed into a false `Succeeded` - the caller has to
-        // learn the restore record is missing, not be told everything went cleanly.
+    fn a_quarantine_sidecar_that_cannot_be_durably_recorded_never_moves_anything() {
+        // E12-S01 round-1 independent verifier review found that a version of this seam which
+        // wrote its sidecar *after* the move left `source_exists=false; moved_exists=true;
+        // record_exists=false` on a write failure - a moved-and-unrecorded artifact, exactly
+        // the unsafe state SI-020 exists to rule out. Round 2 found round 1's own rollback-
+        // after-move repair still could not survive a real crash (rather than a synchronous
+        // write failure) in that same after-move window. The round-3 repair removes the window
+        // entirely: the sidecar's real content is written durably to a `.pending` name *before*
+        // the move is ever attempted, so a failure here means the move was never attempted at
+        // all - nothing to roll back, nothing moved, nothing stranded.
         let source_dir = TempDir::new("quarantine-record-write-fails-source");
         let dest_dir = TempDir::new("quarantine-record-write-fails-dest");
         let file = source_dir.path("artifact.txt");
@@ -1412,12 +1664,12 @@ mod tests {
         let expected = identity_of(&file);
         let destination = dest_dir.path("quarantined.txt");
 
-        // Pre-plant a directory at the exact name the atomic sidecar write's own temp file
-        // would use, forcing `write_new_child_atomically`'s `O_CREAT | O_EXCL` open to fail
-        // with `EEXIST`-against-a-directory rather than succeeding - after the real rename
-        // above it has already completed.
-        std::fs::create_dir(dest_dir.path("quarantined.txt.quarantine-record.json.tmp"))
-            .expect("pre-plant a directory at the sidecar's own temp name");
+        // Pre-plant a directory at the exact name the durable pending sidecar's own atomic
+        // write would use for its temp file, forcing `write_new_child_atomically`'s
+        // `O_CREAT | O_EXCL` open to fail with `EEXIST`-against-a-directory - before the move
+        // is ever attempted, under the round-3 write-before-move ordering.
+        std::fs::create_dir(dest_dir.path("quarantined.txt.quarantine-record.json.pending.tmp"))
+            .expect("pre-plant a directory at the pending sidecar's own temp name");
 
         let executor = SystemMutationExecutor;
         let err = executor
@@ -1431,18 +1683,18 @@ mod tests {
             )
             .expect_err("a sidecar write failure must be reported, not silently swallowed");
         assert!(
-            err.0.contains("sidecar could not be written"),
+            err.0.contains("could not durably record"),
             "reason was: {}",
             err.0
         );
-        assert!(
-            !file.exists(),
-            "the move itself already completed - the source is gone"
-        );
         assert_eq!(
-            std::fs::read_to_string(&destination).expect("the artifact must be safely relocated"),
+            std::fs::read_to_string(&file).expect("the original must be completely untouched"),
             "hello",
-            "the artifact is not lost even though its restore record failed to write"
+            "the move must never be attempted when its sidecar cannot be durably recorded first"
+        );
+        assert!(
+            !destination.exists(),
+            "nothing must land at the destination when the move was never attempted"
         );
     }
 
@@ -1585,7 +1837,45 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn system_executor_archives_a_real_file_and_writes_both_sidecars() {
+    fn confirmed_restore_move_refuses_when_the_destination_is_recreated_between_check_and_move() {
+        // E12-S02 round-1 independent verifier review: the destination-absence check and the
+        // move used to be two separate syscalls (`fstatat` then `renameat`), so provider state
+        // created in that exact window was silently replaced (SI-013). `between_open_and_move`
+        // fires at precisely that window - immediately before the real move - so writing the
+        // "concurrently recreated provider state" there reproduces the finding's exact
+        // interleaving rather than a destination that was already present before the call
+        // started (which the open-time check alone would already have caught either way).
+        let source_dir = TempDir::new("restore-destination-recreated-mid-flight-source");
+        let dest_dir = TempDir::new("restore-destination-recreated-mid-flight-dest");
+        let file = source_dir.path("quarantined.txt");
+        std::fs::write(&file, b"quarantined artifact").expect("create original");
+        let expected = identity_of(&file);
+        let destination = dest_dir.path("artifact.txt");
+
+        let result = confirmed_restore_move_inner(&file, &expected, &destination, || {
+            std::fs::write(&destination, b"new provider state")
+                .expect("simulate concurrent provider state created at the restore destination");
+        });
+
+        assert!(
+            result.is_err(),
+            "a destination recreated between the check and the move must never be silently \
+             replaced by the restore"
+        );
+        assert!(
+            file.exists(),
+            "the quarantined copy must survive a refused restore"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&destination).expect("destination content"),
+            "new provider state",
+            "the concurrently recreated provider state must be untouched"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn system_executor_archives_a_real_file_and_writes_all_sidecars() {
         let source_dir = TempDir::new("archive-source");
         let dest_dir = TempDir::new("archive-dest");
         let file = source_dir.path("artifact.txt");
@@ -1621,10 +1911,162 @@ mod tests {
             "11",
             "length sidecar must record the source's real byte length"
         );
+        let digest_text =
+            std::fs::read_to_string(dest_dir.path("archived-artifact.txt.archive-digest.json"))
+                .expect("digest sidecar must exist");
+        assert_eq!(
+            digest_text.trim().len(),
+            64,
+            "digest sidecar must be a 64-character hex SHA-256"
+        );
 
         assert_eq!(
             verify_archive_integrity(&destination),
             ArchiveIntegrity::Verified
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn verify_archive_integrity_detects_an_equal_length_content_corruption() {
+        // E12-S03 round-1 independent verifier review's exact reproduction: an archived file
+        // is corrupted in place by a same-length content change (not a truncation), which the
+        // old length-only check accepted as `Verified`. The content fingerprint must catch it.
+        let source_dir = TempDir::new("archive-equal-length-corruption-source");
+        let dest_dir = TempDir::new("archive-equal-length-corruption-dest");
+        let file = source_dir.path("artifact.txt");
+        std::fs::write(&file, b"0123456789").expect("create file");
+        let expected = identity_of(&file);
+        let destination = dest_dir.path("archived-artifact.txt");
+
+        let executor = SystemMutationExecutor;
+        executor
+            .mutate(
+                &file,
+                &expected,
+                MutationOperation::Archive {
+                    destination: destination.clone(),
+                    record: b"{}".to_vec(),
+                },
+            )
+            .expect("archive move should succeed");
+        assert_eq!(
+            verify_archive_integrity(&destination),
+            ArchiveIntegrity::Verified,
+            "sanity: the freshly archived, uncorrupted copy must verify"
+        );
+
+        // Corrupt every byte in place without changing the length at all.
+        std::fs::write(&destination, b"abcdefghij").expect("corrupt the archived copy in place");
+        assert_eq!(
+            std::fs::metadata(&destination)
+                .expect("stat corrupted copy")
+                .len(),
+            10,
+            "sanity: the corruption must preserve the exact original length"
+        );
+
+        assert!(
+            matches!(
+                verify_archive_integrity(&destination),
+                ArchiveIntegrity::DigestMismatch { .. }
+            ),
+            "an equal-length content corruption must never be reported as Verified"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_archive_sidecar_that_cannot_be_durably_recorded_never_moves_anything() {
+        // Archive shares E12-S01's round-3 write-before-move repair: a durable-write failure
+        // for any of its three sidecars must happen before the move is ever attempted, exactly
+        // like quarantine's own repaired failure path above.
+        let source_dir = TempDir::new("archive-record-write-fails-source");
+        let dest_dir = TempDir::new("archive-record-write-fails-dest");
+        let file = source_dir.path("artifact.txt");
+        std::fs::write(&file, b"hello world").expect("create file");
+        let expected = identity_of(&file);
+        let destination = dest_dir.path("archived-artifact.txt");
+
+        std::fs::create_dir(dest_dir.path("archived-artifact.txt.archive-record.json.pending.tmp"))
+            .expect("pre-plant a directory at the pending record sidecar's own temp name");
+
+        let executor = SystemMutationExecutor;
+        let err = executor
+            .mutate(
+                &file,
+                &expected,
+                MutationOperation::Archive {
+                    destination: destination.clone(),
+                    record: br#"{"format":"cancellai-archive","format_version":1}"#.to_vec(),
+                },
+            )
+            .expect_err("a record sidecar write failure must be reported, not swallowed");
+        assert!(
+            err.0.contains("could not durably record"),
+            "reason was: {}",
+            err.0
+        );
+        assert_eq!(
+            std::fs::read_to_string(&file).expect("the original must be completely untouched"),
+            "hello world",
+            "the move must never be attempted when its sidecar cannot be durably recorded first"
+        );
+        assert!(
+            !destination.exists(),
+            "nothing must land at the destination when the move was never attempted"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_later_archive_sidecar_failing_to_write_durably_cleans_up_the_earlier_ones_too() {
+        // The third of three pending sidecars (`archive-digest`) fails to write durably, after
+        // the first two (`archive-record`, `archive-length`) already succeeded - the cleanup
+        // path must remove every pending sidecar already written, not only the one that failed,
+        // and the move must still never be attempted.
+        let source_dir = TempDir::new("archive-later-sidecar-write-fails-source");
+        let dest_dir = TempDir::new("archive-later-sidecar-write-fails-dest");
+        let file = source_dir.path("artifact.txt");
+        std::fs::write(&file, b"hello world").expect("create file");
+        let expected = identity_of(&file);
+        let destination = dest_dir.path("archived-artifact.txt");
+
+        std::fs::create_dir(dest_dir.path("archived-artifact.txt.archive-digest.json.pending.tmp"))
+            .expect("pre-plant a directory at the pending digest sidecar's own temp name");
+
+        let executor = SystemMutationExecutor;
+        let err = executor
+            .mutate(
+                &file,
+                &expected,
+                MutationOperation::Archive {
+                    destination: destination.clone(),
+                    record: br#"{"format":"cancellai-archive","format_version":1}"#.to_vec(),
+                },
+            )
+            .expect_err("a later sidecar write failure must be reported, not swallowed");
+        assert!(
+            err.0.contains("could not durably record"),
+            "reason was: {}",
+            err.0
+        );
+        assert_eq!(
+            std::fs::read_to_string(&file).expect("the original must be completely untouched"),
+            "hello world"
+        );
+        assert!(!destination.exists());
+        assert!(
+            !dest_dir
+                .path("archived-artifact.txt.archive-record.json.pending")
+                .exists(),
+            "the earlier, already-durably-written pending sidecar must be cleaned up too"
+        );
+        assert!(
+            !dest_dir
+                .path("archived-artifact.txt.archive-length.json.pending")
+                .exists(),
+            "the earlier, already-durably-written pending sidecar must be cleaned up too"
         );
     }
 
@@ -1680,8 +2122,13 @@ mod tests {
     fn verify_archive_integrity_fails_closed_when_the_archived_copy_is_gone() {
         let dir = TempDir::new("archive-copy-gone");
         let path = dir.path("gone.txt");
-        // Write only the sidecar - the "archived copy" itself never existed at this path.
+        // Write only the sidecars - the "archived copy" itself never existed at this path.
         std::fs::write(dir.path("gone.txt.archive-length.json"), b"5").expect("write sidecar");
+        std::fs::write(
+            dir.path("gone.txt.archive-digest.json"),
+            b"0000000000000000000000000000000000000000000000000000000000000000",
+        )
+        .expect("write sidecar");
 
         assert!(matches!(
             verify_archive_integrity(&path),

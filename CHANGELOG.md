@@ -57,9 +57,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `SealedPlan::seal_quarantine` add the destination a quarantine plan needs;
   `mutation_executor::execute` explicitly compares the source and destination roots' device
   identity before ever attempting a move (SI-018) - `renameat`'s own `EXDEV` is only the
-  backstop. A contentless restore-metadata sidecar is written atomically once the move
-  succeeds. Unix-only for now; Windows quarantine refuses explicitly as a disclosed residual,
-  matching `DeleteFile`'s own history before E20-S05.
+  backstop. A contentless restore-metadata sidecar is written durably (fsynced content and
+  directory entry) to a pending name *before* the move is attempted, then finalized by a second,
+  trivial rename once the move succeeds - a failure before the move means nothing was attempted at
+  all (E12-S01 round 1 and round 2 independent verifier review, SI-020). Automated recovery from a
+  crash between a successful move and a failed/interrupted finalize is a disclosed, deferred
+  residual: rounds 3-5 each found a genuine correctness hazard in successive attempts at an
+  automated recovery scanner for that window, and the owner's decision was to stop iterating on
+  one rather than ship a fourth attempt - the sidecar's content stays durably recorded under its
+  own pending name regardless, safe for a human operator (or a future, independently verified
+  tool) to complete. Unix-only for now; Windows quarantine refuses explicitly as a disclosed
+  residual, matching `DeleteFile`'s own history before E20-S05.
 - Added restore as the reverse of quarantine (E12-S02, CR4, `docs/security/THREAT_MODEL.md`
   "TM-14 Restore overwrites new provider state"): a new `ActionClass::Restore` sits at the same
   authority/reversibility floor as `Quarantine` - undoing a quarantine is no more dangerous than
@@ -72,8 +80,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`SealError::DestinationAlreadyExists`), never silently overwritten, and a drifted artifact
   identity is refused by the same pre-existing `revalidate` (SI-013) every other action class
   already goes through. `ApprovedRoot::prepare_destination`'s return type is renamed
-  `MoveDestination`, since it now serves both directions. Unix-only for now, matching
-  `Quarantine`'s own residual.
+  `MoveDestination`, since it now serves both directions. The underlying move is a single,
+  per-platform atomic no-replace rename (`renameat2`/`RENAME_NOREPLACE` on Linux,
+  `renameatx_np`/`RENAME_EXCL` on macOS) rather than a separate destination-absence check
+  followed by a plain rename, closing the window in which provider state created between those
+  two syscalls could be silently replaced (E12-S02 round-1 independent verifier review, SI-013).
+  Unix-only for now, matching `Quarantine`'s own residual.
 - Wired archive as a real mutation, without byte compression (E12-S03, CR3,
   `docs/architecture/PERSISTENCE_MODEL.md` "Archive"): `ActionClass::Archive` (previously
   refused unconditionally) now builds a real
@@ -81,12 +93,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   identity-confirmed, no-clobber move `Quarantine`/`Restore` use. A real compressed archive
   format needs a kernel-ring dependency this workspace does not carry yet
   (`docs/adrs/0019-dependency-rings-per-crate.md` requires a dedicated, reviewed ADR for one) -
-  deliberately out of scope here. What ships instead, with zero new dependencies: an explicit
-  format/version record (`SealedPlan::seal_archive`'s AC1), and
-  `verify_archive_integrity`, which compares an archived artifact's current byte length against
-  a length sidecar captured at archive time - the cheapest real corruption/truncation signal
-  available without a new dependency, disclosed as weaker than a cryptographic hash rather than
-  overclaimed. `mutation_executor::execute` requires `Reversibility::Archivable` specifically
+  deliberately out of scope here. What ships instead: an explicit format/version record
+  (`SealedPlan::seal_archive`'s AC1), and `verify_archive_integrity`, which compares an archived
+  artifact's current byte length *and* a SHA-256 digest against sidecars captured at archive
+  time - length alone only catches truncation/extension; an equal-length in-place corruption
+  verified successfully until round-1 repair added a content check (E12-S03 round-1 independent
+  verifier review, SI-020), and round-1's own non-cryptographic FNV-1a fingerprint was itself
+  judged insufficient in round 2 to authorize a future purge against, replaced in round 3 by a
+  real digest under [ADR-0030](docs/adrs/0030-sha2-for-archive-integrity-in-cancellai-platform.md).
+  Archive shares Quarantine's write-before-move/finalize/crash-recovery protocol for all three of
+  its sidecars.
+  `mutation_executor::execute` requires `Reversibility::Archivable` specifically
   for an archive plan (pre-existing gate, now actually reachable), which is what keeps
   "compression never changes semantic classification to disposable" true by construction.
   Unix-only for now, matching `Quarantine`/`Restore`'s own residual.

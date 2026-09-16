@@ -1289,7 +1289,7 @@ Introduce reversible lifecycle operations before expanding autonomy.
 
 ### E12-S01 - Quarantine store semantics
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E11-S02, E03-S05 | **Safety obligations:** SI-018, SI-020
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** E11-S02, E03-S05 | **Safety obligations:** SI-018, SI-020
 
 **Outcome.** Define same-volume move-first quarantine with explicit capacity and boundary checks.
 
@@ -1309,7 +1309,7 @@ Introduce reversible lifecycle operations before expanding autonomy.
 
 ### E12-S02 - Restore protocol
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E12-S01 | **Safety obligations:** SI-013
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** E12-S01 | **Safety obligations:** SI-013
 
 **Outcome.** Restore quarantined artifacts only if destination safety and conflict policy are satisfied.
 
@@ -1328,7 +1328,7 @@ Introduce reversible lifecycle operations before expanding autonomy.
 
 ### E12-S03 - Archive/compression lifecycle
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E12-S01 | **Safety obligations:** SI-018, SI-019, SI-020
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** E12-S01 | **Safety obligations:** SI-018, SI-019, SI-020
 
 **Outcome.** Support cold archival for eligible artifacts with verifiable archive integrity.
 

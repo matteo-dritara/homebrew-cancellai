@@ -406,6 +406,105 @@ mod unix_impl {
         Ok(VerifiedPath { dir: Some(current) })
     }
 
+    /// Renames `name` (a direct child of the directory `dirfd` refers to) to `dest_name` (a
+    /// direct child of `dest_dirfd`), atomically refusing rather than replacing whatever
+    /// already exists at the destination name (E12-S02 round-1 repair).
+    ///
+    /// Plain `renameat(2)` has no such flag - a caller wanting "rename only if the destination
+    /// is absent" has always had to check absence first and rename second, and that pair is
+    /// exactly the window an object created at the destination name in between defeats. Each
+    /// platform this crate targets has its own atomic no-replace primitive instead
+    /// (`renameat2`/`RENAME_NOREPLACE` on Linux, `renameatx_np`/`RENAME_EXCL` on macOS); where
+    /// this platform has neither, this refuses outright rather than falling back to the unsafe
+    /// check-then-rename shape - "refuse where the guarantee cannot be established," matching
+    /// this crate's and `cancellai-platform`'s existing posture for every other unverified
+    /// capability.
+    #[cfg(target_os = "linux")]
+    fn rename_no_replace(
+        dirfd: RawFd,
+        name: &CString,
+        dest_dirfd: RawFd,
+        dest_name: &CString,
+    ) -> Result<(), SealError> {
+        // SAFETY: `dirfd`/`dest_dirfd` are valid, held-open directory descriptors for the
+        // call's duration; `name`/`dest_name` are validated bare filenames. `RENAME_NOREPLACE`
+        // makes the kernel itself perform the absence check and the move as one atomic
+        // operation, failing with `EEXIST` rather than replacing an object created at the
+        // destination name after any earlier check a caller might otherwise have done.
+        let rc = unsafe {
+            libc::renameat2(
+                dirfd,
+                name.as_ptr(),
+                dest_dirfd,
+                dest_name.as_ptr(),
+                libc::RENAME_NOREPLACE,
+            )
+        };
+        if rc == 0 {
+            return Ok(());
+        }
+        let err = io::Error::last_os_error();
+        match err.raw_os_error() {
+            Some(libc::EEXIST) => Err(SealError::DestinationAlreadyExists),
+            Some(libc::ENOSYS) | Some(libc::EINVAL) => Err(SealError::Unsupported(
+                "atomic no-replace rename (renameat2/RENAME_NOREPLACE) is not available on \
+                 this kernel or filesystem; refusing to move without that guarantee",
+            )),
+            _ => Err(SealError::Io(err)),
+        }
+    }
+
+    /// macOS counterpart of the Linux `rename_no_replace` above: `renameatx_np` with
+    /// `RENAME_EXCL` is Darwin's atomic no-replace rename, present since macOS 10.12.
+    #[cfg(target_os = "macos")]
+    fn rename_no_replace(
+        dirfd: RawFd,
+        name: &CString,
+        dest_dirfd: RawFd,
+        dest_name: &CString,
+    ) -> Result<(), SealError> {
+        // SAFETY: same argument as the Linux `renameat2` call above - valid, held-open
+        // directory descriptors and validated bare filenames for the call's duration.
+        // `RENAME_EXCL` is Darwin's equivalent atomic "fail if destination exists" flag.
+        let rc = unsafe {
+            libc::renameatx_np(
+                dirfd,
+                name.as_ptr(),
+                dest_dirfd,
+                dest_name.as_ptr(),
+                libc::RENAME_EXCL,
+            )
+        };
+        if rc == 0 {
+            return Ok(());
+        }
+        let err = io::Error::last_os_error();
+        match err.raw_os_error() {
+            Some(libc::EEXIST) => Err(SealError::DestinationAlreadyExists),
+            Some(libc::ENOTSUP) | Some(libc::EINVAL) => Err(SealError::Unsupported(
+                "atomic no-replace rename (renameatx_np/RENAME_EXCL) is not available on this \
+                 filesystem; refusing to move without that guarantee",
+            )),
+            _ => Err(SealError::Io(err)),
+        }
+    }
+
+    /// Every other Unix this crate might compile on (none currently CI-tested - see
+    /// `docs/architecture/PLATFORM_MODEL.md`'s tier list) has no verified atomic no-replace
+    /// rename here yet; refused rather than assumed, matching this module's own precedent for
+    /// every other unverified platform capability.
+    #[cfg(all(unix, not(any(target_os = "linux", target_os = "macos"))))]
+    fn rename_no_replace(
+        _dirfd: RawFd,
+        _name: &CString,
+        _dest_dirfd: RawFd,
+        _dest_name: &CString,
+    ) -> Result<(), SealError> {
+        Err(SealError::Unsupported(
+            "no verified atomic no-replace rename exists for this Unix platform yet",
+        ))
+    }
+
     impl SealedRoot {
         /// Binds `path` as a sealed root: walks every component handle-relatively from the
         /// filesystem root, creates the final component if absent, then holds it open with
@@ -550,19 +649,22 @@ mod unix_impl {
         /// nothing already exists at the destination name (E12-S01).
         ///
         /// Mirrors [`Self::unlink_child_matching_unix_identity`]'s shape, extended to a second
-        /// directory: `renameat(2)`, like `unlinkat(2)`, resolves both names relative to the
-        /// directory descriptors that name them, never through a path - a rename or
-        /// symlink-swap of either directory's own original path, at any point after `self`/
-        /// `destination` were bound, cannot redirect this call.
+        /// directory: both the source identity check and the destination-side move resolve
+        /// their names relative to the directory descriptors that name them, never through a
+        /// path - a rename or symlink-swap of either directory's own original path, at any
+        /// point after `self`/`destination` were bound, cannot redirect this call.
         ///
-        /// **Residual, stated rather than implied.** POSIX has no atomic "rename only if the
-        /// destination name is absent" primitive portable across this crate's target platforms,
-        /// so the destination-absence check and the rename remain two syscalls. What this closes
-        /// is either directory being swapped; what remains is an attacker with write access to
-        /// the destination directory planting an object at the destination name in that window -
-        /// a narrower surface than the source-side race the identity check on `name` already
-        /// prevents, and the destination directory here is cancellAI's own private quarantine
-        /// store, never a provider/user-writable location.
+        /// **E12-S02 round-1 verifier review** found that an earlier version of this function
+        /// performed the destination-absence check and the rename as two separate syscalls
+        /// (`fstatat` then `renameat`), which is not what this function's own doc claimed: for
+        /// `Restore`, the destination is the artifact's *original provider location* - not
+        /// cancellAI's own private store - so an object created there in the window between
+        /// those two syscalls was silently replaced (SI-013). [`rename_no_replace`] closes that
+        /// window with one atomic no-clobber rename syscall per platform
+        /// (`renameat2`/`RENAME_NOREPLACE` on Linux, `renameatx_np`/`RENAME_EXCL` on macOS)
+        /// instead of a check-then-act pair, and refuses outright - rather than falling back to
+        /// the unsafe two-syscall shape - wherever that platform guarantee turns out to be
+        /// unavailable (an old kernel, or a filesystem that does not implement the flag).
         pub fn rename_child_matching_unix_identity(
             &self,
             name: &str,
@@ -595,41 +697,7 @@ mod unix_impl {
                 return Err(SealError::IdentityMismatch);
             }
 
-            // SAFETY: same all-zero-is-valid reasoning as `stat` above.
-            let mut dest_stat: libc::stat = unsafe { std::mem::zeroed() };
-            // SAFETY: `dest_dirfd` is a valid open directory descriptor for this call's
-            // duration (borrowed from `destination.dir`); `dest_cname` is a NUL-terminated bare
-            // filename validated above. `AT_SYMLINK_NOFOLLOW` keeps this a no-follow lookup, so
-            // an existing symlink at the destination name is detected as "present" here rather
-            // than followed and reported as an unrelated target's fact.
-            let dest_rc = unsafe {
-                libc::fstatat(
-                    dest_dirfd,
-                    dest_cname.as_ptr(),
-                    &mut dest_stat,
-                    libc::AT_SYMLINK_NOFOLLOW,
-                )
-            };
-            if dest_rc == 0 {
-                return Err(SealError::DestinationAlreadyExists);
-            }
-            let dest_err = io::Error::last_os_error();
-            if dest_err.kind() != io::ErrorKind::NotFound {
-                return Err(SealError::Io(dest_err));
-            }
-
-            // SAFETY: `dirfd`/`dest_dirfd` are both valid, held-open directory descriptors for
-            // the call's duration; `cname`/`dest_cname` are validated bare filenames. `renameat`
-            // resolves both names relative to their own descriptor, never through a path, and
-            // fails with `EXDEV` rather than silently copying if the two descriptors do not name
-            // directories on the same filesystem (SI-018's boundary check is performed
-            // explicitly by the caller before this is ever reached - this is only the backstop).
-            let rc =
-                unsafe { libc::renameat(dirfd, cname.as_ptr(), dest_dirfd, dest_cname.as_ptr()) };
-            if rc != 0 {
-                return Err(SealError::Io(io::Error::last_os_error()));
-            }
-            Ok(())
+            rename_no_replace(dirfd, &cname, dest_dirfd, &dest_cname)
         }
 
         /// Reads a direct child file by name, relative to the held directory descriptor -
@@ -713,6 +781,56 @@ mod unix_impl {
             // directory. `renameat(2)`, like `rename(2)`, never follows a symlink at either
             // name - it replaces/creates the directory entry itself.
             let rc = unsafe { libc::renameat(dirfd, tmp_c.as_ptr(), dirfd, final_c.as_ptr()) };
+            if rc != 0 {
+                return Err(SealError::Io(io::Error::last_os_error()));
+            }
+            // E12-S01/E12-S03 round-3 repair: fsync the directory itself, not only the file's
+            // own content above - on POSIX, a rename's directory-entry update is not guaranteed
+            // durable across a crash until the directory holding it is fsynced too. Without
+            // this, a crash immediately after the `renameat` above could still lose the rename
+            // itself even though the file's bytes are safely on disk, which would defeat the
+            // "durable, restart-recoverable" property this call exists to provide.
+            self.dir.sync_all().map_err(SealError::Io)?;
+            Ok(())
+        }
+
+        /// Renames an existing direct child `from_name` to `to_name`, both within this same
+        /// held directory. No identity confirmation, unlike [`Self::rename_child_matching_
+        /// unix_identity`]: both names always refer to cancellAI's own already-durable metadata
+        /// sidecar (never user artifact content), so there is no caller-supplied identity to
+        /// protect here - the same trust distinction [`Self::write_new_child_atomically`]'s own
+        /// tmp-to-final rename already makes. A plain, replacing rename (E12-S01/E12-S03
+        /// round-3 repair): finalizing a pending sidecar that was written durably *before* a
+        /// move, once that move's own completion has been independently confirmed, so a retry
+        /// of an interrupted finalize is safe to repeat.
+        pub fn finalize_own_child(&self, from_name: &str, to_name: &str) -> Result<(), SealError> {
+            let from_c = validate_child_name(from_name)?;
+            let to_c = validate_child_name(to_name)?;
+            let dirfd = self.dir.as_raw_fd();
+            // SAFETY: `dirfd` is a valid, held-open directory descriptor for the call's
+            // duration; `from_c`/`to_c` are validated bare filenames, so this cannot resolve
+            // outside the directory `dirfd` refers to.
+            let rc = unsafe { libc::renameat(dirfd, from_c.as_ptr(), dirfd, to_c.as_ptr()) };
+            if rc != 0 {
+                return Err(SealError::Io(io::Error::last_os_error()));
+            }
+            self.dir.sync_all().map_err(SealError::Io)?;
+            Ok(())
+        }
+
+        /// Removes a direct child by name, unconditionally - no identity confirmation, for the
+        /// same reason [`Self::finalize_own_child`] needs none: the name is always one of
+        /// cancellAI's own just-written metadata files, never user content. Cleanup of a
+        /// pending sidecar when the move it was written ahead of never happened (E12-S01/
+        /// E12-S03 round-3 repair).
+        pub fn remove_own_child(&self, name: &str) -> Result<(), SealError> {
+            let cname = validate_child_name(name)?;
+            let dirfd = self.dir.as_raw_fd();
+            // SAFETY: `dirfd` is a valid, held-open directory descriptor for the call's
+            // duration; `cname` is a validated bare filename, so this cannot resolve outside
+            // the directory `dirfd` refers to. `0` (no `AT_REMOVEDIR`) removes a non-directory
+            // entry only.
+            let rc = unsafe { libc::unlinkat(dirfd, cname.as_ptr(), 0) };
             if rc != 0 {
                 return Err(SealError::Io(io::Error::last_os_error()));
             }
