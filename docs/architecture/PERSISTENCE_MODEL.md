@@ -18,6 +18,23 @@ A local database, initially expected to be SQLite in the Rust architecture, inde
 
 This database is a **reconstructible cache/index**, not the source of truth. Dropping it must not change provider state. `reset --local-state` deletes cancellAI state only.
 
+E13-S01 implements the store itself: `cancellai_store::CurrentStateStore`, a bundled-SQLite
+database (ADR-0019's outer-ring `rusqlite`, named for this story at planning time) holding one
+row per `cancellai_model::AgentArtifact`, keyed by its `ArtifactId`. Each row's full content is
+the artifact's own JSON wire format (`docs/architecture/JSON_CONTRACTS.md`), with `provider_id`
+and `activity_state` pulled out as their own indexed columns for the fast queries this layer
+exists for; a fully normalized schema is a follow-up story's job once a real caller needs a query
+this shape cannot answer. `CurrentStateStore::rebuild` is the reconstruction primitive: it
+replaces the table's entire content, in one transaction, with exactly the set of artifacts it is
+given - the store's content after a rebuild depends only on what was just scanned, never on what
+it held before (including a fresh, empty database). Schema migrations use SQLite's own `PRAGMA
+user_version` rather than a bookkeeping table, and each migration runs inside its own
+transaction, so a migration that fails partway rolls back everything it had already done and
+leaves `user_version` exactly where it started. This crate never touches a provider path - its
+only filesystem interaction is the SQLite file itself - so deleting that file, exactly what
+`reset --local-state` does, cannot delete a provider artifact by construction, not merely by
+convention.
+
 ## Layer 2: Operational Event Ledger
 
 Significant events are append-only logical records:

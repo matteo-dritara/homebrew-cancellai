@@ -114,7 +114,12 @@ use crate::vocabulary::{
 /// An opaque, engine-assigned artifact reference (`docs/architecture/JSON_CONTRACTS.md`:
 /// "two conformant engines observing the same fixture are never required to assign the same
 /// one"). Never used as a differential-comparison matching key - `identity_token` is.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
+///
+/// `Deserialize` (E13-S01) lets `cancellai-store` read an [`AgentArtifact`] back out of the
+/// current-state database - the store's own round-trip requirement.
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 #[serde(transparent)]
 pub struct ArtifactId(pub String);
 
@@ -132,14 +137,14 @@ impl std::fmt::Display for ArtifactId {
 
 /// What kind of structural link one [`AgentArtifact`] has to another (this module's own doc,
 /// "`relationships` (E08-S01)"). Not project/session attribution - see [`AgentArtifact::relationships`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RelationshipKind {
     ChildOf,
 }
 
 /// One directed relationship from an [`AgentArtifact`] to another, by [`ArtifactId`].
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ArtifactRelationship {
     pub kind: RelationshipKind,
     pub related_artifact_id: ArtifactId,
@@ -150,7 +155,7 @@ pub struct ArtifactRelationship {
 /// whatever the provider's own metadata names the project - not a claim that it is, or decodes
 /// to, a real filesystem path. See [`AttributionSource::KnownPath`] for that distinct, stronger
 /// claim.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(transparent)]
 pub struct ProjectRef(pub String);
 
@@ -162,7 +167,7 @@ impl ProjectRef {
 
 /// Which evidence category justified a [`ProjectAttribution`] (E08-S02's own outcome:
 /// "explicit provider metadata, known paths, or strong observed evidence").
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AttributionSource {
     /// The provider's own structural grouping (e.g. Claude's `projects/<name>/` directory) -
@@ -180,7 +185,7 @@ pub enum AttributionSource {
 /// confidence (E08-S02 AC2). `AgentArtifact::project_attribution` is `None` - `Unattributed` -
 /// rather than this type wrapping an optional/empty `ProjectRef`, so "we don't know" can never
 /// be represented as a hollow attribution record (SI-023).
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ProjectAttribution {
     pub project_ref: ProjectRef,
     pub source: AttributionSource,
@@ -190,7 +195,7 @@ pub struct ProjectAttribution {
 /// Explains an `ORPHANED`/`STALE` [`ActivityState`] in terms of the concrete evidence and
 /// threshold that produced it (this module's own doc, "`activity_signal` / `ActivityState::
 /// Orphaned` (E08-S03)", AC2).
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ActivitySignal {
     pub evidence_ids: Vec<EvidenceId>,
     pub explanation: String,
@@ -198,7 +203,7 @@ pub struct ActivitySignal {
 
 /// One observed unit of provider state, classified along every lifecycle axis
 /// (`docs/architecture/DOMAIN_MODEL.md` "AgentArtifact").
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AgentArtifact {
     pub artifact_id: ArtifactId,
     pub identity_token: String,

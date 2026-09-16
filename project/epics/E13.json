@@ -7,14 +7,15 @@
   "dependencies": [
     "E11"
   ],
-  "status": "planned",
+  "status": "in_progress",
   "stories": [
     {
       "id": "E13-S01",
       "title": "Reconstructible current-state store",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Introduce SQLite current state as a cache/index that can be dropped and rebuilt.",
-      "change_risk": "CR2",
+      "change_risk": "CR3",
+      "risk_reclassification_note": "Declared CR2 at planning time; raised to CR3 at commit time because the change touches rust/crates/cancellai-model/src/agent_artifact.rs (adding Deserialize to AgentArtifact and the types it carries) - the domain-model floor project/risk_floors.json sets for that path, since it defines what an artifact, an authority and a plan are and every downstream decision is expressed in its types, even though this change is additive-only (no field, semantics, or existing Serialize output changes).",
       "dependencies": [
         "E08-S01"
       ],

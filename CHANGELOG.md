@@ -107,6 +107,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for an archive plan (pre-existing gate, now actually reachable), which is what keeps
   "compression never changes semantic classification to disposable" true by construction.
   Unix-only for now, matching `Quarantine`/`Restore`'s own residual.
+- Introduced the current-state SQLite store (E13-S01, CR2,
+  `docs/architecture/PERSISTENCE_MODEL.md` "Layer 1: Current State"):
+  `cancellai_store::CurrentStateStore` holds one row per `cancellai_model::AgentArtifact`,
+  keyed by `ArtifactId`, using a bundled `rusqlite` (ADR-0019's outer-ring dependency, named
+  for this story at planning time). `rebuild` replaces the table's entire content in one
+  transaction with exactly the artifacts it is given, so the store's content after a rebuild
+  depends only on what was just scanned, never on what it held before (C-10: reconstructible,
+  never the source of truth). Schema migrations use SQLite's own `PRAGMA user_version`, each
+  running inside its own transaction, so a migration failing partway rolls back everything it
+  had already done rather than leaving a half-applied schema. This crate never touches a
+  provider path, so deleting its database file - `reset --local-state`'s own contract - cannot
+  delete a provider artifact by construction. `cancellai-model`'s `AgentArtifact` and every type
+  it carries gained `Deserialize` (previously `Serialize`-only) so the store can read a row back
+  out, matching the same wire format `docs/architecture/JSON_CONTRACTS.md` already defines.
 
 ### Fixed
 

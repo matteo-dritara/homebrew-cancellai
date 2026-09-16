@@ -1367,13 +1367,13 @@ Introduce reversible lifecycle operations before expanding autonomy.
 
 ## E13 - Local State, Event Ledger, Analytical Memory
 
-**Phase:** `P3` | **Status:** `planned` | **Epic dependencies:** E11
+**Phase:** `P3` | **Status:** `in_progress` | **Epic dependencies:** E11
 
 Persist only bounded metadata required for lifecycle, audit, undo, and Guardian intelligence.
 
 ### E13-S01 - Reconstructible current-state store
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E08-S01 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E08-S01 | **Safety obligations:** none
 
 **Outcome.** Introduce SQLite current state as a cache/index that can be dropped and rebuilt.
 

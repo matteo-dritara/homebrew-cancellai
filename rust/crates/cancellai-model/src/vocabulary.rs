@@ -43,7 +43,11 @@ pub enum ActionClass {
 
 /// How recoverable an action's effect is (`docs/architecture/DOMAIN_MODEL.md`
 /// "Reversibility").
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+///
+/// `Deserialize` (E13-S01) lets `cancellai-store` read an `AgentArtifact` back out of the
+/// current-state database by the same variant names it was written with - the store's own
+/// round-trip requirement, not a second string mapping the store would otherwise have to own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Reversibility {
     Rebuildable,
@@ -58,7 +62,8 @@ pub enum Reversibility {
 /// confidence"). Inferred/unknown confidence cannot silently raise destructive authority -
 /// enforcing that is a future authority-lattice concern (E03-S04); this type only carries
 /// the fact.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+/// `Deserialize` (E13-S01): see [`Reversibility`]'s own doc for why - the same round-trip need.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum KnowledgeConfidence {
     Verified,
@@ -71,7 +76,9 @@ pub enum KnowledgeConfidence {
 /// axes" / Activity). Independent of `ProtectionState`/`IntegrityState` - an artifact can be
 /// `Orphaned` and still `Pinned` (protected from cleanup despite orphan status), per
 /// DOMAIN_MODEL.md's own worked example.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+///
+/// `Deserialize` (E13-S01): see [`Reversibility`]'s own doc for why - the same round-trip need.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ActivityState {
     Active,
@@ -83,7 +90,9 @@ pub enum ActivityState {
 
 /// Whether an artifact is shielded from cleanup regardless of other classification
 /// (`docs/architecture/DOMAIN_MODEL.md` "Lifecycle axes" / Protection).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+///
+/// `Deserialize` (E13-S01): see [`Reversibility`]'s own doc for why - the same round-trip need.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProtectionState {
     Normal,
@@ -93,7 +102,9 @@ pub enum ProtectionState {
 
 /// How intact the evidence for an artifact is (`docs/architecture/DOMAIN_MODEL.md`
 /// "Lifecycle axes" / Integrity).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+///
+/// `Deserialize` (E13-S01): see [`Reversibility`]'s own doc for why - the same round-trip need.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum IntegrityState {
     Healthy,
@@ -110,7 +121,11 @@ pub enum IntegrityState {
 /// `RiskClass` to an `AuthorityLevel` ceiling as its own named policy decision (E06,
 /// `docs/adrs/0016-rust-artifact-risk-classification.md`), the same way `effective_authority`
 /// already treats `artifact_ceiling` as caller-supplied rather than inventing the mapping here.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
+///
+/// `Deserialize` (E13-S01): see [`Reversibility`]'s own doc for why - the same round-trip need.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum RiskClass {
     R0Disposable,
@@ -124,7 +139,9 @@ pub enum RiskClass {
 /// Where an artifact currently sits in cancellAI's own handling lifecycle
 /// (`docs/architecture/DOMAIN_MODEL.md` "Lifecycle axes" / Residency). Independent of the
 /// other lifecycle axes, same as `ActivityState`/`ProtectionState`/`IntegrityState`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+///
+/// `Deserialize` (E13-S01): see [`Reversibility`]'s own doc for why - the same round-trip need.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ResidencyState {
     Hot,

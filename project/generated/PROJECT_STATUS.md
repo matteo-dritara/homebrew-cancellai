@@ -11,14 +11,15 @@ Epics: **32** | Stories: **165**
 - `blocked`: 2
 - `cancelled`: 1
 - `done`: 143
-- `planned`: 19
+- `planned`: 18
+- `ready_for_review`: 1
 
 ## Change risk distribution
 
 - `CR0`: 14
 - `CR1`: 39
-- `CR2`: 52
-- `CR3`: 27
+- `CR2`: 51
+- `CR3`: 28
 - `CR4`: 33
 
 ## Explicitly ready work
@@ -27,4 +28,4 @@ Epics: **32** | Stories: **165**
 
 ## Awaiting independent review
 
-- none
+- **E13-S01** - Reconstructible current-state store (CR3)

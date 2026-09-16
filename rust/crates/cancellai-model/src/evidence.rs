@@ -5,7 +5,12 @@
 /// An opaque, stable reference to one [`Evidence`] record. Newtype rather than a bare
 /// `String` so a caller cannot pass an arbitrary string where an evidence reference is
 /// expected without at least going through this type's constructor.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
+///
+/// `Deserialize` (E13-S01) lets `cancellai-store` read an evidence reference back out of the
+/// current-state database - the store's own round-trip requirement.
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 #[serde(transparent)]
 pub struct EvidenceId(pub String);
 
