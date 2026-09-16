@@ -234,7 +234,7 @@ precedent for the same situation.
 
 ## Method defects
 
-- none
+- **What happened**: the first `git commit` attempt for this story was refused by the `pre-commit` `skill-content-check` hook (`scripts/check_skill_content.py`), reporting "skillspector 2. is installed but this gate is pinned to 2.11.2" - a mismatch, but not the one it named; `skillspector --version` actually reports `2.11.2`, matching the pin exactly, but the installed binary embeds an ANSI colour escape sequence mid-digit-string even under non-interactive `subprocess.run(capture_output=True)` capture (`SkillSpector v2.\x1b[1;36m11.2\x1b[0m`, confirmed directly), which the gate's `VERSION_RE` character class does not tolerate, so it parsed only `2.` and reported a false version-drift; setting `TERM=dumb` in the invoking shell (skillspector honours it and stops emitting colour codes; `NO_COLOR=1` alone did not) let the gate parse the true, correctly-pinned version and pass, confirming this was a parsing/observation defect in the gate, not an actual toolchain drift, and no toolchain component was installed, updated, or removed to work around it. **Prevented by**: none exists; `VERSION_RE` does not strip ANSI escape sequences before matching, and nothing in `docs/development/AGENT_TOOLCHAIN.md` or the toolchain-review flow checks a pinned scanner's own colour-output behaviour against a non-interactive capture. **Disposition**: proposed 2026-09-16
 
 ## Residual risks
 
