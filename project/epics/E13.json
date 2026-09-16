@@ -35,7 +35,7 @@
     {
       "id": "E13-S02",
       "title": "Append-only operational ledger",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Record significant classification/policy/mutation/lifecycle events without storing artifact content.",
       "change_risk": "CR2",
       "dependencies": [

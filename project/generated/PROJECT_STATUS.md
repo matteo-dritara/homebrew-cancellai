@@ -11,8 +11,8 @@ Epics: **32** | Stories: **165**
 - `blocked`: 2
 - `cancelled`: 1
 - `done`: 143
-- `planned`: 18
-- `ready_for_review`: 1
+- `planned`: 17
+- `ready_for_review`: 2
 
 ## Change risk distribution
 
@@ -29,3 +29,4 @@ Epics: **32** | Stories: **165**
 ## Awaiting independent review
 
 - **E13-S01** - Reconstructible current-state store (CR3)
+- **E13-S02** - Append-only operational ledger (CR2)

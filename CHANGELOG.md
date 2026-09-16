@@ -121,6 +121,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   delete a provider artifact by construction. `cancellai-model`'s `AgentArtifact` and every type
   it carries gained `Deserialize` (previously `Serialize`-only) so the store can read a row back
   out, matching the same wire format `docs/architecture/JSON_CONTRACTS.md` already defines.
+- Introduced the append-only operational event ledger (E13-S02, CR2,
+  `docs/architecture/PERSISTENCE_MODEL.md` "Layer 2: Operational Event Ledger"):
+  `cancellai_store::ledger::EventLedger`, a second, independent bundled-SQLite database
+  alongside `CurrentStateStore` in the same crate (ADR-0019 already names the store and the
+  ledger as one story pair). `append` is the only way an event is ever written - there is no
+  public update or delete - and immutability is enforced at the SQLite layer itself via triggers
+  that reject any `UPDATE`/`DELETE` outside the one, gated transaction
+  `compact_range` uses to replace a range of events with a signed/hashed `CompactionSummary`
+  (SHA-256 digest, exact event count, per-kind breakdown), never silently. A mutation-class
+  event (`PLAN_CREATED`, `ACTION_BLOCKED`, `QUARANTINED`, `RESTORED`, `ARCHIVED`, `PURGED`) is
+  refused, writing nothing, unless it carries a non-empty `plan_id` and at least one
+  `EvidenceId`. Every event's metadata is a closed, allowlisted set of fields
+  (`artifact_id`/`provider_id`/`category`/`policy_id`/`reason_code`) - contentless by
+  construction, per `docs/architecture/PERSISTENCE_MODEL.md`'s own constraint. `read_all`
+  returns events in append order (SQLite's own never-reused `AUTOINCREMENT` id), independent of
+  each event's caller-supplied `recorded_at`.
 
 ### Fixed
 

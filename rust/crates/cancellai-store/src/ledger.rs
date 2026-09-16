@@ -1,0 +1,1042 @@
+//! The operational event ledger (E13-S02, `docs/architecture/PERSISTENCE_MODEL.md`'s "Layer 2:
+//! Operational Event Ledger"). Records that a significant classification/policy/mutation/
+//! lifecycle event happened, never the artifact content it happened to. Lives in this crate
+//! rather than a new one for the same reason ADR-0019 already names the store and the ledger
+//! together as one story pair ("E13 a SQLite current-state store and event ledger"): both are
+//! bundled-`rusqlite` (outer ring), both hold cancellAI's own disposable state, and a caller
+//! that opens one typically opens the other.
+//!
+//! ## Append-only, enforced by the database itself (AC "immutable after commit")
+//!
+//! `ledger_events` has no public update/delete API - `append` is the only way a row is ever
+//! written, and the schema also carries `BEFORE UPDATE`/`BEFORE DELETE` triggers that `RAISE
+//! (ABORT, ...)` unconditionally for update, and for delete unless a one-row gate
+//! (`ledger_control.compaction_in_progress`) is set. Only [`EventLedger::compact_range`] ever
+//! sets that gate, inside the same transaction as the delete it performs and the compaction
+//! summary it writes - so the *only* way an event row is ever removed is through an explicit,
+//! non-silent compaction that replaces the range with a signed/hashed summary row, never a
+//! future method that forgets to check anything. This is enforced at the SQLite layer, not
+//! merely by the absence of a Rust method - `tests::raw_update_against_a_committed_event_is_
+//! rejected_by_the_database_itself` and its delete counterpart attempt exactly that bypass
+//! directly against the connection and assert the trigger refuses it.
+//!
+//! `ledger_compactions` (the summary rows) is immutable the same way, unconditionally - a
+//! summary itself is never revised once written.
+//!
+//! ## Mutation events carry plan/evidence references (AC "every mutation references plan ID
+//! and evidence ID(s)")
+//!
+//! [`EventKind::is_mutation`] names the six kinds `docs/architecture/PERSISTENCE_MODEL.md`'s
+//! event-kind list and this story's own contract treat as representing an action rather than a
+//! pure observation: `PLAN_CREATED`, `ACTION_BLOCKED`, `QUARANTINED`, `RESTORED`, `ARCHIVED`,
+//! `PURGED`. [`EventLedger::append`] refuses (fail-closed, no partial write) any event of one
+//! of those kinds whose [`NewEvent::mutation`] is absent, carries an empty `plan_id`, or an
+//! empty `evidence_ids` list.
+//!
+//! ## Contentless by default (`docs/architecture/PERSISTENCE_MODEL.md`: "Event payloads are
+//! contentless by default")
+//!
+//! [`EventMetadata`] is a closed, allowlisted set of fields (`artifact_id`, `provider_id`,
+//! `category`, `policy_id`, `reason_code`) - there is no free-form map or blob field a caller
+//! could use to smuggle a path, transcript, or artifact content into the ledger.
+//! `tests::ledger_events_schema_has_only_the_allowlisted_columns` pins the actual table shape
+//! against that closed set, so a future change that widens it is a visible, reviewable diff
+//! rather than a silent schema drift. This crate cannot stop a caller from putting something it
+//! should not into e.g. `reason_code` (a `String`, not a content-typed field) - the same
+//! residual `cancellai_model::Action`/`Precondition` already accept as inert data; see this
+//! story's evidence packet for the residual-risk record.
+//!
+//! ## Compaction preserves audit/aggregate semantics (AC "compaction into signed/hashed
+//! summary records")
+//!
+//! [`EventLedger::compact_range`] requires the requested `[from, to]` range to be exactly and
+//! contiguously present (row count must equal `to - from + 1`) - this is what stops a range
+//! that overlaps an earlier compaction, or reaches past the newest appended event, from
+//! silently summarizing fewer events than the caller asked for
+//! (`tests::compact_range_rejects_a_range_with_a_gap_from_a_prior_compaction`). The resulting
+//! [`CompactionSummary`] carries the exact event count, a per-kind breakdown
+//! (`kind_counts` - so "how many `QUARANTINED` events happened in this window" stays
+//! answerable after the raw rows are gone), and a SHA-256 digest over a canonical, ordered
+//! encoding of every summarized event (tamper-evident: a summary cannot be quietly
+//! re-attributed to a different set of events without changing the digest).
+
+use cancellai_model::{ArtifactId, EvidenceId};
+use rusqlite::{Connection, params};
+use sha2::{Digest, Sha256};
+use std::path::Path;
+
+/// Why an [`EventLedger`] operation failed - the underlying SQLite/JSON error, or this
+/// module's own contract violation (a mutation-class event missing its plan/evidence
+/// reference, or a compaction range that is not exactly and contiguously present).
+#[derive(Debug)]
+pub struct LedgerError(String);
+
+impl std::fmt::Display for LedgerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::error::Error for LedgerError {}
+
+impl From<rusqlite::Error> for LedgerError {
+    fn from(e: rusqlite::Error) -> Self {
+        Self(e.to_string())
+    }
+}
+
+impl From<serde_json::Error> for LedgerError {
+    fn from(e: serde_json::Error) -> Self {
+        Self(format!(
+            "stored evidence_ids column did not round-trip as JSON: {e}"
+        ))
+    }
+}
+
+/// The ledger's own migration history - a separate `PRAGMA user_version` namespace from
+/// [`crate::CurrentStateStore`]'s, because each opens its own `Connection` to its own file
+/// (`docs/architecture/PERSISTENCE_MODEL.md`'s Layer 1/Layer 2 carry separate self-budgets, so
+/// a caller is expected to give them separate paths). See this module's own doc for why the
+/// triggers here are load-bearing, not incidental.
+const MIGRATIONS: &[&str] = &["
+    CREATE TABLE ledger_events (
+        event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind TEXT NOT NULL,
+        recorded_at INTEGER NOT NULL,
+        artifact_id TEXT,
+        provider_id TEXT,
+        category TEXT,
+        policy_id TEXT,
+        reason_code TEXT,
+        plan_id TEXT,
+        evidence_ids TEXT NOT NULL DEFAULT '[]'
+    ) STRICT;
+
+    CREATE TABLE ledger_control (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        compaction_in_progress INTEGER NOT NULL DEFAULT 0
+    ) STRICT;
+    INSERT INTO ledger_control (id, compaction_in_progress) VALUES (1, 0);
+
+    CREATE TABLE ledger_compactions (
+        compaction_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        from_event_id INTEGER NOT NULL,
+        to_event_id INTEGER NOT NULL,
+        event_count INTEGER NOT NULL,
+        kind_counts TEXT NOT NULL,
+        digest_hex TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+    ) STRICT;
+
+    CREATE TRIGGER ledger_events_forbid_update
+    BEFORE UPDATE ON ledger_events
+    BEGIN
+        SELECT RAISE(ABORT, 'ledger events are immutable: update is never permitted');
+    END;
+
+    CREATE TRIGGER ledger_events_forbid_delete
+    BEFORE DELETE ON ledger_events
+    WHEN (SELECT compaction_in_progress FROM ledger_control WHERE id = 1) = 0
+    BEGIN
+        SELECT RAISE(ABORT, 'ledger events can only be removed by an explicit compaction');
+    END;
+
+    CREATE TRIGGER ledger_compactions_forbid_update
+    BEFORE UPDATE ON ledger_compactions
+    BEGIN
+        SELECT RAISE(ABORT, 'compaction summaries are immutable');
+    END;
+
+    CREATE TRIGGER ledger_compactions_forbid_delete
+    BEFORE DELETE ON ledger_compactions
+    BEGIN
+        SELECT RAISE(ABORT, 'compaction summaries are immutable');
+    END;
+"];
+
+/// Applies every migration in `migrations` the database has not already applied - a scoped
+/// copy of `crate::apply_migrations`'s own logic (same `PRAGMA user_version`/one-transaction-
+/// per-migration pattern) rather than a shared function, so this module's [`LedgerError`] does
+/// not have to become [`crate::StoreError`]'s concern or vice versa - the same
+/// keep-error-types-local precedent `cancellai_platform::mutation`'s own local `encode_hex`
+/// copy of `cancellai_safety::knowledge_bundle`'s already uses in this workspace.
+fn apply_migrations(conn: &Connection, migrations: &[&str]) -> Result<(), LedgerError> {
+    let current_version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    let current_version = usize::try_from(current_version).unwrap_or(0);
+    for (index, migration) in migrations.iter().enumerate().skip(current_version) {
+        let next_version = index + 1;
+        let tx = conn.unchecked_transaction()?;
+        tx.execute_batch(migration)?;
+        tx.execute_batch(&format!("PRAGMA user_version = {next_version}"))?;
+        tx.commit()?;
+    }
+    Ok(())
+}
+
+/// Hex-encodes `bytes` in lowercase, one `%02x` pair per byte - the same local-copy convention
+/// `cancellai_platform::mutation::encode_hex` documents for itself.
+fn encode_hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// One of the event kinds `docs/architecture/PERSISTENCE_MODEL.md`'s Layer 2 names. `Discovered`
+/// through `AnomalyDetected` are pure observations; [`EventKind::is_mutation`] names the rest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EventKind {
+    Discovered,
+    Classified,
+    LifecycleChanged,
+    PolicyChanged,
+    AnomalyDetected,
+    PlanCreated,
+    ActionBlocked,
+    Quarantined,
+    Restored,
+    Archived,
+    Purged,
+}
+
+impl EventKind {
+    /// The exact string this kind is stored/read under - an explicit, exhaustive mapping
+    /// (matching `crate::activity_state_key`'s own precedent) so a future variant this module
+    /// does not yet handle fails to compile rather than silently falling back to something.
+    fn key(self) -> &'static str {
+        match self {
+            EventKind::Discovered => "DISCOVERED",
+            EventKind::Classified => "CLASSIFIED",
+            EventKind::LifecycleChanged => "LIFECYCLE_CHANGED",
+            EventKind::PolicyChanged => "POLICY_CHANGED",
+            EventKind::AnomalyDetected => "ANOMALY_DETECTED",
+            EventKind::PlanCreated => "PLAN_CREATED",
+            EventKind::ActionBlocked => "ACTION_BLOCKED",
+            EventKind::Quarantined => "QUARANTINED",
+            EventKind::Restored => "RESTORED",
+            EventKind::Archived => "ARCHIVED",
+            EventKind::Purged => "PURGED",
+        }
+    }
+
+    fn from_key(key: &str) -> Result<Self, LedgerError> {
+        match key {
+            "DISCOVERED" => Ok(EventKind::Discovered),
+            "CLASSIFIED" => Ok(EventKind::Classified),
+            "LIFECYCLE_CHANGED" => Ok(EventKind::LifecycleChanged),
+            "POLICY_CHANGED" => Ok(EventKind::PolicyChanged),
+            "ANOMALY_DETECTED" => Ok(EventKind::AnomalyDetected),
+            "PLAN_CREATED" => Ok(EventKind::PlanCreated),
+            "ACTION_BLOCKED" => Ok(EventKind::ActionBlocked),
+            "QUARANTINED" => Ok(EventKind::Quarantined),
+            "RESTORED" => Ok(EventKind::Restored),
+            "ARCHIVED" => Ok(EventKind::Archived),
+            "PURGED" => Ok(EventKind::Purged),
+            other => Err(LedgerError(format!("unknown stored event kind: {other}"))),
+        }
+    }
+
+    /// The kinds `docs/architecture/PERSISTENCE_MODEL.md`'s "Mutation events reference the
+    /// plan ID, evidence IDs..." sentence applies to - events that represent an action taken
+    /// or blocked, not a pure observation. [`EventLedger::append`] requires a
+    /// [`MutationReference`] for exactly these.
+    pub fn is_mutation(self) -> bool {
+        matches!(
+            self,
+            EventKind::PlanCreated
+                | EventKind::ActionBlocked
+                | EventKind::Quarantined
+                | EventKind::Restored
+                | EventKind::Archived
+                | EventKind::Purged
+        )
+    }
+}
+
+/// The closed, allowlisted metadata an event may carry - this module's own doc,
+/// "Contentless by default". Every field is optional: a caller supplies only what it knows.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct EventMetadata {
+    pub artifact_id: Option<ArtifactId>,
+    pub provider_id: Option<String>,
+    pub category: Option<String>,
+    pub policy_id: Option<String>,
+    pub reason_code: Option<String>,
+}
+
+/// What a mutation-class event references - required for every [`EventKind::is_mutation`]
+/// kind, per this module's own doc.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MutationReference {
+    pub plan_id: String,
+    pub evidence_ids: Vec<EvidenceId>,
+}
+
+/// One event to append. `recorded_at` is seconds since the Unix epoch, supplied by the
+/// caller rather than read from `std::time::SystemTime` here - the same "production code
+/// never calls `SystemTime::now()` directly" seam `cancellai_platform::clock::Clock`
+/// documents for itself; a future orchestrator wires a real clock, this crate stays
+/// deterministic and independently testable without one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewEvent {
+    pub kind: EventKind,
+    pub recorded_at: u64,
+    pub metadata: EventMetadata,
+    pub mutation: Option<MutationReference>,
+}
+
+/// An opaque, monotonically increasing append-order reference - the database's own `rowid`
+/// under `AUTOINCREMENT`, which SQLite guarantees never reuses a value once assigned, even
+/// after the row it named is later removed by [`EventLedger::compact_range`] (AC "append
+/// order" - a compacted event's id is retired, never handed to a new, unrelated event).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct EventId(pub i64);
+
+/// One event as read back from the ledger.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LedgerEvent {
+    pub event_id: EventId,
+    pub kind: EventKind,
+    pub recorded_at: u64,
+    pub metadata: EventMetadata,
+    pub mutation: Option<MutationReference>,
+}
+
+/// The signed/hashed record [`EventLedger::compact_range`] writes in place of the raw events
+/// it removes - this module's own doc, "Compaction preserves audit/aggregate semantics".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompactionSummary {
+    pub compaction_id: i64,
+    pub from_event_id: EventId,
+    pub to_event_id: EventId,
+    pub event_count: u64,
+    /// `(event kind key, count)`, ordered by kind key - the per-kind breakdown that keeps an
+    /// aggregate such as "how many `QUARANTINED` events" answerable once the raw rows summarized
+    /// here are gone.
+    pub kind_counts: Vec<(String, u64)>,
+    /// Lowercase hex SHA-256 over a canonical, ordered encoding of every summarized event.
+    pub digest_hex: String,
+    pub created_at: u64,
+}
+
+/// The append-only operational event ledger (E13-S02, this module's own doc). Holds one open
+/// connection for its lifetime, matching `crate::CurrentStateStore`'s own single-owner design.
+pub struct EventLedger {
+    conn: Connection,
+}
+
+impl EventLedger {
+    /// Opens (creating if absent) the ledger database at `path`, applying any migration this
+    /// database has not already seen. Use a path distinct from
+    /// [`crate::CurrentStateStore::open`]'s - see this module's own doc on `MIGRATIONS`.
+    pub fn open(path: &Path) -> Result<Self, LedgerError> {
+        let conn = Connection::open(path)?;
+        apply_migrations(&conn, MIGRATIONS)?;
+        Ok(Self { conn })
+    }
+
+    /// An in-memory ledger for tests and short-lived callers that never need a file on disk.
+    pub fn open_in_memory() -> Result<Self, LedgerError> {
+        let conn = Connection::open_in_memory()?;
+        apply_migrations(&conn, MIGRATIONS)?;
+        Ok(Self { conn })
+    }
+
+    /// Appends one event, returning the [`EventId`] SQLite assigned it. Fails closed - no row
+    /// is written at all - when `event.kind.is_mutation()` and `event.mutation` is absent, or
+    /// carries an empty `plan_id`/`evidence_ids` (this module's own doc, "Mutation events carry
+    /// plan/evidence references").
+    pub fn append(&mut self, event: NewEvent) -> Result<EventId, LedgerError> {
+        if event.kind.is_mutation() {
+            match &event.mutation {
+                Some(m) if !m.plan_id.trim().is_empty() && !m.evidence_ids.is_empty() => {}
+                _ => {
+                    return Err(LedgerError(format!(
+                        "{} is a mutation-class event and requires a non-empty plan_id and \
+                         at least one evidence_id",
+                        event.kind.key()
+                    )));
+                }
+            }
+        }
+
+        let evidence_ids_json = match &event.mutation {
+            Some(m) => serde_json::to_string(&m.evidence_ids)?,
+            None => "[]".to_string(),
+        };
+        let plan_id = event.mutation.as_ref().map(|m| m.plan_id.as_str());
+        let recorded_at = i64::try_from(event.recorded_at).map_err(|_| {
+            LedgerError("recorded_at does not fit in a signed 64-bit column".into())
+        })?;
+
+        let tx = self.conn.transaction()?;
+        tx.execute(
+            "INSERT INTO ledger_events \
+                (kind, recorded_at, artifact_id, provider_id, category, policy_id, \
+                 reason_code, plan_id, evidence_ids) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![
+                event.kind.key(),
+                recorded_at,
+                event.metadata.artifact_id.as_ref().map(|a| a.0.as_str()),
+                event.metadata.provider_id,
+                event.metadata.category,
+                event.metadata.policy_id,
+                event.metadata.reason_code,
+                plan_id,
+                evidence_ids_json,
+            ],
+        )?;
+        let event_id = tx.last_insert_rowid();
+        tx.commit()?;
+        Ok(EventId(event_id))
+    }
+
+    /// Every event currently in the ledger, ordered by append order (AC "append order") - the
+    /// same order [`EventLedger::append`] assigned them, independent of each event's own
+    /// caller-supplied `recorded_at`.
+    pub fn read_all(&self) -> Result<Vec<LedgerEvent>, LedgerError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT event_id, kind, recorded_at, artifact_id, provider_id, category, \
+                    policy_id, reason_code, plan_id, evidence_ids \
+             FROM ledger_events ORDER BY event_id",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<String>>(4)?,
+                row.get::<_, Option<String>>(5)?,
+                row.get::<_, Option<String>>(6)?,
+                row.get::<_, Option<String>>(7)?,
+                row.get::<_, Option<String>>(8)?,
+                row.get::<_, String>(9)?,
+            ))
+        })?;
+
+        let mut result = Vec::new();
+        for row in rows {
+            let (
+                event_id,
+                kind,
+                recorded_at,
+                artifact_id,
+                provider_id,
+                category,
+                policy_id,
+                reason_code,
+                plan_id,
+                evidence_ids_json,
+            ) = row?;
+            let evidence_ids: Vec<EvidenceId> = serde_json::from_str(&evidence_ids_json)?;
+            let mutation = plan_id.map(|plan_id| MutationReference {
+                plan_id,
+                evidence_ids,
+            });
+            result.push(LedgerEvent {
+                event_id: EventId(event_id),
+                kind: EventKind::from_key(&kind)?,
+                recorded_at: u64::try_from(recorded_at).unwrap_or(0),
+                metadata: EventMetadata {
+                    artifact_id: artifact_id.map(ArtifactId::new),
+                    provider_id,
+                    category,
+                    policy_id,
+                    reason_code,
+                },
+                mutation,
+            });
+        }
+        Ok(result)
+    }
+
+    /// Replaces every event in the inclusive `[from, to]` range with one signed/hashed
+    /// [`CompactionSummary`], in a single transaction (this module's own doc, "Compaction
+    /// preserves audit/aggregate semantics"). Refuses - leaving the ledger completely
+    /// unchanged - when `from > to`, or when the range is not exactly and contiguously present
+    /// (fewer than `to - from + 1` matching rows: already compacted, not yet appended, or
+    /// otherwise incomplete), so a caller can never silently lose events that were never
+    /// summarized anywhere.
+    pub fn compact_range(
+        &mut self,
+        from: EventId,
+        to: EventId,
+        created_at: u64,
+    ) -> Result<CompactionSummary, LedgerError> {
+        if from.0 > to.0 {
+            return Err(LedgerError(format!(
+                "invalid compaction range: from ({}) is after to ({})",
+                from.0, to.0
+            )));
+        }
+        let expected_count = to.0 - from.0 + 1;
+        let created_at_i64 = i64::try_from(created_at)
+            .map_err(|_| LedgerError("created_at does not fit in a signed 64-bit column".into()))?;
+
+        let tx = self.conn.transaction()?;
+
+        let actual_count: i64 = tx.query_row(
+            "SELECT COUNT(*) FROM ledger_events WHERE event_id BETWEEN ?1 AND ?2",
+            params![from.0, to.0],
+            |row| row.get(0),
+        )?;
+        if actual_count != expected_count {
+            return Err(LedgerError(format!(
+                "compaction range [{}, {}] is not exactly and contiguously present in the \
+                 ledger (expected {expected_count} events, found {actual_count} - already \
+                 compacted, not yet appended, or otherwise incomplete)",
+                from.0, to.0
+            )));
+        }
+
+        let mut hasher = Sha256::new();
+        let mut kind_counts: std::collections::BTreeMap<String, u64> =
+            std::collections::BTreeMap::new();
+        {
+            let mut stmt = tx.prepare(
+                "SELECT event_id, kind, recorded_at, IFNULL(artifact_id,''), \
+                        IFNULL(provider_id,''), IFNULL(category,''), IFNULL(policy_id,''), \
+                        IFNULL(reason_code,''), IFNULL(plan_id,''), evidence_ids \
+                 FROM ledger_events WHERE event_id BETWEEN ?1 AND ?2 ORDER BY event_id",
+            )?;
+            let rows = stmt.query_map(params![from.0, to.0], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
+                    row.get::<_, String>(8)?,
+                    row.get::<_, String>(9)?,
+                ))
+            })?;
+            for row in rows {
+                let (
+                    event_id,
+                    kind,
+                    recorded_at,
+                    artifact_id,
+                    provider_id,
+                    category,
+                    policy_id,
+                    reason_code,
+                    plan_id,
+                    evidence_ids,
+                ) = row?;
+                *kind_counts.entry(kind.clone()).or_insert(0) += 1;
+                // Unit-separator-delimited, one line per event: a canonical encoding that
+                // cannot be confused across field boundaries by a value that happens to
+                // contain a plain space or comma.
+                hasher.update(
+                    format!(
+                        "{event_id}\u{1}{kind}\u{1}{recorded_at}\u{1}{artifact_id}\u{1}\
+                         {provider_id}\u{1}{category}\u{1}{policy_id}\u{1}{reason_code}\u{1}\
+                         {plan_id}\u{1}{evidence_ids}\n"
+                    )
+                    .as_bytes(),
+                );
+            }
+        }
+        let digest_hex = encode_hex(&hasher.finalize());
+        let kind_counts: Vec<(String, u64)> = kind_counts.into_iter().collect();
+        let kind_counts_json = serde_json::to_string(&kind_counts)?;
+
+        // The one and only window in which `ledger_events_forbid_delete` permits a delete.
+        tx.execute(
+            "UPDATE ledger_control SET compaction_in_progress = 1 WHERE id = 1",
+            [],
+        )?;
+        tx.execute(
+            "DELETE FROM ledger_events WHERE event_id BETWEEN ?1 AND ?2",
+            params![from.0, to.0],
+        )?;
+        tx.execute(
+            "UPDATE ledger_control SET compaction_in_progress = 0 WHERE id = 1",
+            [],
+        )?;
+
+        tx.execute(
+            "INSERT INTO ledger_compactions \
+                (from_event_id, to_event_id, event_count, kind_counts, digest_hex, created_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                from.0,
+                to.0,
+                expected_count,
+                kind_counts_json,
+                digest_hex,
+                created_at_i64,
+            ],
+        )?;
+        let compaction_id = tx.last_insert_rowid();
+        tx.commit()?;
+
+        Ok(CompactionSummary {
+            compaction_id,
+            from_event_id: from,
+            to_event_id: to,
+            event_count: u64::try_from(expected_count).unwrap_or(0),
+            kind_counts,
+            digest_hex,
+            created_at,
+        })
+    }
+
+    /// Every compaction summary this ledger holds, ordered by `compaction_id` (creation order).
+    pub fn compactions(&self) -> Result<Vec<CompactionSummary>, LedgerError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT compaction_id, from_event_id, to_event_id, event_count, kind_counts, \
+                    digest_hex, created_at \
+             FROM ledger_compactions ORDER BY compaction_id",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, i64>(6)?,
+            ))
+        })?;
+        let mut result = Vec::new();
+        for row in rows {
+            let (
+                compaction_id,
+                from_event_id,
+                to_event_id,
+                event_count,
+                kind_counts_json,
+                digest_hex,
+                created_at,
+            ) = row?;
+            let kind_counts: Vec<(String, u64)> = serde_json::from_str(&kind_counts_json)?;
+            result.push(CompactionSummary {
+                compaction_id,
+                from_event_id: EventId(from_event_id),
+                to_event_id: EventId(to_event_id),
+                event_count: u64::try_from(event_count).unwrap_or(0),
+                kind_counts,
+                digest_hex,
+                created_at: u64::try_from(created_at).unwrap_or(0),
+            });
+        }
+        Ok(result)
+    }
+
+    /// Test-only, crate-visible raw access to the underlying connection - used to attempt a
+    /// bypass of the immutability guarantee directly against the database, independent of
+    /// whatever public methods this type happens to expose today. Never part of the public
+    /// API (this module's own doc, "Append-only, enforced by the database itself").
+    #[cfg(test)]
+    fn raw_conn(&self) -> &Connection {
+        &self.conn
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn discovered(recorded_at: u64) -> NewEvent {
+        NewEvent {
+            kind: EventKind::Discovered,
+            recorded_at,
+            metadata: EventMetadata {
+                artifact_id: Some(ArtifactId::new("artifact-0001")),
+                provider_id: Some("codex".to_string()),
+                ..Default::default()
+            },
+            mutation: None,
+        }
+    }
+
+    fn quarantined(recorded_at: u64, plan_id: &str) -> NewEvent {
+        NewEvent {
+            kind: EventKind::Quarantined,
+            recorded_at,
+            metadata: EventMetadata {
+                artifact_id: Some(ArtifactId::new("artifact-0001")),
+                ..Default::default()
+            },
+            mutation: Some(MutationReference {
+                plan_id: plan_id.to_string(),
+                evidence_ids: vec![EvidenceId::new("evidence-0001")],
+            }),
+        }
+    }
+
+    #[test]
+    fn append_then_read_all_round_trips_every_field() {
+        let mut ledger = EventLedger::open_in_memory().expect("open");
+        let id = ledger
+            .append(quarantined(1_000, "plan-0001"))
+            .expect("append");
+
+        let events = ledger.read_all().expect("read_all");
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_id, id);
+        assert_eq!(events[0].kind, EventKind::Quarantined);
+        assert_eq!(events[0].recorded_at, 1_000);
+        assert_eq!(
+            events[0].metadata.artifact_id,
+            Some(ArtifactId::new("artifact-0001"))
+        );
+        assert_eq!(
+            events[0].mutation,
+            Some(MutationReference {
+                plan_id: "plan-0001".to_string(),
+                evidence_ids: vec![EvidenceId::new("evidence-0001")],
+            })
+        );
+    }
+
+    #[test]
+    fn read_all_returns_events_in_append_order_not_in_recorded_at_order() {
+        // Falsifier: append order must win even when a caller-supplied `recorded_at` is out
+        // of order (a skewed or malicious clock must not be able to reorder the audit trail).
+        let mut ledger = EventLedger::open_in_memory().expect("open");
+        let first = ledger.append(discovered(5_000)).expect("append first");
+        let second = ledger.append(discovered(1_000)).expect("append second");
+        let third = ledger.append(discovered(9_000)).expect("append third");
+
+        let events = ledger.read_all().expect("read_all");
+        assert_eq!(
+            events.iter().map(|e| e.event_id).collect::<Vec<_>>(),
+            vec![first, second, third],
+            "read_all must return events in the order they were appended"
+        );
+    }
+
+    #[test]
+    fn append_rejects_a_mutation_event_with_no_mutation_reference_at_all() {
+        let mut ledger = EventLedger::open_in_memory().expect("open");
+        let event = NewEvent {
+            kind: EventKind::Quarantined,
+            recorded_at: 1,
+            metadata: EventMetadata::default(),
+            mutation: None,
+        };
+        assert!(ledger.append(event).is_err());
+        assert!(
+            ledger.read_all().expect("read_all").is_empty(),
+            "a rejected append must not leave a partial row behind"
+        );
+    }
+
+    #[test]
+    fn append_rejects_a_mutation_event_with_an_empty_plan_id() {
+        let mut ledger = EventLedger::open_in_memory().expect("open");
+        let event = NewEvent {
+            kind: EventKind::Archived,
+            recorded_at: 1,
+            metadata: EventMetadata::default(),
+            mutation: Some(MutationReference {
+                plan_id: "   ".to_string(),
+                evidence_ids: vec![EvidenceId::new("evidence-0001")],
+            }),
+        };
+        assert!(ledger.append(event).is_err());
+    }
+
+    #[test]
+    fn append_rejects_a_mutation_event_with_no_evidence_ids() {
+        let mut ledger = EventLedger::open_in_memory().expect("open");
+        let event = NewEvent {
+            kind: EventKind::Purged,
+            recorded_at: 1,
+            metadata: EventMetadata::default(),
+            mutation: Some(MutationReference {
+                plan_id: "plan-0001".to_string(),
+                evidence_ids: Vec::new(),
+            }),
+        };
+        assert!(ledger.append(event).is_err());
+    }
+
+    #[test]
+    fn append_accepts_a_pure_observation_event_with_no_mutation_reference() {
+        let mut ledger = EventLedger::open_in_memory().expect("open");
+        assert!(ledger.append(discovered(1)).is_ok());
+    }
+
+    #[test]
+    fn raw_update_against_a_committed_event_is_rejected_by_the_database_itself() {
+        // Immutability must hold even if a future change added a buggy public update method
+        // that issued raw SQL - the database itself refuses it, not merely the absence of a
+        // Rust method today.
+        let mut ledger = EventLedger::open_in_memory().expect("open");
+        ledger.append(discovered(1)).expect("append");
+
+        let result = ledger.raw_conn().execute(
+            "UPDATE ledger_events SET recorded_at = 999 WHERE event_id = 1",
+            [],
+        );
+        assert!(
+            result.is_err(),
+            "a direct UPDATE against ledger_events must be rejected by the trigger"
+        );
+        let events = ledger.read_all().expect("read_all");
+        assert_eq!(events[0].recorded_at, 1, "the row must be unchanged");
+    }
+
+    #[test]
+    fn raw_delete_against_a_committed_event_is_rejected_outside_compaction() {
+        let mut ledger = EventLedger::open_in_memory().expect("open");
+        ledger.append(discovered(1)).expect("append");
+
+        let result = ledger
+            .raw_conn()
+            .execute("DELETE FROM ledger_events WHERE event_id = 1", []);
+        assert!(
+            result.is_err(),
+            "a direct DELETE against ledger_events must be rejected outside compact_range"
+        );
+        assert_eq!(ledger.read_all().expect("read_all").len(), 1);
+    }
+
+    #[test]
+    fn raw_update_against_a_compaction_summary_is_rejected_by_the_database_itself() {
+        let mut ledger = EventLedger::open_in_memory().expect("open");
+        ledger.append(discovered(1)).expect("append");
+        ledger
+            .compact_range(EventId(1), EventId(1), 100)
+            .expect("compact");
+
+        let result = ledger.raw_conn().execute(
+            "UPDATE ledger_compactions SET digest_hex = 'forged' WHERE compaction_id = 1",
+            [],
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn compact_range_replaces_the_events_with_one_summary_and_they_are_gone_from_read_all() {
+        let mut ledger = EventLedger::open_in_memory().expect("open");
+        let first = ledger.append(discovered(1)).expect("append");
+        let second = ledger.append(quarantined(2, "plan-0001")).expect("append");
+
+        let summary = ledger
+            .compact_range(first, second, 500)
+            .expect("compact_range");
+        assert_eq!(summary.event_count, 2);
+        assert_eq!(summary.from_event_id, first);
+        assert_eq!(summary.to_event_id, second);
+        assert_eq!(
+            summary.kind_counts,
+            vec![
+                ("DISCOVERED".to_string(), 1),
+                ("QUARANTINED".to_string(), 1),
+            ]
+        );
+        assert_eq!(summary.digest_hex.len(), 64, "SHA-256 hex is 64 characters");
+        assert!(summary.digest_hex.bytes().all(|b| b.is_ascii_hexdigit()));
+
+        assert!(
+            ledger.read_all().expect("read_all").is_empty(),
+            "compacted events must no longer appear in read_all"
+        );
+        assert_eq!(ledger.compactions().expect("compactions").len(), 1);
+    }
+
+    #[test]
+    fn compact_range_is_atomic_leaving_events_and_compactions_untouched_on_failure() {
+        // A failure partway (here: the range is not contiguously present) must not leave a
+        // partial compaction behind - the same transactional-atomicity property
+        // `crate::tests::apply_migrations_leaves_user_version_unchanged_when_a_later_migration_
+        // fails` proves for schema migrations, exercised here for a mid-operation SQL failure.
+        let mut ledger = EventLedger::open_in_memory().expect("open");
+        let first = ledger.append(discovered(1)).expect("append");
+        // event_id 2 does not exist: the requested range [first, first+1] has a gap.
+        let missing = EventId(first.0 + 1);
+
+        let result = ledger.compact_range(first, missing, 100);
+        assert!(result.is_err());
+        assert_eq!(
+            ledger.read_all().expect("read_all").len(),
+            1,
+            "a failed compaction must not delete any event"
+        );
+        assert!(
+            ledger.compactions().expect("compactions").is_empty(),
+            "a failed compaction must not write a summary"
+        );
+    }
+
+    #[test]
+    fn compact_range_rejects_a_range_with_a_gap_from_a_prior_compaction() {
+        let mut ledger = EventLedger::open_in_memory().expect("open");
+        let a = ledger.append(discovered(1)).expect("append a");
+        let b = ledger.append(discovered(2)).expect("append b");
+        let c = ledger.append(discovered(3)).expect("append c");
+        let d = ledger.append(discovered(4)).expect("append d");
+
+        ledger.compact_range(a, b, 100).expect("first compaction");
+
+        // [a, d] now has a gap where a/b used to be - must not silently compact only c/d
+        // under a summary that claims to cover a..d.
+        let result = ledger.compact_range(a, d, 200);
+        assert!(result.is_err());
+        assert_eq!(
+            ledger.compactions().expect("compactions").len(),
+            1,
+            "the rejected attempt must not add a second, wrong summary"
+        );
+
+        // The still-present events are untouched and the correct narrower range still works.
+        let events = ledger.read_all().expect("read_all");
+        assert_eq!(
+            events.iter().map(|e| e.event_id).collect::<Vec<_>>(),
+            vec![c, d]
+        );
+        ledger
+            .compact_range(c, d, 300)
+            .expect("the exact remaining range must still compact");
+    }
+
+    #[test]
+    fn compact_range_rejects_an_inverted_range() {
+        let mut ledger = EventLedger::open_in_memory().expect("open");
+        let a = ledger.append(discovered(1)).expect("append");
+        assert!(ledger.compact_range(EventId(a.0 + 1), a, 1).is_err());
+    }
+
+    #[test]
+    fn append_after_reopen_preserves_prior_events_and_never_reuses_an_event_id() {
+        let dir = std::env::temp_dir().join(format!(
+            "cancellai-store-ledger-test-reopen-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        let db_path = dir.join("ledger.sqlite3");
+
+        let first_id = {
+            let mut ledger = EventLedger::open(&db_path).expect("first open");
+            let a = ledger.append(discovered(1)).expect("append a");
+            ledger.append(discovered(2)).expect("append b");
+            a
+        };
+        {
+            let mut ledger = EventLedger::open(&db_path).expect("reopen after close");
+            let events = ledger.read_all().expect("read_all after reopen");
+            assert_eq!(events.len(), 2, "events must survive a close/reopen");
+            let third = ledger.append(discovered(3)).expect("append after reopen");
+            assert!(
+                third.0 > first_id.0 + 1,
+                "a new event id must never collide with or precede ids assigned before reopen"
+            );
+        }
+
+        std::fs::remove_dir_all(&dir).expect("clean up test dir");
+    }
+
+    #[test]
+    fn compaction_survives_a_reopen_and_stays_the_only_way_events_disappeared() {
+        let dir = std::env::temp_dir().join(format!(
+            "cancellai-store-ledger-test-compact-reopen-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        let db_path = dir.join("ledger.sqlite3");
+
+        let (from, to) = {
+            let mut ledger = EventLedger::open(&db_path).expect("open");
+            let a = ledger.append(discovered(1)).expect("append a");
+            let b = ledger.append(discovered(2)).expect("append b");
+            ledger.compact_range(a, b, 42).expect("compact");
+            (a, b)
+        };
+        {
+            let ledger = EventLedger::open(&db_path).expect("reopen");
+            assert!(ledger.read_all().expect("read_all").is_empty());
+            let compactions = ledger.compactions().expect("compactions");
+            assert_eq!(compactions.len(), 1);
+            assert_eq!(compactions[0].from_event_id, from);
+            assert_eq!(compactions[0].to_event_id, to);
+        }
+
+        std::fs::remove_dir_all(&dir).expect("clean up test dir");
+    }
+
+    #[test]
+    fn ledger_events_schema_has_only_the_allowlisted_columns() {
+        // Pins the actual table shape against the closed metadata set this module's doc
+        // promises ("Contentless by default") - a future change that adds e.g. a `content` or
+        // `raw_path` column fails this test rather than drifting in silently.
+        let ledger = EventLedger::open_in_memory().expect("open");
+        let mut stmt = ledger
+            .raw_conn()
+            .prepare("PRAGMA table_info(ledger_events)")
+            .expect("prepare");
+        let columns: Vec<String> = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .expect("query")
+            .collect::<Result<_, _>>()
+            .expect("collect");
+        assert_eq!(
+            columns,
+            vec![
+                "event_id",
+                "kind",
+                "recorded_at",
+                "artifact_id",
+                "provider_id",
+                "category",
+                "policy_id",
+                "reason_code",
+                "plan_id",
+                "evidence_ids",
+            ]
+        );
+    }
+
+    #[test]
+    fn malformed_stored_evidence_ids_is_reported_as_an_error_not_a_panic() {
+        let mut ledger = EventLedger::open_in_memory().expect("open");
+        ledger.append(quarantined(1, "plan-0001")).expect("append");
+        ledger
+            .raw_conn()
+            .execute(
+                "UPDATE ledger_control SET compaction_in_progress = 1 WHERE id = 1",
+                [],
+            )
+            .expect("open the gate directly for this corruption test");
+        // Corrupt via delete+reinsert since ledger_events forbids UPDATE unconditionally.
+        ledger
+            .raw_conn()
+            .execute("DELETE FROM ledger_events WHERE event_id = 1", [])
+            .expect("remove the row so it can be reinserted corrupted");
+        ledger
+            .raw_conn()
+            .execute(
+                "INSERT INTO ledger_events \
+                    (event_id, kind, recorded_at, plan_id, evidence_ids) \
+                 VALUES (1, 'QUARANTINED', 1, 'plan-0001', 'not valid json')",
+                [],
+            )
+            .expect("reinsert with corrupted evidence_ids");
+        ledger
+            .raw_conn()
+            .execute(
+                "UPDATE ledger_control SET compaction_in_progress = 0 WHERE id = 1",
+                [],
+            )
+            .expect("close the gate again");
+
+        assert!(
+            ledger.read_all().is_err(),
+            "a corrupted evidence_ids column must surface as an error from read_all, not a panic"
+        );
+    }
+}

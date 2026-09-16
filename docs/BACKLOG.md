@@ -1393,7 +1393,7 @@ Persist only bounded metadata required for lifecycle, audit, undo, and Guardian 
 
 ### E13-S02 - Append-only operational ledger
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E13-S01 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E13-S01 | **Safety obligations:** none
 
 **Outcome.** Record significant classification/policy/mutation/lifecycle events without storing artifact content.
 

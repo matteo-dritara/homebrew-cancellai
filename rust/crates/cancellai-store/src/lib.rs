@@ -4,6 +4,9 @@
 //! in this crate makes, or is consulted for, a mutation decision; it only stores and returns
 //! [`cancellai_model::AgentArtifact`] rows a caller already produced by scanning.
 //!
+//! [`ledger`] (E13-S02) adds Layer 2, the append-only operational event ledger - a distinct
+//! module with its own `EventLedger`/`Connection`/schema, described in its own module doc.
+//!
 //! ## Why a bundled `rusqlite` (ADR-0019)
 //!
 //! `cancellai-store` is in ADR-0019's outer ring, which named `rusqlite` with a bundled SQLite
@@ -51,6 +54,12 @@
 use cancellai_model::{AgentArtifact, ArtifactId};
 use rusqlite::Connection;
 use std::path::Path;
+
+/// The append-only operational event ledger (E13-S02, "Layer 2: Operational Event Ledger").
+/// A separate module and a separate `EventLedger`/`Connection` from this file's own
+/// `CurrentStateStore` - see [`ledger`]'s own module doc for why they stay independent
+/// despite sharing this crate and its `rusqlite` dependency.
+pub mod ledger;
 
 /// Why a [`CurrentStateStore`] operation failed. Always the underlying SQLite error or a
 /// stored row's own content failing to round-trip as JSON - this crate does not otherwise

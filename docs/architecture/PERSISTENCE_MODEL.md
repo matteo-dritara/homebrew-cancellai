@@ -57,6 +57,42 @@ Mutation events reference the plan ID, evidence IDs, policy resolution, and obse
 
 The ledger is not an excuse for infinite retention. Old events can be compacted into bounded summaries provided audit semantics and aggregate metrics remain defined.
 
+E13-S02 implements the ledger itself: `cancellai_store::ledger::EventLedger`, a second,
+independent bundled-SQLite database (same outer-ring `rusqlite` dependency Layer 1 uses, its
+own `Connection`/file/`PRAGMA user_version` history) living alongside `CurrentStateStore` in
+this crate rather than a new one - ADR-0019 already names "a SQLite current-state store and
+event ledger" as one story pair. `EventLedger::append` is the only way a `ledger_events` row is
+ever written; there is no public update or delete. Immutability is enforced at the SQLite layer
+itself, not merely by the absence of a Rust method: the schema carries `BEFORE UPDATE`/`BEFORE
+DELETE` triggers that `RAISE(ABORT, ...)` unconditionally for update, and for delete unless a
+one-row gate (`ledger_control.compaction_in_progress`) is set - and only
+`EventLedger::compact_range` ever sets that gate, inside the same transaction as the delete it
+performs and the summary row it writes. `ledger_compactions` (the summary table) is immutable
+the same way, unconditionally.
+
+`EventKind::is_mutation` names the six kinds above that represent an action rather than a pure
+observation - `PLAN_CREATED`, `ACTION_BLOCKED`, `QUARANTINED`, `RESTORED`, `ARCHIVED`, `PURGED`
+- and `append` fails closed, writing nothing, for any event of one of those kinds whose
+`MutationReference` (`plan_id` + at least one `EvidenceId`) is absent or empty. Every event
+carries only a closed, allowlisted set of metadata (`artifact_id`, `provider_id`, `category`,
+`policy_id`, `reason_code`) - there is no free-form map or content-typed field a caller could
+use to smuggle a path, transcript, or artifact content into the ledger; the table's actual
+column set is pinned by its own test against silent widening.
+
+`EventLedger::compact_range` is the one explicit, never-silent compaction primitive: it
+requires the requested `[from, to]` range to be exactly and contiguously present in
+`ledger_events` (row count must equal `to - from + 1`), which is what stops a range that
+overlaps an already-compacted window, or reaches past the newest appended event, from silently
+summarizing fewer events than requested. On success it deletes exactly that range and writes one
+`CompactionSummary` in its place, in the same transaction: the exact event count, a per-kind
+breakdown (so an aggregate such as "how many `QUARANTINED` events happened in this window"
+stays answerable once the raw rows are gone), and a SHA-256 digest over a canonical, ordered
+encoding of every summarized event - a summary cannot be quietly re-attributed to a different
+set of events without changing the digest. `read_all` returns events in append order (SQLite's
+own `AUTOINCREMENT` rowid, which never reuses an id once assigned, including one a compaction
+later retired), independent of each event's own caller-supplied `recorded_at` - a skewed or
+malicious clock cannot reorder the audit trail.
+
 ## Layer 3: Analytical Memory
 
 Guardian intelligence uses time-series rollups rather than permanent raw samples.
