@@ -155,7 +155,7 @@ impl ApprovedRoot {
         if child_name.is_empty()
             || child_name == "."
             || child_name == ".."
-            || child_name.contains(std::path::MAIN_SEPARATOR)
+            || child_name.chars().any(std::path::is_separator)
         {
             return Err(BoundaryError::InvalidDestinationName);
         }

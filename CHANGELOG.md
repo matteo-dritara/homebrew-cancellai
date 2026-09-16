@@ -131,6 +131,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   story's dependencies before forging `done`, verifies the evidence-specific rejection, and fails
   loudly if no target exists.
 
+### Security
+
+- **`ApprovedRoot::prepare_destination` rejected `/`-separated names on Windows only through
+  `MAIN_SEPARATOR`** (E12-S01, CR3), which is `\` there - a quarantine destination name like
+  `"nested/name"` passed the bare-filename check and was silently joined into a nested path
+  instead of being refused with `InvalidDestinationName`. Both `PathBuf::join` and the Windows
+  filesystem APIs treat `/` as a separator regardless of `MAIN_SEPARATOR`, so the check now tests
+  every character with `std::path::is_separator`, which is separator-complete per platform.
+  Caught by the existing `prepare_destination_refuses_names_that_are_not_bare_filenames` test
+  once it actually ran on `windows-latest` CI; the assertion was correct, the guarded code was
+  not.
+
 ## [1.14.0] - 2026-09-14
 
 ### Changed
