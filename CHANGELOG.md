@@ -170,6 +170,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   zero files are created across many operations. No CLI/TUI/Guardian surface wires this yet -
   library-level primitives only, matching `CurrentStateStore`'s and `EventLedger`'s own state at
   their own `ready_for_review`.
+- Implemented incremental inventory reuse (E13-S05, CR3, SI-024: "persistent cache is never
+  destructive truth"): `CurrentStateStore::set_invalidation_key` attaches a small, primitive
+  `CacheInvalidationKey` (identity, mtime, an opaque provider fingerprint, an opaque knowledge
+  version, and a local complete/partial/unknown completeness) to an already-`rebuild`-written
+  row, and `CurrentStateStore::cache_read_hint` compares a fresh key against it, returning
+  `CacheReadHint::{ReuseForReading, Revalidate}` - deliberately not a `bool` and not shaped like
+  an authorization. A row is `ReuseForReading` only when every axis matches exactly (a
+  backward-moved mtime is a change like a forward one, never "no change") and both the persisted
+  and the fresh completeness are `Complete`; a row persisted under `Partial`/`Unknown` evidence is
+  never reusable, even against an identical fresh `Partial`/`Unknown` observation. `rebuild`
+  itself is unchanged - the new columns default to `NULL` ("no key ever attached"), and every
+  `rebuild` (including `reset`'s empty one) wipes them for every row, so a rebuilt row can never
+  inherit a stale key. `cancellai-store` still does not depend on `cancellai-safety`, so nothing
+  this mechanism returns can reach the safety executor's mutation-execution capability; fresh,
+  execution-time observation remains mandatory before any mutation decision.
 
 ### Fixed
 

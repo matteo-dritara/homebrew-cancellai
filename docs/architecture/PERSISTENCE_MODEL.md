@@ -35,6 +35,39 @@ only filesystem interaction is the SQLite file itself - so deleting that file, e
 `reset --local-state` does, cannot delete a provider artifact by construction, not merely by
 convention.
 
+E13-S05 implements incremental reuse (SI-024: "persistent cache is never destructive truth").
+`CurrentStateStore::set_invalidation_key` attaches a small, primitive
+`CacheInvalidationKey` (`identity_token`, `modified` mtime, an opaque `provider_fingerprint`,
+an opaque `knowledge_version`, and a local `CacheCompleteness` echoing complete/partial/unknown)
+to an already-`rebuild`-written row, stored as five nullable columns on the same
+`agent_artifacts` row rather than a second table - a plain `DELETE FROM agent_artifacts` (every
+`rebuild`, including `reset`'s empty one) already wipes these columns for every row, so a rebuilt
+row can never inherit a stale invalidation key left over from a previous scan by construction,
+not by a second cleanup step. `rebuild` itself is unchanged: its `INSERT` does not name the new
+columns, so they default to `NULL` - "no invalidation key was ever attached to this row" -
+which is also this mechanism's fail-safe default for a caller that crashes between `rebuild` and
+populating keys, or that never calls `set_invalidation_key` at all.
+`CurrentStateStore::cache_read_hint` compares a caller's *fresh* `CacheInvalidationKey` against
+whatever is persisted and returns [`CacheReadHint`] - `ReuseForReading` or `Revalidate` -
+deliberately not a `bool` and not named or shaped like an authorization. `ReuseForReading`
+requires every axis to match exactly (`identity_token` equal; `modified` equal, so a
+backward-moved mtime is a change like any other, never treated as "no change"; the same
+`provider_fingerprint` and `knowledge_version`) and **both** the persisted and the fresh
+completeness to be `Complete` - a row persisted under `Partial`/`Unknown` evidence is never
+`ReuseForReading`, even against an identical fresh `Partial`/`Unknown` observation, so it can
+never be treated as more reliable than it was when written. This crate does not depend on
+`cancellai-inventory` for this: `CacheCompleteness` is a small, local echo of
+`cancellai-inventory::completeness::ScopeCompleteness`'s complete/partial/unknown vocabulary at
+the primitive level Layer 1's own dependency ring (`cancellai-model` only) admits, matching this
+document's own framing of Layer 1 as a generic reconstructible cache/index rather than one
+scanner's own output shape. `cancellai-store`'s `Cargo.toml` does not depend on
+`cancellai-safety` at all, so nothing returned by this mechanism can reach the safety
+executor's mutation-execution capability even by accident - a caller reading `ReuseForReading`
+still must perform fresh, execution-time observation before any mutation decision;
+`cancellai-store` supplies only this primitive, not the orchestration that decides when to
+re-invoke a scan, which is a later story's scope (matching E13-S01 through E13-S04's own
+"primitive delivered, no orchestrator yet" precedent).
+
 ## Layer 2: Operational Event Ledger
 
 Significant events are append-only logical records:

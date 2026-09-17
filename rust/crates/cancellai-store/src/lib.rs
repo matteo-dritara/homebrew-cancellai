@@ -53,6 +53,53 @@
 //! filter by without deserializing every row. Widening this to more indexed columns, or a
 //! fully normalized schema, is a follow-up story's job once a real caller needs a query this
 //! shape cannot answer efficiently; nothing here forecloses that.
+//!
+//! ## Incremental reuse (E13-S05, SI-024: "persistent cache is never destructive truth")
+//!
+//! [`CacheInvalidationKey`] is a small, caller-supplied bundle of primitive invalidation
+//! evidence (identity, mtime, provider fingerprint, knowledge version, completeness) that a
+//! caller may attach to an already-`rebuild`-written row via [`CurrentStateStore::set_invalidation_key`],
+//! and later compare a *fresh* observation of the same axes against via
+//! [`CurrentStateStore::cache_read_hint`]. This crate deliberately does not depend on
+//! `cancellai-inventory` for this - `FileFacts`/`ScopeCompleteness` are that crate's own
+//! scan-shaped vocabulary, and Layer 1 is documented as a generic reconstructible cache/index,
+//! not specific to one scanner's output shape (this module's own doc, above). `CacheCompleteness`
+//! is a small, local, three-value echo of the same complete/partial/unknown concept a caller
+//! (`cancellai-inventory::completeness::ScopeCompleteness` today) already classifies scans by -
+//! a caller maps its own richer type down to this one, not the reverse.
+//!
+//! **`cache_read_hint` returns [`CacheReadHint`], never a `bool` and never anything named or
+//! shaped like an authorization.** `ReuseForReading` means exactly what its name says: this
+//! cached row is worth reading as a fast, non-authoritative shortcut (a UI list, a preliminary
+//! plan) - never a substitute for the fresh, execution-time observation
+//! `cancellai-safety::mutation_executor` performs immediately before any mutation. Nothing in
+//! this module calls, references, or re-exports the safety crate's own mutation-execution
+//! capability (the two symbols `scripts/check_mutation_boundary.py`, SI-019, scans every crate's
+//! production code for - deliberately not spelled out literally in this doc comment, which is
+//! itself production code that script scans) - `cancellai-store`'s own `Cargo.toml` does not even
+//! depend on `cancellai-safety`, so no such call could compile here even by accident
+//! (`tests::cargo_toml_declares_no_dependency_on_cancellai_safety` pins this directly). Two rows
+//! whose `set_invalidation_key` was never called - including every row written by a plain
+//! `rebuild` alone - compare as `Revalidate` by construction: the persisted
+//! `cache_identity_token` column stays `NULL` until a caller explicitly sets it, and `NULL`
+//! there always means "no invalidation key on record," never "matches whatever the caller now
+//! asks about." A crash between `rebuild` and every intended `set_invalidation_key` call
+//! therefore fails safe - the affected rows are simply never reusable, not silently treated as
+//! fresh.
+//!
+//! A row is `ReuseForReading` only when **every** axis matches exactly: `identity_token` equal,
+//! `modified` equal (an `Option<u64>` compared for exact equality - a backward-moved mtime is a
+//! *change*, like a forward one, never treated as "no change"; clock skew is never safe by
+//! assumption, matching this repository's own "ambiguity never escalates privilege"), the same
+//! `provider_fingerprint` and `knowledge_version`, and **both** the persisted and the fresh
+//! `completeness` equal to `CacheCompleteness::Complete`. A row persisted under `Partial`/
+//! `Unknown` evidence is never `ReuseForReading`, even against an identical fresh `Partial`/
+//! `Unknown` observation - it is never treated as more reliable than it was when written, which
+//! this construction makes the only reliable value `Complete` can ever compare equal to.
+//! `cancellai-store` provides only this primitive; wiring a real caller (deciding whether to
+//! re-invoke `cancellai-inventory` for a given artifact) is a later story's orchestration, not
+//! this one's (matching E13-S01 through E13-S04's own "primitive delivered, no orchestrator yet"
+//! precedent).
 
 use cancellai_model::{AgentArtifact, ArtifactId};
 use rusqlite::Connection;
@@ -109,7 +156,8 @@ impl From<serde_json::Error> for StoreError {
 /// from `user_version = n` to `user_version = n + 1` - see this module's own doc, "Schema and
 /// migrations", for why a failure partway through any one of these leaves `user_version`
 /// exactly where it started rather than at a half-applied state.
-const MIGRATIONS: &[&str] = &["
+const MIGRATIONS: &[&str] = &[
+    "
     CREATE TABLE agent_artifacts (
         artifact_id TEXT PRIMARY KEY,
         provider_id TEXT NOT NULL,
@@ -118,7 +166,23 @@ const MIGRATIONS: &[&str] = &["
     ) STRICT;
     CREATE INDEX idx_agent_artifacts_provider_id ON agent_artifacts(provider_id);
     CREATE INDEX idx_agent_artifacts_activity_state ON agent_artifacts(activity_state);
-"];
+",
+    // E13-S05: incremental-reuse invalidation key, stored alongside each row rather than in a
+    // second table - a plain `DELETE FROM agent_artifacts` (every `rebuild`, including
+    // `reset`'s empty one) already wipes these columns for every row, so a rebuilt row can
+    // never carry a stale invalidation key left over from a previous scan by construction, not
+    // by a second cleanup step this migration would otherwise have to keep in sync. Every
+    // column is nullable with no default, so an `INSERT` that does not name them (`rebuild`'s
+    // own, unchanged since E13-S01) leaves them `NULL` - "never had an invalidation key set" -
+    // this module's own doc, "Incremental reuse", relies on exactly that default.
+    "
+    ALTER TABLE agent_artifacts ADD COLUMN cache_identity_token TEXT;
+    ALTER TABLE agent_artifacts ADD COLUMN cache_modified INTEGER;
+    ALTER TABLE agent_artifacts ADD COLUMN cache_provider_fingerprint TEXT;
+    ALTER TABLE agent_artifacts ADD COLUMN cache_knowledge_version TEXT;
+    ALTER TABLE agent_artifacts ADD COLUMN cache_completeness TEXT;
+",
+];
 
 /// Applies every migration in `migrations` the database has not already applied, reading and
 /// advancing `PRAGMA user_version` one migration at a time. Free-standing (not a method) so
@@ -150,6 +214,92 @@ fn activity_state_key(state: &cancellai_model::ActivityState) -> &'static str {
         ActivityState::Orphaned => "orphaned",
         ActivityState::Unknown => "unknown",
     }
+}
+
+/// How complete the evidence behind a [`CacheInvalidationKey`] was, echoing (without depending
+/// on) `cancellai-inventory::completeness::ScopeCompleteness`'s complete/partial/unknown
+/// vocabulary at the primitive level this crate's own dependency ring admits (this module's own
+/// doc, "Incremental reuse"). A caller collapses its own richer completeness type (with reasons)
+/// down to one of these three values; this crate never inspects *why* evidence was partial, only
+/// *whether* it was.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CacheCompleteness {
+    Complete,
+    Partial,
+    Unknown,
+}
+
+/// The exact string [`CacheCompleteness`] is stored under - the same explicit, exhaustive
+/// mapping convention [`activity_state_key`] already uses for the same reason: a future variant
+/// this crate does not yet handle fails to compile rather than silently storing an empty string.
+fn cache_completeness_key(completeness: &CacheCompleteness) -> &'static str {
+    match completeness {
+        CacheCompleteness::Complete => "complete",
+        CacheCompleteness::Partial => "partial",
+        CacheCompleteness::Unknown => "unknown",
+    }
+}
+
+/// The reverse of [`cache_completeness_key`]. Returns `Err` for anything else, including a
+/// corrupted or hand-edited value - the same fail-closed convention
+/// `malformed_stored_content_is_reported_as_an_error_not_a_panic` already establishes for this
+/// crate's other stored columns (never silently substitute a default completeness for content
+/// that does not actually decode).
+fn parse_cache_completeness(value: &str) -> Result<CacheCompleteness, StoreError> {
+    match value {
+        "complete" => Ok(CacheCompleteness::Complete),
+        "partial" => Ok(CacheCompleteness::Partial),
+        "unknown" => Ok(CacheCompleteness::Unknown),
+        other => Err(StoreError(format!(
+            "stored cache_completeness value {other:?} is not one of complete/partial/unknown"
+        ))),
+    }
+}
+
+/// A small bundle of primitive, caller-supplied invalidation evidence for one artifact's row -
+/// the same shape whether it names what a row *was written with* (persisted, via
+/// [`CurrentStateStore::set_invalidation_key`]) or what a caller *observes now* (fresh, passed to
+/// [`CurrentStateStore::cache_read_hint`]). This module's own doc, "Incremental reuse", explains
+/// why every field is a primitive rather than a `cancellai-inventory`/`cancellai-platform` type.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CacheInvalidationKey {
+    /// The wire-format stable identity this row was observed under (the same concept as
+    /// [`AgentArtifact::identity_token`], supplied separately here because a caller may know a
+    /// fresher one than whatever is already persisted in `data`).
+    pub identity_token: String,
+    /// A modification timestamp in whole seconds, platform-defined epoch - primitive rather
+    /// than `cancellai_platform::Timestamp` so this crate's dependency ring stays unchanged.
+    /// `None` if the underlying observation could not report one (never treated as "unchanged"
+    /// against a persisted `Some`, or vice versa - a change in either direction, including from
+    /// known to unknown, is exact-equality-false, per this module's own doc).
+    pub modified: Option<u64>,
+    /// An opaque, caller-defined fingerprint of the provider's observed layout/version (this
+    /// module's own doc's "provider-layout-change" falsifier). `None` when the caller has no
+    /// such fingerprint to offer.
+    pub provider_fingerprint: Option<String>,
+    /// An opaque, caller-defined version marker for whatever provider-knowledge bundle produced
+    /// this row (e.g. `cancellai-safety::knowledge_bundle`'s own version). `None` when the
+    /// caller has none to offer.
+    pub knowledge_version: Option<String>,
+    /// How complete the evidence behind this key was.
+    pub completeness: CacheCompleteness,
+}
+
+/// Whether a cached row is worth reading as a fast, non-authoritative shortcut - never an
+/// authorization, confirmation, or substitute for fresh execution-time observation (SI-024, this
+/// module's own doc, "Incremental reuse"). The two variants are deliberately named around
+/// *reading*, not around validity/authorization/safety, so a caller cannot mistake this for a
+/// mutation-precondition check by the type's own name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CacheReadHint {
+    /// Every invalidation axis this crate checks matched exactly, and both the persisted and
+    /// the fresh completeness are `Complete`. Worth reading as a shortcut; still never a
+    /// substitute for fresh observation before any mutation decision.
+    ReuseForReading,
+    /// No row exists for this id, no invalidation key was ever persisted for it, or at least one
+    /// axis diverged (including either completeness being anything but `Complete`) - treat this
+    /// exactly like a cache miss.
+    Revalidate,
 }
 
 /// The current-state SQLite store: a reconstructible cache/index over the
@@ -252,6 +402,112 @@ impl CurrentStateStore {
     /// construction."
     pub fn reset(&mut self) -> Result<(), StoreError> {
         self.rebuild(&[])
+    }
+
+    /// Attaches (replacing any previous one) a [`CacheInvalidationKey`] to an already-persisted
+    /// row - this module's own doc, "Incremental reuse". `Err` if no row exists for `id`: a
+    /// caller only ever has a fresh key to attach right after a `rebuild`/`get` confirmed the
+    /// row is there, so an id with no row is a caller mistake this method surfaces rather than
+    /// silently accepting and doing nothing.
+    pub fn set_invalidation_key(
+        &mut self,
+        id: &ArtifactId,
+        key: &CacheInvalidationKey,
+    ) -> Result<(), StoreError> {
+        let modified = key
+            .modified
+            .map(|m| {
+                i64::try_from(m).map_err(|_| {
+                    StoreError(format!("cache_modified value {m} does not fit in i64"))
+                })
+            })
+            .transpose()?;
+        let changed = self.conn.execute(
+            "UPDATE agent_artifacts SET \
+                cache_identity_token = ?1, \
+                cache_modified = ?2, \
+                cache_provider_fingerprint = ?3, \
+                cache_knowledge_version = ?4, \
+                cache_completeness = ?5 \
+             WHERE artifact_id = ?6",
+            rusqlite::params![
+                key.identity_token,
+                modified,
+                key.provider_fingerprint,
+                key.knowledge_version,
+                cache_completeness_key(&key.completeness),
+                id.0,
+            ],
+        )?;
+        if changed == 0 {
+            return Err(StoreError(format!(
+                "no row for artifact_id {:?} to attach an invalidation key to",
+                id.0
+            )));
+        }
+        Ok(())
+    }
+
+    /// Compares `fresh` against whatever [`CacheInvalidationKey`] this row was last attached
+    /// with, and returns a read-only hint - never an authorization (this module's own doc,
+    /// "Incremental reuse", and [`CacheReadHint`]'s own doc). `Revalidate` for an absent row, a
+    /// row with no invalidation key ever attached, or any axis that diverges - matching or
+    /// exceeding completeness is the one and only path to `ReuseForReading`.
+    pub fn cache_read_hint(
+        &self,
+        id: &ArtifactId,
+        fresh: &CacheInvalidationKey,
+    ) -> Result<CacheReadHint, StoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT cache_identity_token, cache_modified, cache_provider_fingerprint, \
+                    cache_knowledge_version, cache_completeness \
+             FROM agent_artifacts WHERE artifact_id = ?1",
+        )?;
+        let mut rows = stmt.query(rusqlite::params![id.0])?;
+        let Some(row) = rows.next()? else {
+            return Ok(CacheReadHint::Revalidate);
+        };
+
+        let identity_token: Option<String> = row.get(0)?;
+        let Some(identity_token) = identity_token else {
+            // NULL means "no invalidation key was ever attached to this row" - this module's
+            // own doc's fail-safe default, never confused with "matches whatever is fresh."
+            return Ok(CacheReadHint::Revalidate);
+        };
+        let modified_raw: Option<i64> = row.get(1)?;
+        let modified = match modified_raw {
+            Some(m) => Some(u64::try_from(m).map_err(|_| {
+                StoreError(format!(
+                    "stored cache_modified value {m} does not fit in u64"
+                ))
+            })?),
+            None => None,
+        };
+        let provider_fingerprint: Option<String> = row.get(2)?;
+        let knowledge_version: Option<String> = row.get(3)?;
+        let completeness_raw: String = row.get(4)?;
+        let persisted_completeness = parse_cache_completeness(&completeness_raw)?;
+
+        let persisted = CacheInvalidationKey {
+            identity_token,
+            modified,
+            provider_fingerprint,
+            knowledge_version,
+            completeness: persisted_completeness,
+        };
+
+        let matches = persisted.identity_token == fresh.identity_token
+            && persisted.modified == fresh.modified
+            && persisted.provider_fingerprint == fresh.provider_fingerprint
+            && persisted.knowledge_version == fresh.knowledge_version
+            && persisted.completeness == CacheCompleteness::Complete
+            && fresh.completeness == CacheCompleteness::Complete;
+
+        Ok(if matches {
+            CacheReadHint::ReuseForReading
+        } else {
+            CacheReadHint::Revalidate
+        })
     }
 }
 
@@ -599,5 +855,333 @@ mod tests {
         );
 
         std::fs::remove_dir_all(&dir).expect("clean up test dir");
+    }
+
+    // ------------------------------------------------------------------------------------
+    // E13-S05: incremental reuse / SI-024 falsification plan.
+    // ------------------------------------------------------------------------------------
+
+    /// A fully-matching, `Complete` invalidation key - the one shape that can ever compare
+    /// `ReuseForReading` against an identically-written persisted row.
+    fn full_key(identity_token: &str, modified: Option<u64>) -> CacheInvalidationKey {
+        CacheInvalidationKey {
+            identity_token: identity_token.to_string(),
+            modified,
+            provider_fingerprint: Some("codex-cli-1.2.3".to_string()),
+            knowledge_version: Some("kb-2026-05-01".to_string()),
+            completeness: CacheCompleteness::Complete,
+        }
+    }
+
+    fn store_with_one_row(identity_token: &str) -> (CurrentStateStore, ArtifactId) {
+        let mut store = CurrentStateStore::open_in_memory().expect("open");
+        let id = ArtifactId::new("artifact-0001");
+        let mut a = artifact("artifact-0001", "codex", ActivityState::Active);
+        a.identity_token = identity_token.to_string();
+        store.rebuild(&[a]).expect("rebuild");
+        (store, id)
+    }
+
+    #[test]
+    fn cache_read_hint_is_revalidate_when_no_row_exists_for_the_id() {
+        let store = CurrentStateStore::open_in_memory().expect("open");
+        let hint = store
+            .cache_read_hint(
+                &ArtifactId::new("artifact-missing"),
+                &full_key("codex:sessions/x", Some(1_000)),
+            )
+            .expect("cache_read_hint");
+        assert_eq!(hint, CacheReadHint::Revalidate);
+    }
+
+    #[test]
+    fn cache_read_hint_is_revalidate_when_no_invalidation_key_was_ever_set() {
+        // A row written by a plain `rebuild` alone (this module's own doc's fail-safe default -
+        // `cache_identity_token` stays NULL until a caller explicitly attaches a key).
+        let (store, id) = store_with_one_row("codex:sessions/x");
+        let hint = store
+            .cache_read_hint(&id, &full_key("codex:sessions/x", Some(1_000)))
+            .expect("cache_read_hint");
+        assert_eq!(hint, CacheReadHint::Revalidate);
+    }
+
+    #[test]
+    fn set_invalidation_key_fails_for_an_id_with_no_row() {
+        let mut store = CurrentStateStore::open_in_memory().expect("open");
+        let result = store.set_invalidation_key(
+            &ArtifactId::new("artifact-missing"),
+            &full_key("codex:sessions/x", Some(1_000)),
+        );
+        assert!(
+            result.is_err(),
+            "attaching an invalidation key to a non-existent row must fail, not silently no-op"
+        );
+    }
+
+    #[test]
+    fn cache_read_hint_is_reuse_for_reading_when_every_axis_matches_and_both_sides_are_complete() {
+        let (mut store, id) = store_with_one_row("codex:sessions/x");
+        store
+            .set_invalidation_key(&id, &full_key("codex:sessions/x", Some(1_000)))
+            .expect("set_invalidation_key");
+
+        let hint = store
+            .cache_read_hint(&id, &full_key("codex:sessions/x", Some(1_000)))
+            .expect("cache_read_hint");
+        assert_eq!(hint, CacheReadHint::ReuseForReading);
+    }
+
+    #[test]
+    fn cache_read_hint_matches_when_both_sides_have_no_modified_timestamp() {
+        // `None == None` must count as "unchanged," not as a divergence - a platform that
+        // cannot report mtime at all is a stable (if degraded) fact, not evidence of change.
+        let (mut store, id) = store_with_one_row("codex:sessions/x");
+        store
+            .set_invalidation_key(&id, &full_key("codex:sessions/x", None))
+            .expect("set_invalidation_key");
+
+        let hint = store
+            .cache_read_hint(&id, &full_key("codex:sessions/x", None))
+            .expect("cache_read_hint");
+        assert_eq!(hint, CacheReadHint::ReuseForReading);
+    }
+
+    #[test]
+    fn falsifier_stale_cache_same_identity_changed_mtime_is_never_reusable() {
+        let (mut store, id) = store_with_one_row("codex:sessions/x");
+        store
+            .set_invalidation_key(&id, &full_key("codex:sessions/x", Some(1_000)))
+            .expect("set_invalidation_key");
+
+        let hint = store
+            .cache_read_hint(&id, &full_key("codex:sessions/x", Some(1_001)))
+            .expect("cache_read_hint");
+        assert_eq!(
+            hint,
+            CacheReadHint::Revalidate,
+            "an mtime change under an unchanged identity must still force revalidation"
+        );
+    }
+
+    #[test]
+    fn falsifier_clock_skew_mtime_moved_backward_is_never_treated_as_unchanged() {
+        // Constitutional "ambiguity never escalates privilege": a clock moving backward is a
+        // change like any other, never silently accepted as "no change."
+        let (mut store, id) = store_with_one_row("codex:sessions/x");
+        store
+            .set_invalidation_key(&id, &full_key("codex:sessions/x", Some(1_000)))
+            .expect("set_invalidation_key");
+
+        let hint = store
+            .cache_read_hint(&id, &full_key("codex:sessions/x", Some(999)))
+            .expect("cache_read_hint");
+        assert_eq!(hint, CacheReadHint::Revalidate);
+    }
+
+    #[test]
+    fn cache_read_hint_matches_on_byte_for_byte_identical_mtime() {
+        // The positive edge alongside the two negative clock/mtime falsifiers above: an
+        // unchanged mtime, compared exactly, must not itself force an unnecessary revalidation.
+        let (mut store, id) = store_with_one_row("codex:sessions/x");
+        store
+            .set_invalidation_key(&id, &full_key("codex:sessions/x", Some(1_234_567)))
+            .expect("set_invalidation_key");
+
+        let hint = store
+            .cache_read_hint(&id, &full_key("codex:sessions/x", Some(1_234_567)))
+            .expect("cache_read_hint");
+        assert_eq!(hint, CacheReadHint::ReuseForReading);
+    }
+
+    #[test]
+    fn falsifier_identity_changed_is_never_reusable() {
+        let (mut store, id) = store_with_one_row("codex:sessions/x");
+        store
+            .set_invalidation_key(&id, &full_key("codex:sessions/x", Some(1_000)))
+            .expect("set_invalidation_key");
+
+        let hint = store
+            .cache_read_hint(&id, &full_key("codex:sessions/y", Some(1_000)))
+            .expect("cache_read_hint");
+        assert_eq!(hint, CacheReadHint::Revalidate);
+    }
+
+    #[test]
+    fn falsifier_provider_layout_change_same_identity_and_mtime_different_fingerprint_is_never_reusable()
+     {
+        // Simulates a provider adapter whose on-disk format/version changed under an otherwise
+        // unchanged path and mtime - the fingerprint axis must catch what identity/mtime cannot.
+        let (mut store, id) = store_with_one_row("codex:sessions/x");
+        store
+            .set_invalidation_key(&id, &full_key("codex:sessions/x", Some(1_000)))
+            .expect("set_invalidation_key");
+
+        let mut fresh = full_key("codex:sessions/x", Some(1_000));
+        fresh.provider_fingerprint = Some("codex-cli-2.0.0".to_string());
+
+        let hint = store.cache_read_hint(&id, &fresh).expect("cache_read_hint");
+        assert_eq!(hint, CacheReadHint::Revalidate);
+    }
+
+    #[test]
+    fn falsifier_knowledge_version_changed_is_never_reusable() {
+        let (mut store, id) = store_with_one_row("codex:sessions/x");
+        store
+            .set_invalidation_key(&id, &full_key("codex:sessions/x", Some(1_000)))
+            .expect("set_invalidation_key");
+
+        let mut fresh = full_key("codex:sessions/x", Some(1_000));
+        fresh.knowledge_version = Some("kb-2026-06-01".to_string());
+
+        let hint = store.cache_read_hint(&id, &fresh).expect("cache_read_hint");
+        assert_eq!(hint, CacheReadHint::Revalidate);
+    }
+
+    #[test]
+    fn falsifier_partial_scan_complete_row_against_a_degraded_fresh_observation_is_never_reusable()
+    {
+        let (mut store, id) = store_with_one_row("codex:sessions/x");
+        store
+            .set_invalidation_key(&id, &full_key("codex:sessions/x", Some(1_000)))
+            .expect("set_invalidation_key");
+
+        for degraded in [CacheCompleteness::Partial, CacheCompleteness::Unknown] {
+            let mut fresh = full_key("codex:sessions/x", Some(1_000));
+            fresh.completeness = degraded;
+            let hint = store.cache_read_hint(&id, &fresh).expect("cache_read_hint");
+            assert_eq!(
+                hint,
+                CacheReadHint::Revalidate,
+                "a Complete row must never be treated as reusable against a degraded {degraded:?} \
+                 fresh observation"
+            );
+        }
+    }
+
+    #[test]
+    fn falsifier_partial_scan_a_row_persisted_as_partial_is_never_reusable_even_against_an_identical_partial_observation()
+     {
+        // Explicit, tested behavior (not an implicit default): a row written under Partial/
+        // Unknown evidence must never be treated as more reliable than it was when written - it
+        // is never `ReuseForReading`, even against a byte-for-byte identical fresh observation
+        // that is itself still Partial/Unknown.
+        let (mut store, id) = store_with_one_row("codex:sessions/x");
+        let mut persisted = full_key("codex:sessions/x", Some(1_000));
+        persisted.completeness = CacheCompleteness::Partial;
+        store
+            .set_invalidation_key(&id, &persisted)
+            .expect("set_invalidation_key");
+
+        let mut fresh = full_key("codex:sessions/x", Some(1_000));
+        fresh.completeness = CacheCompleteness::Partial;
+
+        let hint = store.cache_read_hint(&id, &fresh).expect("cache_read_hint");
+        assert_eq!(
+            hint,
+            CacheReadHint::Revalidate,
+            "a row persisted under Partial evidence must never be ReuseForReading, even against \
+             an identical fresh Partial observation"
+        );
+    }
+
+    #[test]
+    fn set_invalidation_key_replaces_a_previously_attached_key_rather_than_merging_it() {
+        let (mut store, id) = store_with_one_row("codex:sessions/x");
+        store
+            .set_invalidation_key(&id, &full_key("codex:sessions/x", Some(1_000)))
+            .expect("first set_invalidation_key");
+        store
+            .set_invalidation_key(&id, &full_key("codex:sessions/x", Some(2_000)))
+            .expect("second set_invalidation_key");
+
+        // The stale first mtime must not still satisfy a fresh comparison - the second call
+        // must have fully replaced the first, not left a stray old value behind.
+        let hint = store
+            .cache_read_hint(&id, &full_key("codex:sessions/x", Some(1_000)))
+            .expect("cache_read_hint");
+        assert_eq!(hint, CacheReadHint::Revalidate);
+
+        let hint = store
+            .cache_read_hint(&id, &full_key("codex:sessions/x", Some(2_000)))
+            .expect("cache_read_hint");
+        assert_eq!(hint, CacheReadHint::ReuseForReading);
+    }
+
+    #[test]
+    fn rebuild_clears_every_previously_attached_invalidation_key() {
+        // A `rebuild` (the reconstruction primitive) must never leave a stale invalidation key
+        // attached to a row that a later scan reinserts under the same artifact_id - the same
+        // "content depends only on what was just scanned" guarantee `rebuild` already gives the
+        // rest of the row, extended to these columns without any extra cleanup step.
+        let (mut store, id) = store_with_one_row("codex:sessions/x");
+        store
+            .set_invalidation_key(&id, &full_key("codex:sessions/x", Some(1_000)))
+            .expect("set_invalidation_key");
+        assert_eq!(
+            store
+                .cache_read_hint(&id, &full_key("codex:sessions/x", Some(1_000)))
+                .expect("cache_read_hint"),
+            CacheReadHint::ReuseForReading
+        );
+
+        store
+            .rebuild(&[artifact("artifact-0001", "codex", ActivityState::Active)])
+            .expect("rebuild");
+
+        let hint = store
+            .cache_read_hint(
+                &ArtifactId::new("artifact-0001"),
+                &full_key("codex:sessions/x", Some(1_000)),
+            )
+            .expect("cache_read_hint");
+        assert_eq!(
+            hint,
+            CacheReadHint::Revalidate,
+            "a rebuilt row must never inherit a stale invalidation key from before the rebuild"
+        );
+    }
+
+    #[test]
+    fn cache_completeness_round_trips_through_parse_and_key() {
+        for completeness in [
+            CacheCompleteness::Complete,
+            CacheCompleteness::Partial,
+            CacheCompleteness::Unknown,
+        ] {
+            let key = cache_completeness_key(&completeness);
+            assert_eq!(parse_cache_completeness(key).expect("parse"), completeness);
+        }
+    }
+
+    #[test]
+    fn parse_cache_completeness_reports_an_unrecognized_value_as_an_error_not_a_panic() {
+        // Fail-closed axis, matching `malformed_stored_content_is_reported_as_an_error_not_a_panic`:
+        // a hand-edited or corrupted `cache_completeness` column must never be silently coerced
+        // into a default value.
+        assert!(parse_cache_completeness("not-a-real-value").is_err());
+    }
+
+    #[test]
+    fn cargo_toml_declares_no_dependency_on_cancellai_safety() {
+        // SI-024: nothing in this crate can reach the safety crate's mutation-execution
+        // capability, because this crate's own manifest does not depend on `cancellai-safety`
+        // at all - a compile-time impossibility, not merely a convention this test could
+        // accidentally stop enforcing. `scripts/check_mutation_boundary.py check` (SI-019) is
+        // the authoritative, workspace-wide static scan for the raw capability itself; this pins
+        // the narrower, crate-local precondition that makes referencing it impossible here in
+        // the first place.
+        let manifest = include_str!("../Cargo.toml");
+        // A dependency table key, not a `#`-comment mention (this very manifest already has one,
+        // in `sha2`'s own rationale comment, explaining a different crate's precedent - checking
+        // for a line that actually *starts* with the crate name is what distinguishes "declared
+        // as a dependency" from "named in prose").
+        let declares_dependency = manifest
+            .lines()
+            .any(|line| line.trim_start().starts_with("cancellai-safety"));
+        assert!(
+            !declares_dependency,
+            "cancellai-store must never depend on cancellai-safety - a cache-read-hint \
+             primitive must never gain a path to the mutation executor"
+        );
     }
 }

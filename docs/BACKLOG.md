@@ -1452,7 +1452,7 @@ Persist only bounded metadata required for lifecycle, audit, undo, and Guardian 
 
 ### E13-S05 - Incremental inventory reuse
 
-**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E13-S01, E04-S03 | **Safety obligations:** SI-024
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E13-S01, E04-S03 | **Safety obligations:** SI-024
 
 **Outcome.** Reuse persisted facts safely between scans while invalidating on identity, metadata, provider-knowledge, and completeness changes.
 

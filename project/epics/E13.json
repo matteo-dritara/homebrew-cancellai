@@ -103,7 +103,7 @@
     {
       "id": "E13-S05",
       "title": "Incremental inventory reuse",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Reuse persisted facts safely between scans while invalidating on identity, metadata, provider-knowledge, and completeness changes.",
       "change_risk": "CR3",
       "dependencies": [
