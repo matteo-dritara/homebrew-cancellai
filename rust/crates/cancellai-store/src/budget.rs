@@ -278,6 +278,19 @@ impl From<rollup::RollupError> for SampleAdmissionError {
 /// [`SampleAdmissionError::BudgetExceeded`] rather than silently exceeding the budget - "refuse
 /// ... that write when safe compaction cannot meet the limit" (round 1 independent verifier
 /// review's own required repair).
+///
+/// The pre-write compaction runs unconditionally ([`crate::rollup::AnalyticalMemory::compact`]),
+/// never gated on [`enforce_rollup_budget`]'s own "strictly over budget" threshold: this
+/// function's own steady state sits at *exactly* the limit (every prior call already enforced
+/// it), so gating on "over," as an earlier version of this function did by calling
+/// [`enforce_rollup_budget`] here, meant compaction was never attempted in that steady state and
+/// this function refused every write once the tier reached capacity even when every held sample
+/// had already aged past the recent window and compaction would have freed room (self-review
+/// finding, pre-independent-round-2: reproduced with a 1s recent window, three samples recorded
+/// at t=0/1/2, and a fourth admission attempted at `now=1000` - every held sample was long past
+/// eligible for promotion, yet the write was refused with `BudgetExceeded { count: 3, limit: 3
+/// }` because `compact_if_over(3, ..)` treated a count exactly at, not over, its threshold as
+/// nothing to do).
 pub fn record_sample_within_rollup_budget(
     memory: &mut AnalyticalMemory,
     limits: &BudgetLimits,
@@ -285,7 +298,7 @@ pub fn record_sample_within_rollup_budget(
     sample: rollup::NewSample,
     now: u64,
 ) -> Result<(), SampleAdmissionError> {
-    enforce_rollup_budget(memory, limits, policy, now)?;
+    memory.compact(policy, now)?;
     let count = memory.raw_sample_count()?;
     let limit = limits.max_raw_samples();
     if count >= limit {
@@ -585,6 +598,38 @@ mod tests {
             memory.raw_sample_count().expect("count"),
             3,
             "a refused write must not be recorded"
+        );
+    }
+
+    #[test]
+    fn record_sample_within_rollup_budget_compacts_and_admits_at_exactly_the_limit_when_every_held_sample_is_eligible()
+     {
+        // Self-review finding, pre-independent-round-2: an earlier version of this function
+        // gated its pre-write compaction on `enforce_rollup_budget`'s own "strictly over
+        // budget" threshold. This function's steady state sits at *exactly* the limit (every
+        // prior admission already enforced it), so that gate meant compaction never ran here in
+        // practice, and every write was refused once the tier reached capacity - even when every
+        // held sample had already aged past the recent window and compaction would have freed
+        // room. `now` here is far past the 1s recent window for every sample held, so compaction
+        // must free all three slots and the fourth write must succeed.
+        let mut memory = AnalyticalMemory::open_in_memory().expect("open");
+        let policy = RetentionPolicy::new(1, 2, 3).expect("policy");
+        let limits = BudgetLimits::new(1, 1, 3).expect("limits");
+
+        memory.record_sample(sample(0)).expect("s0");
+        memory.record_sample(sample(1)).expect("s1");
+        memory.record_sample(sample(2)).expect("s2");
+        assert_eq!(memory.raw_sample_count().expect("count"), 3, "at the limit");
+
+        record_sample_within_rollup_budget(&mut memory, &limits, &policy, sample(1_000), 1_000)
+            .expect(
+                "every held sample is long past the 1s recent window - compaction must free \
+                 room and the write must be admitted, not refused",
+            );
+        assert_eq!(
+            memory.raw_sample_count().expect("count"),
+            1,
+            "the three aged samples must have been promoted and the new one recorded"
         );
     }
 

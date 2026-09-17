@@ -322,8 +322,66 @@ with no story ID yet assigned, not fixed silently.
 Verification after the repair: the same full Rust and Python gate set as this packet's original
 run, re-executed and all passing; `cancellai-store` now has 95 tests (was 88).
 
+## Self-review before round 2 (2026-09-17) - SELF-REVIEW, NOT INDEPENDENT
+
+Per `docs/development/AGENT_PROTOCOL.md`'s "Self-review": this review was performed by the same
+agent (Claude) that executed the round 1 repair above, so it is a self-review, not the
+independent verification `AGENTS.md` assigns to Codex. It is recorded here because it found and
+repaired a real defect in that repair; it does not close this CR3 story and is not a substitute
+for the pending independent round 2.
+
+**Defect found**: `record_sample_within_rollup_budget` (round 1's own repair, above) gated its
+pre-write compaction on `enforce_rollup_budget`, which only compacts when the raw-sample tier is
+*strictly over* `BudgetLimits::max_raw_samples` - never when it sits exactly at the limit. This
+function's own steady state, once any admission has run at least once, sits at exactly the
+limit (every prior successful admission left the tier at or under it), so in practice the
+pre-write compaction call was a no-op on essentially every call once the tier reached capacity,
+and the function refused the write outright - even when every held sample had already aged past
+`RetentionPolicy`'s recent window and a real `compact` call would have promoted all of them and
+freed room. Reproduced directly: a 1s recent window, three samples recorded at t=0/1/2, a
+`max_raw_samples` limit of 3, and a fourth admission attempted at `now=1000` (every held sample
+9+ orders of magnitude past its 1s eligibility window) returned `Err(BudgetExceeded { count: 3,
+limit: 3 })` instead of compacting all three away and admitting the write. This contradicts the
+function's own doc ("compacts first ... then checks whether room now exists") and AC1: a legitimate
+write was refused even though safe compaction *could* meet the limit, which is exactly the case
+round 1's own required repair ("refuse ... that write when safe compaction cannot meet the
+limit") says must succeed, not refuse.
+
+**Repair**: `record_sample_within_rollup_budget` now calls `AnalyticalMemory::compact` directly
+and unconditionally before checking room, rather than going through `enforce_rollup_budget`'s
+"strictly over" gate. `compact` is idempotent and a no-op when nothing is eligible, so this adds
+no new failure mode - it only removes the case where a compaction that would have succeeded was
+never attempted. `enforce_rollup_budget` itself is unchanged and still used elsewhere (its own
+"exactly at the limit does not compact" contract is correct and tested for what it is - an
+over-budget *observation* primitive, not an admission gate).
+
+**Regression test added**: `record_sample_within_rollup_budget_compacts_and_admits_at_exactly_the_limit_when_every_held_sample_is_eligible`
+(`rust/crates/cancellai-store/src/budget.rs`) - the exact reproduction above, asserting the
+fourth write is admitted and the tier ends at 1 row (three aged samples promoted, one new sample
+recorded), not refused. `cancellai-store` now has 96 tests (was 95).
+
+**Verification re-run after this repair**: `cargo fmt --check`, `cargo clippy --workspace
+--all-targets --all-features -- -D warnings`, `cargo test --workspace` (all suites `ok`,
+`cancellai-store`: 96 passed), `cargo deny check` (advisories/bans/licenses/sources ok);
+`python3 scripts/check_mutation_boundary.py check`, `python3 scripts/check_rust_workspace.py
+check`, `python3 scripts/check_evidence.py check`, `python3 scripts/project_os.py check` - all
+clean, no new finding.
+
+**Class question** (per the epic-verifier method): is this the same class as round 1's ledger
+gap, or a new one? Related but distinct - round 1's ledger gap was "nothing re-checks *after* a
+write that lands exactly on the limit"; this one is "the *before* check never even attempts
+compaction once steady state is reached, because it is gated on a stale 'over,' not 'at-or-over
+for a pending write,' threshold." The ledger's admission primitive does not share this defect
+(its "after" compaction has no time gate and always succeeds, so the before-check's gate on
+"over" is harmless there - the ledger never needed the before-check to do anything at the
+steady-state limit, only the after-check). The rollup tier's promotion is time-gated, which is
+what makes the "before" check's own effectiveness depend on it actually running at exactly the
+limit, not only when already over it - a rollup-specific consequence of round 1's shared "before
+vs. after" repair shape, not a shared root cause across both primitives.
+
 ## Verifier verdict
 
 Round 1 (Codex, 2026-09-17): FAIL - see the defect above. The ledger/rollup admission gap is
 repaired in this packet; the Layer 1 observation-only design is an accepted residual, not a
-repair, pending a product decision. Round 2 pending.
+repair, pending a product decision. Round 2 pending (self-review above found and repaired one
+further defect in that repair ahead of round 2; it does not stand in for round 2).

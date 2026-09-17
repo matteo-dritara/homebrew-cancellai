@@ -39,6 +39,7 @@ distinguished by the next round, which is why the ceiling matters.
 | E12 | 4 | independent | 3 | 2 | 2 | 67% |
 | E12 | 5 | independent | 3 | 2 | 2 | 67% |
 | E12 | 6 | independent | 3 | 0 | 0 | 0% |
+| E13 | 1 | **self** | - | - | - | **not machine-readable** |
 | E13 | 1 | independent | 5 | 4 | 4 | 80% |
 | E16 | 1 | independent | 6 | 0 | 0 | 0% |
 | E17 | 1 | independent | 6 | 0 | 0 | 0% |
@@ -59,7 +60,7 @@ already been declared `ready_for_review` by an executor who ran the full gate se
 - **Independent reviewer:** 43 of 95 round-1 verdicts were `FAIL` - **45%**.
 - **Self-review (same agent as executor):** 3 of 12 round-1 verdicts were `FAIL` - **25%**.
 
-- **Round-1 records excluded as unreadable:** 1. Their verdicts are in neither denominator above, so both rates are computed over the subset of records that use a machine-readable verdict table.
+- **Round-1 records excluded as unreadable:** 2. Their verdicts are in neither denominator above, so both rates are computed over the subset of records that use a machine-readable verdict table.
 
 Read this split with care, and do not read a conclusion into it. The self-review sample is
 tiny, its composition differs from the independent one, and the published work on
@@ -131,14 +132,13 @@ load-bearing rather than academic.
 
 ## Documentation readership
 
-- Documents a committed review record has named: **24**. Never named: **23**.
+- Documents a committed review record has named: **25**. Never named: **22**.
 - Never named is not the same as never read, and an unread document may still be the right
   document. This is a list for the owner once a phase, not a purge, and accepted ADRs are
   undeletable regardless of what it says.
 
 <details><summary>Never named in a review record</summary>
 
-- `docs/CLI.md`
 - `docs/DECISION_REGISTER.md`
 - `docs/PLATFORMS.md`
 - `docs/PROVIDERS.md`
