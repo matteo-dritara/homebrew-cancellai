@@ -12,7 +12,7 @@
     {
       "id": "E13-S01",
       "title": "Reconstructible current-state store",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Introduce SQLite current state as a cache/index that can be dropped and rebuilt.",
       "change_risk": "CR3",
       "risk_reclassification_note": "Declared CR2 at planning time; raised to CR3 at commit time because the change touches rust/crates/cancellai-model/src/agent_artifact.rs (adding Deserialize to AgentArtifact and the types it carries) - the domain-model floor project/risk_floors.json sets for that path, since it defines what an artifact, an authority and a plan are and every downstream decision is expressed in its types, even though this change is additive-only (no field, semantics, or existing Serialize output changes).",
@@ -35,7 +35,7 @@
     {
       "id": "E13-S02",
       "title": "Append-only operational ledger",
-      "status": "ready_for_review",
+      "status": "in_progress",
       "outcome": "Record significant classification/policy/mutation/lifecycle events without storing artifact content.",
       "change_risk": "CR2",
       "dependencies": [
@@ -56,7 +56,7 @@
     {
       "id": "E13-S03",
       "title": "Analytical rollups and retention",
-      "status": "ready_for_review",
+      "status": "in_progress",
       "outcome": "Aggregate fine-grained measurements into hourly/daily/long-term statistics with bounded retention.",
       "change_risk": "CR2",
       "dependencies": [
@@ -77,13 +77,22 @@
     {
       "id": "E13-S04",
       "title": "Self-budget and local reset",
-      "status": "ready_for_review",
+      "status": "blocked",
       "outcome": "Enforce cancellAI state/log budgets and provide reset of cancellAI state only.",
       "change_risk": "CR3",
       "dependencies": [
         "E13-S02",
         "E13-S03"
       ],
+      "blocked_by": {
+        "summary": "E13-S02 and E13-S03 both failed independent review round 1. E13-S04 also has a reproduced budget-admission defect; repair must proceed after the dependent ledger and rollup contracts are repaired and independently re-reviewed.",
+        "waiting_on": [
+          "E13-S02",
+          "E13-S03"
+        ],
+        "argument": "project/evidence/E13-VERIFIER-REVIEW.md",
+        "recorded": "2026-09-17"
+      },
       "acceptance_criteria": [
         "Budget overrun triggers compaction before growth continues.",
         "reset --local-state cannot target provider roots.",
@@ -103,7 +112,7 @@
     {
       "id": "E13-S05",
       "title": "Incremental inventory reuse",
-      "status": "ready_for_review",
+      "status": "in_progress",
       "outcome": "Reuse persisted facts safely between scans while invalidating on identity, metadata, provider-knowledge, and completeness changes.",
       "change_risk": "CR3",
       "dependencies": [

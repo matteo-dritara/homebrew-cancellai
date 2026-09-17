@@ -1373,7 +1373,7 @@ Persist only bounded metadata required for lifecycle, audit, undo, and Guardian 
 
 ### E13-S01 - Reconstructible current-state store
 
-**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E08-S01 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR3` | **Dependencies:** E08-S01 | **Safety obligations:** none
 
 **Outcome.** Introduce SQLite current state as a cache/index that can be dropped and rebuilt.
 
@@ -1393,7 +1393,7 @@ Persist only bounded metadata required for lifecycle, audit, undo, and Guardian 
 
 ### E13-S02 - Append-only operational ledger
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E13-S01 | **Safety obligations:** none
+**Status:** `in_progress` | **Change Risk:** `CR2` | **Dependencies:** E13-S01 | **Safety obligations:** none
 
 **Outcome.** Record significant classification/policy/mutation/lifecycle events without storing artifact content.
 
@@ -1412,7 +1412,7 @@ Persist only bounded metadata required for lifecycle, audit, undo, and Guardian 
 
 ### E13-S03 - Analytical rollups and retention
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E13-S01 | **Safety obligations:** none
+**Status:** `in_progress` | **Change Risk:** `CR2` | **Dependencies:** E13-S01 | **Safety obligations:** none
 
 **Outcome.** Aggregate fine-grained measurements into hourly/daily/long-term statistics with bounded retention.
 
@@ -1431,7 +1431,7 @@ Persist only bounded metadata required for lifecycle, audit, undo, and Guardian 
 
 ### E13-S04 - Self-budget and local reset
 
-**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E13-S02, E13-S03 | **Safety obligations:** SI-026
+**Status:** `blocked` | **Change Risk:** `CR3` | **Dependencies:** E13-S02, E13-S03 | **Safety obligations:** SI-026
 
 **Outcome.** Enforce cancellAI state/log budgets and provide reset of cancellAI state only.
 
@@ -1452,7 +1452,7 @@ Persist only bounded metadata required for lifecycle, audit, undo, and Guardian 
 
 ### E13-S05 - Incremental inventory reuse
 
-**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E13-S01, E04-S03 | **Safety obligations:** SI-024
+**Status:** `in_progress` | **Change Risk:** `CR3` | **Dependencies:** E13-S01, E04-S03 | **Safety obligations:** SI-024
 
 **Outcome.** Reuse persisted facts safely between scans while invalidating on identity, metadata, provider-knowledge, and completeness changes.
 
