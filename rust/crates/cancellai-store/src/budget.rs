@@ -169,13 +169,12 @@ pub fn check_current_state_budget(
 }
 
 /// Compacts the event ledger down to [`BudgetLimits::max_ledger_events`] if it is currently over
-/// that limit, and is a no-op otherwise - "budget overrun triggers compaction before growth
-/// continues" (AC1). Call this immediately before the write that might push the ledger over
-/// budget: it inspects the ledger's *current* size and, if already over the limit (from a prior
-/// write, a lowered threshold, or a store that predates budget enforcement), compacts the oldest
-/// events before the caller's own write compounds the overrun. A store already exactly at the
-/// limit is left untouched - only a genuine overrun (strictly more than the limit) ever
-/// compacts anything.
+/// that limit, and is a no-op otherwise. Kept `pub` as the lower-level primitive
+/// [`append_within_ledger_budget`] composes; call that one directly for the "never observes a
+/// count above its limit" guarantee (AC1) - calling this alone only immediately before a write
+/// leaves a one-write gap round 1 independent verifier review reproduced (see
+/// [`append_within_ledger_budget`]'s own doc). A store already exactly at the limit is left
+/// untouched - only a genuine overrun (strictly more than the limit) ever compacts anything.
 pub fn enforce_ledger_budget(
     ledger: &mut EventLedger,
     limits: &BudgetLimits,
@@ -185,11 +184,12 @@ pub fn enforce_ledger_budget(
 }
 
 /// Compacts analytical memory's raw-sample tier if it is currently over [`BudgetLimits::
-/// max_raw_samples`], and is a no-op otherwise - the same "compact before growth continues"
-/// contract [`enforce_ledger_budget`] gives the ledger, for Layer 3. See
-/// [`crate::rollup::AnalyticalMemory::compact_if_over`]'s own doc for the policy/budget
-/// interaction this can surface (compacting while over budget does not itself promote a sample
-/// `policy` says is still too young).
+/// max_raw_samples`], and is a no-op otherwise. Kept `pub` as the lower-level primitive
+/// [`record_sample_within_rollup_budget`] composes; call that one directly for the admission
+/// guarantee - calling this alone has the same one-write gap [`enforce_ledger_budget`]'s doc
+/// describes, and additionally cannot always free room at all (see
+/// [`crate::rollup::AnalyticalMemory::compact_if_over`]'s own doc: compacting while over budget
+/// does not itself promote a sample `policy` says is still too young).
 pub fn enforce_rollup_budget(
     memory: &mut AnalyticalMemory,
     limits: &BudgetLimits,
@@ -197,6 +197,102 @@ pub fn enforce_rollup_budget(
     now: u64,
 ) -> Result<Option<rollup::CompactionReport>, rollup::RollupError> {
     memory.compact_if_over(limits.max_raw_samples(), policy, now)
+}
+
+/// Appends `event` with the ledger's own row count never exceeding [`BudgetLimits::
+/// max_ledger_events`] once this call returns - "budget overrun triggers compaction before
+/// growth continues" (AC1), as a single admission-checked call rather than two steps a caller
+/// could split apart.
+///
+/// Round 1 independent verifier review reproduced the gap in calling [`enforce_ledger_budget`]
+/// only *before* a write: with a 5-event limit, six iterations of (enforce, append) left six
+/// raw events, because a ledger already exactly at the limit makes that call's own pre-check a
+/// no-op, and nothing re-checks after the append that follows. Compacting both before *and*
+/// after the write closes that window - before catches up on any pre-existing overrun (a prior
+/// write, a lowered threshold, or a store that predates budget enforcement); after brings a
+/// write that lands exactly on the limit back down again immediately, rather than leaving the
+/// overrun for whichever future write happens to call [`enforce_ledger_budget`] next.
+/// [`crate::ledger::EventLedger::compact_oldest_to_fit`] has no time-based eligibility gate (it
+/// removes the oldest events unconditionally), so the "after" compaction always succeeds in
+/// bringing the count back to the limit - unlike the rollup's raw-sample tier, this can never
+/// refuse a write for lack of compactable room.
+pub fn append_within_ledger_budget(
+    ledger: &mut EventLedger,
+    limits: &BudgetLimits,
+    event: ledger::NewEvent,
+    now: u64,
+) -> Result<ledger::EventId, ledger::LedgerError> {
+    enforce_ledger_budget(ledger, limits, now)?;
+    let id = ledger.append(event)?;
+    enforce_ledger_budget(ledger, limits, now)?;
+    Ok(id)
+}
+
+/// Why [`record_sample_within_rollup_budget`] refused a sample, in addition to whatever
+/// [`rollup::RollupError`] the underlying calls could themselves already return.
+#[derive(Debug)]
+pub enum SampleAdmissionError {
+    Rollup(rollup::RollupError),
+    /// Best-effort compaction still leaves no room under [`BudgetLimits::max_raw_samples`] -
+    /// every raw sample currently held is too recent for [`crate::rollup::RetentionPolicy`] to
+    /// promote yet. Refusing here is the only way to guarantee the tier never exceeds its
+    /// budget; silently accepting the write anyway is exactly the unbounded growth this
+    /// function exists to prevent (this module's own doc, "Why Layer 1 has no compaction
+    /// action here" - Layer 3 is the layer this crate's documented degradation path names,
+    /// and a refusal at this admission point is the caller-visible signal that degradation
+    /// (e.g. sampling less often) is needed, not a silent policy/budget mismatch.
+    BudgetExceeded {
+        count: u64,
+        limit: u64,
+    },
+}
+
+impl std::fmt::Display for SampleAdmissionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SampleAdmissionError::Rollup(e) => write!(f, "{e}"),
+            SampleAdmissionError::BudgetExceeded { count, limit } => write!(
+                f,
+                "raw-sample budget exceeded: {count} samples held, limit is {limit}, and no \
+                 sample is old enough for the current retention policy to promote yet"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for SampleAdmissionError {}
+
+impl From<rollup::RollupError> for SampleAdmissionError {
+    fn from(value: rollup::RollupError) -> Self {
+        SampleAdmissionError::Rollup(value)
+    }
+}
+
+/// Records `sample` with analytical memory's raw-sample tier never exceeding [`BudgetLimits::
+/// max_raw_samples`] once this call returns - the same "admission before growth continues"
+/// contract [`append_within_ledger_budget`] gives the ledger, for Layer 3, with one difference:
+/// unlike the ledger, raw-sample promotion is time-gated ([`crate::rollup::RetentionPolicy`]),
+/// so compaction cannot always free room. This compacts first (catching up on any sample that
+/// has aged into eligibility), then checks whether room now exists; if every currently-held
+/// sample is still too recent to promote, this refuses the write with
+/// [`SampleAdmissionError::BudgetExceeded`] rather than silently exceeding the budget - "refuse
+/// ... that write when safe compaction cannot meet the limit" (round 1 independent verifier
+/// review's own required repair).
+pub fn record_sample_within_rollup_budget(
+    memory: &mut AnalyticalMemory,
+    limits: &BudgetLimits,
+    policy: &RetentionPolicy,
+    sample: rollup::NewSample,
+    now: u64,
+) -> Result<(), SampleAdmissionError> {
+    enforce_rollup_budget(memory, limits, policy, now)?;
+    let count = memory.raw_sample_count()?;
+    let limit = limits.max_raw_samples();
+    if count >= limit {
+        return Err(SampleAdmissionError::BudgetExceeded { count, limit });
+    }
+    memory.record_sample(sample)?;
+    Ok(())
 }
 
 /// Why [`reset_local_state`] failed, naming which of the three independent layers the failure
@@ -356,28 +452,41 @@ mod tests {
     #[test]
     fn ledger_self_budget_stress_test_growth_never_exceeds_the_configured_limit() {
         // Verification contract: "self-budget stress test." Appends far beyond the configured
-        // limit, one event at a time, calling enforce_ledger_budget before every write - the
-        // documented usage pattern - and asserts the ledger's own row count never exceeds the
-        // limit at any point this test can observe (immediately after each enforce+append pair).
+        // limit, one event at a time, through append_within_ledger_budget - the atomic
+        // admission call - and asserts the ledger's own row count never exceeds the limit at
+        // any point this test can observe, not even by the one just-appended row (round 1
+        // independent verifier review: the prior enforce-then-append pattern let the count
+        // reach exactly `limit + 1` right after any write that landed on the limit).
         let mut ledger = EventLedger::open_in_memory().expect("open");
         let limits = BudgetLimits::new(1, 10, 1).expect("limits");
 
         for i in 0..500u64 {
-            enforce_ledger_budget(&mut ledger, &limits, i + 1_000_000).expect("enforce");
-            ledger.append(discovered(i)).expect("append");
+            append_within_ledger_budget(&mut ledger, &limits, discovered(i), i + 1_000_000)
+                .expect("append_within_ledger_budget");
             let count = ledger.read_all().expect("read_all").len() as u64;
             assert!(
-                count <= limits.max_ledger_events() + 1,
-                "iteration {i}: ledger grew to {count} rows, past its budget of \
-                 {} plus the one just-appended row - self-budget must never allow silent, \
-                 unbounded growth",
+                count <= limits.max_ledger_events(),
+                "iteration {i}: ledger grew to {count} rows, past its budget of {} - \
+                 self-budget must never allow growth past the configured limit, not even \
+                 transiently",
                 limits.max_ledger_events()
             );
         }
+    }
 
-        // One final enforcement call must bring it back down to at or under the limit.
-        enforce_ledger_budget(&mut ledger, &limits, 2_000_000).expect("final enforce");
-        assert!(ledger.read_all().expect("read_all").len() as u64 <= limits.max_ledger_events());
+    #[test]
+    fn append_within_ledger_budget_never_exceeds_the_limit_even_landing_exactly_on_it() {
+        // Round 1 independent verifier review's exact reproduction: a 5-event limit, six
+        // (enforce, append) iterations, left six raw events - the sixth append landed exactly
+        // on the limit with nothing left to re-check it. append_within_ledger_budget compacts
+        // both before and after every write, so this must land on exactly 5, never 6.
+        let mut ledger = EventLedger::open_in_memory().expect("open");
+        let limits = BudgetLimits::new(1, 5, 1).expect("limits");
+        for i in 0..6u64 {
+            append_within_ledger_budget(&mut ledger, &limits, discovered(i), 1_000)
+                .expect("append");
+        }
+        assert_eq!(ledger.read_all().expect("read_all").len(), 5);
     }
 
     #[test]
@@ -411,25 +520,72 @@ mod tests {
 
     #[test]
     fn rollup_self_budget_stress_test_growth_never_exceeds_the_configured_limit() {
+        // Same tightened contract as the ledger's own stress test: every write goes through
+        // the atomic admission call, and the raw-sample tier's row count must never exceed its
+        // limit, not even by the one just-recorded sample. `now` advances by 100s per
+        // iteration against a 1s recent window, so every sample already held has aged into
+        // eligibility long before it would need to be compacted again - admission should not
+        // need to refuse any write in this particular time/limit shape, but a refusal (were one
+        // to happen) is still not a test failure, since refusing is this function's own
+        // documented safe behavior; only exceeding the limit is.
         let mut memory = AnalyticalMemory::open_in_memory().expect("open");
         let policy = RetentionPolicy::new(1, 2, 3).expect("policy");
         let limits = BudgetLimits::new(1, 1, 10).expect("limits");
 
         for i in 0..500u64 {
             let now = i * 100 + 1_000_000;
-            enforce_rollup_budget(&mut memory, &limits, &policy, now).expect("enforce");
-            memory.record_sample(sample(now)).expect("record");
+            match record_sample_within_rollup_budget(
+                &mut memory,
+                &limits,
+                &policy,
+                sample(now),
+                now,
+            ) {
+                Ok(()) | Err(SampleAdmissionError::BudgetExceeded { .. }) => {}
+                Err(SampleAdmissionError::Rollup(e)) => panic!("iteration {i}: {e}"),
+            }
             let count = memory.raw_sample_count().expect("count");
             assert!(
-                count <= limits.max_raw_samples() + 1,
-                "iteration {i}: raw sample tier grew to {count} rows, past its budget of \
-                 {} plus the one just-recorded sample - self-budget must never allow silent, \
-                 unbounded growth",
+                count <= limits.max_raw_samples(),
+                "iteration {i}: raw sample tier grew to {count} rows, past its budget of {} - \
+                 self-budget must never allow growth past the configured limit, not even \
+                 transiently",
                 limits.max_raw_samples()
             );
         }
-        enforce_rollup_budget(&mut memory, &limits, &policy, 100_000_000).expect("final enforce");
-        assert!(memory.raw_sample_count().expect("count") <= limits.max_raw_samples());
+    }
+
+    #[test]
+    fn record_sample_within_rollup_budget_refuses_when_every_held_sample_is_too_recent_to_promote()
+    {
+        // Round 1 independent verifier review's required repair: "refuse ... that write when
+        // safe compaction cannot meet the limit." A 100s recent window with `now` barely
+        // advancing means no held sample is ever eligible for promotion, so once the tier is
+        // at its limit, admission must refuse rather than silently exceed it.
+        let mut memory = AnalyticalMemory::open_in_memory().expect("open");
+        let policy = RetentionPolicy::new(100, 200, 300).expect("policy");
+        let limits = BudgetLimits::new(1, 1, 3).expect("limits");
+
+        for i in 0..3u64 {
+            record_sample_within_rollup_budget(&mut memory, &limits, &policy, sample(i), i)
+                .expect("filling up to the limit must succeed");
+        }
+        assert_eq!(memory.raw_sample_count().expect("count"), 3);
+
+        let result =
+            record_sample_within_rollup_budget(&mut memory, &limits, &policy, sample(3), 3);
+        assert!(
+            matches!(
+                result,
+                Err(SampleAdmissionError::BudgetExceeded { count: 3, limit: 3 })
+            ),
+            "expected a refusal naming the exact count/limit, got {result:?}"
+        );
+        assert_eq!(
+            memory.raw_sample_count().expect("count"),
+            3,
+            "a refused write must not be recorded"
+        );
     }
 
     #[test]

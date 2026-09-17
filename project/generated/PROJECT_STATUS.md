@@ -8,11 +8,11 @@ Epics: **32** | Stories: **165**
 
 ## Story status
 
-- `blocked`: 3
+- `blocked`: 2
 - `cancelled`: 1
 - `done`: 144
-- `in_progress`: 3
 - `planned`: 14
+- `ready_for_review`: 4
 
 ## Change risk distribution
 
@@ -28,4 +28,7 @@ Epics: **32** | Stories: **165**
 
 ## Awaiting independent review
 
-- none
+- **E13-S02** - Append-only operational ledger (CR2)
+- **E13-S03** - Analytical rollups and retention (CR2)
+- **E13-S04** - Self-budget and local reset (CR3)
+- **E13-S05** - Incremental inventory reuse (CR3)

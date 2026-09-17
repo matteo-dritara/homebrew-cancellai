@@ -504,7 +504,14 @@ fn promote_raw_to_hourly(
     policy: &RetentionPolicy,
     now: u64,
 ) -> Result<u64, RollupError> {
-    let cutoff = now.saturating_sub(policy.recent_window_secs);
+    // `now` has not yet reached the recent window's duration: nothing is eligible for
+    // promotion yet. The prior `saturating_sub` collapsed this case to a cutoff of `0`,
+    // which wrongly treated any `recorded_at <= 0` sample as "old enough" even though its
+    // true age (`now - recorded_at`) was less than the window (round 1 independent
+    // verifier review).
+    let Some(cutoff) = now.checked_sub(policy.recent_window_secs) else {
+        return Ok(0);
+    };
     let cutoff_i64 = to_i64(cutoff, "recent-window cutoff")?;
 
     let mut groups: BTreeMap<BucketKey, Accumulator> = BTreeMap::new();
@@ -559,7 +566,10 @@ fn promote_hourly_to_daily(
     policy: &RetentionPolicy,
     now: u64,
 ) -> Result<u64, RollupError> {
-    let cutoff = now.saturating_sub(policy.medium_window_secs);
+    // Same fix as `promote_raw_to_hourly`'s cutoff, for the medium window.
+    let Some(cutoff) = now.checked_sub(policy.medium_window_secs) else {
+        return Ok(0);
+    };
     let cutoff_i64 = to_i64(cutoff, "medium-window cutoff")?;
 
     let mut groups: BTreeMap<BucketKey, Accumulator> = BTreeMap::new();
@@ -643,7 +653,10 @@ fn promote_daily_to_long_term(
     policy: &RetentionPolicy,
     now: u64,
 ) -> Result<u64, RollupError> {
-    let cutoff = now.saturating_sub(policy.long_window_secs);
+    // Same fix as `promote_raw_to_hourly`'s cutoff, for the long window.
+    let Some(cutoff) = now.checked_sub(policy.long_window_secs) else {
+        return Ok(0);
+    };
     let cutoff_i64 = to_i64(cutoff, "long-window cutoff")?;
 
     let mut groups: BTreeMap<ScopeKey, LongTermAccumulator> = BTreeMap::new();
@@ -1112,6 +1125,28 @@ mod tests {
         memory.compact(&policy, 1_000).expect("compact");
 
         assert_eq!(memory.raw_samples().expect("raw_samples").len(), 1);
+        assert!(memory.hourly_rollups().expect("hourly_rollups").is_empty());
+    }
+
+    #[test]
+    fn a_sample_is_not_promoted_when_now_has_not_yet_reached_the_recent_window() {
+        // Round 1 independent verifier review: with a 10s recent window, a sample recorded
+        // at t=0 and `compact(now=5)` was promoted even though its true age is only 5s -
+        // `now.saturating_sub(recent_window_secs)` collapsed the cutoff to `0` whenever
+        // `now < recent_window_secs`, and `recorded_at <= 0` then matched the t=0 sample.
+        let policy = RetentionPolicy::new(10, 20, 30).expect("policy");
+        let mut memory = AnalyticalMemory::open_in_memory().expect("open");
+        memory
+            .record_sample(sample(MetricKind::ArtifactCount, 0, 1.0))
+            .expect("record");
+
+        memory.compact(&policy, 5).expect("compact");
+
+        assert_eq!(
+            memory.raw_samples().expect("raw_samples").len(),
+            1,
+            "a sample only 5s old must not be promoted out of a 10s recent window"
+        );
         assert!(memory.hourly_rollups().expect("hourly_rollups").is_empty());
     }
 

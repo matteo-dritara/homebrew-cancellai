@@ -279,6 +279,51 @@ precedent for the same situation.
 - This packet is executor self-assessment. Independent review happens at epic scope, once every
   story in E13 is `ready_for_review`.
 
+## Round 1 independent review repair (2026-09-17)
+
+Codex's round 1 review (`project/evidence/E13-VERIFIER-REVIEW.md`) returned `FAIL`: with a
+5-event ledger limit, six iterations of the documented "(enforce, append)" pattern left six raw
+events, not five. `enforce_ledger_budget` called only *before* a write is a no-op once the
+ledger is already exactly at the limit, and nothing re-checked after the append that followed
+landed exactly on it - a one-write gap in the AC1 ("budget overrun triggers compaction before
+growth continues") contract, reproducible on every write that lands on the limit.
+
+Fixed by adding two new atomic admission primitives that compact **both** before and after their
+own write, in one call a caller cannot split apart: `append_within_ledger_budget` (ledger) and
+`record_sample_within_rollup_budget` (rollup). `EventLedger::compact_oldest_to_fit` has no
+time-based eligibility gate, so the ledger's "after" compaction always succeeds and this
+primitive never refuses a write. `AnalyticalMemory::compact_if_over` is time-gated, so
+`record_sample_within_rollup_budget` can legitimately fail to free room (every held sample too
+recent to promote); in that case it refuses the write with the new `SampleAdmissionError::
+BudgetExceeded` rather than silently exceeding the budget - the other half of the required
+repair ("refuse ... that write when safe compaction cannot meet the limit"). `enforce_ledger_
+budget`/`enforce_rollup_budget` stay as the lower-level primitives these two compose; existing
+callers of them directly are unaffected.
+
+Regression tests: `append_within_ledger_budget_never_exceeds_the_limit_even_landing_exactly_on_
+it` (Codex's exact six-iteration reproduction, now landing on 5) and `record_sample_within_
+rollup_budget_refuses_when_every_held_sample_is_too_recent_to_promote`. Both stress tests
+(`ledger_self_budget_stress_test_growth_never_exceeds_the_configured_limit`/`rollup_self_budget_
+stress_test_growth_never_exceeds_the_configured_limit`) were rewritten to call the new admission
+primitives and tighten their assertion from "never exceeds `limit + 1`" to "never exceeds
+`limit`" - the literal "never observes a count above its limit" the verification contract asks
+for, not the looser bound the original stress tests accepted.
+
+The Layer 1 (current-state) remark in Codex's finding - "current-state overflow needs an
+explicit bounded outcome rather than observation alone" - is not repaired in this change.
+`check_current_state_budget` remains observation-only, per this module's own documented and
+deliberate design ("Why Layer 1 has no compaction action here": `rebuild` is a full replace, not
+an incremental write, and this crate discarding rows to fit a budget would silently diverge from
+the last real scan with no recovery path). Turning that observation into an enforced,
+non-discarding bounded outcome needs a product decision this story does not have the scope to
+invent (what "degrade" means for Layer 1, and who decides it) - recorded as a residual risk below
+with no story ID yet assigned, not fixed silently.
+
+Verification after the repair: the same full Rust and Python gate set as this packet's original
+run, re-executed and all passing; `cancellai-store` now has 95 tests (was 88).
+
 ## Verifier verdict
 
-pending
+Round 1 (Codex, 2026-09-17): FAIL - see the defect above. The ledger/rollup admission gap is
+repaired in this packet; the Layer 1 observation-only design is an accepted residual, not a
+repair, pending a product decision. Round 2 pending.

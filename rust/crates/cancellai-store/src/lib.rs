@@ -496,10 +496,29 @@ impl CurrentStateStore {
             completeness: persisted_completeness,
         };
 
+        // Round 1 independent verifier review: plain `==` on an `Option<T>` axis treats
+        // `None == None` as a match, but "neither side could observe this axis" is
+        // uncertainty, not a confirmed absence of change - this module's own doc on
+        // `modified` already says so ("never treated as unchanged ... a change ... to
+        // unknown, is exact-equality-false"), which the code did not actually implement. An
+        // axis only counts as unchanged when BOTH sides positively know it and it is equal;
+        // `None` on either side (an unavailable provider fingerprint, mtime, or
+        // knowledge-version) forces `Revalidate`.
+        let modified_confirmed_unchanged =
+            matches!((persisted.modified, fresh.modified), (Some(p), Some(f)) if p == f);
+        let provider_fingerprint_confirmed_unchanged = matches!(
+            (&persisted.provider_fingerprint, &fresh.provider_fingerprint),
+            (Some(p), Some(f)) if p == f
+        );
+        let knowledge_version_confirmed_unchanged = matches!(
+            (&persisted.knowledge_version, &fresh.knowledge_version),
+            (Some(p), Some(f)) if p == f
+        );
+
         let matches = persisted.identity_token == fresh.identity_token
-            && persisted.modified == fresh.modified
-            && persisted.provider_fingerprint == fresh.provider_fingerprint
-            && persisted.knowledge_version == fresh.knowledge_version
+            && modified_confirmed_unchanged
+            && provider_fingerprint_confirmed_unchanged
+            && knowledge_version_confirmed_unchanged
             && persisted.completeness == CacheCompleteness::Complete
             && fresh.completeness == CacheCompleteness::Complete;
 
@@ -932,9 +951,12 @@ mod tests {
     }
 
     #[test]
-    fn cache_read_hint_matches_when_both_sides_have_no_modified_timestamp() {
-        // `None == None` must count as "unchanged," not as a divergence - a platform that
-        // cannot report mtime at all is a stable (if degraded) fact, not evidence of change.
+    fn cache_read_hint_is_revalidate_when_neither_side_has_a_modified_timestamp() {
+        // Round 1 independent verifier review: `None == None` was previously treated as
+        // "unchanged," but AC2 names "mtime/metadata ... uncertainty" as something that must
+        // invalidate the cache scope, and SI-024 requires the same for any axis neither side
+        // can positively confirm. Two platforms that both cannot report mtime have not
+        // thereby confirmed the file is unchanged - they have confirmed nothing about it.
         let (mut store, id) = store_with_one_row("codex:sessions/x");
         store
             .set_invalidation_key(&id, &full_key("codex:sessions/x", None))
@@ -943,7 +965,49 @@ mod tests {
         let hint = store
             .cache_read_hint(&id, &full_key("codex:sessions/x", None))
             .expect("cache_read_hint");
-        assert_eq!(hint, CacheReadHint::ReuseForReading);
+        assert_eq!(hint, CacheReadHint::Revalidate);
+    }
+
+    #[test]
+    fn falsifier_unavailable_provider_fingerprint_is_never_treated_as_unchanged() {
+        // Round 1 independent verifier review's exact reproduction: identity/mtime/knowledge
+        // all equal, but `provider_fingerprint: None` on the fresh side. An unavailable
+        // fingerprint cannot confirm the provider's layout/version is unchanged, so this must
+        // force `Revalidate`, not `ReuseForReading`.
+        let (mut store, id) = store_with_one_row("codex:sessions/x");
+        store
+            .set_invalidation_key(&id, &full_key("codex:sessions/x", Some(1_000)))
+            .expect("set_invalidation_key");
+
+        let fresh = CacheInvalidationKey {
+            identity_token: "codex:sessions/x".to_string(),
+            modified: Some(1_000),
+            provider_fingerprint: None,
+            knowledge_version: Some("kb-2026-05-01".to_string()),
+            completeness: CacheCompleteness::Complete,
+        };
+        let hint = store.cache_read_hint(&id, &fresh).expect("cache_read_hint");
+        assert_eq!(hint, CacheReadHint::Revalidate);
+    }
+
+    #[test]
+    fn falsifier_unavailable_knowledge_version_is_never_treated_as_unchanged() {
+        // Same axis-uncertainty requirement as the provider-fingerprint falsifier above, for
+        // `knowledge_version`.
+        let (mut store, id) = store_with_one_row("codex:sessions/x");
+        store
+            .set_invalidation_key(&id, &full_key("codex:sessions/x", Some(1_000)))
+            .expect("set_invalidation_key");
+
+        let fresh = CacheInvalidationKey {
+            identity_token: "codex:sessions/x".to_string(),
+            modified: Some(1_000),
+            provider_fingerprint: Some("codex-cli-1.2.3".to_string()),
+            knowledge_version: None,
+            completeness: CacheCompleteness::Complete,
+        };
+        let hint = store.cache_read_hint(&id, &fresh).expect("cache_read_hint");
+        assert_eq!(hint, CacheReadHint::Revalidate);
     }
 
     #[test]

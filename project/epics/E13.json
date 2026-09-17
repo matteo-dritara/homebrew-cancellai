@@ -35,7 +35,7 @@
     {
       "id": "E13-S02",
       "title": "Append-only operational ledger",
-      "status": "in_progress",
+      "status": "ready_for_review",
       "outcome": "Record significant classification/policy/mutation/lifecycle events without storing artifact content.",
       "change_risk": "CR2",
       "dependencies": [
@@ -56,7 +56,7 @@
     {
       "id": "E13-S03",
       "title": "Analytical rollups and retention",
-      "status": "in_progress",
+      "status": "ready_for_review",
       "outcome": "Aggregate fine-grained measurements into hourly/daily/long-term statistics with bounded retention.",
       "change_risk": "CR2",
       "dependencies": [
@@ -77,22 +77,13 @@
     {
       "id": "E13-S04",
       "title": "Self-budget and local reset",
-      "status": "blocked",
+      "status": "ready_for_review",
       "outcome": "Enforce cancellAI state/log budgets and provide reset of cancellAI state only.",
       "change_risk": "CR3",
       "dependencies": [
         "E13-S02",
         "E13-S03"
       ],
-      "blocked_by": {
-        "summary": "E13-S02 and E13-S03 both failed independent review round 1. E13-S04 also has a reproduced budget-admission defect; repair must proceed after the dependent ledger and rollup contracts are repaired and independently re-reviewed.",
-        "waiting_on": [
-          "E13-S02",
-          "E13-S03"
-        ],
-        "argument": "project/evidence/E13-VERIFIER-REVIEW.md",
-        "recorded": "2026-09-17"
-      },
       "acceptance_criteria": [
         "Budget overrun triggers compaction before growth continues.",
         "reset --local-state cannot target provider roots.",
@@ -112,7 +103,7 @@
     {
       "id": "E13-S05",
       "title": "Incremental inventory reuse",
-      "status": "in_progress",
+      "status": "ready_for_review",
       "outcome": "Reuse persisted facts safely between scans while invalidating on identity, metadata, provider-knowledge, and completeness changes.",
       "change_risk": "CR3",
       "dependencies": [

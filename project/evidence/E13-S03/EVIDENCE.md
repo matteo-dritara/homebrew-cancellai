@@ -236,6 +236,27 @@ locally and CI runs it regardless, matching E13-S02's own precedent for the same
 - This packet is executor self-assessment. Independent review happens at epic scope, once every
   story in E13 is `ready_for_review`.
 
+## Round 1 independent review repair (2026-09-17)
+
+Codex's round 1 review (`project/evidence/E13-VERIFIER-REVIEW.md`) returned `FAIL`: with
+`RetentionPolicy::new(10, 20, 30)`, a sample recorded at `t=0`, and `compact(policy, now=5)`, the
+raw-sample count went to `0` even though the sample's true age (5s) had not reached the 10s
+recent window. `now.saturating_sub(recent_window_secs)` collapsed to a cutoff of `0` whenever
+`now < recent_window_secs`, and the promotion query's `recorded_at <= cutoff` then matched the
+`t=0` sample - `saturating_sub` silently turned "the window has not elapsed yet" into "everything
+recorded at or before time zero is eligible," which is not the same claim.
+
+Fixed in all three promotion stages (`promote_raw_to_hourly`/`promote_hourly_to_daily`/
+`promote_daily_to_long_term`) by replacing `saturating_sub` with `checked_sub`: when `now` has
+not yet reached the window, the function returns `Ok(0)` (nothing eligible) instead of computing
+a cutoff at all. Regression test: `a_sample_is_not_promoted_when_now_has_not_yet_reached_the_
+recent_window`, reproducing Codex's exact numbers.
+
+Verification after the repair: the same full Rust gate set as this packet's original run,
+re-executed and all passing; `cancellai-store` now has 95 tests (was 88), including the
+regression above. No other change in this story's scope.
+
 ## Verifier verdict
 
-pending
+Round 1 (Codex, 2026-09-17): FAIL - see the defect above, repaired in this packet. Round 2
+pending.

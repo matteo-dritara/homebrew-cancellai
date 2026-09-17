@@ -50,10 +50,16 @@ populating keys, or that never calls `set_invalidation_key` at all.
 `CurrentStateStore::cache_read_hint` compares a caller's *fresh* `CacheInvalidationKey` against
 whatever is persisted and returns [`CacheReadHint`] - `ReuseForReading` or `Revalidate` -
 deliberately not a `bool` and not named or shaped like an authorization. `ReuseForReading`
-requires every axis to match exactly (`identity_token` equal; `modified` equal, so a
-backward-moved mtime is a change like any other, never treated as "no change"; the same
-`provider_fingerprint` and `knowledge_version`) and **both** the persisted and the fresh
-completeness to be `Complete` - a row persisted under `Partial`/`Unknown` evidence is never
+requires every axis to be **positively known and equal on both sides** - `identity_token` equal;
+`modified` equal, so a backward-moved mtime is a change like any other, never treated as "no
+change"; the same `provider_fingerprint` and `knowledge_version` - and **both** the persisted and
+the fresh completeness to be `Complete`. `None` on either side of `modified`/`provider_fingerprint`/
+`knowledge_version` is uncertainty about that axis, never a confirmed absence of change, so it
+always forces `Revalidate` even when both sides are `None` (round 1 independent verifier review:
+an earlier version of this comparison used plain `Option` equality, which let two unrelated rows
+that both lacked, say, a provider fingerprint compare as "matching" on that axis - AC2's "or
+completeness uncertainty invalidates the relevant cache scope" applies to every axis, not only
+completeness itself). A row persisted under `Partial`/`Unknown` evidence is never
 `ReuseForReading`, even against an identical fresh `Partial`/`Unknown` observation, so it can
 never be treated as more reliable than it was when written. This crate does not depend on
 `cancellai-inventory` for this: `CacheCompleteness` is a small, local echo of
@@ -114,13 +120,20 @@ column set is pinned by its own test against silent widening.
 
 `EventLedger::compact_range` is the one explicit, never-silent compaction primitive: it
 requires the requested `[from, to]` range to be exactly and contiguously present in
-`ledger_events` (row count must equal `to - from + 1`), which is what stops a range that
-overlaps an already-compacted window, or reaches past the newest appended event, from silently
+`ledger_events` (row count must equal `to - from + 1`, computed with checked arithmetic so an
+unrepresentable span - round 1 independent verifier review reproduced a panic at the `i64::MIN`/
+`i64::MAX` extremes - is a rejection, never a panic), which is what stops a range that overlaps
+an already-compacted window, or reaches past the newest appended event, from silently
 summarizing fewer events than requested. On success it deletes exactly that range and writes one
 `CompactionSummary` in its place, in the same transaction: the exact event count, a per-kind
 breakdown (so an aggregate such as "how many `QUARANTINED` events happened in this window"
-stays answerable once the raw rows are gone), and a SHA-256 digest over a canonical, ordered
-encoding of every summarized event - a summary cannot be quietly re-attributed to a different
+stays answerable once the raw rows are gone), and a SHA-256 digest over a **length-prefixed**
+encoding of every summarized event - each field is hashed as its own byte length followed by its
+bytes, not delimiter-joined, so a delimiter byte occurring inside one caller-supplied field can
+never make two differently-shaped events hash identically (round 1 independent verifier review
+reproduced exactly that collision against the prior delimiter-joined encoding, between a
+`provider_id`/`category` pair that each carried one side of the same delimiter byte) - a summary
+cannot be quietly re-attributed to a different
 set of events without changing the digest. `read_all` returns events in append order (SQLite's
 own `AUTOINCREMENT` rowid, which never reuses an id once assigned, including one a compaction
 later retired), independent of each event's own caller-supplied `recorded_at` - a skewed or
@@ -203,18 +216,30 @@ constants" (this document's own words for Layer 3's retention windows, extended 
 
 `enforce_ledger_budget`/`enforce_rollup_budget` call `EventLedger::compact_oldest_to_fit`/
 `AnalyticalMemory::compact_if_over` - each new, but each doing nothing except deciding whether to
-invoke a compaction primitive that already existed (`compact_range`/`compact`) - before growth
-continues: a store already exactly at its limit is left untouched, and a store one row over
-compacts exactly the excess, never more, never a silent overrun. `EventLedger::compact_oldest_to_fit`
-always targets the oldest contiguous prefix and fails closed, leaving the ledger completely
-unchanged, if that computed range is not exactly and contiguously present - the same atomicity
-`compact_range` itself already guarantees, so a self-budget enforcement call can never leave the
-ledger worse off than the overrun it was trying to fix. `AnalyticalMemory::compact_if_over` still
-only ages a sample out by `RetentionPolicy`'s own time windows; being over the row-count budget
-does not, by itself, promote a sample that has not yet reached `recent_window_secs` - a budget
-whose windows cannot keep the raw tier under its row limit at the caller's ingestion rate is a
-policy/budget mismatch this surfaces (zero promotions despite running) rather than one it silently
-resolves. `check_current_state_budget` only observes `CurrentStateStore::row_count` against its
+invoke a compaction primitive that already existed (`compact_range`/`compact`): a store already
+exactly at its limit is left untouched, and a store one row over compacts exactly the excess,
+never more, never a silent overrun. Calling either of these alone only *before* a write leaves a
+gap round 1 independent verifier review reproduced: with a 5-event limit, six iterations of
+(enforce, append) left six raw events, because a ledger already exactly at the limit makes the
+next enforcement call a no-op, and nothing re-checks after the append that follows it lands
+exactly on the limit. `append_within_ledger_budget`/`record_sample_within_rollup_budget` close
+that gap as the actual AC1 ("budget overrun triggers compaction before growth continues")
+primitive: each compacts *both* before and after its own write, in one call a caller cannot
+split apart. `EventLedger::compact_oldest_to_fit` has no time-based eligibility gate - it removes
+the oldest events unconditionally - so the "after" compaction always succeeds in bringing the
+ledger back to the limit; `append_within_ledger_budget` therefore never refuses a write.
+`AnalyticalMemory::compact_if_over` still only ages a sample out by `RetentionPolicy`'s own time
+windows, so `record_sample_within_rollup_budget` cannot always free room this way: if every
+currently-held raw sample is still too recent to promote, it refuses the write with
+`SampleAdmissionError::BudgetExceeded` rather than silently exceeding the budget - "refuse ...
+that write when safe compaction cannot meet the limit," the other half of round 1's required
+repair. `enforce_ledger_budget`/`enforce_rollup_budget` themselves stay `pub` as the lower-level
+primitive the admission calls compose, matching this module's own "owns *when*, never *how*"
+doc; a policy/budget mismatch (a raw-sample tier whose windows cannot keep it under its row
+limit at the caller's ingestion rate) now surfaces as an explicit refusal at the write that
+would have exceeded it, rather than a silent overrun.
+
+`check_current_state_budget` only observes `CurrentStateStore::row_count` against its
 limit - Layer 1 has no compaction action of its own, because its content is entirely determined by
 the last external `rebuild`; this section's own "safety-critical current facts may force analytical
 sampling to degrade" already names Layer 3 sampling, not Layer 1 itself, as what yields under

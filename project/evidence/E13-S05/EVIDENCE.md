@@ -278,6 +278,34 @@ code added, no `unsafe`). Real CI still builds and lints natively on all three p
   story in E13 is `ready_for_review` (this story is the fifth and last of E13, so epic-scope review
   can begin once this commit lands).
 
+## Round 1 independent review repair (2026-09-17)
+
+Codex's round 1 review (`project/evidence/E13-VERIFIER-REVIEW.md`) returned `FAIL`: a row
+persisted with a `provider_fingerprint`/`knowledge_version`/`modified` unavailable (`None`) on
+one or both sides compared as `ReuseForReading` when the other axes matched, because
+`cache_read_hint`'s original comparison used plain `Option<T>` equality, and `None == None` is
+`true`. Per AC2 ("... or completeness uncertainty invalidates the relevant cache scope") and
+SI-024, an axis neither side can positively confirm is uncertainty, not a confirmed absence of
+change - this module's own doc comment on `CacheInvalidationKey::modified` already said so
+("never treated as unchanged ... a change ... to unknown, is exact-equality-false"), which the
+code did not actually implement for any of the three optional axes.
+
+Fixed by requiring `modified`/`provider_fingerprint`/`knowledge_version` to each be positively
+`Some` on both sides and equal before counting as confirmed-unchanged; `None` on either side now
+always forces `Revalidate`. This also required rewriting `cache_read_hint_matches_when_both_
+sides_have_no_modified_timestamp` (renamed `cache_read_hint_is_revalidate_when_neither_side_has_
+a_modified_timestamp`), which had asserted the old, incorrect behavior as intended - its own
+comment ("a platform that cannot report mtime at all is a stable fact") was the same reasoning
+error the code embodied, and it directly contradicted AC2. Regression tests: `falsifier_
+unavailable_provider_fingerprint_is_never_treated_as_unchanged` (Codex's exact reproduction) and
+`falsifier_unavailable_knowledge_version_is_never_treated_as_unchanged`.
+
+Verification after the repair: the same full Rust gate set as this packet's original run,
+re-executed and all passing; `cancellai-store` now has 95 tests (was 88), including the new/
+rewritten regressions above. No other change in this story's scope - the production dependency
+graph still has no path from this crate to `cancellai-safety`, confirmed again after the fix.
+
 ## Verifier verdict
 
-pending
+Round 1 (Codex, 2026-09-17): FAIL - see the defect above, repaired in this packet. Round 2
+pending.

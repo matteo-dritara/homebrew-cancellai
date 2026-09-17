@@ -193,6 +193,30 @@ packet); it is available locally (`mypy 2.3.1`) and CI runs it regardless.
 - This packet is executor self-assessment. Independent review happens at epic scope, once every
   story in E13 is `ready_for_review`.
 
+## Round 1 independent review repair (2026-09-17)
+
+Codex's round 1 review (`project/evidence/E13-VERIFIER-REVIEW.md`) returned `FAIL` with two
+reproduced defects, both in `rust/crates/cancellai-store/src/ledger.rs`:
+
+1. **Non-injective compaction digest.** The digest hashed a unit-separator-joined string per
+   event; a caller-supplied field containing the separator byte itself could shift a later
+   field's content across the boundary, so `provider_id="a\u{1}b", category="c"` and
+   `provider_id="a", category="b\u{1}c"` hashed identically. Fixed by hashing each field as an
+   explicit `u64` length followed by its bytes - a length-prefixed encoding is injective
+   regardless of what a field's own content contains. Regression test:
+   `compact_range_digest_does_not_collide_across_a_field_boundary`, reproducing the exact
+   collision and asserting the digests now differ.
+2. **Unchecked subtraction overflow.** `to.0 - from.0 + 1` panicked for `compact_range(EventId(
+   i64::MIN), EventId(i64::MAX), _)` instead of returning `LedgerError`. Fixed with
+   `checked_sub`/`checked_add`, returning an error for an unrepresentable span. Regression test:
+   `compact_range_rejects_an_unrepresentable_span_instead_of_panicking`.
+
+Verification after the repair: `cargo fmt --check`, `cargo clippy --workspace --all-targets
+--all-features -- -D warnings`, `cargo check --workspace --all-targets`, `cargo test
+--workspace`, `cargo deny check` all pass; `cancellai-store` now has 95 tests (was 88), including
+the two new regressions above. No other change in this story's scope.
+
 ## Verifier verdict
 
-pending
+Round 1 (Codex, 2026-09-17): FAIL - see the two defects above, both repaired in this packet.
+Round 2 pending.

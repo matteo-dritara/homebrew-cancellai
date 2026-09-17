@@ -468,7 +468,18 @@ impl EventLedger {
                 from.0, to.0
             )));
         }
-        let expected_count = to.0 - from.0 + 1;
+        // `to.0 - from.0` alone can overflow `i64` at the extremes (e.g. `from =
+        // i64::MIN`, `to = i64::MAX`) - checked arithmetic turns that into a rejection
+        // rather than a panic (round 1 independent verifier review).
+        let expected_count =
+            to.0.checked_sub(from.0)
+                .and_then(|span| span.checked_add(1))
+                .ok_or_else(|| {
+                    LedgerError(format!(
+                        "compaction range [{}, {}] does not fit in a representable event count",
+                        from.0, to.0
+                    ))
+                })?;
         let created_at_i64 = i64::try_from(created_at)
             .map_err(|_| LedgerError("created_at does not fit in a signed 64-bit column".into()))?;
 
@@ -526,17 +537,28 @@ impl EventLedger {
                     evidence_ids,
                 ) = row?;
                 *kind_counts.entry(kind.clone()).or_insert(0) += 1;
-                // Unit-separator-delimited, one line per event: a canonical encoding that
-                // cannot be confused across field boundaries by a value that happens to
-                // contain a plain space or comma.
-                hasher.update(
-                    format!(
-                        "{event_id}\u{1}{kind}\u{1}{recorded_at}\u{1}{artifact_id}\u{1}\
-                         {provider_id}\u{1}{category}\u{1}{policy_id}\u{1}{reason_code}\u{1}\
-                         {plan_id}\u{1}{evidence_ids}\n"
-                    )
-                    .as_bytes(),
-                );
+                // Length-prefixed, not delimiter-joined: a delimiter byte (even a rare one
+                // like `\u{1}`) can appear inside a caller-supplied field, and two different
+                // events can then concatenate to the same byte string across a field
+                // boundary - round 1 independent verifier review reproduced exactly that
+                // collision between `provider_id`/`category`. Prefixing every field with its
+                // own length makes the encoding injective: the boundary is a byte count, not
+                // a byte value a field's own content could also contain.
+                hasher.update(event_id.to_be_bytes());
+                hasher.update(recorded_at.to_be_bytes());
+                for field in [
+                    kind.as_str(),
+                    artifact_id.as_str(),
+                    provider_id.as_str(),
+                    category.as_str(),
+                    policy_id.as_str(),
+                    reason_code.as_str(),
+                    plan_id.as_str(),
+                    evidence_ids.as_str(),
+                ] {
+                    hasher.update((field.len() as u64).to_be_bytes());
+                    hasher.update(field.as_bytes());
+                }
             }
         }
         let digest_hex = encode_hex(&hasher.finalize());
@@ -992,6 +1014,62 @@ mod tests {
         let mut ledger = EventLedger::open_in_memory().expect("open");
         let a = ledger.append(discovered(1)).expect("append");
         assert!(ledger.compact_range(EventId(a.0 + 1), a, 1).is_err());
+    }
+
+    #[test]
+    fn compact_range_rejects_an_unrepresentable_span_instead_of_panicking() {
+        // Round 1 independent verifier review: `to.0 - from.0` alone overflows `i64` at
+        // these extremes. This must return `LedgerError`, never panic.
+        let mut ledger = EventLedger::open_in_memory().expect("open");
+        let result = ledger.compact_range(EventId(i64::MIN), EventId(i64::MAX), 1);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn compact_range_digest_does_not_collide_across_a_field_boundary() {
+        // Round 1 independent verifier review: the prior delimiter-joined encoding hashed
+        // `provider_id="a\u{1}b", category="c"` identically to `provider_id="a",
+        // category="b\u{1}c"`, because the delimiter it relied on could itself appear inside
+        // a caller-supplied field. The length-prefixed encoding must tell these apart.
+        let mut left = EventLedger::open_in_memory().expect("open");
+        let a = left
+            .append(NewEvent {
+                kind: EventKind::Discovered,
+                recorded_at: 1,
+                metadata: EventMetadata {
+                    artifact_id: None,
+                    provider_id: Some("a\u{1}b".to_string()),
+                    category: Some("c".to_string()),
+                    policy_id: None,
+                    reason_code: None,
+                },
+                mutation: None,
+            })
+            .expect("append");
+        let left_summary = left.compact_range(a, a, 100).expect("compact");
+
+        let mut right = EventLedger::open_in_memory().expect("open");
+        let b = right
+            .append(NewEvent {
+                kind: EventKind::Discovered,
+                recorded_at: 1,
+                metadata: EventMetadata {
+                    artifact_id: None,
+                    provider_id: Some("a".to_string()),
+                    category: Some("b\u{1}c".to_string()),
+                    policy_id: None,
+                    reason_code: None,
+                },
+                mutation: None,
+            })
+            .expect("append");
+        let right_summary = right.compact_range(b, b, 100).expect("compact");
+
+        assert_ne!(
+            left_summary.digest_hex, right_summary.digest_hex,
+            "two events whose fields differ only in which side of a delimiter byte carries \
+             it must not hash identically"
+        );
     }
 
     #[test]
