@@ -1438,6 +1438,11 @@ mod tests {
             "a failed reset must leave the ledger's prior content completely unchanged"
         );
 
+        // Windows refuses to delete a file with an open handle; both connections must close
+        // before cleanup, matching every other test in this module.
+        drop(ledger);
+        drop(blocker);
+
         std::fs::remove_dir_all(&dir).expect("clean up test dir");
     }
 }
