@@ -132,7 +132,7 @@ load-bearing rather than academic.
 
 ## Documentation readership
 
-- Documents a committed review record has named: **25**. Never named: **22**.
+- Documents a committed review record has named: **25**. Never named: **23**.
 - Never named is not the same as never read, and an unread document may still be the right
   document. This is a list for the owner once a phase, not a purge, and accepted ADRs are
   undeletable regardless of what it says.
@@ -151,6 +151,7 @@ load-bearing rather than academic.
 - `docs/development/MIGRATION_PYTHON_RUST.md`
 - `docs/development/REPOSITORY_GOVERNANCE.md`
 - `docs/research/MARKET_AND_STANDARDS_2026-08.md`
+- `docs/rfcs/0001-remote-execution-boundary.md`
 - `docs/rfcs/README.md`
 - `docs/security/INCIDENT_RESPONSE.md`
 - `project/README.md`
