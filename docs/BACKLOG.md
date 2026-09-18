@@ -2075,7 +2075,7 @@ Extend observation/governance to remote development environments without weakeni
 
 ### E18-S03 - OSS/commercial protocol boundary
 
-**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E18-S02 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E18-S02 | **Safety obligations:** SI-031
 
 **Outcome.** Define an open local node protocol and separate optional fleet-control services without reducing local functionality.
 
@@ -2083,6 +2083,7 @@ Extend observation/governance to remote development environments without weakeni
 
 - Single-machine workflows remain fully functional without account/cloud.
 - Commercial services add coordination, not local destructive capabilities.
+- If no commercial or fleet-coordination service is configured or reachable, single-machine functionality is not reduced or refused.
 
 **Verification**
 

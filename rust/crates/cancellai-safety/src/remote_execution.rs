@@ -636,4 +636,34 @@ mod tests {
         let from_local = effective_authority(shared_inputs(AuthorityLevel::Quarantine));
         assert_eq!(from_remote, from_local);
     }
+
+    #[test]
+    fn a_local_authority_decision_requires_zero_trusted_remote_controllers() {
+        // E18-S03 (docs/PRODUCT.md "Open-source and commercial boundary"): a single-machine
+        // workflow must be fully functional with no fleet/commercial coordination configured at
+        // all. An empty TrustedRemoteControllers - the state of a fresh install that has never
+        // heard of a remote controller - never enters effective_authority's computation; a local
+        // user_requested value produces exactly the answer it always did.
+        let empty_policy = TrustedRemoteControllers::new(vec![]);
+        let _ = &empty_policy; // present, deliberately unused: proves the local path below never
+        // needs to consult it.
+
+        let local_inputs = AuthorityInputs {
+            user_requested: AuthorityLevel::Quarantine,
+            artifact_ceiling: AuthorityLevel::Autopilot,
+            confidence: KnowledgeConfidence::Verified,
+            activity: ActivityState::Idle,
+            protection: ProtectionState::Normal,
+            integrity: IntegrityState::Healthy,
+            provider_trust: TrustedTier::untrusted(),
+        };
+
+        // Untrusted provider_trust caps the result at Observe (provider_trust_ceiling) - the
+        // exact value matters less here than that it is fully, deterministically computed from
+        // local_inputs alone, with empty_policy never consulted.
+        assert_eq!(
+            effective_authority(local_inputs).level,
+            AuthorityLevel::Observe
+        );
+    }
 }

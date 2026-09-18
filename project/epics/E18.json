@@ -58,17 +58,21 @@
     {
       "id": "E18-S03",
       "title": "OSS/commercial protocol boundary",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Define an open local node protocol and separate optional fleet-control services without reducing local functionality.",
-      "change_risk": "CR1",
+      "change_risk": "CR4",
+      "risk_reclassification_note": "Declared CR1 at planning time; raised to CR4 at commit time because the change adds a test to rust/crates/cancellai-safety/src/remote_execution.rs - the safety-kernel floor project/risk_floors.json sets for rust/crates/cancellai-safety/src/*, since every mutation decision passes through this crate (C-07), even though the added test only exercises an already-covered path (effective_authority with an unused, empty TrustedRemoteControllers) and adds no new production logic. The CR4 reclassification also triggered scripts/check_ears.py's requirement that a CR2+ story name unwanted behaviour; AC3 below was added at commit time as the EARS-compliant restatement of AC1's existing intent, not new scope.",
       "dependencies": [
         "E18-S02"
       ],
       "acceptance_criteria": [
         "Single-machine workflows remain fully functional without account/cloud.",
-        "Commercial services add coordination, not local destructive capabilities."
+        "Commercial services add coordination, not local destructive capabilities.",
+        "If no commercial or fleet-coordination service is configured or reachable, single-machine functionality is not reduced or refused."
       ],
-      "safety_obligations": [],
+      "safety_obligations": [
+        "SI-031"
+      ],
       "verification": [
         "Offline conformance tests."
       ],
