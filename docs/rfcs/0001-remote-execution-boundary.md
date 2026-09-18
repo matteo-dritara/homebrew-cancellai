@@ -1,6 +1,7 @@
 # RFC-0001: Remote execution boundary shape (E18-S02)
 
-- Status: draft
+- Status: accepted (Option A) - 2026-09-18, recorded in
+  [ADR-0031](../adrs/0031-remote-execution-requests-are-signed-intents-never-plans.md)
 - Date: 2026-09-18
 - Owner: Matteo Pugliese
 - Related work: E18-S02 (Local-agent remote execution boundary, CR4), E18-S01 (Remote target

@@ -8,6 +8,7 @@ Use `project/templates/RFC.md`. RFC IDs are monotonic (`RFC-0001`, ...). Accepte
 
 ## RFCs
 
-- [RFC-0001: Remote execution boundary shape](0001-remote-execution-boundary.md) - draft - what a
-  remote controller's request may contain and how it may influence
+- [RFC-0001: Remote execution boundary shape](0001-remote-execution-boundary.md) - accepted
+  (Option A, [ADR-0031](../adrs/0031-remote-execution-requests-are-signed-intents-never-plans.md))
+  - what a remote controller's request may contain and how it may influence
   `cancellai_safety::authority::effective_authority` (E18-S02, SI-031).
