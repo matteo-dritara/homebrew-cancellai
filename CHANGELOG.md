@@ -185,6 +185,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   inherit a stale key. `cancellai-store` still does not depend on `cancellai-safety`, so nothing
   this mechanism returns can reach the safety executor's mutation-execution capability; fresh,
   execution-time observation remains mandatory before any mutation decision.
+- Added remote target vocabulary (E18-S01, CR3 - raised from the declared CR2 by
+  `project/risk_floors.json`'s domain-model floor, `docs/architecture/TARGET.md` "Remote target
+  vocabulary"): `cancellai_model::remote_target` models an SSH/dev-container/CI-runner machine as
+  an explicit `RemoteTarget` with its own `MachineId`, `RemoteCapabilities`, `RemoteTargetTrust`
+  and `RemoteTargetConnection` - the first real occupant of `MachineId`, standalone and not yet
+  wired onto `AgentArtifact`. `InventoryOrigin`'s two variants make "remote inventory never
+  masquerades as local state" a shape guarantee (`Local` carries no `MachineId`, so no remote id
+  can ever compare equal to it), and `state_is_current` treats anything but `Connected` as stale,
+  never a time-window guess. `RemoteTargetTrust`/`RemoteCapabilities` deliberately derive
+  `Serialize` only, not `Deserialize`, after this story's adversarial-cases pass found the
+  alternative repeats E05 round 1's exact defect (a bare, deserializable trust value reaching an
+  authority computation with no promotion gate) - a real execution grant is E18-S02's job.
 
 ### Fixed
 

@@ -2037,7 +2037,7 @@ Extend observation/governance to remote development environments without weakeni
 
 ### E18-S01 - Remote target abstraction
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E16-S02 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E16-S02 | **Safety obligations:** none
 
 **Outcome.** Model SSH/dev-container/CI-runner targets as explicit machines with independent capabilities and trust.
 

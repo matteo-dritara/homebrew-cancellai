@@ -16,11 +16,14 @@
 //! module doc for why that is the one net-new axis this story adds. E08-S02 further adds
 //! `project_attribution` (`ProjectAttribution`/`ProjectRef`/`AttributionSource`). E08-S03 adds
 //! `activity_signal` (`ActivitySignal`) and gives `ActivityState::Orphaned` its first producer.
+//! `remote_target` (E18-S01) adds the first `MachineId` occupant - deliberately standalone,
+//! not yet wired onto `AgentArtifact` (see that module's own doc for why).
 
 pub mod action;
 pub mod agent_artifact;
 pub mod diagnostic;
 pub mod evidence;
+pub mod remote_target;
 pub mod vocabulary;
 
 pub use action::{Action, ActionId, Precondition, PreconditionValue};
@@ -30,6 +33,10 @@ pub use agent_artifact::{
 };
 pub use diagnostic::{Diagnostic, ErrorCategory};
 pub use evidence::{Evidence, EvidenceId};
+pub use remote_target::{
+    InventoryOrigin, MachineId, RemoteCapabilities, RemoteTarget, RemoteTargetConnection,
+    RemoteTargetKind, RemoteTargetTrust,
+};
 pub use vocabulary::{
     ActionClass, ActivityState, AuthorityLevel, IntegrityState, KnowledgeConfidence,
     ProtectionState, ProviderTrust, ReleaseChannel, ResidencyState, Reversibility, RiskClass,

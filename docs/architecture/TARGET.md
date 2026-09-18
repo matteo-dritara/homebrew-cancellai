@@ -373,6 +373,47 @@ selection modulo-wraps onto the real list length exactly like the Explain screen
 record the "review-only, no execution" scope decision so a future reader does not have to
 re-derive it from the code.
 
+### Remote target vocabulary (E18-S01)
+
+`cancellai_model::remote_target` is the first real occupant of `MachineId`
+(`docs/architecture/DOMAIN_MODEL.md`'s sketch, `views::by_machine`'s own doc for why it has had
+none until now). `MachineId`, `RemoteTargetKind` (`Ssh`/`DevContainer`/`CiRunner`),
+`RemoteCapabilities`, `RemoteTargetTrust`, `RemoteTargetConnection` and `RemoteTarget` model an
+SSH/dev-container/CI-runner machine as an explicit target with its own identity, capabilities,
+trust and connection state - standalone vocabulary in `cancellai-model`, not yet wired onto
+`AgentArtifact`: `by_machine` still returns exactly one bucket, and nothing in the inventory
+pipeline produces or consumes a `RemoteTarget` yet. That wiring is a later story's job, once a
+real adapter exists to justify the shape it would need.
+
+**AC1 - remote inventory never masquerades as local state**: `InventoryOrigin` is a two-variant
+enum where `Local` carries no `MachineId` at all, so no remote target's id - however it is
+spelled, including deliberately adversarial spellings like `"local"` or `"localhost"` - can ever
+compare equal to it (`remote_target::tests::ac1_no_machine_id_however_spelled_ever_compares_equal_to_local`).
+`RemoteTarget::origin` is the only way this module hands out an `InventoryOrigin` for a target,
+and it can only ever produce `Remote`.
+
+**AC2 - disconnected targets preserve last-seen state as stale, not current**:
+`RemoteTarget::state_is_current` is `false` for anything but `Connected` - a plain two-state
+fact, not a time-window computation - and a freshly modeled target starts `Disconnected`
+(C-02: an unconfirmed target is not assumed live).
+
+**Trust/capabilities stay unconstructible from external data**: `RemoteTargetTrust` and
+`RemoteCapabilities` derive `Serialize` only, not `Deserialize`. `docs/development/
+AGENT_PROTOCOL.md`'s adversarial-cases pass for this story found the alternative repeats E05
+round 1's exact defect (`cancellai_safety::trust_promotion`'s module doc): a bare, deserializable
+trust/capability value that a later story could wire straight into an authority computation with
+no promotion gate at all. Nothing here feeds an authority computation yet, but C-05 names
+capability and trust as authority inputs, so the type stays closed to external construction from
+day one rather than leaving a shape a future story could misuse - the same split `ProviderTrust`/
+`TrustedTier` already draws between bare vocabulary and a gated grant. A real execution grant for
+a remote target is E18-S02's job (CR4), through a safety-crate gate, not this module.
+
+**Declared CR2 at planning, raised to CR3 at commit time** (`project/epics/E18.json`'s own
+`risk_reclassification_note`): the change adds a file under `rust/crates/cancellai-model/src/*`,
+which `project/risk_floors.json` floors at CR3 because the domain model defines what every
+downstream decision is expressed in terms of - even though this change is purely additive and
+touches no existing type.
+
 ## Core loop
 
 The engine behaves as an evidence-driven reconciliation loop:

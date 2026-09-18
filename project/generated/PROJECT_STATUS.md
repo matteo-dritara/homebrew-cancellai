@@ -11,15 +11,15 @@ Epics: **32** | Stories: **165**
 - `blocked`: 2
 - `cancelled`: 1
 - `done`: 144
-- `planned`: 14
-- `ready_for_review`: 4
+- `planned`: 13
+- `ready_for_review`: 5
 
 ## Change risk distribution
 
 - `CR0`: 14
 - `CR1`: 39
-- `CR2`: 51
-- `CR3`: 28
+- `CR2`: 50
+- `CR3`: 29
 - `CR4`: 33
 
 ## Explicitly ready work
@@ -32,3 +32,4 @@ Epics: **32** | Stories: **165**
 - **E13-S03** - Analytical rollups and retention (CR2)
 - **E13-S04** - Self-budget and local reset (CR3)
 - **E13-S05** - Incremental inventory reuse (CR3)
+- **E18-S01** - Remote target abstraction (CR3)

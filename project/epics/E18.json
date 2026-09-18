@@ -13,9 +13,10 @@
     {
       "id": "E18-S01",
       "title": "Remote target abstraction",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Model SSH/dev-container/CI-runner targets as explicit machines with independent capabilities and trust.",
-      "change_risk": "CR2",
+      "change_risk": "CR3",
+      "risk_reclassification_note": "Declared CR2 at planning time; raised to CR3 at commit time because the change adds rust/crates/cancellai-model/src/remote_target.rs - the domain-model floor project/risk_floors.json sets for rust/crates/cancellai-model/src/*, since it defines what an artifact, an authority and a plan are and every downstream decision is expressed in its types, even though this change is purely additive and does not touch AgentArtifact or any existing type.",
       "dependencies": [
         "E16-S02"
       ],
