@@ -35,7 +35,7 @@
     {
       "id": "E18-S02",
       "title": "Local-agent remote execution boundary",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Keep mutation execution on the target node under its local safety kernel even when a remote controller requests policy evaluation.",
       "change_risk": "CR4",
       "dependencies": [

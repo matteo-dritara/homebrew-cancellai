@@ -198,7 +198,16 @@ Control: current-state DB is non-authoritative and preconditions are re-observed
 
 A future server sends a command that bypasses local review/safety.
 
-Control: remote is intent/policy distribution only; target node retains authority and audit. See SI-031.
+Control: remote is intent/policy distribution only; target node retains authority and audit. See
+SI-031. Implemented by E18-S02 (`cancellai_safety::remote_execution`,
+[RFC-0001](../rfcs/0001-remote-execution-boundary.md),
+[ADR-0031](../adrs/0031-remote-execution-requests-are-signed-intents-never-plans.md)): a signed,
+replay-protected request can only ever supply `AuthorityInputs::user_requested` for one named
+target, capped by the requesting controller's own trusted ceiling and refused outright (never
+clamped) above it - it cannot carry a plan, an already-decided outcome, or any other authority
+input. No production entry point calls it yet (library-level primitive only, pending a real
+transport, E18-S03 or later), so this control is proven at the unit level, not yet exercised
+end-to-end.
 
 ## Privacy threats
 

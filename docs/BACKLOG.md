@@ -2056,7 +2056,7 @@ Extend observation/governance to remote development environments without weakeni
 
 ### E18-S02 - Local-agent remote execution boundary
 
-**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E18-S01 | **Safety obligations:** SI-031
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E18-S01 | **Safety obligations:** SI-031
 
 **Outcome.** Keep mutation execution on the target node under its local safety kernel even when a remote controller requests policy evaluation.
 

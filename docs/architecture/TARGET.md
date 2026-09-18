@@ -414,6 +414,37 @@ which `project/risk_floors.json` floors at CR3 because the domain model defines 
 downstream decision is expressed in terms of - even though this change is purely additive and
 touches no existing type.
 
+### Remote execution boundary (E18-S02)
+
+`cancellai_safety::remote_execution` (SI-031, [RFC-0001](../rfcs/0001-remote-execution-boundary.md),
+[ADR-0031](../adrs/0031-remote-execution-requests-are-signed-intents-never-plans.md)) verifies a
+remote controller's signed `RemoteExecutionRequest` - a different actor from E18-S01's
+`RemoteTarget` - and, on success, produces a `VerifiedRemoteIntent` carrying only a `target`
+(`MachineId`) and a `requested_authority` (`AuthorityLevel`). That is the single value a caller
+may feed into `AuthorityInputs::user_requested`; every other authority input, and
+`effective_authority` itself, is unchanged - `remote_and_local_user_requested_reach_identical_
+effective_authority` proves the two cases are indistinguishable to it. The envelope mirrors
+`knowledge_bundle::KnowledgeBundle` exactly (schema version, per-controller strictly-increasing
+sequence, expiry, SHA-256 content digest, Ed25519 signature - ADR-0024's primitive, no new
+dependency) and is verified against a new, local, operator-owned `TrustedRemoteControllers`
+policy that also bounds which `AuthorityLevel` a given controller may even request - a request
+above its ceiling is refused outright, never clamped down. `RemoteExecutionLog` tracks the
+highest sequence accepted per controller, pure in-memory state mirroring
+`knowledge_bundle::KnowledgeStore`'s own shape (no `rusqlite`, no file I/O - the kernel-ring
+purity ADR-0019 requires).
+
+**Audit-linked without a forbidden dependency**: `cancellai-safety` is kernel ring and
+`cancellai-store` (which owns `EventLedger`) is outer ring specifically so the kernel stays free
+of `rusqlite` - this module cannot write a ledger entry itself. Verification's `Result`, together
+with the request the caller already holds, carries every field an audit entry needs; writing one
+is deferred to whichever outer-ring caller eventually wires a real transport to this function
+(E18-S03 or later) - library-level primitives only, no CLI/TUI/Guardian surface wires this yet,
+matching E13's and E18-S01's own precedent.
+
+**Residual**: `RemoteExecutionLog` is pure in-memory and does not survive a process restart -
+persisting it across restarts, if a future caller needs that, is that caller's own design
+question, not this module's.
+
 ## Core loop
 
 The engine behaves as an evidence-driven reconciliation loop:

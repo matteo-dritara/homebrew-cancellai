@@ -11,8 +11,8 @@ Epics: **32** | Stories: **165**
 - `blocked`: 2
 - `cancelled`: 1
 - `done`: 144
-- `planned`: 13
-- `ready_for_review`: 5
+- `planned`: 12
+- `ready_for_review`: 6
 
 ## Change risk distribution
 
@@ -33,3 +33,4 @@ Epics: **32** | Stories: **165**
 - **E13-S04** - Self-budget and local reset (CR3)
 - **E13-S05** - Incremental inventory reuse (CR3)
 - **E18-S01** - Remote target abstraction (CR3)
+- **E18-S02** - Local-agent remote execution boundary (CR4)

@@ -30,11 +30,16 @@
 //! [`knowledge_bundle`] (SI-022, SI-029, ADR-0024): signed provider knowledge bundles,
 //! verified with Ed25519 against a caller-supplied [`LocalTrustPolicy`] whose tier assignments
 //! are the only source of authority a verified bundle ever carries - never the bundle itself.
+//! E18-S02 adds [`remote_execution`] (SI-031, RFC-0001, ADR-0031): a remote controller's signed
+//! request, verified the same way, whose only effect on [`AuthorityInputs`] is supplying
+//! `user_requested` - every other input, and `effective_authority` itself, stays exactly as it
+//! is for a local caller.
 
 pub mod authority;
 pub mod build_channel;
 pub mod knowledge_bundle;
 pub mod mutation_executor;
+pub mod remote_execution;
 pub mod root_capability;
 pub mod sealed_plan;
 pub mod trust_promotion;
@@ -50,6 +55,10 @@ pub use knowledge_bundle::{
     verify_bundle,
 };
 pub use mutation_executor::{ActionResult, execute, execute_all, execute_with_system_capabilities};
+pub use remote_execution::{
+    RemoteExecutionError, RemoteExecutionLog, RemoteExecutionRequest, TrustedRemoteController,
+    TrustedRemoteControllers, VerifiedRemoteIntent, parse_request, verify_remote_execution_request,
+};
 pub use root_capability::{ApprovedRoot, BoundaryError, BoundedPath};
 pub use sealed_plan::{RevalidationOutcome, SealedPlan, revalidate};
 pub use trust_promotion::{TrustPromotionError, TrustPromotionEvidence, TrustedTier};

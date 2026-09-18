@@ -197,6 +197,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Serialize` only, not `Deserialize`, after this story's adversarial-cases pass found the
   alternative repeats E05 round 1's exact defect (a bare, deserializable trust value reaching an
   authority computation with no promotion gate) - a real execution grant is E18-S02's job.
+- Added the local-agent remote execution boundary (E18-S02, CR4, SI-031, RFC-0001, ADR-0031):
+  `cancellai_safety::remote_execution` verifies a signed `RemoteExecutionRequest` from a remote
+  controller (a distinct actor from E18-S01's `RemoteTarget`) and produces at most a
+  `VerifiedRemoteIntent` carrying one `target`/`requested_authority` pair - the only value a
+  caller may feed into `AuthorityInputs::user_requested`. Every other authority input and
+  `effective_authority` itself are unchanged; a dedicated test proves a remote-originated request
+  reaches an identical result to the same value supplied locally, discharging AC1 ("remote
+  control cannot bypass target safety invariants") by construction rather than convention. The
+  envelope mirrors `knowledge_bundle::KnowledgeBundle` exactly (schema version, per-controller
+  strictly-increasing sequence, expiry, SHA-256 digest, Ed25519 signature - no new dependency),
+  verified against a new `TrustedRemoteControllers` policy that also bounds which authority a
+  controller may request - refused outright above its ceiling, never clamped. `RemoteExecutionLog`
+  tracks accepted sequences per controller as pure in-memory state (mirrors
+  `knowledge_bundle::KnowledgeStore`, no `rusqlite`, keeping the kernel-ring bare per ADR-0019).
+  Audit-linking is discharged by the verification `Result` itself carrying every field an
+  `EventLedger` entry needs; writing one is deferred to whichever outer-ring caller eventually
+  wires a real transport (E18-S03 or later) - library-level primitives only, no CLI/TUI/Guardian
+  surface wires this yet.
 
 ### Fixed
 
