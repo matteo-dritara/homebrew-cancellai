@@ -34,9 +34,13 @@ On success, the request contributes **only** the `user_requested` field of one
 `AuthorityInputs` call, for the one target/action named. Every other input
 (`artifact_ceiling`, `confidence`, `activity`, `protection`, `integrity`, `provider_trust`)
 stays locally derived exactly as it is for a local caller today - `effective_authority`'s
-signature and behavior do not change. Every request, accepted or rejected, writes one
-`cancellai_store::EventLedger` event naming the controller, sequence, requested action, and
-outcome.
+signature and behavior do not change. `cancellai-safety` (kernel ring) does not depend on
+`cancellai-store` (outer ring, owns `EventLedger`) and this decision does not add that edge
+(ADR-0019: the kernel stays bare of `rusqlite`) - verification returns a structured outcome
+(accepted/rejected, always carrying controller, sequence, requested action, and, on rejection,
+the specific reason) with every field an `EventLedger` entry needs. Writing that entry is the
+job of whichever outer-ring caller eventually wires a real transport to this verification
+function, not of `cancellai-safety` itself.
 
 Wire transport is explicitly out of scope of this decision (RFC-0001's Non-goals) - deferred to
 E18-S03.

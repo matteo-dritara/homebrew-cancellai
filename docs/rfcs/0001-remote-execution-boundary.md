@@ -33,7 +33,8 @@ request, not about `RemoteTarget` itself, which E18-S01 already modeled.
 - Define exactly how an accepted request is allowed to influence
   `cancellai_safety::authority::AuthorityInputs` - and show that nothing else it could carry
   reaches authority computation.
-- Define what "audit-linked" means concretely (SI-031, AC2) using the ledger E13 already built.
+- Define what "audit-linked" means concretely (SI-031, AC2) given `cancellai-safety` (kernel
+  ring) cannot depend on `cancellai-store` (outer ring, owns `EventLedger`) per ADR-0019.
 - Keep the target node's own OBSERVE -> CLASSIFY -> RESOLVE -> PLAN -> REVALIDATE -> EXECUTE loop
   (`docs/architecture/TARGET.md` "Core loop") completely unchanged by this story.
 
@@ -98,10 +99,16 @@ still current" - for a different payload:
   concrete mechanism behind SI-031's "resolves policy... retains final mutation authority" and
   discharges AC1 ("remote control cannot bypass target safety invariants") by construction: a
   remote party can lower what it asks for, never raise what the target independently grants.
-- **Audit-linked** (AC2): every request - accepted or rejected, and rejected ones especially -
-  writes one `cancellai_store::EventLedger` entry (E13) naming the controller id, sequence, the
-  requested action, and the outcome (accepted/rejected-and-why). A controller cannot make a
-  request that leaves no trace, including a request that fails.
+- **Audit-linked** (AC2): `cancellai-safety` is kernel ring and `cancellai-store` (which owns
+  `EventLedger`) is outer ring specifically so the kernel stays free of `rusqlite`
+  (ADR-0019) - so this module cannot call `EventLedger::append` itself. Verification instead
+  returns a structured outcome (`Accepted`/`Rejected`, always carrying controller id, sequence,
+  requested action, and - for a rejection - the specific reason) with every field an audit
+  record needs and none it would have to re-derive. Writing that outcome to `EventLedger` is the
+  job of whatever outer-ring caller invokes verification (a future transport entry point, E18-S03
+  or later) - the same "library-level primitive, not yet wired to a caller" state E13's own
+  ledger and E18-S01's `RemoteTarget` already ship in. A controller cannot make a request whose
+  outcome is *unauditable*, even before anything actually audits it.
 - **Authenticated + authorized** (AC2): authenticated by signature verification against a known
   controller id (identical mechanism to `KnowledgeBundle`); authorized by `TrustedRemoteControllers`
   gating which `ActionClass`es a given tier may even request (mirrors `ProviderTrust`'s ceiling
@@ -109,9 +116,12 @@ still current" - for a different payload:
   unauthenticated or unauthorized request never becomes an `AuthorityInputs` value in the first
   place.
 
-**Cost**: a new module, a new small trust-policy type, and a new `EventLedger` event kind. All
-three reuse existing, already-reviewed primitives (ADR-0024's signing scheme, E13's ledger, the
-`TrustedTier`/`LocalTrustPolicy` shape from E05/E16). No new crate dependency.
+**Cost**: a new module in `cancellai-safety` and a new small trust-policy type, both reusing
+existing, already-reviewed primitives (ADR-0024's signing scheme, the `TrustedTier`/
+`LocalTrustPolicy` shape from E05/E16) with no new crate dependency. This story's own scope
+stops at `cancellai-safety`'s verification boundary; a new `EventLedger` event kind in
+`cancellai-store` is for whichever future caller actually wires the two crates together
+(E18-S03 or later), not for this story to add unused ahead of that caller existing.
 
 **Migration**: purely additive; nothing existing changes shape. `effective_authority`'s signature
 and behavior are unchanged - a remote-originated `user_requested` value looks, to that function,
@@ -182,9 +192,10 @@ Per the CR4 safety-proof style this story's own brief names:
 Ships as library-level primitives only (matching E18-S01's and E13's own precedent of landing a
 mechanism with no CLI/TUI/Guardian wiring in the same story) - nothing calls this path in
 production until a later story adds a real transport (E18-S03) and wires it to an entry point.
-Rollback is deleting the addition; no migration or data format is left behind because nothing
-persists beyond one `EventLedger` event kind, which is additive and ignored by every existing
-reader.
+Rollback is deleting the addition; no migration or data format is left behind because this
+story persists nothing at all - `cancellai-safety` gains a pure verification function and a
+config type, `cancellai-store` is untouched until a later story actually wires a ledger event
+kind to it.
 
 ## Open questions
 
