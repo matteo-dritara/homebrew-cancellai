@@ -10,8 +10,15 @@
 //! the identical question - "did an identified, trusted party really say this, and is it still
 //! current" - for a different payload. Unlike `KnowledgeBundle`'s opaque `payload` (reused
 //! across several knowledge kinds), this envelope's payload is flat and narrow by design: one
-//! `target` [`MachineId`] and one `requested_authority` [`AuthorityLevel`] - nothing else,
-//! because nothing else is safe for a request to say.
+//! `target` [`MachineId`] and one `requested_action` [`ActionClass`] - never an [`AuthorityLevel`]
+//! directly. [RFC-0001](../../../../docs/rfcs/0001-remote-execution-boundary.md) considered and
+//! explicitly rejected the `AuthorityLevel`-over-the-wire shape ("Option B") as "the literal
+//! shape TM-17 and SI-031 name as the threat"; [ADR-0032](../../../../docs/adrs/0032-remote-execution-requests-carry-actionclass-not-authoritylevel.md)
+//! corrects an earlier version of this module that shipped Option B anyway. `ActionClass`'s
+//! range is deliberately narrower than `AuthorityLevel`'s: [`crate::authority::
+//! minimum_authority_for`] can only ever produce `Observe`/`Quarantine`/`Govern` from it, so a
+//! remote controller can never request `Recommend` or `Autopilot` by construction, not by
+//! convention.
 //!
 //! **AC1 ("remote control cannot bypass target safety invariants") is enforced by what this
 //! module refuses to accept and refuses to produce**: the payload cannot express a plan, a
@@ -19,30 +26,33 @@
 //! no field for any of those, the same "shape cannot express the claim" pattern
 //! `knowledge_bundle`'s own module doc uses for capability/trust claims. [`VerifiedRemoteIntent`]
 //! is the only thing [`RemoteExecutionLog::verify_and_record`] can produce from a successful
-//! check, and its `requested_authority` is proven (never merely assumed) to be at or below the
-//! controller's own [`TrustedRemoteController::authority_ceiling`] before it is ever returned -
-//! a request asking for more than its controller is trusted for is rejected outright, never
-//! silently clamped down to the ceiling, matching "ambiguity never escalates privilege" (C-03).
-//! Plugging the result into [`crate::authority::AuthorityInputs::user_requested`] changes
-//! nothing about [`crate::authority::effective_authority`] itself - every other input
-//! (`artifact_ceiling`, `confidence`, `activity`, `protection`, `integrity`, `provider_trust`)
-//! is still supplied by the target's own local observation and policy resolution, untouched by
-//! this module. `remote_and_local_user_requested_reach_identical_effective_authority` below
-//! proves there is no second, hidden authority path for the remote case.
+//! check, and its `requested_action` is proven (never merely assumed) to require no more than
+//! the controller's own [`TrustedRemoteController::authority_ceiling`] - via
+//! [`crate::authority::minimum_authority_for`], never a direct `AuthorityLevel`-to-`AuthorityLevel`
+//! comparison against a wire-supplied value - before it is ever returned; a request asking for
+//! more than its controller is trusted for is rejected outright, never silently clamped down to
+//! the ceiling, matching "ambiguity never escalates privilege" (C-03). A caller feeds
+//! `minimum_authority_for(verified.requested_action)` into
+//! [`crate::authority::AuthorityInputs::user_requested`], which changes nothing about
+//! [`crate::authority::effective_authority`] itself - every other input (`artifact_ceiling`,
+//! `confidence`, `activity`, `protection`, `integrity`, `provider_trust`) is still supplied by
+//! the target's own local observation and policy resolution, untouched by this module.
+//! `remote_and_local_user_requested_reach_identical_effective_authority` below proves there is no
+//! second, hidden authority path for the remote case.
 //!
 //! **AC2 ("every remote request is authenticated, authorized, and audit-linked")**:
 //! authenticated by signature verification against a [`TrustedRemoteController`] looked up by
 //! `controller_id` (never a trust claim the request carries itself); authorized by that
-//! controller's `authority_ceiling` and, separately, by [`RemoteExecutionLog`]'s replay check
-//! (mirrors [`crate::knowledge_bundle::KnowledgeStore`]'s own sequence-staleness check exactly -
-//! this crate already holds one piece of small, pure in-memory state of this shape, so a second
-//! does not change its dependency posture). Audit-linked without adding a dependency:
-//! `cancellai-safety` is kernel ring and `cancellai-store` (which owns `EventLedger`) is outer
-//! ring specifically so the kernel stays free of `rusqlite` (ADR-0019), so this module cannot
-//! write a ledger entry itself. Every call to [`verify_remote_execution_request`] or
-//! [`RemoteExecutionLog::verify_and_record`] returns a `Result` whose `Ok`/`Err` together with
+//! controller's `authority_ceiling` (via `minimum_authority_for(requested_action)`) and,
+//! separately, by [`RemoteExecutionLog`]'s replay check (mirrors [`crate::knowledge_bundle::
+//! KnowledgeStore`]'s own sequence-staleness check exactly - this crate already holds one piece
+//! of small, pure in-memory state of this shape, so a second does not change its dependency
+//! posture). Audit-linked without adding a dependency: `cancellai-safety` is kernel ring and
+//! `cancellai-store` (which owns `EventLedger`) is outer ring specifically so the kernel stays
+//! free of `rusqlite` (ADR-0019), so this module cannot write a ledger entry itself. Every call
+//! to [`RemoteExecutionLog::verify_and_record`] returns a `Result` whose `Ok`/`Err` together with
 //! the `request` the caller already holds carries every field an `EventLedger` entry needs
-//! (controller, sequence, target, requested authority, and - on rejection - the specific
+//! (controller, sequence, target, requested action, and - on rejection - the specific
 //! [`RemoteExecutionError`]); writing that entry is left to whichever outer-ring caller
 //! eventually wires a real transport to this function (E18-S03 or later), the same
 //! library-primitive-first precedent E13's ledger and E18-S01's `RemoteTarget` already shipped.
@@ -50,7 +60,8 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use cancellai_model::{AuthorityLevel, MachineId};
+use crate::authority::minimum_authority_for;
+use cancellai_model::{ActionClass, AuthorityLevel, MachineId};
 use ed25519_dalek::{Signature, VerifyingKey};
 use sha2::{Digest, Sha256};
 
@@ -78,11 +89,11 @@ pub struct RemoteExecutionRequest {
     /// Which target this request concerns. The target's own local policy resolution - not this
     /// request - decides which of its artifacts, if any, this authority actually reaches.
     pub target: MachineId,
-    /// What the controller is asking the target to evaluate up to - never a plan, never an
-    /// already-decided outcome. Checked against the controller's own ceiling below; never
-    /// trusted as-is.
-    pub requested_authority: AuthorityLevel,
-    /// Lowercase hex SHA-256 of `target` and `requested_authority`
+    /// What the controller is asking the target to evaluate - a semantic action class, never an
+    /// `AuthorityLevel` directly (ADR-0032). Checked, via [`crate::authority::
+    /// minimum_authority_for`], against the controller's own ceiling below; never trusted as-is.
+    pub requested_action: ActionClass,
+    /// Lowercase hex SHA-256 of `target` and `requested_action`
     /// ([`RemoteExecutionRequest::payload_bytes`]), computed by the controller before signing.
     /// Verified independently of the signature so a bug or attack that targeted only one of the
     /// two checks is still caught by the other.
@@ -118,7 +129,7 @@ impl RemoteExecutionRequest {
         buf
     }
 
-    /// The "what is being requested" fields alone - `target` and `requested_authority` - the
+    /// The "what is being requested" fields alone - `target` and `requested_action` - the
     /// bytes `content_digest` is the SHA-256 of. Kept separate from [`Self::signing_bytes`]
     /// (which includes the already-computed digest as one more field) so digest computation is
     /// never circular.
@@ -130,8 +141,8 @@ impl RemoteExecutionRequest {
         };
         push_field(self.target.as_str().as_bytes());
         push_field(
-            serde_json::to_string(&self.requested_authority)
-                .expect("AuthorityLevel serialization is infallible")
+            serde_json::to_string(&self.requested_action)
+                .expect("ActionClass serialization is infallible")
                 .as_bytes(),
         );
         buf
@@ -148,7 +159,9 @@ pub fn parse_request(text: &str) -> Result<RemoteExecutionRequest, String> {
 
 /// One remote controller this installation trusts, the ed25519 public key it signs with, and
 /// the ceiling [`AuthorityLevel`] its requests may reach - assigned by local policy (a human
-/// decision), never read from a request itself.
+/// decision), never read from a request itself. Read as "the minimum authority any `ActionClass`
+/// this controller requests may need" (via [`crate::authority::minimum_authority_for`]), not as
+/// "the exact authority level a request may name" - a request never names one (ADR-0032).
 #[derive(Debug, Clone)]
 pub struct TrustedRemoteController {
     pub controller_id: String,
@@ -199,9 +212,10 @@ pub enum RemoteExecutionError {
     TargetMismatch,
     /// `expires_at` is at or before the verification clock.
     Expired,
-    /// `requested_authority` exceeds the controller's own `authority_ceiling`. Never clamped -
-    /// refused outright (C-03: ambiguity never escalates privilege).
-    RequestedAuthorityExceedsCeiling,
+    /// `minimum_authority_for(requested_action)` exceeds the controller's own
+    /// `authority_ceiling`. Never clamped - refused outright (C-03: ambiguity never escalates
+    /// privilege).
+    RequestedActionExceedsCeiling,
     /// [`RemoteExecutionLog::verify_and_record`] only: `sequence` does not strictly exceed the
     /// last accepted sequence from the same controller.
     Stale,
@@ -219,8 +233,8 @@ impl fmt::Display for RemoteExecutionError {
                 "remote execution request does not name the target it is being verified for"
             }
             Self::Expired => "remote execution request has expired",
-            Self::RequestedAuthorityExceedsCeiling => {
-                "requested authority exceeds the controller's trusted ceiling"
+            Self::RequestedActionExceedsCeiling => {
+                "requested action exceeds the controller's trusted ceiling"
             }
             Self::Stale => "remote execution request is not newer than the last accepted one",
         };
@@ -229,16 +243,18 @@ impl fmt::Display for RemoteExecutionError {
 }
 
 /// A [`RemoteExecutionRequest`] that has passed every check in [`verify_remote_execution_request`].
-/// `requested_authority` is copied verbatim from the request - already proven to be at or below
-/// the controller's ceiling - never anything computed or inferred here. This is the only value
-/// this module hands a caller; feeding `requested_authority` into
-/// [`crate::authority::AuthorityInputs::user_requested`] is the caller's own, separate step.
+/// `requested_action` is copied verbatim from the request - already proven that
+/// `minimum_authority_for(requested_action)` is at or below the controller's ceiling - never
+/// anything computed or inferred here. This is the only value this module hands a caller; a
+/// caller computes `crate::authority::minimum_authority_for(requested_action)` and feeds that
+/// into [`crate::authority::AuthorityInputs::user_requested`] as its own, separate step
+/// (ADR-0032: never a raw `AuthorityLevel` carried by the request itself).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VerifiedRemoteIntent {
     pub controller_id: String,
     pub sequence: u64,
     pub target: MachineId,
-    pub requested_authority: AuthorityLevel,
+    pub requested_action: ActionClass,
 }
 
 fn decode_hex(text: &str) -> Option<Vec<u8>> {
@@ -314,15 +330,15 @@ fn verify_remote_execution_request(
         return Err(RemoteExecutionError::Expired);
     }
 
-    if request.requested_authority > controller.authority_ceiling {
-        return Err(RemoteExecutionError::RequestedAuthorityExceedsCeiling);
+    if minimum_authority_for(request.requested_action) > controller.authority_ceiling {
+        return Err(RemoteExecutionError::RequestedActionExceedsCeiling);
     }
 
     Ok(VerifiedRemoteIntent {
         controller_id: request.controller_id.clone(),
         sequence: request.sequence,
         target: request.target.clone(),
-        requested_authority: request.requested_authority,
+        requested_action: request.requested_action,
     })
 }
 
@@ -393,7 +409,7 @@ mod tests {
         controller_id: &str,
         sequence: u64,
         expires_at: Option<u64>,
-        requested_authority: AuthorityLevel,
+        requested_action: ActionClass,
     ) -> RemoteExecutionRequest {
         let mut request = RemoteExecutionRequest {
             schema_version: 1,
@@ -402,7 +418,7 @@ mod tests {
             issued_at: 1_000,
             expires_at,
             target: MachineId::new("ci-runner-1"),
-            requested_authority,
+            requested_action,
             content_digest: String::new(),
             signature: String::new(),
         };
@@ -429,12 +445,12 @@ mod tests {
     fn a_correctly_signed_request_within_ceiling_verifies() {
         let key = keypair();
         let policy = policy_with("fleet-1", AuthorityLevel::Quarantine, &key);
-        let request = signed_request(&key, "fleet-1", 1, None, AuthorityLevel::Quarantine);
+        let request = signed_request(&key, "fleet-1", 1, None, ActionClass::Quarantine);
 
         let verified =
             verify_remote_execution_request(&request, &policy, &target(), 1_500).expect("verify");
         assert_eq!(verified.controller_id, "fleet-1");
-        assert_eq!(verified.requested_authority, AuthorityLevel::Quarantine);
+        assert_eq!(verified.requested_action, ActionClass::Quarantine);
         assert_eq!(verified.target, MachineId::new("ci-runner-1"));
     }
 
@@ -442,7 +458,7 @@ mod tests {
     fn unknown_controller_is_rejected_before_any_crypto_check() {
         let key = keypair();
         let policy = TrustedRemoteControllers::new(vec![]);
-        let request = signed_request(&key, "fleet-1", 1, None, AuthorityLevel::Observe);
+        let request = signed_request(&key, "fleet-1", 1, None, ActionClass::Observe);
 
         assert_eq!(
             verify_remote_execution_request(&request, &policy, &target(), 1_500),
@@ -454,7 +470,7 @@ mod tests {
     fn unsupported_schema_version_is_rejected_before_any_crypto_check() {
         let key = keypair();
         let policy = policy_with("fleet-1", AuthorityLevel::Autopilot, &key);
-        let mut request = signed_request(&key, "fleet-1", 1, None, AuthorityLevel::Observe);
+        let mut request = signed_request(&key, "fleet-1", 1, None, ActionClass::Observe);
         request.schema_version = 99;
 
         assert_eq!(
@@ -467,7 +483,7 @@ mod tests {
     fn tamper_a_digest_updated_to_match_tampered_target_still_fails_signature_verification() {
         let key = keypair();
         let policy = policy_with("fleet-1", AuthorityLevel::Autopilot, &key);
-        let mut request = signed_request(&key, "fleet-1", 1, None, AuthorityLevel::Observe);
+        let mut request = signed_request(&key, "fleet-1", 1, None, ActionClass::Observe);
         // Attacker retargets the request and recomputes the digest, but cannot re-sign.
         request.target = MachineId::new("victim-machine");
         request.content_digest = encode_hex(&Sha256::digest(request.payload_bytes()));
@@ -482,8 +498,8 @@ mod tests {
     fn tamper_a_payload_changed_after_signing_fails_content_digest_check() {
         let key = keypair();
         let policy = policy_with("fleet-1", AuthorityLevel::Autopilot, &key);
-        let mut request = signed_request(&key, "fleet-1", 1, None, AuthorityLevel::Observe);
-        request.requested_authority = AuthorityLevel::Autopilot;
+        let mut request = signed_request(&key, "fleet-1", 1, None, ActionClass::Observe);
+        request.requested_action = ActionClass::Delete;
         // Digest and signature are left as originally computed - the tamper is detected before
         // the (also-failing) signature check is even reached, because digest is checked first.
 
@@ -497,7 +513,7 @@ mod tests {
     fn malformed_signature_text_is_rejected_without_panicking() {
         let key = keypair();
         let policy = policy_with("fleet-1", AuthorityLevel::Autopilot, &key);
-        let mut request = signed_request(&key, "fleet-1", 1, None, AuthorityLevel::Observe);
+        let mut request = signed_request(&key, "fleet-1", 1, None, ActionClass::Observe);
         request.signature = "not hex".to_string();
 
         assert_eq!(
@@ -510,7 +526,7 @@ mod tests {
     fn expiry_at_exactly_the_boundary_is_rejected() {
         let key = keypair();
         let policy = policy_with("fleet-1", AuthorityLevel::Autopilot, &key);
-        let request = signed_request(&key, "fleet-1", 1, Some(2_000), AuthorityLevel::Observe);
+        let request = signed_request(&key, "fleet-1", 1, Some(2_000), ActionClass::Observe);
 
         assert!(verify_remote_execution_request(&request, &policy, &target(), 1_999).is_ok());
         assert_eq!(
@@ -523,11 +539,13 @@ mod tests {
     fn a_request_asking_above_the_controllers_ceiling_is_refused_not_clamped() {
         let key = keypair();
         let policy = policy_with("fleet-1", AuthorityLevel::Quarantine, &key);
-        let request = signed_request(&key, "fleet-1", 1, None, AuthorityLevel::Autopilot);
+        // ActionClass::Delete needs AuthorityLevel::Govern (minimum_authority_for), above the
+        // controller's Quarantine ceiling.
+        let request = signed_request(&key, "fleet-1", 1, None, ActionClass::Delete);
 
         assert_eq!(
             verify_remote_execution_request(&request, &policy, &target(), 1_500),
-            Err(RemoteExecutionError::RequestedAuthorityExceedsCeiling)
+            Err(RemoteExecutionError::RequestedActionExceedsCeiling)
         );
     }
 
@@ -535,9 +553,43 @@ mod tests {
     fn a_request_naming_exactly_the_ceiling_is_accepted() {
         let key = keypair();
         let policy = policy_with("fleet-1", AuthorityLevel::Quarantine, &key);
-        let request = signed_request(&key, "fleet-1", 1, None, AuthorityLevel::Quarantine);
+        let request = signed_request(&key, "fleet-1", 1, None, ActionClass::Quarantine);
 
         assert!(verify_remote_execution_request(&request, &policy, &target(), 1_500).is_ok());
+    }
+
+    #[test]
+    fn no_action_class_ever_maps_to_recommend_or_autopilot() {
+        // ADR-0032's own central safety claim: `ActionClass`'s wire vocabulary can only ever
+        // resolve, via `minimum_authority_for`, to Observe/Quarantine/Govern - a remote
+        // controller cannot request `Recommend` or `Autopilot` by construction, no matter how
+        // permissive its ceiling is (checked here with the maximum possible ceiling, so no
+        // ceiling check could ever be masking a reachable-but-refused case).
+        let key = keypair();
+        let policy = policy_with("fleet-1", AuthorityLevel::Autopilot, &key);
+
+        for action in [
+            ActionClass::Observe,
+            ActionClass::Quarantine,
+            ActionClass::Archive,
+            ActionClass::Restore,
+            ActionClass::Delete,
+        ] {
+            let request = signed_request(&key, "fleet-1", 1, None, action);
+            let verified = verify_remote_execution_request(&request, &policy, &target(), 1_500)
+                .expect("verify");
+            let resolved = minimum_authority_for(verified.requested_action);
+            assert_ne!(
+                resolved,
+                AuthorityLevel::Recommend,
+                "{action:?} must never resolve to Recommend"
+            );
+            assert_ne!(
+                resolved,
+                AuthorityLevel::Autopilot,
+                "{action:?} must never resolve to Autopilot"
+            );
+        }
     }
 
     #[test]
@@ -548,7 +600,7 @@ mod tests {
         // for another.
         let key = keypair();
         let policy = policy_with("fleet-1", AuthorityLevel::Quarantine, &key);
-        let request = signed_request(&key, "fleet-1", 1, None, AuthorityLevel::Quarantine);
+        let request = signed_request(&key, "fleet-1", 1, None, ActionClass::Quarantine);
 
         assert_eq!(
             verify_remote_execution_request(
@@ -566,7 +618,7 @@ mod tests {
         let key = keypair();
         let policy = policy_with("fleet-1", AuthorityLevel::Autopilot, &key);
         let mut log = RemoteExecutionLog::empty();
-        let request = signed_request(&key, "fleet-1", 1, None, AuthorityLevel::Observe);
+        let request = signed_request(&key, "fleet-1", 1, None, ActionClass::Observe);
 
         assert!(
             log.verify_and_record(&request, &policy, &target(), 1_500)
@@ -579,11 +631,11 @@ mod tests {
         let key = keypair();
         let policy = policy_with("fleet-1", AuthorityLevel::Autopilot, &key);
         let mut log = RemoteExecutionLog::empty();
-        let first = signed_request(&key, "fleet-1", 5, None, AuthorityLevel::Observe);
+        let first = signed_request(&key, "fleet-1", 5, None, ActionClass::Observe);
         log.verify_and_record(&first, &policy, &target(), 1_500)
             .expect("first accepted");
 
-        let replayed = signed_request(&key, "fleet-1", 5, None, AuthorityLevel::Observe);
+        let replayed = signed_request(&key, "fleet-1", 5, None, ActionClass::Observe);
         assert_eq!(
             log.verify_and_record(&replayed, &policy, &target(), 1_500),
             Err(RemoteExecutionError::Stale)
@@ -595,11 +647,11 @@ mod tests {
         let key = keypair();
         let policy = policy_with("fleet-1", AuthorityLevel::Autopilot, &key);
         let mut log = RemoteExecutionLog::empty();
-        let newer = signed_request(&key, "fleet-1", 9, None, AuthorityLevel::Observe);
+        let newer = signed_request(&key, "fleet-1", 9, None, ActionClass::Observe);
         log.verify_and_record(&newer, &policy, &target(), 1_500)
             .expect("higher sequence accepted");
 
-        let older = signed_request(&key, "fleet-1", 3, None, AuthorityLevel::Observe);
+        let older = signed_request(&key, "fleet-1", 3, None, ActionClass::Observe);
         assert_eq!(
             log.verify_and_record(&older, &policy, &target(), 1_500),
             Err(RemoteExecutionError::Stale)
@@ -611,20 +663,20 @@ mod tests {
         let key = keypair();
         let policy = policy_with("fleet-1", AuthorityLevel::Quarantine, &key);
         let mut log = RemoteExecutionLog::empty();
-        let accepted = signed_request(&key, "fleet-1", 1, None, AuthorityLevel::Observe);
+        let accepted = signed_request(&key, "fleet-1", 1, None, ActionClass::Observe);
         log.verify_and_record(&accepted, &policy, &target(), 1_500)
             .expect("accepted");
 
         // Sequence 2 asks above the ceiling - rejected, but must not "use up" sequence 2.
-        let over_ceiling = signed_request(&key, "fleet-1", 2, None, AuthorityLevel::Autopilot);
+        let over_ceiling = signed_request(&key, "fleet-1", 2, None, ActionClass::Delete);
         assert_eq!(
             log.verify_and_record(&over_ceiling, &policy, &target(), 1_500),
-            Err(RemoteExecutionError::RequestedAuthorityExceedsCeiling)
+            Err(RemoteExecutionError::RequestedActionExceedsCeiling)
         );
 
         // Sequence 2, now correctly scoped, must still be accepted - proving the rejected
         // attempt above left the log's recorded sequence at 1, not 2.
-        let retried = signed_request(&key, "fleet-1", 2, None, AuthorityLevel::Observe);
+        let retried = signed_request(&key, "fleet-1", 2, None, ActionClass::Observe);
         assert!(
             log.verify_and_record(&retried, &policy, &target(), 1_500)
                 .is_ok()
@@ -648,12 +700,12 @@ mod tests {
             },
         ]);
         let mut log = RemoteExecutionLog::empty();
-        let a_high = signed_request(&key_a, "fleet-a", 100, None, AuthorityLevel::Observe);
+        let a_high = signed_request(&key_a, "fleet-a", 100, None, ActionClass::Observe);
         log.verify_and_record(&a_high, &policy, &target(), 1_500)
             .expect("fleet-a accepted at sequence 100");
 
         // fleet-b's own sequence 1 must not be treated as stale relative to fleet-a's 100.
-        let b_low = signed_request(&key_b, "fleet-b", 1, None, AuthorityLevel::Observe);
+        let b_low = signed_request(&key_b, "fleet-b", 1, None, ActionClass::Observe);
         assert!(
             log.verify_and_record(&b_low, &policy, &target(), 1_500)
                 .is_ok()
@@ -669,7 +721,7 @@ mod tests {
     #[test]
     fn an_unrecognized_field_is_rejected_before_verification_is_ever_reached() {
         let key = keypair();
-        let request = signed_request(&key, "fleet-1", 1, None, AuthorityLevel::Observe);
+        let request = signed_request(&key, "fleet-1", 1, None, ActionClass::Observe);
         let mut value = serde_json::to_value(&request).expect("serialize");
         value
             .as_object_mut()
@@ -682,12 +734,13 @@ mod tests {
 
     #[test]
     fn remote_and_local_user_requested_reach_identical_effective_authority() {
-        // Proves AC1's "no hidden second authority path": once extracted, a remote-originated
-        // requested_authority is fed into AuthorityInputs exactly like a local one, and
-        // effective_authority cannot tell the difference.
+        // Proves AC1's "no hidden second authority path": once extracted,
+        // minimum_authority_for(a remote-originated requested_action) is fed into
+        // AuthorityInputs exactly like a local AuthorityLevel value, and effective_authority
+        // cannot tell the difference.
         let key = keypair();
         let policy = policy_with("fleet-1", AuthorityLevel::Quarantine, &key);
-        let request = signed_request(&key, "fleet-1", 1, None, AuthorityLevel::Quarantine);
+        let request = signed_request(&key, "fleet-1", 1, None, ActionClass::Quarantine);
         let verified =
             verify_remote_execution_request(&request, &policy, &target(), 1_500).expect("verify");
 
@@ -701,7 +754,9 @@ mod tests {
             provider_trust: TrustedTier::untrusted(),
         };
 
-        let from_remote = effective_authority(shared_inputs(verified.requested_authority));
+        let from_remote = effective_authority(shared_inputs(minimum_authority_for(
+            verified.requested_action,
+        )));
         let from_local = effective_authority(shared_inputs(AuthorityLevel::Quarantine));
         assert_eq!(from_remote, from_local);
     }
@@ -721,7 +776,7 @@ mod tests {
         let empty_policy = TrustedRemoteControllers::new(vec![]);
         let key = keypair();
         let unconfigured_remote_request =
-            signed_request(&key, "any-controller", 1, None, AuthorityLevel::Quarantine);
+            signed_request(&key, "any-controller", 1, None, ActionClass::Quarantine);
         let mut log = RemoteExecutionLog::empty();
 
         assert_eq!(

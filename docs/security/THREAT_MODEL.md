@@ -201,13 +201,16 @@ A future server sends a command that bypasses local review/safety.
 Control: remote is intent/policy distribution only; target node retains authority and audit. See
 SI-031. Implemented by E18-S02 (`cancellai_safety::remote_execution`,
 [RFC-0001](../rfcs/0001-remote-execution-boundary.md),
-[ADR-0031](../adrs/0031-remote-execution-requests-are-signed-intents-never-plans.md)): a signed,
-replay-protected request can only ever supply `AuthorityInputs::user_requested` for one named
-target, capped by the requesting controller's own trusted ceiling and refused outright (never
-clamped) above it - it cannot carry a plan, an already-decided outcome, or any other authority
-input. No production entry point calls it yet (library-level primitive only, pending a real
-transport, E18-S03 or later), so this control is proven at the unit level, not yet exercised
-end-to-end.
+[ADR-0031](../adrs/0031-remote-execution-requests-are-signed-intents-never-plans.md),
+[ADR-0032](../adrs/0032-remote-execution-requests-carry-actionclass-not-authoritylevel.md)): a
+signed, replay-protected request names one semantic `ActionClass`, never an `AuthorityLevel`
+directly, for one named target; a caller feeds `minimum_authority_for(requested_action)` into
+`AuthorityInputs::user_requested` only after confirming it does not exceed the requesting
+controller's own trusted ceiling, refused outright (never clamped) above it - the request cannot
+carry a plan, an already-decided outcome, or any other authority input, and its wire vocabulary
+cannot express `Recommend`/`Autopilot` at all. No production entry point calls it yet
+(library-level primitive only, pending a real transport, E18-S03 or later), so this control is
+proven at the unit level, not yet exercised end-to-end.
 
 ## Privacy threats
 

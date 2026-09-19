@@ -28,7 +28,13 @@ pub enum AuthorityLevel {
 /// What kind of work an `Action` represents (`docs/architecture/DOMAIN_MODEL.md` "Action").
 /// DOMAIN_MODEL.md's own list ends in `...`, leaving room for a future, more specific class;
 /// adding one is a deliberate, reviewed vocabulary change, not implied by this comment.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+///
+/// `Deserialize` (ADR-0032) lets `cancellai_safety::remote_execution::RemoteExecutionRequest`
+/// read a requested action from untrusted wire bytes by the same variant names this crate
+/// already serializes - the wire vocabulary for what a remote controller may ask for, never an
+/// `AuthorityLevel` (RFC-0001's accepted design; ADR-0032 corrects the implementation to match
+/// it).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ActionClass {
     Observe,

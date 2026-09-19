@@ -417,21 +417,26 @@ touches no existing type.
 ### Remote execution boundary (E18-S02)
 
 `cancellai_safety::remote_execution` (SI-031, [RFC-0001](../rfcs/0001-remote-execution-boundary.md),
-[ADR-0031](../adrs/0031-remote-execution-requests-are-signed-intents-never-plans.md)) verifies a
-remote controller's signed `RemoteExecutionRequest` - a different actor from E18-S01's
-`RemoteTarget` - and, on success, produces a `VerifiedRemoteIntent` carrying only a `target`
-(`MachineId`) and a `requested_authority` (`AuthorityLevel`). That is the single value a caller
-may feed into `AuthorityInputs::user_requested`; every other authority input, and
-`effective_authority` itself, is unchanged - `remote_and_local_user_requested_reach_identical_
-effective_authority` proves the two cases are indistinguishable to it. The envelope mirrors
-`knowledge_bundle::KnowledgeBundle` exactly (schema version, per-controller strictly-increasing
-sequence, expiry, SHA-256 content digest, Ed25519 signature - ADR-0024's primitive, no new
-dependency) and is verified against a new, local, operator-owned `TrustedRemoteControllers`
-policy that also bounds which `AuthorityLevel` a given controller may even request - a request
-above its ceiling is refused outright, never clamped down. `RemoteExecutionLog` tracks the
-highest sequence accepted per controller, pure in-memory state mirroring
-`knowledge_bundle::KnowledgeStore`'s own shape (no `rusqlite`, no file I/O - the kernel-ring
-purity ADR-0019 requires).
+[ADR-0031](../adrs/0031-remote-execution-requests-are-signed-intents-never-plans.md),
+[ADR-0032](../adrs/0032-remote-execution-requests-carry-actionclass-not-authoritylevel.md))
+verifies a remote controller's signed `RemoteExecutionRequest` - a different actor from
+E18-S01's `RemoteTarget` - and, on success, produces a `VerifiedRemoteIntent` carrying only a
+`target` (`MachineId`) and a `requested_action` (`ActionClass`) - never an `AuthorityLevel`
+directly (ADR-0032 corrects an earlier version of this module that shipped the rejected
+`AuthorityLevel`-over-the-wire shape). A caller feeds `minimum_authority_for(requested_action)`
+into `AuthorityInputs::user_requested`; every other authority input, and `effective_authority`
+itself, is unchanged - `remote_and_local_user_requested_reach_identical_effective_authority`
+proves the two cases are indistinguishable to it, and `no_action_class_ever_maps_to_recommend_
+or_autopilot` proves `ActionClass`'s range can never resolve to `Recommend`/`Autopilot`, however
+permissive a controller's ceiling is. The envelope mirrors `knowledge_bundle::KnowledgeBundle`
+exactly (schema version, per-controller strictly-increasing sequence, expiry, SHA-256 content
+digest, Ed25519 signature - ADR-0024's primitive, no new dependency) and is verified against a
+new, local, operator-owned `TrustedRemoteControllers` policy whose `authority_ceiling` bounds
+which `ActionClass`es a given controller may even request, via `minimum_authority_for` - a
+request whose resolved authority exceeds its ceiling is refused outright, never clamped down.
+`RemoteExecutionLog` tracks the highest sequence accepted per controller, pure in-memory state
+mirroring `knowledge_bundle::KnowledgeStore`'s own shape (no `rusqlite`, no file I/O - the
+kernel-ring purity ADR-0019 requires).
 
 **Audit-linked without a forbidden dependency**: `cancellai-safety` is kernel ring and
 `cancellai-store` (which owns `EventLedger`) is outer ring specifically so the kernel stays free

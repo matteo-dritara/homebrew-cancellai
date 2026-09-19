@@ -161,16 +161,46 @@ FAIL. Two of three reproducible defects were repaired in this same story before 
   persistence before a real transport can be wired, or does that responsibility belong to
   whichever future transport story already needs `cancellai-store` access), not one an executor
   decides unilaterally.
-- **Design-record divergence - not repaired, escalated.** RFC-0001/ADR-0031 both explicitly
-  specify the signed payload carries an `ActionClass` and that controller policy bounds which
-  `ActionClass`es a tier may request - RFC-0001 explicitly considered and *rejected* "Option B"
-  (a request carrying an `AuthorityLevel` directly) as literally the shape TM-17/SI-031 name as
-  the threat. The shipped implementation signs and transmits `AuthorityLevel` - Option B, not the
-  accepted Option A. This is a material conflict between the accepted design record and the code,
-  not a small implementation gap; per `AGENTS.md`'s constitutional rule, a story/spec conflict
-  "needs escalation and an ADR/RFC/owner decision," not a same-session unilateral pick between
-  reinterpreting the RFC or redesigning the wire protocol under review pressure. Not repaired in
-  this pass; recorded here as the review's own required repair states it.
+- **Design-record divergence - escalated via ADR-0032, then repaired.** RFC-0001/ADR-0031 both
+  explicitly specify the signed payload carries an `ActionClass` and that controller policy
+  bounds which `ActionClass`es a tier may request - RFC-0001 explicitly considered and *rejected*
+  "Option B" (a request carrying an `AuthorityLevel` directly) as literally the shape TM-17/SI-031
+  name as the threat. The shipped implementation signed and transmitted `AuthorityLevel` - Option
+  B, not the accepted Option A. Per `AGENTS.md`'s constitutional rule, this went through
+  [ADR-0032](../../../docs/adrs/0032-remote-execution-requests-carry-actionclass-not-authoritylevel.md)
+  (owner-accepted) rather than a same-session unilateral pick; see "ADR-0032 implementation"
+  below for the repair.
+
+## ADR-0032 implementation
+
+`RemoteExecutionRequest::requested_authority: AuthorityLevel` is now `requested_action:
+ActionClass` (`cancellai_model::ActionClass` gained `Deserialize` for this - it previously
+derived `Serialize` only). The ceiling check goes through `crate::authority::
+minimum_authority_for(request.requested_action) <= controller.authority_ceiling`, never a direct
+`AuthorityLevel`-to-`AuthorityLevel` comparison against a wire-supplied value.
+`VerifiedRemoteIntent::requested_authority` is now `requested_action: ActionClass`; a caller
+computes `minimum_authority_for(verified.requested_action)` itself before feeding
+`AuthorityInputs::user_requested`. `RemoteExecutionError::RequestedAuthorityExceedsCeiling` is
+renamed `RequestedActionExceedsCeiling` to match. No new dependency: `minimum_authority_for`
+already lives in this same crate (`cancellai_safety::authority`), so this is a same-crate import,
+not a new edge across `cancellai-safety`'s own ring boundary.
+
+Every existing test updated to construct requests with an `ActionClass` (choosing the variant
+whose `minimum_authority_for` result matches the scenario each test already existed to cover -
+e.g. the "asks above the ceiling" tests now use `ActionClass::Delete`, which resolves to
+`AuthorityLevel::Govern`, against a `Quarantine` ceiling). One new regression,
+`no_action_class_ever_maps_to_recommend_or_autopilot`, checks every `ActionClass` variant against
+the most permissive possible ceiling (`AuthorityLevel::Autopilot`) and asserts the resolved
+authority is never `Recommend`/`Autopilot` - the concrete safety property ADR-0032's own
+"Positive consequences" section claims: a remote controller cannot reach those levels by
+construction, not merely because no test happens to ask for them.
+
+`docs/architecture/TARGET.md`, `docs/security/THREAT_MODEL.md` (TM-17), `docs/PRODUCT.md`
+("Open-source and commercial boundary"), and this story's own `CHANGELOG.md` entry are updated to
+describe the corrected shape.
+
+All 20 `remote_execution` tests (up from 19) pass; `cargo fmt --check`/`clippy -D warnings`/`check
+--workspace`/`test --workspace`/`deny check` all green workspace-wide.
 
 ## Residual risks
 

@@ -109,6 +109,16 @@ on E18-S02's primitive - see `project/evidence/E18-S02/EVIDENCE.md`'s own "Round
 verifier review" for detail. This story cannot honestly claim a closed CR4 boundary until those
 are resolved, independent of anything this story's own diff could fix.
 
+## ADR-0032 implementation
+
+E18-S02's `ActionClass`/`AuthorityLevel` design-record divergence is repaired - see
+`project/evidence/E18-S02/EVIDENCE.md`'s own "ADR-0032 implementation" for the change itself.
+This story's own AC2 evidence text ("`target`/`requested_authority` pair") is updated to
+`target`/`requested_action` in `docs/PRODUCT.md`. The durable replay-state persistence finding
+remains unrepaired for the reason recorded in E18-S02's evidence (kernel-ring/no-I/O
+architectural constraint, needs a future outer-ring caller); this story's own boundary claim
+still cannot be called fully closed until that is resolved.
+
 ## Residual risks
 
 - The claim "no networking dependency" is verified by direct inspection of `Cargo.toml` today,
