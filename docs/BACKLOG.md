@@ -1470,6 +1470,29 @@ Persist only bounded metadata required for lifecycle, audit, undo, and Guardian 
 
 - `docs/architecture/PERSISTENCE_MODEL.md`
 
+### E13-S06 - cancellAI-owned local-state root capability
+
+**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E13-S04 | **Safety obligations:** SI-026
+
+**Outcome.** Bind CurrentStateStore/EventLedger/AnalyticalMemory's reset-capable handles to a single, non-caller-suppliable, cancellAI-owned local-state root, closing the residual E13-S04's round-3 independent review recorded as accepted risk rather than a defect it could close itself.
+
+**Acceptance criteria**
+
+- If a caller supplies a path outside cancellAI's own resolved local-state root, the production open() entry point refuses to construct a handle for it, regardless of what the file at that path contains - not because its content is inspected and rejected (three rounds of independent review across E13-S04 showed content-based checks are fundamentally forgeable by anyone who can read this project's own open-source code), but because the production API never constructs one for any other location.
+- The local-state root itself is established by exactly one reviewed resolution path, never accepted as an arbitrary caller-supplied argument on the production entry point.
+- Existing unit tests keep exercising open()/reset() directly (in-memory or a test-only path constructor), so this change costs no test coverage or ergonomics.
+- The compiled-in identity marker E13-S04 added stays in place as a corruption/migration sanity check; this story does not remove it, only stops treating it as an authorization boundary.
+
+**Verification**
+
+- Adversarial test: a path outside the resolved local-state root is refused before any file I/O against it occurs, independent of what that path's content contains.
+- Regression test: the three prior mimicry reproductions (E13-VERIFIER-REVIEW-ROUND2.md, -ROUND3.md) stay refused under the new boundary, not only under the marker check they originally targeted.
+
+**Documentation impact**
+
+- `docs/architecture/PERSISTENCE_MODEL.md`
+- `docs/architecture/TARGET.md`
+
 ## E14 - Predictive Guardian Intelligence
 
 **Phase:** `P4` | **Status:** `planned` | **Epic dependencies:** E10, E13

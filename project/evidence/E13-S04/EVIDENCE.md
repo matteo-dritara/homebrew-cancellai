@@ -424,9 +424,18 @@ Per ADR-0025, round 3 is the cost ceiling: **there is no round 4.** This defect 
 accepted residual risk and E13-S04 returns to `in_progress` (not `done`) until repaired and
 re-reviewed under a fresh review round of its own (a story-scoped round, per
 `docs/development/WORK_ITEM_MODEL.md`'s existing precedent for a CR4-adjacent carry-forward
-review during an epic that has already otherwise closed) - not a fourth epic-scope round. No new
-backlog story ID has been assigned; that is an explicit owner decision still pending as of this
-packet.
+review during an epic that has already otherwise closed) - not a fourth epic-scope round.
+
+**Owner decision, recorded**: rather than attempt a fourth local-content-based mitigation inside
+this same story (three rounds already show that class of fix is structurally forgeable by
+anyone who reads this project's own open-source code - a randomly-generated sidecar secret was
+considered and rejected for the same reason: an external caller who fabricates both the sidecar
+and the SQLite marker together controls both values and can make them self-consistent regardless
+of what value is chosen), the owner authorized [`E13-S06`](../../epics/E13.json) - "cancellAI-
+owned local-state root capability" - as the carrier for the real fix: binding `open()`'s
+production entry point to a single, non-caller-suppliable, resolved root, rather than continuing
+to inspect arbitrary paths' content. E13-S04 itself stays `in_progress` until E13-S06 lands and a
+fresh, story-scoped independent review confirms it.
 
 ## Verifier verdict
 
