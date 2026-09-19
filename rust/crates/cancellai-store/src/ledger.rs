@@ -1564,6 +1564,9 @@ mod tests {
             "a refused open must leave the provider-owned file completely untouched"
         );
 
+        // Windows refuses to delete a file with an open handle; `verify` must close before
+        // cleanup, matching this module's own established precedent (96f645e).
+        drop(verify);
         std::fs::remove_dir_all(&dir).expect("clean up test dir");
     }
 
@@ -1626,6 +1629,9 @@ mod tests {
              creates) against a file this module did not create"
         );
 
+        // Windows refuses to delete a file with an open handle; `verify` must close before
+        // cleanup, matching this module's own established precedent (96f645e).
+        drop(verify);
         std::fs::remove_dir_all(&dir).expect("clean up test dir");
     }
 
