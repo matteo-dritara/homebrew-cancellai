@@ -446,9 +446,12 @@ is deferred to whichever outer-ring caller eventually wires a real transport to 
 (E18-S03 or later) - library-level primitives only, no CLI/TUI/Guardian surface wires this yet,
 matching E13's and E18-S01's own precedent.
 
-**Residual**: `RemoteExecutionLog` is pure in-memory and does not survive a process restart -
-persisting it across restarts, if a future caller needs that, is that caller's own design
-question, not this module's.
+**Residual**: `RemoteExecutionLog` is pure in-memory and does not survive a process restart.
+Durable, crash-safe replay-state persistence across restarts is not optional hardening for a
+real remote-execution deployment - it is mandatory before any real transport ships (round 3
+independent verifier review, E18-VERIFIER-REVIEW-ROUND3.md). Building it is that future
+outer-ring caller's own design question, not this module's, since this crate is kernel-ring and
+deliberately carries no I/O (ADR-0019).
 
 ## Core loop
 

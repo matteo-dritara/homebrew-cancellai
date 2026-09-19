@@ -3,8 +3,9 @@
 - Commit/PR: local checkpoint on `main`, `docs/PRODUCT.md` +
   `rust/crates/cancellai-safety/src/remote_execution.rs`
 - Executor: Claude
-- Independent verifier: none yet - awaiting E18's epic-scope review round (ADR-0014/ADR-0025),
-  once every story in E18 reaches `ready_for_review` (E18-S01/S02 already do)
+- Independent verifier: Codex - three rounds complete (`E18-VERIFIER-REVIEW.md`,
+  `-ROUND2.md`, `-ROUND3.md`); round 3 (2026-09-19, owner-authorized ADR-0025 cost-ceiling
+  round) issued a `PASS_WITH_RESIDUALS` CR4 Safety Verdict (`SAFETY_VERDICT.md`)
 - Change Risk: CR4 (declared CR1 at planning; the commit-time risk-floor gate refused it because
   the added test touches `rust/crates/cancellai-safety/src/*`, floored at CR4 - see
   `project/epics/E18.json`'s `risk_reclassification_note`. The reclassification is procedural,
@@ -18,14 +19,15 @@ inherits E18-S02's F1 defect. Story remains `ready_for_review`, not closed.
 
 ## Acceptance Criteria Evidence
 
+*(Test names below are current as of round 3's repair; see "Round 1 independent verifier
+review", "ADR-0032 implementation", and "Round 2/3 independent verifier review" further down for
+what changed. As of round 3, F1 is repaired and both stories PASS_WITH_RESIDUALS - see
+`SAFETY_VERDICT.md`.)*
+
 | AC | Text (verbatim, `project/epics/E18.json`) | Evidence | Result |
 | --- | --- | --- | --- |
-*(Test names below are current as of round 2's repair; see "Round 1 independent verifier
-review" and "ADR-0032 implementation" further down for what changed and why this table's PASS
-marks do not mean the story is closed - round 2 found a further defect, F1, tracked there.)*
-
 | AC1 | "Single-machine workflows remain fully functional without account/cloud." | `cancellai-cli`'s and `cancellai-tui`'s `Cargo.toml`s carry no networking dependency (checked directly - neither lists any HTTP/socket/gRPC crate). `local_authority_is_unaffected_by_an_unconfigured_commercial_service` proves `effective_authority` computes a full, deterministic result from purely local `AuthorityInputs`, unaffected by a real remote-verification refusal computed alongside it - the local authority path needs nothing from the remote layer to function. | PASS |
-| AC2 | "Commercial services add coordination, not local destructive capabilities." | `docs/PRODUCT.md`'s "Open-source and commercial boundary" section now names the concrete mechanism: `RemoteExecutionRequest` (E18-S02) **is** the open local node protocol - any coordinator, commercial or self-hosted, produces the identical signed document; verification narrows every accepted request to one `target`/`requested_action` pair (a semantic `ActionClass`, never an `AuthorityLevel` directly, ADR-0032) capped by a locally-set ceiling, never a plan or a privileged second path. This is a documentation update pointing at E18-S02's already-tested structural guarantee (`a_request_asking_above_the_controllers_ceiling_is_refused_not_clamped`, `remote_and_local_user_requested_reach_identical_effective_authority`), not new enforcement logic - CR1 has none to add. | PASS |
+| AC2 | "Commercial services add coordination, not local destructive capabilities." | `docs/PRODUCT.md`'s "Open-source and commercial boundary" section now names the concrete mechanism: `RemoteExecutionRequest` (E18-S02) **is** the open local node protocol - any coordinator, commercial or self-hosted, produces the identical signed document; verification narrows every accepted request to one `target`/`requested_action` pair (a semantic `ActionClass`, never an `AuthorityLevel` directly, ADR-0032) capped by a locally-set ceiling, never a plan or a privileged second path, using the now-opaque, immutable `VerifiedRemoteIntent` (F1 repair). This is primarily a documentation update pointing at E18-S02's already-tested structural guarantee (`a_request_asking_above_the_controllers_ceiling_is_refused_not_clamped`, `remote_and_local_user_requested_reach_identical_effective_authority`) - the story's own diff is a test, not new production enforcement logic. | PASS |
 | AC3 | "If no commercial or fleet-coordination service is configured or reachable, single-machine functionality is not reduced or refused." (added at commit time - EARS-compliant restatement of AC1's own intent, required once the risk-floor gate raised this story to CR4; see `risk_reclassification_note`) | `local_authority_is_unaffected_by_an_unconfigured_commercial_service` - the same test cited for AC1 - is precisely this criterion's negative form made concrete: an empty `TrustedRemoteControllers` (the "no coordination service configured" case) never reduces or refuses `effective_authority`'s output. | PASS |
 
 ## Safety Evidence
@@ -134,6 +136,15 @@ non-bypassable, which round 2 showed it was not. F1 is repaired in E18-S02's own
 test (`local_authority_is_unaffected_by_an_unconfigured_commercial_service`) was independently
 re-confirmed as real data flow, not a re-raised finding.
 
+## Round 3 independent verifier review (`project/evidence/E18-VERIFIER-REVIEW-ROUND3.md`) - PASS_WITH_RESIDUALS
+
+Owner-authorized ADR-0025 cost-ceiling round (the last one). E18-S02's F1 repair is independently
+confirmed closed (see that story's own "Round 3 independent verifier review"); this story's claim
+that `RemoteExecutionRequest`/verification offers no privileged producer path is therefore
+independently supportable. A static, workspace-wide search found no production remote caller
+anywhere, so the "open protocol" claim remains offline/library-level, not an end-to-end guarantee.
+Issued a CR4 Safety Verdict of `PASS_WITH_RESIDUALS` for this story - see `SAFETY_VERDICT.md`.
+
 ## Residual risks
 
 - The claim "no networking dependency" is verified by direct inspection of `Cargo.toml` today,
@@ -150,6 +161,8 @@ re-confirmed as real data flow, not a re-raised finding.
 ## Verifier verdict
 
 Round 1 (Codex, 2026-09-19): FAIL - test-quality finding repaired; E18-S02's own two findings
-inherited. Round 2 (Codex, 2026-09-19): FAIL - inherited E18-S02's F1, now repaired there. **Not
-closed.** No CR4 Safety Verdict is included here; per ADR-0025 a third round is the cost ceiling
-and needs an explicit owner decision to spend.
+inherited. Round 2 (Codex, 2026-09-19): FAIL - inherited E18-S02's F1, now repaired there. Round 3
+(Codex, 2026-09-19, owner-authorized ADR-0025 cost-ceiling round - the last one):
+`PASS_WITH_RESIDUALS`, with a CR4 Safety Verdict recorded in `SAFETY_VERDICT.md`. Owner acceptance
+of that verdict is pending; see `SAFETY_VERDICT.md`'s own "Owner decision" field before this
+story moves to `done`.

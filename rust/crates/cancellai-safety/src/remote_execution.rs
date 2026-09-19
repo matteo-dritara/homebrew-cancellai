@@ -32,7 +32,7 @@
 //! comparison against a wire-supplied value - before it is ever returned; a request asking for
 //! more than its controller is trusted for is rejected outright, never silently clamped down to
 //! the ceiling, matching "ambiguity never escalates privilege" (C-03). A caller feeds
-//! `minimum_authority_for(verified.requested_action)` into
+//! `minimum_authority_for(verified.requested_action())` into
 //! [`crate::authority::AuthorityInputs::user_requested`], which changes nothing about
 //! [`crate::authority::effective_authority`] itself - every other input (`artifact_ceiling`,
 //! `confidence`, `activity`, `protection`, `integrity`, `provider_trust`) is still supplied by
@@ -255,11 +255,15 @@ impl fmt::Display for RemoteExecutionError {
 /// external caller could write `VerifiedRemoteIntent { controller_id: "not-trusted".into(), .. }`
 /// directly, bypassing signature/replay/ceiling/target checks entirely, or mutate an
 /// already-verified value's `target`/`requested_action` after the fact and have the changed
-/// value still read as "verified." The only way to obtain one is
-/// [`RemoteExecutionLog::verify_and_record`], and once obtained it cannot be altered - the same
-/// opaque-wrapper shape [`crate::trust_promotion::TrustedTier`] and [`crate::build_channel::
-/// BuildChannel`] already use for the identical reason (a freely constructible value must never
-/// stand in for one that passed a required check).
+/// value still read as "verified." The only way to obtain a *fresh* one - checked provenance
+/// that did not already exist - is [`RemoteExecutionLog::verify_and_record`], and once obtained
+/// it cannot be altered - the same opaque-wrapper shape [`crate::trust_promotion::TrustedTier`]
+/// and [`crate::build_channel::BuildChannel`] already use for the identical reason (a freely
+/// constructible value must never stand in for one that passed a required check). This type
+/// also derives [`Clone`] (round 3 independent verifier review's own qualification): cloning
+/// requires an already-verified source and always preserves - never rewrites or escalates - its
+/// provenance, so it is not a second way to *fabricate* one; it is not, however, a one-use
+/// execution capability, and this module makes no claim about exactly-once consumption.
 ///
 /// This doctest is the regression proving an external caller cannot construct one directly:
 ///

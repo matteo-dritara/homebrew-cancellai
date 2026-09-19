@@ -5,8 +5,9 @@
   `docs/architecture/TARGET.md` + `docs/security/THREAT_MODEL.md` + `CHANGELOG.md` +
   `project/epics/E18.json`
 - Executor: Claude
-- Independent verifier: none yet - awaiting E18's epic-scope review round (ADR-0014/ADR-0025),
-  once every story in E18 reaches `ready_for_review`
+- Independent verifier: Codex - three rounds complete (`E18-VERIFIER-REVIEW.md`,
+  `-ROUND2.md`, `-ROUND3.md`); round 3 (2026-09-19, owner-authorized ADR-0025 cost-ceiling
+  round) issued a `PASS_WITH_RESIDUALS` CR4 Safety Verdict (`SAFETY_VERDICT.md`)
 - Change Risk: CR4 (declared at planning; `rust/crates/cancellai-safety/src/*` is already
   floored at CR4 in `project/risk_floors.json` - no reclassification needed, unlike E18-S01)
 - Spec version/commit: `project/epics/E18.json` as committed in this checkpoint;
@@ -16,26 +17,29 @@
 
 ## Outcome
 
-PARTIAL - see "Round 2 independent verifier review" below; round 2 found `VerifiedRemoteIntent`
-publicly forgeable/mutable (F1), unrepaired as of this packet. Story remains `ready_for_review`,
-not closed.
+PASS_WITH_RESIDUALS - three independent review rounds (see "Round 1/2/3 independent verifier
+review" below); round 2's F1 (`VerifiedRemoteIntent` publicly forgeable/mutable) is repaired and
+round 3 independently confirmed the repair and issued a CR4 Safety Verdict of
+`PASS_WITH_RESIDUALS` (`SAFETY_VERDICT.md`). Durable replay-state persistence and full
+integration remain accepted, disclosed residuals, not defects.
 
 ## Acceptance Criteria Evidence
 
-*(Test/field names below are current as of the ADR-0032 repair; see "Round 2 independent
-verifier review" further down for the F1 defect these PASS marks do not account for.)*
+*(Test/field names below are current as of the round-2 F1 repair; round 3 independently
+confirmed both AC rows below and issued a PASS_WITH_RESIDUALS CR4 Safety Verdict - see
+`SAFETY_VERDICT.md`.)*
 
 | AC | Text (verbatim, `project/epics/E18.json`) | Evidence | Result |
 | --- | --- | --- | --- |
-| AC1 | "Remote control cannot bypass target safety invariants." | `VerifiedRemoteIntent` can only ever carry `target`/`requested_action` - no plan, no `SealedPlan` reference, no other `AuthorityInputs` field; a request above the controller's `authority_ceiling` (via `minimum_authority_for`) is refused, never clamped (`a_request_asking_above_the_controllers_ceiling_is_refused_not_clamped`, `a_request_naming_exactly_the_ceiling_is_accepted`). `remote_and_local_user_requested_reach_identical_effective_authority` proves `effective_authority`'s output for a remote-originated value is identical to the same value supplied locally - no hidden second authority path. **Superseded by F1 (round 2): this AC's "cannot bypass" claim did not account for the type itself being publicly constructible.** | PASS, with F1 open |
-| AC2 | "Every remote request is authenticated, authorized, and audit-linked." | Authenticated: `unknown_controller_is_rejected_before_any_crypto_check`, `malformed_signature_text_is_rejected_without_panicking`, `tamper_a_digest_updated_to_match_tampered_target_still_fails_signature_verification`. Authorized: `a_request_asking_above_the_controllers_ceiling_is_refused_not_clamped`; replay-authorized: `a_replayed_equal_sequence_is_rejected`, `an_out_of_order_lower_sequence_is_rejected_even_from_the_same_controller`, `sequences_from_different_controllers_never_interfere`. Audit-linked: every `Result` (`Ok`/`Err`) together with the caller's own `request` carries controller id, sequence, target, requested authority, and (on rejection) the specific `RemoteExecutionError` - everything an `EventLedger` entry needs, per RFC-0001's corrected design (see Method defects). | PASS |
+| AC1 | "Remote control cannot bypass target safety invariants." | `VerifiedRemoteIntent` can only ever carry `target`/`requested_action` - no plan, no `SealedPlan` reference, no other `AuthorityInputs` field; a request above the controller's `authority_ceiling` (via `minimum_authority_for`) is refused, never clamped (`a_request_asking_above_the_controllers_ceiling_is_refused_not_clamped`, `a_request_naming_exactly_the_ceiling_is_accepted`). `remote_and_local_user_requested_reach_identical_effective_authority` proves `effective_authority`'s output for a remote-originated value is identical to the same value supplied locally - no hidden second authority path. The type itself is now opaque and immutable (F1 repair, round 2; independently confirmed round 3) - the "cannot bypass" claim now also covers the verified-result type, not only the verification function. | PASS |
+| AC2 | "Every remote request is authenticated, authorized, and audit-linked." | Authenticated: `unknown_controller_is_rejected_before_any_crypto_check`, `malformed_signature_text_is_rejected_without_panicking`, `tamper_a_digest_updated_to_match_tampered_target_still_fails_signature_verification`. Authorized: `a_request_asking_above_the_controllers_ceiling_is_refused_not_clamped` (a `Delete` request against a `Quarantine` ceiling, resolved via `minimum_authority_for`); replay-authorized: `a_replayed_equal_sequence_is_rejected`, `an_out_of_order_lower_sequence_is_rejected_even_from_the_same_controller`, `sequences_from_different_controllers_never_interfere`. Audit-linked: every `Result` (`Ok`/`Err`) together with the caller's own `request` carries controller id, sequence, target, requested action, and (on rejection) the specific `RemoteExecutionError` - everything an `EventLedger` entry needs, per RFC-0001's corrected design (see Method defects). | PASS |
 
 ## Safety Evidence
 
 | Invariant | Counterexample tested | Evidence | Result |
 | --- | --- | --- | --- |
 | SI-031 (remote/fleet requests are intents; target authenticates, resolves policy, retains final mutation authority) | A remote-originated `user_requested` reaching `effective_authority` through any path other than the exact same field a local caller uses | `remote_and_local_user_requested_reach_identical_effective_authority` builds `AuthorityInputs` once from a verified remote intent and once from the identical value supplied directly, and asserts `effective_authority` returns the same `EffectiveAuthority` both times | PASS |
-| SI-031 / TM-17 (a remote party escalating its own request) | Request asking for `Autopilot` from a controller trusted only to `Quarantine` | `a_request_asking_above_the_controllers_ceiling_is_refused_not_clamped` - rejected outright, `requested_action` is never silently lowered to the ceiling and returned as if granted | PASS |
+| SI-031 / TM-17 (a remote party escalating its own request) | Request for `ActionClass::Delete` (resolves to `AuthorityLevel::Govern`) from a controller trusted only to `Quarantine` | `a_request_asking_above_the_controllers_ceiling_is_refused_not_clamped` - rejected outright, `requested_action` is never silently lowered to the ceiling and returned as if granted; separately, `no_action_class_ever_maps_to_recommend_or_autopilot` proves the wire vocabulary can never even express `AuthorityLevel::Autopilot`/`Recommend` | PASS |
 | C-03 (ambiguity never escalates privilege) / replay | Same-sequence and lower-sequence requests from an already-seen controller; a rejected request's sequence must not be "consumed" | `a_replayed_equal_sequence_is_rejected`, `an_out_of_order_lower_sequence_is_rejected_even_from_the_same_controller`, `a_rejected_request_never_advances_the_recorded_sequence` | PASS |
 
 ## Verification Commands
@@ -184,7 +188,7 @@ derived `Serialize` only). The ceiling check goes through `crate::authority::
 minimum_authority_for(request.requested_action) <= controller.authority_ceiling`, never a direct
 `AuthorityLevel`-to-`AuthorityLevel` comparison against a wire-supplied value.
 `VerifiedRemoteIntent::requested_authority` is now `requested_action: ActionClass`; a caller
-computes `minimum_authority_for(verified.requested_action)` itself before feeding
+computes `minimum_authority_for(verified.requested_action())` itself before feeding
 `AuthorityInputs::user_requested`. `RemoteExecutionError::RequestedAuthorityExceedsCeiling` is
 renamed `RequestedActionExceedsCeiling` to match. No new dependency: `minimum_authority_for`
 already lives in this same crate (`cancellai_safety::authority`), so this is a same-crate import,
@@ -237,6 +241,26 @@ references in this packet's own AC/Safety tables and in `docs/PRODUCT.md` are co
 All 20 `remote_execution` tests plus 1 new doctest pass; full gate suite green workspace-wide.
 This repair has not yet been independently re-reviewed - see "Verifier verdict" below.
 
+## Round 3 independent verifier review (`project/evidence/E18-VERIFIER-REVIEW-ROUND3.md`) - PASS_WITH_RESIDUALS
+
+Owner-authorized ADR-0025 cost-ceiling round (the last one). Independently confirmed F1 is
+closed: an external scratch crate's attempts at struct-literal construction (E0451), field
+writes on a genuinely-verified value (E0616 x4), the private stateless verifier (E0603),
+`Deserialize` (E0277), and `Default` (E0599) all fail to compile against current `HEAD`. Nine
+runtime tests against the real public API passed, including all 25 action/ceiling combinations,
+replay/target-confusion regressions, and 12-thread concurrent admission. One nuance recorded:
+`VerifiedRemoteIntent` derives `Clone`, so the log is not literally the *only* way to obtain an
+instance - cloning a value that already passed verification does, and always preserves (never
+alters or escalates) its provenance; this is not a fabrication route and not a fresh F1.
+
+Issued a CR4 Safety Verdict of `PASS_WITH_RESIDUALS` for this story - see `SAFETY_VERDICT.md`.
+Also independently confirmed the reviewed commit (`4dcab69`) is green across the full CI matrix
+(coverage, Ubuntu/macOS/Windows quality, all six stable/MSRV platform-check legs), closing out
+round 2's separately-reported Windows CI finding (fixed in `eb651b9`, an E13-S04 commit).
+Remaining documentation/test-maintenance observations from round 3 (stale AC2/Safety-table
+wording, the `minimum_authority_for(verified.requested_action)` field-access-style example, this
+packet's own header) are corrected in this same pass.
+
 ## Residual risks
 
 - `RemoteExecutionLog` is pure in-memory and does not survive a process restart - see "Round 1
@@ -261,6 +285,7 @@ Round 1 (Codex, 2026-09-19): FAIL - two of three defects repaired, durable repla
 persistence and the ActionClass design-record divergence deferred (the latter via ADR-0032).
 Round 2 (Codex, 2026-09-19): FAIL - F1 (`VerifiedRemoteIntent` publicly forgeable/mutable), now
 repaired in this packet; durable replay-state persistence remains an accepted, honestly-disclosed
-residual, not a fresh failure. **Not closed.** No CR4 Safety Verdict is included here, as it is
-the independent reviewer's output, gated at `done`; per ADR-0025 a third round is the cost
-ceiling and needs an explicit owner decision to spend.
+residual, not a fresh failure. Round 3 (Codex, 2026-09-19, owner-authorized ADR-0025 cost-ceiling
+round - the last one): `PASS_WITH_RESIDUALS`, with a CR4 Safety Verdict recorded in
+`SAFETY_VERDICT.md`. Owner acceptance of that verdict is pending; see `SAFETY_VERDICT.md`'s own
+"Owner decision" field before this story moves to `done`.
