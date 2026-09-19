@@ -3,8 +3,8 @@ header; a verdict answering this brief repeats it, so the ledger can tell whethe
 verifier was given this document or a paraphrase of it. -->
 
 Story: E13-S05
-Rendered-by: Claude Sonnet 5 (executor)
-Rendered-on: 2026-09-17
+Rendered-by: Claude (orchestrating executor)
+Rendered-on: 2026-09-19
 Brief-Checksum: d78bbc149e2b33b351a7d72fff727d853f1efb6b165ae73c0c0bfa8a1a5d105d
 
 <!-- end handoff header -->

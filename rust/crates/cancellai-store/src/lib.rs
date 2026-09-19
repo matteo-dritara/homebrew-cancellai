@@ -100,9 +100,15 @@
 //! re-invoke `cancellai-inventory` for a given artifact) is a later story's orchestration, not
 //! this one's (matching E13-S01 through E13-S04's own "primitive delivered, no orchestrator yet"
 //! precedent).
+//!
+//! [`CurrentStateStore::set_invalidation_key`] itself refuses (`Err`) a key whose
+//! `identity_token` does not match the persisted row's own `AgentArtifact::identity_token` -
+//! `ArtifactId` is a stable key across scans, but a row's content can legitimately belong to a
+//! different `identity_token` after a `rebuild`, and a key is only ever a claim about the content
+//! actually stored, never about whatever `ArtifactId` it happens to be filed under.
 
 use cancellai_model::{AgentArtifact, ArtifactId};
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use std::path::Path;
 
 /// The append-only operational event ledger (E13-S02, "Layer 2: Operational Event Ledger").
@@ -166,6 +172,8 @@ const MIGRATIONS: &[&str] = &[
     ) STRICT;
     CREATE INDEX idx_agent_artifacts_provider_id ON agent_artifacts(provider_id);
     CREATE INDEX idx_agent_artifacts_activity_state ON agent_artifacts(activity_state);
+    CREATE TABLE cancellai_store_identity (marker TEXT PRIMARY KEY) STRICT;
+    INSERT INTO cancellai_store_identity (marker) VALUES ('cancellai-current-state-store-v1');
 ",
     // E13-S05: incremental-reuse invalidation key, stored alongside each row rather than in a
     // second table - a plain `DELETE FROM agent_artifacts` (every `rebuild`, including
@@ -197,6 +205,63 @@ fn apply_migrations(conn: &Connection, migrations: &[&str]) -> Result<(), StoreE
         tx.execute_batch(migration)?;
         tx.execute_batch(&format!("PRAGMA user_version = {next_version}"))?;
         tx.commit()?;
+    }
+    Ok(())
+}
+
+/// The value [`MIGRATIONS`]' first migration inserts into `cancellai_store_identity`.
+const STORE_IDENTITY_MARKER: &str = "cancellai-current-state-store-v1";
+
+/// Refuses to treat `conn` as a valid current-state store unless it carries this crate's own
+/// identity marker (SI-026, "reset --local-state cannot target provider roots"). `PRAGMA
+/// user_version` and even an `agent_artifacts`-shaped schema are not proof of ownership - round 2
+/// independent verifier review opened a hand-crafted provider-owned SQLite file with a matching
+/// `user_version` and table shape through [`CurrentStateStore::open`] and reset it, deleting rows
+/// that were never this crate's to delete. A marker table only this crate's own migration ever
+/// creates is not something a provider database happens to also carry, so its absence (a file
+/// [`apply_migrations`] treated as already-migrated because a caller-supplied `user_version`
+/// matched, but which never actually ran migration 0) fails the open closed rather than silently
+/// granting a reset-capable handle over content this crate did not create.
+///
+/// The marker lives inside migration 0's own SQL rather than a new, later migration appended to
+/// [`MIGRATIONS`]: [`apply_migrations`] runs every migration whose index is at or past a file's
+/// current `user_version`, regardless of whether that file's earlier history is genuine, so a
+/// later "add the marker" migration would apply itself just as readily to the same hand-crafted
+/// `user_version = 2` mimicry file this check exists to refuse - it would not close the gap, it
+/// would auto-grant the marker to it. Requiring migration 0 itself to have run for real is the
+/// only version of this check a caller cannot satisfy by guessing a `user_version` number. This
+/// crate has shipped in no release yet (E06-S04's canonical-engine-switch gate is still open), so
+/// editing migration 0's own content carries no live-database compatibility obligation today;
+/// once real on-disk stores exist, adding a marker retroactively would need its own migration
+/// story, not a silent edit to history.
+fn verify_store_identity(conn: &Connection) -> Result<(), StoreError> {
+    let marker: Result<String, rusqlite::Error> =
+        conn.query_row("SELECT marker FROM cancellai_store_identity", [], |row| {
+            row.get(0)
+        });
+    match marker {
+        Ok(value) if value == STORE_IDENTITY_MARKER => Ok(()),
+        _ => Err(StoreError(
+            "this database does not carry cancellai-store's own identity marker - refusing to \
+             open it as a current-state store rather than risk treating provider-owned or \
+             unrelated content as this crate's own"
+                .into(),
+        )),
+    }
+}
+
+/// Refuses (`Err`) a file whose `PRAGMA user_version` is already past the first migration but
+/// which does not carry [`STORE_IDENTITY_MARKER`] - checked *before* [`apply_migrations`] runs
+/// anything further, so a file that turns out not to be this crate's own is never mutated on the
+/// way to being refused. Self-review found that checking identity only *after* migrations ran
+/// let a non-owned file at an intermediate `user_version` receive a real schema mutation (an
+/// `ALTER TABLE`) before its `open` was refused - a genuinely fresh file (`user_version = 0`)
+/// has not run migration 0 yet, so it cannot carry the marker yet either; that is the ordinary
+/// creation path, not a rejection.
+fn verify_store_identity_before_migrating(conn: &Connection) -> Result<(), StoreError> {
+    let current_version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if current_version > 0 {
+        verify_store_identity(conn)?;
     }
     Ok(())
 }
@@ -311,10 +376,14 @@ pub struct CurrentStateStore {
 
 impl CurrentStateStore {
     /// Opens (creating if absent) the current-state database at `path`, applying any migration
-    /// this database has not already seen.
+    /// this database has not already seen. Refuses (`Err`, no handle returned) a file whose
+    /// `user_version`/schema make [`apply_migrations`] treat it as already-migrated but which
+    /// does not carry this crate's own identity marker - see [`verify_store_identity`].
     pub fn open(path: &Path) -> Result<Self, StoreError> {
         let conn = Connection::open(path)?;
+        verify_store_identity_before_migrating(&conn)?;
         apply_migrations(&conn, MIGRATIONS)?;
+        verify_store_identity(&conn)?;
         Ok(Self { conn })
     }
 
@@ -322,6 +391,7 @@ impl CurrentStateStore {
     pub fn open_in_memory() -> Result<Self, StoreError> {
         let conn = Connection::open_in_memory()?;
         apply_migrations(&conn, MIGRATIONS)?;
+        verify_store_identity(&conn)?;
         Ok(Self { conn })
     }
 
@@ -409,6 +479,17 @@ impl CurrentStateStore {
     /// caller only ever has a fresh key to attach right after a `rebuild`/`get` confirmed the
     /// row is there, so an id with no row is a caller mistake this method surfaces rather than
     /// silently accepting and doing nothing.
+    ///
+    /// `Err` too when `key.identity_token` does not match the persisted row's own
+    /// [`AgentArtifact::identity_token`] (round 2 independent verifier review's required repair):
+    /// `ArtifactId` is a stable key across scans, but `identity_token` is what a scan actually
+    /// observed the artifact to be *this time* - the same row's `ArtifactId` can legitimately be
+    /// attached to different content across a rebuild. Binding a key stamped with one identity to
+    /// a row whose persisted content is a different identity would later let
+    /// [`CurrentStateStore::cache_read_hint`] report `ReuseForReading` for facts that were never
+    /// observed under the identity the caller is asking about - the exact cross-identity cache
+    /// reuse this check exists to make impossible to attach in the first place, not just
+    /// difficult to trigger.
     pub fn set_invalidation_key(
         &mut self,
         id: &ArtifactId,
@@ -422,7 +503,32 @@ impl CurrentStateStore {
                 })
             })
             .transpose()?;
-        let changed = self.conn.execute(
+
+        let tx = self.conn.transaction()?;
+        let data: Option<String> = tx
+            .query_row(
+                "SELECT data FROM agent_artifacts WHERE artifact_id = ?1",
+                rusqlite::params![id.0],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let Some(data) = data else {
+            return Err(StoreError(format!(
+                "no row for artifact_id {:?} to attach an invalidation key to",
+                id.0
+            )));
+        };
+        let artifact: AgentArtifact = serde_json::from_str(&data)?;
+        if artifact.identity_token != key.identity_token {
+            return Err(StoreError(format!(
+                "invalidation key identity_token {:?} does not match the persisted artifact's \
+                 own identity_token {:?} for artifact_id {:?} - refusing to bind a cache key to \
+                 a different identity than the row it would be attached to",
+                key.identity_token, artifact.identity_token, id.0
+            )));
+        }
+
+        let changed = tx.execute(
             "UPDATE agent_artifacts SET \
                 cache_identity_token = ?1, \
                 cache_modified = ?2, \
@@ -445,6 +551,7 @@ impl CurrentStateStore {
                 id.0
             )));
         }
+        tx.commit()?;
         Ok(())
     }
 
@@ -876,6 +983,114 @@ mod tests {
         std::fs::remove_dir_all(&dir).expect("clean up test dir");
     }
 
+    #[test]
+    fn open_refuses_a_provider_owned_file_that_only_mimics_this_crates_schema() {
+        // Round 2 independent verifier review: a hand-crafted SQLite file with an
+        // `agent_artifacts` table/row and `PRAGMA user_version` already at the fully-migrated
+        // value made `apply_migrations` treat it as an already-migrated store of this crate's
+        // own, so `open` handed back a reset-capable handle over content this crate never
+        // created. `open` must refuse such a file instead (SI-026), because it never actually
+        // ran this crate's own migration 0 and therefore never carries the identity marker that
+        // migration inserts.
+        let dir = std::env::temp_dir().join(format!(
+            "cancellai-store-test-open-mimic-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        let provider_db_path = dir.join("provider-owned.sqlite3");
+        {
+            let conn = Connection::open(&provider_db_path).expect("open raw sqlite file");
+            conn.execute_batch(
+                "CREATE TABLE agent_artifacts (
+                    artifact_id TEXT PRIMARY KEY,
+                    provider_id TEXT NOT NULL,
+                    activity_state TEXT NOT NULL,
+                    data TEXT NOT NULL
+                ) STRICT;
+                INSERT INTO agent_artifacts (artifact_id, provider_id, activity_state, data)
+                    VALUES ('provider-row', 'some-provider', 'active', '{}');
+                PRAGMA user_version = 2;",
+            )
+            .expect("craft a provider-owned lookalike database");
+        }
+
+        let opened = CurrentStateStore::open(&provider_db_path);
+        assert!(
+            opened.is_err(),
+            "open must refuse a file that mimics this crate's schema/user_version but was \
+             never created by this crate's own migrations"
+        );
+
+        let verify = Connection::open(&provider_db_path).expect("reopen raw sqlite file");
+        let row_count: i64 = verify
+            .query_row("SELECT COUNT(*) FROM agent_artifacts", [], |row| row.get(0))
+            .expect("count provider rows");
+        assert_eq!(
+            row_count, 1,
+            "a refused open must leave the provider-owned file completely untouched"
+        );
+
+        std::fs::remove_dir_all(&dir).expect("clean up test dir");
+    }
+
+    #[test]
+    fn open_refuses_before_mutating_a_file_at_an_intermediate_user_version_with_no_marker() {
+        // Self-review's own further finding: checking identity only after `apply_migrations`
+        // ran let a non-owned file whose `user_version` sat between migrations receive a real
+        // schema mutation (migration 1's `ALTER TABLE ... ADD COLUMN`) before its `open` was
+        // refused. A file at `user_version = 1` with `agent_artifacts` in migration 0's shape
+        // but no identity-marker table must be refused without migration 1 ever touching it.
+        let dir = std::env::temp_dir().join(format!(
+            "cancellai-store-test-open-no-mutate-before-refuse-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        let db_path = dir.join("mimic.sqlite3");
+        {
+            let conn = Connection::open(&db_path).expect("open raw sqlite file");
+            conn.execute_batch(
+                "CREATE TABLE agent_artifacts (
+                    artifact_id TEXT PRIMARY KEY,
+                    provider_id TEXT NOT NULL,
+                    activity_state TEXT NOT NULL,
+                    data TEXT NOT NULL
+                ) STRICT;
+                PRAGMA user_version = 1;",
+            )
+            .expect("craft a file with no identity marker at user_version 1");
+        }
+
+        assert!(
+            CurrentStateStore::open(&db_path).is_err(),
+            "open must refuse this file"
+        );
+
+        let verify = Connection::open(&db_path).expect("reopen raw sqlite file");
+        let has_cache_column: i64 = verify
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('agent_artifacts') \
+                 WHERE name = 'cache_identity_token'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("inspect columns");
+        assert_eq!(
+            has_cache_column, 0,
+            "a refused open must never run migration 1's ALTER TABLE against a file this crate \
+             did not create"
+        );
+
+        std::fs::remove_dir_all(&dir).expect("clean up test dir");
+    }
+
     // ------------------------------------------------------------------------------------
     // E13-S05: incremental reuse / SI-024 falsification plan.
     // ------------------------------------------------------------------------------------
@@ -934,6 +1149,29 @@ mod tests {
         assert!(
             result.is_err(),
             "attaching an invalidation key to a non-existent row must fail, not silently no-op"
+        );
+    }
+
+    #[test]
+    fn set_invalidation_key_rejects_a_key_whose_identity_does_not_match_the_persisted_row() {
+        // Round 2 independent verifier review's exact reproduction: a row persisted for
+        // `identity-A` must not accept an invalidation key stamped `identity-B` - doing so would
+        // later let `cache_read_hint` report `ReuseForReading` against fresh `identity-B` facts
+        // for a row whose actual content was never observed under that identity.
+        let (mut store, id) = store_with_one_row("identity-A");
+        let result = store.set_invalidation_key(&id, &full_key("identity-B", Some(1_000)));
+        assert!(
+            result.is_err(),
+            "a key stamped with a different identity than the persisted row must be rejected"
+        );
+
+        let hint = store
+            .cache_read_hint(&id, &full_key("identity-B", Some(1_000)))
+            .expect("cache_read_hint");
+        assert_eq!(
+            hint,
+            CacheReadHint::Revalidate,
+            "a rejected set_invalidation_key must leave the row with no usable invalidation key"
         );
     }
 

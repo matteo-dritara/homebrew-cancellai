@@ -128,6 +128,9 @@ const MIGRATIONS: &[&str] = &["
         created_at INTEGER NOT NULL
     ) STRICT;
 
+    CREATE TABLE cancellai_ledger_identity (marker TEXT PRIMARY KEY) STRICT;
+    INSERT INTO cancellai_ledger_identity (marker) VALUES ('cancellai-event-ledger-v1');
+
     CREATE TRIGGER ledger_events_forbid_update
     BEFORE UPDATE ON ledger_events
     BEGIN
@@ -169,6 +172,52 @@ fn apply_migrations(conn: &Connection, migrations: &[&str]) -> Result<(), Ledger
         tx.execute_batch(migration)?;
         tx.execute_batch(&format!("PRAGMA user_version = {next_version}"))?;
         tx.commit()?;
+    }
+    Ok(())
+}
+
+/// The value [`MIGRATIONS`]' first migration inserts into `cancellai_ledger_identity` - the
+/// event ledger's own copy of `crate::verify_store_identity`'s marker check (SI-026, round 2
+/// independent verifier review's finding against `CurrentStateStore` reproduced identically
+/// here: a hand-crafted file with `ledger_events`/`ledger_control`/`ledger_compactions` in
+/// migration 0's exact shape and a matching `user_version` opened and reset with no ownership
+/// check at all - self-review, round 2 pre-independent-round-3). Each layer keeps its own
+/// migration history and `Connection` (this module's own doc, above), so this check is a
+/// separate per-module marker/constant rather than a shared one - the same independence
+/// precedent this crate already applies to schema, connection and error type.
+const LEDGER_IDENTITY_MARKER: &str = "cancellai-event-ledger-v1";
+
+/// Refuses to treat `conn` as a valid event ledger unless it carries this module's own identity
+/// marker - see [`LEDGER_IDENTITY_MARKER`]'s own doc and `crate::verify_store_identity`'s
+/// identical reasoning for `CurrentStateStore`.
+fn verify_ledger_identity(conn: &Connection) -> Result<(), LedgerError> {
+    let marker: Result<String, rusqlite::Error> =
+        conn.query_row("SELECT marker FROM cancellai_ledger_identity", [], |row| {
+            row.get(0)
+        });
+    match marker {
+        Ok(value) if value == LEDGER_IDENTITY_MARKER => Ok(()),
+        _ => Err(LedgerError(
+            "this database does not carry cancellai-store's own ledger identity marker - \
+             refusing to open it as an event ledger rather than risk treating provider-owned or \
+             unrelated content as this crate's own"
+                .into(),
+        )),
+    }
+}
+
+/// Refuses (`Err`) a file whose `PRAGMA user_version` is already past the first migration but
+/// which does not carry [`LEDGER_IDENTITY_MARKER`] - checked *before* [`apply_migrations`] runs
+/// anything further, so a file that turns out not to be this crate's own is never mutated on the
+/// way to being refused (self-review's own further finding: checking identity only *after*
+/// migrations already ran had let a non-owned intermediate-version file receive a real schema
+/// mutation before its open was refused). A `user_version` of `0` (a brand new or genuinely empty
+/// file) has not run migration 0 yet, so it cannot carry the marker yet either - that is the
+/// ordinary fresh-database path, not a rejection.
+fn verify_ledger_identity_before_migrating(conn: &Connection) -> Result<(), LedgerError> {
+    let current_version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if current_version > 0 {
+        verify_ledger_identity(conn)?;
     }
     Ok(())
 }
@@ -328,7 +377,9 @@ impl EventLedger {
     /// [`crate::CurrentStateStore::open`]'s - see this module's own doc on `MIGRATIONS`.
     pub fn open(path: &Path) -> Result<Self, LedgerError> {
         let conn = Connection::open(path)?;
+        verify_ledger_identity_before_migrating(&conn)?;
         apply_migrations(&conn, MIGRATIONS)?;
+        verify_ledger_identity(&conn)?;
         Ok(Self { conn })
     }
 
@@ -336,6 +387,7 @@ impl EventLedger {
     pub fn open_in_memory() -> Result<Self, LedgerError> {
         let conn = Connection::open_in_memory()?;
         apply_migrations(&conn, MIGRATIONS)?;
+        verify_ledger_identity(&conn)?;
         Ok(Self { conn })
     }
 
@@ -504,9 +556,9 @@ impl EventLedger {
             std::collections::BTreeMap::new();
         {
             let mut stmt = tx.prepare(
-                "SELECT event_id, kind, recorded_at, IFNULL(artifact_id,''), \
-                        IFNULL(provider_id,''), IFNULL(category,''), IFNULL(policy_id,''), \
-                        IFNULL(reason_code,''), IFNULL(plan_id,''), evidence_ids \
+                "SELECT event_id, kind, recorded_at, artifact_id, \
+                        provider_id, category, policy_id, \
+                        reason_code, plan_id, evidence_ids \
                  FROM ledger_events WHERE event_id BETWEEN ?1 AND ?2 ORDER BY event_id",
             )?;
             let rows = stmt.query_map(params![from.0, to.0], |row| {
@@ -514,12 +566,12 @@ impl EventLedger {
                     row.get::<_, i64>(0)?,
                     row.get::<_, String>(1)?,
                     row.get::<_, i64>(2)?,
-                    row.get::<_, String>(3)?,
-                    row.get::<_, String>(4)?,
-                    row.get::<_, String>(5)?,
-                    row.get::<_, String>(6)?,
-                    row.get::<_, String>(7)?,
-                    row.get::<_, String>(8)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, Option<String>>(6)?,
+                    row.get::<_, Option<String>>(7)?,
+                    row.get::<_, Option<String>>(8)?,
                     row.get::<_, String>(9)?,
                 ))
             })?;
@@ -546,19 +598,33 @@ impl EventLedger {
                 // a byte value a field's own content could also contain.
                 hasher.update(event_id.to_be_bytes());
                 hasher.update(recorded_at.to_be_bytes());
+                hasher.update((kind.len() as u64).to_be_bytes());
+                hasher.update(kind.as_bytes());
+                // `artifact_id`..`plan_id` are nullable columns: absence (`NULL`) and an
+                // empty string are semantically distinct `EventMetadata` values and round 2
+                // independent verifier review reproduced them hashing identically once a
+                // SQL-side `IFNULL(x,'')` erased the distinction before it ever reached this
+                // loop. A one-byte presence tag ahead of the length prefix keeps `None`
+                // (tag 0, no further bytes) and `Some("")` (tag 1, then length 0) apart.
                 for field in [
-                    kind.as_str(),
-                    artifact_id.as_str(),
-                    provider_id.as_str(),
-                    category.as_str(),
-                    policy_id.as_str(),
-                    reason_code.as_str(),
-                    plan_id.as_str(),
-                    evidence_ids.as_str(),
+                    &artifact_id,
+                    &provider_id,
+                    &category,
+                    &policy_id,
+                    &reason_code,
+                    &plan_id,
                 ] {
-                    hasher.update((field.len() as u64).to_be_bytes());
-                    hasher.update(field.as_bytes());
+                    match field {
+                        None => hasher.update([0u8]),
+                        Some(value) => {
+                            hasher.update([1u8]);
+                            hasher.update((value.len() as u64).to_be_bytes());
+                            hasher.update(value.as_bytes());
+                        }
+                    }
                 }
+                hasher.update((evidence_ids.len() as u64).to_be_bytes());
+                hasher.update(evidence_ids.as_bytes());
             }
         }
         let digest_hex = encode_hex(&hasher.finalize());
@@ -729,7 +795,8 @@ impl EventLedger {
         tx.execute_batch(
             "DROP TABLE IF EXISTS ledger_events;
              DROP TABLE IF EXISTS ledger_control;
-             DROP TABLE IF EXISTS ledger_compactions;",
+             DROP TABLE IF EXISTS ledger_compactions;
+             DROP TABLE IF EXISTS cancellai_ledger_identity;",
         )?;
         for migration in MIGRATIONS {
             tx.execute_batch(migration)?;
@@ -1073,6 +1140,54 @@ mod tests {
     }
 
     #[test]
+    fn compact_range_digest_distinguishes_absent_metadata_from_empty_metadata() {
+        // Round 2 independent verifier review: the query wrapped every nullable metadata
+        // column in `IFNULL(x,'')`, so `provider_id: None` and `provider_id: Some("")` both
+        // reached the hasher as `""` and produced the same digest for two semantically
+        // different committed event records. A presence tag ahead of the length prefix must
+        // keep `None` and `Some("")` apart.
+        let mut absent = EventLedger::open_in_memory().expect("open");
+        let a = absent
+            .append(NewEvent {
+                kind: EventKind::Discovered,
+                recorded_at: 1,
+                metadata: EventMetadata {
+                    artifact_id: None,
+                    provider_id: None,
+                    category: None,
+                    policy_id: None,
+                    reason_code: None,
+                },
+                mutation: None,
+            })
+            .expect("append");
+        let absent_summary = absent.compact_range(a, a, 100).expect("compact");
+
+        let mut empty = EventLedger::open_in_memory().expect("open");
+        let b = empty
+            .append(NewEvent {
+                kind: EventKind::Discovered,
+                recorded_at: 1,
+                metadata: EventMetadata {
+                    artifact_id: None,
+                    provider_id: Some(String::new()),
+                    category: None,
+                    policy_id: None,
+                    reason_code: None,
+                },
+                mutation: None,
+            })
+            .expect("append");
+        let empty_summary = empty.compact_range(b, b, 100).expect("compact");
+
+        assert_ne!(
+            absent_summary.digest_hex, empty_summary.digest_hex,
+            "a None metadata field and a Some(\"\") metadata field are different committed \
+             event records and must not hash identically"
+        );
+    }
+
+    #[test]
     fn append_after_reopen_preserves_prior_events_and_never_reuses_an_event_id() {
         let dir = std::env::temp_dir().join(format!(
             "cancellai-store-ledger-test-reopen-{}-{}",
@@ -1390,6 +1505,125 @@ mod tests {
             std::fs::read_to_string(&provider_artifact_path).expect("read provider artifact"),
             "a real provider session transcript",
             "reset must never touch a provider artifact's content"
+        );
+
+        std::fs::remove_dir_all(&dir).expect("clean up test dir");
+    }
+
+    #[test]
+    fn open_refuses_a_provider_owned_file_that_only_mimics_this_ledgers_schema() {
+        // Self-review, round 2 pre-independent-round-3: the exact reproduction round 2 used
+        // against `CurrentStateStore` applies identically here - a hand-crafted file matching
+        // this module's own migrated schema and `user_version` was previously accepted by
+        // `open` with no ownership check at all, and `.reset()` destroyed its row.
+        let dir = std::env::temp_dir().join(format!(
+            "cancellai-store-ledger-test-open-mimic-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        let provider_db_path = dir.join("provider-owned.sqlite3");
+        {
+            let conn = Connection::open(&provider_db_path).expect("open raw sqlite file");
+            conn.execute_batch(
+                "CREATE TABLE ledger_events (
+                    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    kind TEXT NOT NULL,
+                    recorded_at INTEGER NOT NULL,
+                    artifact_id TEXT,
+                    provider_id TEXT,
+                    category TEXT,
+                    policy_id TEXT,
+                    reason_code TEXT,
+                    plan_id TEXT,
+                    evidence_ids TEXT NOT NULL DEFAULT '[]'
+                ) STRICT;
+                INSERT INTO ledger_events (kind, recorded_at, evidence_ids)
+                    VALUES ('DISCOVERED', 1, '[]');
+                PRAGMA user_version = 1;",
+            )
+            .expect("craft a provider-owned lookalike database");
+        }
+
+        let opened = EventLedger::open(&provider_db_path);
+        assert!(
+            opened.is_err(),
+            "open must refuse a file that mimics this module's schema/user_version but was \
+             never created by this module's own migrations"
+        );
+
+        let verify = Connection::open(&provider_db_path).expect("reopen raw sqlite file");
+        let row_count: i64 = verify
+            .query_row("SELECT COUNT(*) FROM ledger_events", [], |row| row.get(0))
+            .expect("count provider rows");
+        assert_eq!(
+            row_count, 1,
+            "a refused open must leave the provider-owned file completely untouched"
+        );
+
+        std::fs::remove_dir_all(&dir).expect("clean up test dir");
+    }
+
+    #[test]
+    fn open_refuses_before_mutating_a_file_at_an_intermediate_user_version_with_no_marker() {
+        // Self-review's own further finding: checking identity only after `apply_migrations`
+        // ran let a non-owned file whose `user_version` sat between migrations receive a real
+        // schema mutation before its `open` was refused. This module has only one migration
+        // today, so the only "intermediate" version to falsify against is `user_version = 1`
+        // with a schema that does not actually match migration 0's real output (missing the
+        // identity marker table) - `open` must refuse it without running anything further.
+        let dir = std::env::temp_dir().join(format!(
+            "cancellai-store-ledger-test-open-no-mutate-before-refuse-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        let db_path = dir.join("mimic.sqlite3");
+        {
+            let conn = Connection::open(&db_path).expect("open raw sqlite file");
+            conn.execute_batch(
+                "CREATE TABLE ledger_events (
+                    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    kind TEXT NOT NULL,
+                    recorded_at INTEGER NOT NULL,
+                    artifact_id TEXT,
+                    provider_id TEXT,
+                    category TEXT,
+                    policy_id TEXT,
+                    reason_code TEXT,
+                    plan_id TEXT,
+                    evidence_ids TEXT NOT NULL DEFAULT '[]'
+                ) STRICT;
+                PRAGMA user_version = 1;",
+            )
+            .expect("craft a file with no identity marker at user_version 1");
+        }
+
+        assert!(
+            EventLedger::open(&db_path).is_err(),
+            "open must refuse this file"
+        );
+
+        let verify = Connection::open(&db_path).expect("reopen raw sqlite file");
+        let migration_ran: i64 = verify
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master \
+                 WHERE type = 'table' AND name IN \
+                 ('cancellai_ledger_identity', 'ledger_control', 'ledger_compactions')",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count tables migration 0 would have created");
+        assert_eq!(
+            migration_ran, 0,
+            "a refused open must never run migration 0 (identity marker or any other table it \
+             creates) against a file this module did not create"
         );
 
         std::fs::remove_dir_all(&dir).expect("clean up test dir");

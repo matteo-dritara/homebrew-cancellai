@@ -31,17 +31,26 @@
 //! ## Why Layer 1 has no compaction action here
 //!
 //! [`check_current_state_budget`] only observes [`crate::CurrentStateStore::row_count`] against
-//! [`BudgetLimits::max_current_state_rows`] - it never compacts anything. Layer 1's content is
-//! entirely determined by the last `rebuild` an external scan performed (`crate::lib`'s own doc,
-//! "Reconstructible by construction"); this crate autonomously discarding rows to fit a budget
-//! would silently diverge from the last scan, which is not compaction, it is data loss with no
-//! recovery path other than a full rescan. `docs/architecture/PERSISTENCE_MODEL.md`'s own
-//! "Self-budget" section says what actually yields under Layer 1 pressure - "safety-critical
-//! current facts may force analytical sampling to degrade" - naming Layer 3, not Layer 1, as the
-//! thing that degrades. Wiring that cross-layer degradation decision needs a live caller
-//! (Guardian) this workspace does not have yet; this story provides the observation
-//! ([`check_current_state_budget`]) a future orchestrator needs to make that decision, not the
-//! decision itself - see this crate's own evidence packet, "Residual risks."
+//! [`BudgetLimits::max_current_state_rows`] - it never compacts Layer 1 itself. Layer 1's content
+//! is entirely determined by the last `rebuild` an external scan performed (`crate::lib`'s own
+//! doc, "Reconstructible by construction"); this crate autonomously discarding rows to fit a
+//! budget would silently diverge from the last scan, which is not compaction, it is data loss
+//! with no recovery path other than a full rescan. `docs/architecture/PERSISTENCE_MODEL.md`'s own
+//! "Self-budget" section says what actually yields under Layer 1 pressure instead - "safety-
+//! critical current facts may force analytical sampling to degrade" - naming Layer 3, not Layer
+//! 1, as the thing that degrades. [`enforce_current_state_pressure`] is that consumer: an
+//! observation nothing acted on was not the compaction AC1 requires (round 2 independent verifier
+//! review's required repair), so it forces Layer 3's raw-sample tier down to a caller-supplied
+//! ceiling whenever Layer 1 crosses budget. [`rebuild_within_current_state_budget`] wires this
+//! into the only write path Layer 1 has: a callable-but-uncalled enforcement function is not
+//! wiring (self-review, round 2 pre-independent-round-3's own further finding against this exact
+//! story) - it composes `CurrentStateStore::rebuild` with `enforce_current_state_pressure` into
+//! one call, the same "wrap the write itself" shape [`append_within_ledger_budget`]/
+//! [`record_sample_within_rollup_budget`] already give Layer 2/3. A live caller (Guardian)
+//! choosing to always call this composed function instead of raw `rebuild`, and choosing
+//! product-level thresholds, is still future orchestration this workspace does not have yet -
+//! see this crate's own evidence packet, "Residual risks" - but the enforced call itself now
+//! exists as a primitive a caller can reach for, not only an unwired observation.
 //!
 //! ## `reset_local_state` is sequential, not cross-file atomic
 //!
@@ -68,6 +77,7 @@
 use crate::ledger::{self, EventLedger};
 use crate::rollup::{self, AnalyticalMemory, RetentionPolicy};
 use crate::{CurrentStateStore, StoreError};
+use cancellai_model::AgentArtifact;
 
 /// Why a [`BudgetLimits`] could not be constructed - every threshold must be greater than zero,
 /// the same validated-constructor shape [`crate::rollup::RetentionPolicy::new`] already uses.
@@ -166,6 +176,105 @@ pub fn check_current_state_budget(
     } else {
         BudgetStatus::WithinBudget { count, limit }
     })
+}
+
+/// Why [`enforce_current_state_pressure`] failed, naming which layer's own check/compaction
+/// raised it - the same per-layer wrapping [`ResetError`] already uses.
+#[derive(Debug)]
+pub enum PressureError {
+    CurrentState(StoreError),
+    Rollup(rollup::RollupError),
+}
+
+impl std::fmt::Display for PressureError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PressureError::CurrentState(e) => write!(f, "current-state budget check failed: {e}"),
+            PressureError::Rollup(e) => write!(f, "analytical memory degradation failed: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for PressureError {}
+
+/// What [`enforce_current_state_pressure`] found and, if Layer 1 was over budget, what it did
+/// about it.
+#[derive(Debug)]
+pub struct PressureReport {
+    pub current_state: BudgetStatus,
+    /// `Some` only when `current_state` was `OverBudget` - the forced Layer 3 degradation this
+    /// module's own doc, "Why Layer 1 has no compaction action here," names as the actual
+    /// mitigation. `None` result inside the `Some` means degradation ran and freed nothing
+    /// (already exactly at `degraded_raw_sample_ceiling`, or nothing eligible yet).
+    pub rollup_degraded: Option<rollup::CompactionReport>,
+}
+
+/// The compaction AC1 ("budget overrun triggers compaction before growth continues") requires
+/// when Layer 1 itself cannot safely discard rows - this module's own doc, "Why Layer 1 has no
+/// compaction action here," and `docs/architecture/PERSISTENCE_MODEL.md`'s "Self-budget": "Safety-
+/// critical current facts may force analytical sampling to degrade rather than exceed the
+/// budget." [`check_current_state_budget`] alone only ever reports the overrun; nothing consumed
+/// that report to change behavior (round 2 independent verifier review's required repair). This
+/// function is that consumer: when Layer 1 is over `limits.max_current_state_rows()`, it forces
+/// Layer 3's raw-sample tier down to `degraded_raw_sample_ceiling` (a caller-supplied threshold,
+/// not [`BudgetLimits::max_raw_samples`] itself - "exact periods and budgets are product policy,
+/// not hard-coded architecture constants" applies to the degraded ceiling exactly as it does to
+/// every other threshold this module takes) rather than leaving Layer 1's own pressure with no
+/// consequence at all. Layer 1's own rows are never touched here, matching this module's standing
+/// design: discarding reconstructible current facts is data loss, not compaction.
+pub fn enforce_current_state_pressure(
+    store: &CurrentStateStore,
+    memory: &mut AnalyticalMemory,
+    limits: &BudgetLimits,
+    degraded_raw_sample_ceiling: u64,
+    policy: &RetentionPolicy,
+    now: u64,
+) -> Result<PressureReport, PressureError> {
+    let current_state =
+        check_current_state_budget(store, limits).map_err(PressureError::CurrentState)?;
+    let rollup_degraded = match current_state {
+        BudgetStatus::OverBudget { .. } => memory
+            .compact_if_over(degraded_raw_sample_ceiling, policy, now)
+            .map_err(PressureError::Rollup)?,
+        BudgetStatus::WithinBudget { .. } => None,
+    };
+    Ok(PressureReport {
+        current_state,
+        rollup_degraded,
+    })
+}
+
+/// Rebuilds Layer 1 with `artifacts`, then immediately runs [`enforce_current_state_pressure`] -
+/// the single admission-checked call [`CurrentStateStore::rebuild`] alone does not give (self-
+/// review, round 2 pre-independent-round-3: `rebuild` is the only write path to Layer 1 and took
+/// no `BudgetLimits`, so `enforce_current_state_pressure` exists but nothing called it - "a
+/// callable-but-uncalled function does not supply" the compaction AC1 requires). This is the
+/// same "wrap the write itself" shape [`append_within_ledger_budget`]/
+/// [`record_sample_within_rollup_budget`] already give Layer 2/3; unlike those two, Layer 1's
+/// own budget check only ever runs *after* the write, never before, because `rebuild` always
+/// replaces the entire table's content in one transaction (this crate's own "Reconstructible by
+/// construction") - there is no per-row admission decision to make ahead of it, only a
+/// post-write pressure response.
+pub fn rebuild_within_current_state_budget(
+    store: &mut CurrentStateStore,
+    memory: &mut AnalyticalMemory,
+    artifacts: &[AgentArtifact],
+    limits: &BudgetLimits,
+    degraded_raw_sample_ceiling: u64,
+    policy: &RetentionPolicy,
+    now: u64,
+) -> Result<PressureReport, PressureError> {
+    store
+        .rebuild(artifacts)
+        .map_err(PressureError::CurrentState)?;
+    enforce_current_state_pressure(
+        store,
+        memory,
+        limits,
+        degraded_raw_sample_ceiling,
+        policy,
+        now,
+    )
 }
 
 /// Compacts the event ledger down to [`BudgetLimits::max_ledger_events`] if it is currently over
@@ -529,6 +638,126 @@ mod tests {
             .expect("one over the limit must run compact");
         assert_eq!(report.raw_samples_promoted, 6);
         assert_eq!(memory.raw_sample_count().expect("count"), 0);
+    }
+
+    #[test]
+    fn enforce_current_state_pressure_leaves_rollup_untouched_within_budget() {
+        let mut store = CurrentStateStore::open_in_memory().expect("open");
+        store
+            .rebuild(&[artifact("artifact-0001")])
+            .expect("rebuild within budget");
+        let mut memory = AnalyticalMemory::open_in_memory().expect("open");
+        let policy = RetentionPolicy::new(10, 20, 30).expect("policy");
+        let limits = BudgetLimits::new(5, 1, 100).expect("limits");
+        for i in 0..6 {
+            memory.record_sample(sample(i)).expect("record");
+        }
+
+        let report =
+            enforce_current_state_pressure(&store, &mut memory, &limits, 1, &policy, 1_000_000)
+                .expect("enforce");
+
+        assert_eq!(
+            report.current_state,
+            BudgetStatus::WithinBudget { count: 1, limit: 5 }
+        );
+        assert!(
+            report.rollup_degraded.is_none(),
+            "Layer 3 must not be forced to degrade while Layer 1 is within its own budget"
+        );
+        assert_eq!(
+            memory.raw_sample_count().expect("count"),
+            6,
+            "no degradation should mean no samples were compacted away"
+        );
+    }
+
+    #[test]
+    fn enforce_current_state_pressure_degrades_rollup_when_current_state_is_over_budget() {
+        // Round 2 independent verifier review's required repair: `check_current_state_budget`
+        // reporting `OverBudget` must actually change behavior - `docs/architecture/
+        // PERSISTENCE_MODEL.md`'s documented mitigation is Layer 3 degrading, not Layer 1
+        // discarding its own rows.
+        let mut store = CurrentStateStore::open_in_memory().expect("open");
+        store
+            .rebuild(&[artifact("artifact-0001"), artifact("artifact-0002")])
+            .expect("rebuild over budget");
+        let mut memory = AnalyticalMemory::open_in_memory().expect("open");
+        let policy = RetentionPolicy::new(10, 20, 30).expect("policy");
+        // `limits.max_raw_samples` is deliberately generous (100) so Layer 3's own budget alone
+        // would never trigger compaction here - only Layer 1's pressure, via the
+        // caller-supplied degraded ceiling of 1, must.
+        let limits = BudgetLimits::new(1, 1, 100).expect("limits");
+        for i in 0..6 {
+            memory.record_sample(sample(i)).expect("record");
+        }
+
+        let report =
+            enforce_current_state_pressure(&store, &mut memory, &limits, 1, &policy, 1_000_000)
+                .expect("enforce");
+
+        assert_eq!(
+            report.current_state,
+            BudgetStatus::OverBudget { count: 2, limit: 1 }
+        );
+        assert!(
+            report.rollup_degraded.is_some(),
+            "Layer 1 over budget must force a Layer 3 degradation attempt"
+        );
+        assert_eq!(
+            memory.raw_sample_count().expect("count"),
+            0,
+            "degradation must actually reduce the raw-sample tier, not just report the overrun"
+        );
+        assert_eq!(
+            store.row_count().expect("row_count"),
+            2,
+            "Layer 1's own rows must never be discarded by this function"
+        );
+    }
+
+    #[test]
+    fn rebuild_within_current_state_budget_wires_the_write_path_to_enforcement() {
+        // Self-review, round 2 pre-independent-round-3: `CurrentStateStore::rebuild` - the only
+        // write path to Layer 1 - called no budget-related function at all, so
+        // `enforce_current_state_pressure` existed but nothing ever invoked it from a real
+        // write. This regression proves the composed, single-call write path actually degrades
+        // Layer 3 immediately after a rebuild that lands Layer 1 over budget, with no separate
+        // call required.
+        let mut store = CurrentStateStore::open_in_memory().expect("open");
+        let mut memory = AnalyticalMemory::open_in_memory().expect("open");
+        let policy = RetentionPolicy::new(10, 20, 30).expect("policy");
+        let limits = BudgetLimits::new(1, 1, 100).expect("limits");
+        for i in 0..6 {
+            memory.record_sample(sample(i)).expect("record");
+        }
+
+        let report = rebuild_within_current_state_budget(
+            &mut store,
+            &mut memory,
+            &[artifact("artifact-0001"), artifact("artifact-0002")],
+            &limits,
+            1,
+            &policy,
+            1_000_000,
+        )
+        .expect("rebuild_within_current_state_budget");
+
+        assert_eq!(store.row_count().expect("row_count"), 2);
+        assert_eq!(
+            report.current_state,
+            BudgetStatus::OverBudget { count: 2, limit: 1 }
+        );
+        assert!(
+            report.rollup_degraded.is_some(),
+            "a single rebuild call landing Layer 1 over budget must itself trigger Layer 3 \
+             degradation - no separate enforce_current_state_pressure call should be required"
+        );
+        assert_eq!(
+            memory.raw_sample_count().expect("count"),
+            0,
+            "the composed call must actually degrade Layer 3, not just report the overrun"
+        );
     }
 
     #[test]

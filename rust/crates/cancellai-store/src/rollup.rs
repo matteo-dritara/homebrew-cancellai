@@ -156,6 +156,9 @@ const MIGRATIONS: &[&str] = &["
         first_bucket_start INTEGER NOT NULL,
         last_bucket_start INTEGER NOT NULL
     ) STRICT;
+
+    CREATE TABLE cancellai_rollup_identity (marker TEXT PRIMARY KEY) STRICT;
+    INSERT INTO cancellai_rollup_identity (marker) VALUES ('cancellai-analytical-memory-v1');
 "];
 
 /// A scoped copy of `crate::apply_migrations`'s/`crate::ledger::apply_migrations`'s own logic -
@@ -171,6 +174,47 @@ fn apply_migrations(conn: &Connection, migrations: &[&str]) -> Result<(), Rollup
         tx.execute_batch(migration)?;
         tx.execute_batch(&format!("PRAGMA user_version = {next_version}"))?;
         tx.commit()?;
+    }
+    Ok(())
+}
+
+/// The value [`MIGRATIONS`]' first migration inserts into `cancellai_rollup_identity` -
+/// analytical memory's own copy of `crate::verify_store_identity`'s marker check (SI-026,
+/// self-review, round 2 pre-independent-round-3: the same "hand-crafted file at a matching
+/// `user_version`, opened and reset with no ownership check" reproduction round 2 ran against
+/// `CurrentStateStore` applies identically to this module - not independently reproduced here,
+/// but structurally identical, since this module's `open`/`reset` had exactly the same shape
+/// `EventLedger`'s did before its own fix). A separate per-module marker rather than a shared
+/// one, matching this crate's own "each layer keeps its own migration history" precedent.
+const ROLLUP_IDENTITY_MARKER: &str = "cancellai-analytical-memory-v1";
+
+/// Refuses to treat `conn` as valid analytical memory unless it carries this module's own
+/// identity marker - see [`ROLLUP_IDENTITY_MARKER`]'s own doc.
+fn verify_rollup_identity(conn: &Connection) -> Result<(), RollupError> {
+    let marker: Result<String, rusqlite::Error> =
+        conn.query_row("SELECT marker FROM cancellai_rollup_identity", [], |row| {
+            row.get(0)
+        });
+    match marker {
+        Ok(value) if value == ROLLUP_IDENTITY_MARKER => Ok(()),
+        _ => Err(RollupError(
+            "this database does not carry cancellai-store's own rollup identity marker - \
+             refusing to open it as analytical memory rather than risk treating provider-owned \
+             or unrelated content as this crate's own"
+                .into(),
+        )),
+    }
+}
+
+/// Refuses (`Err`) a file whose `PRAGMA user_version` is already past the first migration but
+/// which does not carry [`ROLLUP_IDENTITY_MARKER`] - checked *before* [`apply_migrations`] runs
+/// anything further, so a file that turns out not to be this crate's own is never mutated on the
+/// way to being refused. Matching `crate::verify_store_identity_before_migrating`'s/
+/// `crate::ledger::verify_ledger_identity_before_migrating`'s identical reasoning.
+fn verify_rollup_identity_before_migrating(conn: &Connection) -> Result<(), RollupError> {
+    let current_version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if current_version > 0 {
+        verify_rollup_identity(conn)?;
     }
     Ok(())
 }
@@ -802,7 +846,9 @@ impl AnalyticalMemory {
     /// [`crate::CurrentStateStore::open`]'s and [`crate::ledger::EventLedger::open`]'s.
     pub fn open(path: &Path) -> Result<Self, RollupError> {
         let conn = Connection::open(path)?;
+        verify_rollup_identity_before_migrating(&conn)?;
         apply_migrations(&conn, MIGRATIONS)?;
+        verify_rollup_identity(&conn)?;
         Ok(Self { conn })
     }
 
@@ -810,6 +856,7 @@ impl AnalyticalMemory {
     pub fn open_in_memory() -> Result<Self, RollupError> {
         let conn = Connection::open_in_memory()?;
         apply_migrations(&conn, MIGRATIONS)?;
+        verify_rollup_identity(&conn)?;
         Ok(Self { conn })
     }
 
@@ -1691,6 +1738,59 @@ mod tests {
             std::fs::read_to_string(&provider_artifact_path).expect("read provider artifact"),
             "a real provider session transcript",
             "reset must never touch a provider artifact's content"
+        );
+
+        std::fs::remove_dir_all(&dir).expect("clean up test dir");
+    }
+
+    #[test]
+    fn open_refuses_a_provider_owned_file_that_only_mimics_this_modules_schema() {
+        // Self-review, round 2 pre-independent-round-3: the exact reproduction round 2 used
+        // against `CurrentStateStore` applies identically here - a hand-crafted file matching
+        // this module's own migrated schema and `user_version` would previously have been
+        // accepted by `open` with no ownership check at all.
+        let dir = std::env::temp_dir().join(format!(
+            "cancellai-store-rollup-test-open-mimic-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        let provider_db_path = dir.join("provider-owned.sqlite3");
+        {
+            let conn = Connection::open(&provider_db_path).expect("open raw sqlite file");
+            conn.execute_batch(
+                "CREATE TABLE raw_samples (
+                    sample_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    metric TEXT NOT NULL,
+                    recorded_at INTEGER NOT NULL,
+                    provider_id TEXT,
+                    category TEXT,
+                    value REAL NOT NULL
+                ) STRICT;
+                INSERT INTO raw_samples (metric, recorded_at, value)
+                    VALUES ('artifact_count', 1, 1.0);
+                PRAGMA user_version = 1;",
+            )
+            .expect("craft a provider-owned lookalike database");
+        }
+
+        let opened = AnalyticalMemory::open(&provider_db_path);
+        assert!(
+            opened.is_err(),
+            "open must refuse a file that mimics this module's schema/user_version but was \
+             never created by this module's own migrations"
+        );
+
+        let verify = Connection::open(&provider_db_path).expect("reopen raw sqlite file");
+        let row_count: i64 = verify
+            .query_row("SELECT COUNT(*) FROM raw_samples", [], |row| row.get(0))
+            .expect("count provider rows");
+        assert_eq!(
+            row_count, 1,
+            "a refused open must leave the provider-owned file completely untouched"
         );
 
         std::fs::remove_dir_all(&dir).expect("clean up test dir");

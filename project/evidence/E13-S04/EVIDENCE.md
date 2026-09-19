@@ -238,12 +238,19 @@ precedent for the same situation.
 
 ## Residual risks
 
-- **Layer 1 has no compaction action, only an observation.** `check_current_state_budget` reports
-  whether `CurrentStateStore` is over budget but takes no action - `docs/architecture/
-  PERSISTENCE_MODEL.md`'s own "safety-critical current facts may force analytical sampling to
-  degrade" names the actual mitigation (Layer 3 sampling degrading under Layer 1 pressure), which
-  needs a live Guardian caller this workspace does not have yet. No story ID assigned; flagged
-  here rather than invented, matching this crate's own "primitive, not orchestrator" precedent.
+- **Superseded by round 2 independent verifier review and its own repair.** The original text of
+  this entry ("Layer 1 has no compaction action, only an observation") was rejected as an accepted
+  residual by `project/evidence/E13-VERIFIER-REVIEW-ROUND2.md`: an observation nothing consumed
+  was not the compaction AC1 requires. The repair added `budget::enforce_current_state_pressure`
+  (forces Layer 3's raw-sample tier down to a caller-supplied ceiling whenever Layer 1 crosses
+  budget) and `budget::rebuild_within_current_state_budget` (wires that check into
+  `CurrentStateStore::rebuild`, the only write path Layer 1 has, after a self-review found the
+  first version of the repair left the enforcement function uncalled from any real write). What
+  remains a genuine residual, not yet closed: no live caller in this workspace calls
+  `rebuild_within_current_state_budget` instead of raw `rebuild` yet - that wiring is Guardian
+  orchestration this workspace does not have, matching this crate's own "primitive, not
+  orchestrator" precedent, and product-level threshold/ceiling values remain a caller's choice,
+  not a ratified capacity policy.
 - **`reset_local_state` is sequential across three files, not one atomic operation.** A failure
   partway (e.g. Layer 2's file is locked by another process while Layer 1's reset already
   committed) leaves Layer 1 empty and Layers 2/3 unchanged, not a coordinated all-or-nothing

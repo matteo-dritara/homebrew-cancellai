@@ -41,6 +41,8 @@ distinguished by the next round, which is why the ceiling matters.
 | E12 | 6 | independent | 3 | 0 | 0 | 0% |
 | E13 | 1 | **self** | - | - | - | **not machine-readable** |
 | E13 | 1 | independent | 5 | 4 | 4 | 80% |
+| E13 | 2 | **self** | 2 | 0 | 0 | 0% |
+| E13 | 2 | independent | 4 | 3 | 3 | 75% |
 | E16 | 1 | independent | 6 | 0 | 0 | 0% |
 | E17 | 1 | independent | 6 | 0 | 0 | 0% |
 | E20 | 1 | independent | 3 | 3 | 3 | 100% |
@@ -84,6 +86,7 @@ independent samples, and the population estimate collapses to what one round alr
 | E10 | 1 | 1 | 1 | 1.0 | 0.0 |
 | E11 | 1 and 1 | 0 | 2 | 0 | undefined - disjoint findings | at least 2 were present |
 | E12 | 3 | 2 | 2 | 3.0 | 0.0 |
+| E13 | 1 and 2 | 4 | 0 | 0 | undefined - disjoint findings | at least 4 were present |
 | E20 | 1 and 2 | 3 | 0 | 0 | undefined - disjoint findings | at least 3 were present |
 
 ## Evidence-ledger integrity
