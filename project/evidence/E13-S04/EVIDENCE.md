@@ -16,7 +16,8 @@
 
 ## Outcome
 
-PASS
+PARTIAL - see "Round 3 independent verifier review" below; AC2/SI-026 has a surviving,
+independently-confirmed gap. Story returned to `in_progress`.
 
 ## Scope
 
@@ -386,9 +387,52 @@ what makes the "before" check's own effectiveness depend on it actually running 
 limit, not only when already over it - a rollup-specific consequence of round 1's shared "before
 vs. after" repair shape, not a shared root cause across both primitives.
 
+## Round 3 independent verifier review (`project/evidence/E13-VERIFIER-REVIEW-ROUND3.md`) - FAIL, owner-authorized cost-ceiling round
+
+Round 3 confirmed round 2's Repair A (budget enforcement now genuinely wired via
+`rebuild_within_current_state_budget`) and the self-review's own fix to it. It found a new,
+deeper problem with Repair B: **the identity marker is a fixed string compiled into the crate's
+own source, not a secret or a bound capability - so it is not ownership, it is a password
+published in the code that enforces it.** An independent adversarial reproduction crafted a
+synthetic "provider" SQLite file for each of the three layers, each carrying the exact schema,
+`user_version`, and the literal marker string (`cancellai-current-state-store-v1` /
+`cancellai-event-ledger-v1` / `cancellai-analytical-memory-v1`) copied straight out of this
+crate's own source. `open()` accepted all three; `reset()` erased all three. Verdict: FAIL on
+E13-S04, violating AC2, SI-026, and Constitution C-10.
+
+Required repair, per the review: bind `open()`/`reset()` to handles derived only from an opaque,
+cancellAI-owned local-state-root capability - a provider- or caller-supplied path must not be
+sufficient on its own, no matter what content it carries. The static marker may still serve as a
+corruption/migration sanity check; it cannot be the authorization to erase a file.
+
+**Why this is not repaired in this same pass.** `cancellai-store` does not depend on
+`cancellai-safety` (`tests::cargo_toml_declares_no_dependency_on_cancellai_safety` pins this
+directly) and must not start now - `cancellai-safety::root_capability::ApprovedRoot`/
+`BoundedPath` is exactly the "opaque, cancellAI-owned root" primitive the required repair
+describes, but it lives in the kernel ring specifically so outer-ring crates like this one do not
+reach for it directly (ADR-0019). A real fix therefore needs either a store-local capability type
+constructed only by a caller that has already established (through some other, trusted means)
+that a path is cancellAI's own state root, or - more likely, given this crate's own standing
+precedent - the actual authorization boundary belongs one layer up, in whichever future
+orchestrator decides what path `open()` is ever called with in the first place (this workspace
+has no such caller yet, matching every other "primitive delivered, no orchestrator yet" residual
+this crate already carries). Attempting either inside `cancellai-store` itself, under review
+pressure, in the session that already spent its ADR-0025 cost-ceiling round, is not a call an
+executor makes unilaterally.
+
+Per ADR-0025, round 3 is the cost ceiling: **there is no round 4.** This defect is recorded as
+accepted residual risk and E13-S04 returns to `in_progress` (not `done`) until repaired and
+re-reviewed under a fresh review round of its own (a story-scoped round, per
+`docs/development/WORK_ITEM_MODEL.md`'s existing precedent for a CR4-adjacent carry-forward
+review during an epic that has already otherwise closed) - not a fourth epic-scope round. No new
+backlog story ID has been assigned; that is an explicit owner decision still pending as of this
+packet.
+
 ## Verifier verdict
 
 Round 1 (Codex, 2026-09-17): FAIL - see the defect above. The ledger/rollup admission gap is
 repaired in this packet; the Layer 1 observation-only design is an accepted residual, not a
-repair, pending a product decision. Round 2 pending (self-review above found and repaired one
-further defect in that repair ahead of round 2; it does not stand in for round 2).
+repair, pending a product decision. Round 2 (Codex): FAIL - see "Round 1 independent review
+repair" above (repaired). Round 3 (Codex, 2026-09-19, owner-authorized ADR-0025 cost-ceiling
+round): FAIL - see "Round 3 independent verifier review" above. **Not closed.** E13-S02, E13-S03,
+and E13-S05 passed round 3 independently and moved to `done`; E13-S04 remains `in_progress`.

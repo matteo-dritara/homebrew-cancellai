@@ -35,7 +35,7 @@
     {
       "id": "E13-S02",
       "title": "Append-only operational ledger",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Record significant classification/policy/mutation/lifecycle events without storing artifact content.",
       "change_risk": "CR2",
       "dependencies": [
@@ -56,7 +56,7 @@
     {
       "id": "E13-S03",
       "title": "Analytical rollups and retention",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Aggregate fine-grained measurements into hourly/daily/long-term statistics with bounded retention.",
       "change_risk": "CR2",
       "dependencies": [
@@ -77,7 +77,7 @@
     {
       "id": "E13-S04",
       "title": "Self-budget and local reset",
-      "status": "ready_for_review",
+      "status": "in_progress",
       "outcome": "Enforce cancellAI state/log budgets and provide reset of cancellAI state only.",
       "change_risk": "CR3",
       "dependencies": [
@@ -103,7 +103,7 @@
     {
       "id": "E13-S05",
       "title": "Incremental inventory reuse",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Reuse persisted facts safely between scans while invalidating on identity, metadata, provider-knowledge, and completeness changes.",
       "change_risk": "CR3",
       "dependencies": [
