@@ -2037,7 +2037,7 @@ Extend observation/governance to remote development environments without weakeni
 
 ### E18-S01 - Remote target abstraction
 
-**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E16-S02 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR3` | **Dependencies:** E16-S02 | **Safety obligations:** none
 
 **Outcome.** Model SSH/dev-container/CI-runner targets as explicit machines with independent capabilities and trust.
 
@@ -2056,7 +2056,7 @@ Extend observation/governance to remote development environments without weakeni
 
 ### E18-S02 - Local-agent remote execution boundary
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E18-S01 | **Safety obligations:** SI-031
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** E18-S01 | **Safety obligations:** SI-031
 
 **Outcome.** Keep mutation execution on the target node under its local safety kernel even when a remote controller requests policy evaluation.
 
@@ -2075,7 +2075,7 @@ Extend observation/governance to remote development environments without weakeni
 
 ### E18-S03 - OSS/commercial protocol boundary
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E18-S02 | **Safety obligations:** SI-031
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** E18-S02 | **Safety obligations:** SI-031
 
 **Outcome.** Define an open local node protocol and separate optional fleet-control services without reducing local functionality.
 

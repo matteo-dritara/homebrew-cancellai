@@ -96,9 +96,9 @@ No durable remote state exists to migrate; production crash-recovery is not clai
 
 ## Owner decision
 
-`ACCEPT_WITH_RECORDED_RESIDUALS | REJECT` - pending owner decision. If accepted: acceptable only
-as an unwired library primitive with no production transport; the residuals above (durable
-replay persistence and full integration) must be closed before this boundary can authorize any
-real remote mutation.
+`ACCEPT_WITH_RECORDED_RESIDUALS`
 
-Owner note: _(pending)_
+Owner note: Accepted 2026-09-19 as an unwired library primitive with no production transport.
+The residuals above (durable replay-state persistence and full transport/audit integration) are
+accepted as tracked, open risk - not resolved, and must be closed before this boundary can ever
+authorize real remote mutation.

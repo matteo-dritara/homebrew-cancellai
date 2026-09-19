@@ -3,8 +3,8 @@
 - Commit/PR: local checkpoint on `main`, `rust/crates/cancellai-model/src/remote_target.rs` +
   `lib.rs` + `docs/architecture/TARGET.md` + `CHANGELOG.md` + `project/epics/E18.json`
 - Executor: Claude
-- Independent verifier: none yet - awaiting E18's epic-scope review round (ADR-0014/ADR-0025),
-  once every story in E18 reaches `ready_for_review`
+- Independent verifier: Codex - round 1 PASS (`project/evidence/E18-VERIFIER-REVIEW.md`); not
+  re-reviewed in rounds 2/3, which were scoped to E18-S02/S03 only
 - Change Risk: CR3 (declared CR2 at planning; raised at commit time - see
   `project/epics/E18.json`'s `risk_reclassification_note` and
   `docs/architecture/TARGET.md`'s "Remote target vocabulary (E18-S01)")
@@ -126,4 +126,8 @@ surface workspace-wide"); this change touches neither. `cargo +nightly miri` - w
 
 ## Verifier verdict
 
-(blank - awaiting E18's epic-scope independent review round)
+Round 1 (Codex, 2026-09-19): PASS, no residuals - `InventoryOrigin::Local` cannot compare equal
+to a remote origin (even empty/`local`/`localhost`/Unicode/control-character ids), and
+`state_is_current()` treats anything but `Connected` as stale. Owner accepted 2026-09-19 (see
+E18-S02/S03's own `SAFETY_VERDICT.md` for the epic-scope acceptance this story's PASS was bundled
+into for status purposes; this story is CR3 and does not require its own `SAFETY_VERDICT.md`).

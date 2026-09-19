@@ -66,7 +66,7 @@ remains E18-S02's primitive to roll back if ever needed - see that story's own S
 
 ## Owner decision
 
-`ACCEPT_WITH_RECORDED_RESIDUALS | REJECT` - pending owner decision, and dependent on the same
-decision for E18-S02 (this story's boundary claim is not independently meaningful without it).
+`ACCEPT_WITH_RECORDED_RESIDUALS`
 
-Owner note: _(pending)_
+Owner note: Accepted 2026-09-19, alongside the identical decision for E18-S02 (this story's
+boundary claim is not independently meaningful without it). Same residuals apply.
