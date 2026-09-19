@@ -13,21 +13,26 @@
 
 ## Outcome
 
-PASS
+PARTIAL - see "Round 2 independent verifier review" below; this story's AC2 boundary claim
+inherits E18-S02's F1 defect. Story remains `ready_for_review`, not closed.
 
 ## Acceptance Criteria Evidence
 
 | AC | Text (verbatim, `project/epics/E18.json`) | Evidence | Result |
 | --- | --- | --- | --- |
-| AC1 | "Single-machine workflows remain fully functional without account/cloud." | `cancellai-cli`'s and `cancellai-tui`'s `Cargo.toml`s carry no networking dependency (checked directly - neither lists any HTTP/socket/gRPC crate). `a_local_authority_decision_requires_zero_trusted_remote_controllers` proves `effective_authority` computes a full, deterministic result from purely local `AuthorityInputs` with an empty `TrustedRemoteControllers` present but never consulted - the local authority path needs nothing from the remote layer to function. | PASS |
-| AC2 | "Commercial services add coordination, not local destructive capabilities." | `docs/PRODUCT.md`'s "Open-source and commercial boundary" section now names the concrete mechanism: `RemoteExecutionRequest` (E18-S02) **is** the open local node protocol - any coordinator, commercial or self-hosted, produces the identical signed document; verification narrows every accepted request to one `target`/`requested_authority` pair capped by a locally-set ceiling, never a plan or a privileged second path. This is a documentation update pointing at E18-S02's already-tested structural guarantee (`a_request_asking_above_the_controllers_ceiling_is_refused_not_clamped`, `remote_and_local_user_requested_reach_identical_effective_authority`), not new enforcement logic - CR1 has none to add. | PASS |
-| AC3 | "If no commercial or fleet-coordination service is configured or reachable, single-machine functionality is not reduced or refused." (added at commit time - EARS-compliant restatement of AC1's own intent, required once the risk-floor gate raised this story to CR4; see `risk_reclassification_note`) | `a_local_authority_decision_requires_zero_trusted_remote_controllers` - the same test cited for AC1 - is precisely this criterion's negative form made concrete: an empty `TrustedRemoteControllers` (the "no coordination service configured" case) never reduces or refuses `effective_authority`'s output. | PASS |
+*(Test names below are current as of round 2's repair; see "Round 1 independent verifier
+review" and "ADR-0032 implementation" further down for what changed and why this table's PASS
+marks do not mean the story is closed - round 2 found a further defect, F1, tracked there.)*
+
+| AC1 | "Single-machine workflows remain fully functional without account/cloud." | `cancellai-cli`'s and `cancellai-tui`'s `Cargo.toml`s carry no networking dependency (checked directly - neither lists any HTTP/socket/gRPC crate). `local_authority_is_unaffected_by_an_unconfigured_commercial_service` proves `effective_authority` computes a full, deterministic result from purely local `AuthorityInputs`, unaffected by a real remote-verification refusal computed alongside it - the local authority path needs nothing from the remote layer to function. | PASS |
+| AC2 | "Commercial services add coordination, not local destructive capabilities." | `docs/PRODUCT.md`'s "Open-source and commercial boundary" section now names the concrete mechanism: `RemoteExecutionRequest` (E18-S02) **is** the open local node protocol - any coordinator, commercial or self-hosted, produces the identical signed document; verification narrows every accepted request to one `target`/`requested_action` pair (a semantic `ActionClass`, never an `AuthorityLevel` directly, ADR-0032) capped by a locally-set ceiling, never a plan or a privileged second path. This is a documentation update pointing at E18-S02's already-tested structural guarantee (`a_request_asking_above_the_controllers_ceiling_is_refused_not_clamped`, `remote_and_local_user_requested_reach_identical_effective_authority`), not new enforcement logic - CR1 has none to add. | PASS |
+| AC3 | "If no commercial or fleet-coordination service is configured or reachable, single-machine functionality is not reduced or refused." (added at commit time - EARS-compliant restatement of AC1's own intent, required once the risk-floor gate raised this story to CR4; see `risk_reclassification_note`) | `local_authority_is_unaffected_by_an_unconfigured_commercial_service` - the same test cited for AC1 - is precisely this criterion's negative form made concrete: an empty `TrustedRemoteControllers` (the "no coordination service configured" case) never reduces or refuses `effective_authority`'s output. | PASS |
 
 ## Safety Evidence
 
 | Invariant | Counterexample tested | Evidence | Result |
 | --- | --- | --- | --- |
-| SI-031 (added to this story's `safety_obligations` at the same commit-time reclassification that raised it to CR4 - see `risk_reclassification_note`) | A local authority decision silently depending on, or being weakened by, the presence/absence of remote-controller configuration | `a_local_authority_decision_requires_zero_trusted_remote_controllers`: `effective_authority` is called with an empty `TrustedRemoteControllers` present in scope but never referenced, and still returns the correct, fully-local result | PASS |
+| SI-031 (added to this story's `safety_obligations` at the same commit-time reclassification that raised it to CR4 - see `risk_reclassification_note`) | A local authority decision silently depending on, or being weakened by, the presence/absence of remote-controller configuration | `local_authority_is_unaffected_by_an_unconfigured_commercial_service`: `effective_authority` is called alongside a real, refused remote-verification attempt through the public log, and still returns the correct, fully-local result | PASS |
 
 No new safety-relevant behavior was added; this story documents and offline-conformance-tests a
 boundary E18-S01/E18-S02 already enforce and test.
@@ -119,6 +124,16 @@ remains unrepaired for the reason recorded in E18-S02's evidence (kernel-ring/no
 architectural constraint, needs a future outer-ring caller); this story's own boundary claim
 still cannot be called fully closed until that is resolved.
 
+## Round 2 independent verifier review (`project/evidence/E18-VERIFIER-REVIEW-ROUND2.md`) - FAIL
+
+FAIL - inherited from E18-S02's F1 (`VerifiedRemoteIntent` publicly forgeable/mutable): this
+story's AC2 claim that `RemoteExecutionRequest`/verification is "the open local node protocol...
+never a privileged second path" rests on E18-S02's verified-result type actually being
+non-bypassable, which round 2 showed it was not. F1 is repaired in E18-S02's own evidence packet
+(private fields, read-only accessors, `compile_fail` regression). This story's own local-authority
+test (`local_authority_is_unaffected_by_an_unconfigured_commercial_service`) was independently
+re-confirmed as real data flow, not a re-raised finding.
+
 ## Residual risks
 
 - The claim "no networking dependency" is verified by direct inspection of `Cargo.toml` today,
@@ -134,4 +149,7 @@ still cannot be called fully closed until that is resolved.
 
 ## Verifier verdict
 
-(blank - awaiting E18's epic-scope independent review round)
+Round 1 (Codex, 2026-09-19): FAIL - test-quality finding repaired; E18-S02's own two findings
+inherited. Round 2 (Codex, 2026-09-19): FAIL - inherited E18-S02's F1, now repaired there. **Not
+closed.** No CR4 Safety Verdict is included here; per ADR-0025 a third round is the cost ceiling
+and needs an explicit owner decision to spend.

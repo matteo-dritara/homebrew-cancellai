@@ -249,12 +249,62 @@ impl fmt::Display for RemoteExecutionError {
 /// caller computes `crate::authority::minimum_authority_for(requested_action)` and feeds that
 /// into [`crate::authority::AuthorityInputs::user_requested`] as its own, separate step
 /// (ADR-0032: never a raw `AuthorityLevel` carried by the request itself).
+///
+/// Every field is private with a read-only accessor below: round 2 independent verifier review
+/// found that four `pub` fields made this type a claim with no enforcement behind it - any
+/// external caller could write `VerifiedRemoteIntent { controller_id: "not-trusted".into(), .. }`
+/// directly, bypassing signature/replay/ceiling/target checks entirely, or mutate an
+/// already-verified value's `target`/`requested_action` after the fact and have the changed
+/// value still read as "verified." The only way to obtain one is
+/// [`RemoteExecutionLog::verify_and_record`], and once obtained it cannot be altered - the same
+/// opaque-wrapper shape [`crate::trust_promotion::TrustedTier`] and [`crate::build_channel::
+/// BuildChannel`] already use for the identical reason (a freely constructible value must never
+/// stand in for one that passed a required check).
+///
+/// This doctest is the regression proving an external caller cannot construct one directly:
+///
+/// ```compile_fail
+/// # use cancellai_model::{ActionClass, MachineId};
+/// # use cancellai_safety::VerifiedRemoteIntent;
+/// // Every field is private: no struct-literal construction from outside this crate.
+/// let forged = VerifiedRemoteIntent {
+///     controller_id: "not-trusted".into(),
+///     sequence: 1,
+///     target: MachineId::new("synthetic-node"),
+///     requested_action: ActionClass::Delete,
+/// };
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VerifiedRemoteIntent {
-    pub controller_id: String,
-    pub sequence: u64,
-    pub target: MachineId,
-    pub requested_action: ActionClass,
+    controller_id: String,
+    sequence: u64,
+    target: MachineId,
+    requested_action: ActionClass,
+}
+
+impl VerifiedRemoteIntent {
+    /// Which [`TrustedRemoteController`] this intent was verified against.
+    pub fn controller_id(&self) -> &str {
+        &self.controller_id
+    }
+
+    /// The sequence [`RemoteExecutionLog::verify_and_record`] recorded as the newest accepted
+    /// one from this controller.
+    pub fn sequence(&self) -> u64 {
+        self.sequence
+    }
+
+    /// The target this intent was verified for - always equal to whatever `expected_target` the
+    /// caller passed to [`RemoteExecutionLog::verify_and_record`], never anything else.
+    pub fn target(&self) -> &MachineId {
+        &self.target
+    }
+
+    /// What was requested, already proven to require no more than the controller's own
+    /// `authority_ceiling` via [`crate::authority::minimum_authority_for`].
+    pub fn requested_action(&self) -> ActionClass {
+        self.requested_action
+    }
 }
 
 fn decode_hex(text: &str) -> Option<Vec<u8>> {
@@ -449,9 +499,9 @@ mod tests {
 
         let verified =
             verify_remote_execution_request(&request, &policy, &target(), 1_500).expect("verify");
-        assert_eq!(verified.controller_id, "fleet-1");
-        assert_eq!(verified.requested_action, ActionClass::Quarantine);
-        assert_eq!(verified.target, MachineId::new("ci-runner-1"));
+        assert_eq!(verified.controller_id(), "fleet-1");
+        assert_eq!(verified.requested_action(), ActionClass::Quarantine);
+        assert_eq!(verified.target(), &MachineId::new("ci-runner-1"));
     }
 
     #[test]
@@ -558,6 +608,33 @@ mod tests {
         assert!(verify_remote_execution_request(&request, &policy, &target(), 1_500).is_ok());
     }
 
+    /// Every [`ActionClass`] variant, in an order that does not matter - see its own doc for
+    /// why this must stay exhaustive rather than an ordinary array literal a new variant could
+    /// silently bypass.
+    fn every_action_class() -> [ActionClass; 5] {
+        // Round 2 independent verifier review's test-quality finding: a plain array literal
+        // still compiles, unchanged, if a sixth `ActionClass` variant is ever added - silently
+        // no longer proving the claim for the new variant. This inner match has no wildcard arm,
+        // so adding a variant without also adding it below is a compile error (E0004,
+        // non-exhaustive match), not a silently-stale regression.
+        fn exhaustive(action: ActionClass) -> ActionClass {
+            match action {
+                ActionClass::Observe
+                | ActionClass::Quarantine
+                | ActionClass::Archive
+                | ActionClass::Restore
+                | ActionClass::Delete => action,
+            }
+        }
+        [
+            exhaustive(ActionClass::Observe),
+            exhaustive(ActionClass::Quarantine),
+            exhaustive(ActionClass::Archive),
+            exhaustive(ActionClass::Restore),
+            exhaustive(ActionClass::Delete),
+        ]
+    }
+
     #[test]
     fn no_action_class_ever_maps_to_recommend_or_autopilot() {
         // ADR-0032's own central safety claim: `ActionClass`'s wire vocabulary can only ever
@@ -568,17 +645,11 @@ mod tests {
         let key = keypair();
         let policy = policy_with("fleet-1", AuthorityLevel::Autopilot, &key);
 
-        for action in [
-            ActionClass::Observe,
-            ActionClass::Quarantine,
-            ActionClass::Archive,
-            ActionClass::Restore,
-            ActionClass::Delete,
-        ] {
+        for action in every_action_class() {
             let request = signed_request(&key, "fleet-1", 1, None, action);
             let verified = verify_remote_execution_request(&request, &policy, &target(), 1_500)
                 .expect("verify");
-            let resolved = minimum_authority_for(verified.requested_action);
+            let resolved = minimum_authority_for(verified.requested_action());
             assert_ne!(
                 resolved,
                 AuthorityLevel::Recommend,
@@ -755,7 +826,7 @@ mod tests {
         };
 
         let from_remote = effective_authority(shared_inputs(minimum_authority_for(
-            verified.requested_action,
+            verified.requested_action(),
         )));
         let from_local = effective_authority(shared_inputs(AuthorityLevel::Quarantine));
         assert_eq!(from_remote, from_local);
