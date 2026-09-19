@@ -1431,7 +1431,7 @@ Persist only bounded metadata required for lifecycle, audit, undo, and Guardian 
 
 ### E13-S04 - Self-budget and local reset
 
-**Status:** `in_progress` | **Change Risk:** `CR3` | **Dependencies:** E13-S02, E13-S03 | **Safety obligations:** SI-026
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E13-S02, E13-S03 | **Safety obligations:** SI-026
 
 **Outcome.** Enforce cancellAI state/log budgets and provide reset of cancellAI state only.
 
@@ -1472,7 +1472,7 @@ Persist only bounded metadata required for lifecycle, audit, undo, and Guardian 
 
 ### E13-S06 - cancellAI-owned local-state root capability
 
-**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E13-S04 | **Safety obligations:** SI-026
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E13-S04 | **Safety obligations:** SI-026
 
 **Outcome.** Bind CurrentStateStore/EventLedger/AnalyticalMemory's reset-capable handles to a single, non-caller-suppliable, cancellAI-owned local-state root, closing the residual E13-S04's round-3 independent review recorded as accepted risk rather than a defect it could close itself.
 

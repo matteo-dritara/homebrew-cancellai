@@ -277,6 +277,43 @@ to it), but neither references it from source; orchestrating self-budget checks 
 `reset --local-state` flag is a later story's scope, matching `CurrentStateStore`'s and
 `EventLedger`'s own state at their own `ready_for_review`.
 
+### cancellAI-owned local-state root (E13-S06)
+
+E13-S04's own round-3 independent verifier review (`project/evidence/E13-VERIFIER-REVIEW-ROUND3.md`)
+reproduced a gap in the AC2/SI-026 boundary above: `CurrentStateStore::open`, `EventLedger::open`
+and `AnalyticalMemory::open` each took an arbitrary caller-supplied `Path`, and each accepted a
+hand-crafted, provider-owned file that carried the exact schema, `user_version`, and a byte-for-byte
+copy of the crate's own compiled-in identity marker - the marker is content inside a file the caller
+supplies, so whoever supplies the file controls it, and a check against it can only ever refuse a
+mimic that forgot the marker, never one that copied it. A per-install random secret was considered
+and rejected for the identical structural reason (an attacker who fabricates both the secret and the
+marker together controls both).
+
+E13-S06 closes this not with a better check but by removing the caller-suppliable path entirely:
+`cancellai_store::LocalStateRoot::resolve` is the crate's one public, reviewed way to establish
+cancellAI's own local-state root (creating the directory if absent, canonicalizing it once), and
+each layer's production `open()` now takes a `&LocalStateRoot` instead of a `Path`, deriving its own
+database's location by joining a filename the crate alone fixes
+(`current_state.sqlite3`/`event_ledger.sqlite3`/`analytical_memory.sqlite3`). A caller therefore
+names *which directory* is cancellAI's own local-state root, but never *which file* within it a
+layer opens - a provider-owned or marker-bearing mimic living anywhere else is unreachable from the
+production entry point by construction, not because its content is inspected and rejected. Each
+layer keeps a crate-private `open_at_path` alongside this for its own existing migration/marker/
+reopen unit tests, unchanged. The compiled-in identity marker stays in place as a corruption/
+migration sanity check on a file this crate already knows it owns; it is no longer the thing that
+decides ownership.
+
+**Disclosed residual:** `LocalStateRoot::resolve` canonicalizes the directory it is given once, but
+does not re-verify that identity (device/inode) on every subsequent use the way
+`cancellai-safety::ApprovedRoot::establish` does for provider roots. Reusing `ApprovedRoot` was
+considered and rejected, because it would add a dependency from `cancellai-store` onto
+`cancellai-safety`, contradicting this crate's own deliberate isolation stated above ("this crate
+never touches a provider path", "nothing this mechanism returns can reach the safety executor's
+mutation-execution capability even by accident"). A root directory replaced by a symlink between
+resolution and a later `open()` is therefore not defended against by this story; the threat this
+story closes is a mimicked file at a path a caller could otherwise have named, which is what round 3
+actually reproduced.
+
 ## Quarantine store
 
 Quarantine is logically separate from cancellAI metadata because it contains the user's original provider artifact. It is therefore governed by separate capacity and retention policy.

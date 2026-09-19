@@ -83,6 +83,18 @@ executor (`docs/architecture/PLATFORM_MODEL.md`); `scripts/check_rust_workspace.
 isolation check reflects this per-crate, not a blanket "model/safety depend on nothing but
 each other" (E03-S02).
 
+The reverse isolation holds deliberately, and is not merely the absence of a need so far:
+`cancellai-store` depends on neither `cancellai-safety` nor `cancellai-platform`
+(`tests::cargo_toml_declares_no_dependency_on_cancellai_safety`,
+`docs/architecture/PERSISTENCE_MODEL.md`), so nothing this outer-ring crate returns can reach
+the mutation executor's authority even by accident. E13-S06's `LocalStateRoot` - the capability
+binding `CurrentStateStore`/`EventLedger`/`AnalyticalMemory`'s production `open()` to a single,
+non-caller-suppliable root, closing a marker-mimicry gap round 3 independent verifier review
+found in E13-S04 - reuses none of `cancellai-safety::ApprovedRoot::establish`'s device/inode
+root-binding for exactly this reason, at the disclosed cost of not re-verifying the root
+directory's identity on every use the way `ApprovedRoot` does for provider roots
+(`docs/architecture/PERSISTENCE_MODEL.md`'s own "Disclosed residual").
+
 E03-S05 implements "provider adapters may not bypass the safety executor" for filesystem
 deletion specifically, and statically: `rust/crates/cancellai-platform/src/mutation.rs` is
 the *only* production source file in the workspace allowed to call

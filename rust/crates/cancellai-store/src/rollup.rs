@@ -188,6 +188,11 @@ fn apply_migrations(conn: &Connection, migrations: &[&str]) -> Result<(), Rollup
 /// one, matching this crate's own "each layer keeps its own migration history" precedent.
 const ROLLUP_IDENTITY_MARKER: &str = "cancellai-analytical-memory-v1";
 
+/// The fixed filename [`AnalyticalMemory::open`]'s production entry point joins onto a
+/// [`crate::LocalStateRoot`] - never a caller-suppliable path (E13-S06,
+/// `crate::local_state_root`'s own module doc).
+const ANALYTICAL_MEMORY_FILENAME: &str = "analytical_memory.sqlite3";
+
 /// Refuses to treat `conn` as valid analytical memory unless it carries this module's own
 /// identity marker - see [`ROLLUP_IDENTITY_MARKER`]'s own doc.
 fn verify_rollup_identity(conn: &Connection) -> Result<(), RollupError> {
@@ -841,10 +846,21 @@ pub struct AnalyticalMemory {
 }
 
 impl AnalyticalMemory {
-    /// Opens (creating if absent) the analytical-memory database at `path`, applying any
-    /// migration this database has not already seen. Use a path distinct from
-    /// [`crate::CurrentStateStore::open`]'s and [`crate::ledger::EventLedger::open`]'s.
-    pub fn open(path: &Path) -> Result<Self, RollupError> {
+    /// Opens (creating if absent) cancellAI's own analytical-memory database under `root`, at
+    /// the fixed [`ANALYTICAL_MEMORY_FILENAME`] this module alone names - never a path `root`'s
+    /// caller supplies directly (E13-S06: see `crate::local_state_root`'s own module doc, and
+    /// [`crate::CurrentStateStore::open`]'s identical treatment). Existing unit tests keep
+    /// exercising the underlying open/migrate/verify path directly via [`Self::open_at_path`].
+    pub fn open(root: &crate::LocalStateRoot) -> Result<Self, RollupError> {
+        Self::open_at_path(&root.path_for(ANALYTICAL_MEMORY_FILENAME))
+    }
+
+    /// Opens (creating if absent) the analytical-memory database at the exact `path` given,
+    /// applying any migration this database has not already seen. `pub(crate)` rather than a
+    /// public API: production code reaches this only through [`Self::open`]'s
+    /// `LocalStateRoot`-bound path; this crate's own tests call it directly with an explicit
+    /// path, unchanged from before E13-S06.
+    pub(crate) fn open_at_path(path: &Path) -> Result<Self, RollupError> {
         let conn = Connection::open(path)?;
         verify_rollup_identity_before_migrating(&conn)?;
         apply_migrations(&conn, MIGRATIONS)?;
@@ -1581,14 +1597,14 @@ mod tests {
         let policy = RetentionPolicy::new(10, 20, 30).expect("policy");
 
         {
-            let mut memory = AnalyticalMemory::open(&db_path).expect("first open");
+            let mut memory = AnalyticalMemory::open_at_path(&db_path).expect("first open");
             memory
                 .record_sample(sample(MetricKind::ArtifactCount, 0, 1.0))
                 .expect("record");
             memory.compact(&policy, 1_000_000).expect("compact");
         }
         {
-            let memory = AnalyticalMemory::open(&db_path).expect("reopen must not fail");
+            let memory = AnalyticalMemory::open_at_path(&db_path).expect("reopen must not fail");
             let long_term = memory
                 .long_term_aggregates()
                 .expect("long_term_aggregates after reopen");
@@ -1723,7 +1739,7 @@ mod tests {
         let db_path = dir.join("rollup.sqlite3");
 
         {
-            let mut memory = AnalyticalMemory::open(&db_path).expect("open");
+            let mut memory = AnalyticalMemory::open_at_path(&db_path).expect("open");
             memory
                 .record_sample(sample(MetricKind::ArtifactCount, 0, 1.0))
                 .expect("record");
@@ -1777,7 +1793,7 @@ mod tests {
             .expect("craft a provider-owned lookalike database");
         }
 
-        let opened = AnalyticalMemory::open(&provider_db_path);
+        let opened = AnalyticalMemory::open_at_path(&provider_db_path);
         assert!(
             opened.is_err(),
             "open must refuse a file that mimics this module's schema/user_version but was \
@@ -1797,5 +1813,70 @@ mod tests {
         // cleanup, matching this module's own established precedent (96f645e).
         drop(verify);
         std::fs::remove_dir_all(&dir).expect("clean up test dir");
+    }
+
+    #[test]
+    fn open_via_local_state_root_never_reaches_a_marker_bearing_mimic_elsewhere_on_disk() {
+        // E13-VERIFIER-REVIEW-ROUND3.md's actual reproduction, this module's own copy: a
+        // provider-owned file carrying this module's exact schema, `user_version`, and a
+        // byte-for-byte copy of `ROLLUP_IDENTITY_MARKER`. `AnalyticalMemory::open`'s
+        // production, `LocalStateRoot`-bound entry point must never touch this file, regardless
+        // of its content, because it never constructs a handle anywhere but
+        // `<resolved root>/analytical_memory.sqlite3`.
+        let base = std::env::temp_dir().join(format!(
+            "cancellai-store-rollup-test-root-boundary-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        let state_dir = base.join("state-root");
+        let attacker_dir = base.join("attacker");
+        std::fs::create_dir_all(&state_dir).expect("create state root dir");
+        std::fs::create_dir_all(&attacker_dir).expect("create attacker dir");
+
+        let mimic_path = attacker_dir.join(ANALYTICAL_MEMORY_FILENAME);
+        {
+            let conn = Connection::open(&mimic_path).expect("open raw sqlite file");
+            conn.execute_batch(&format!(
+                "CREATE TABLE raw_samples (
+                    sample_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    metric TEXT NOT NULL,
+                    recorded_at INTEGER NOT NULL,
+                    provider_id TEXT,
+                    category TEXT,
+                    value REAL NOT NULL
+                ) STRICT;
+                CREATE TABLE cancellai_rollup_identity (marker TEXT PRIMARY KEY) STRICT;
+                INSERT INTO cancellai_rollup_identity (marker) VALUES ('{ROLLUP_IDENTITY_MARKER}');
+                INSERT INTO raw_samples (metric, recorded_at, value)
+                    VALUES ('artifact_count', 1, 1.0);
+                PRAGMA user_version = 1;"
+            ))
+            .expect("craft a full marker-bearing mimic");
+        }
+
+        let root = crate::LocalStateRoot::resolve(&state_dir).expect("resolve local-state root");
+        let mut memory =
+            AnalyticalMemory::open(&root).expect("open must succeed against the real root");
+        assert_eq!(
+            memory.raw_sample_count().expect("raw sample count"),
+            0,
+            "open via the resolved root must start from a fresh store, never the mimic's content"
+        );
+        memory.reset().expect("reset the real store");
+
+        let verify = Connection::open(&mimic_path).expect("reopen the mimic file");
+        let row_count: i64 = verify
+            .query_row("SELECT COUNT(*) FROM raw_samples", [], |row| row.get(0))
+            .expect("count mimic rows");
+        assert_eq!(
+            row_count, 1,
+            "the marker-bearing mimic must be completely untouched - open() never named its path"
+        );
+
+        drop(verify);
+        std::fs::remove_dir_all(&base).expect("clean up test dir");
     }
 }

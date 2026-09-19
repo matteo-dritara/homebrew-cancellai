@@ -244,6 +244,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Caught by the existing `prepare_destination_refuses_names_that_are_not_bare_filenames` test
   once it actually ran on `windows-latest` CI; the assertion was correct, the guarded code was
   not.
+- **`CurrentStateStore`/`EventLedger`/`AnalyticalMemory::open` accepted a reset-capable handle
+  over any file that mimicked this crate's own schema and compiled-in identity marker**
+  (E13-S06, CR3, SI-026, closing E13-S04's round-3 independent verifier finding,
+  `project/evidence/E13-VERIFIER-REVIEW-ROUND3.md`). The marker was content inside a
+  caller-supplied file, so a hand-crafted provider-owned database that copied it - reproduced
+  independently against all three layers - passed the check and had its row deleted by
+  `reset()`. `cancellai_store::LocalStateRoot::resolve` is now the crate's one reviewed way to
+  establish cancellAI's own local-state root, and each layer's production `open()` takes a
+  `&LocalStateRoot` instead of a `Path`, deriving its database's location by joining a filename
+  the crate alone fixes. A mimicked file at any other location, marker included, is unreachable
+  from the production entry point by construction, not because its content is inspected and
+  rejected; the compiled-in marker remains only a corruption/migration sanity check. Existing
+  migration/marker/reopen unit tests keep exercising a crate-private `open_at_path` directly,
+  unchanged.
 
 ## [1.14.0] - 2026-09-14
 

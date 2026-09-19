@@ -130,6 +130,12 @@ pub mod rollup;
 /// expose, deciding *when* to compact/reset, never *how* - see [`budget`]'s own module doc.
 pub mod budget;
 
+/// cancellAI's own local-state root capability (E13-S06) - the one thing every layer's
+/// production `open()` derives its database path from, closing E13-S04's round-3 marker-mimicry
+/// finding. See [`local_state_root`]'s own module doc.
+mod local_state_root;
+pub use local_state_root::{LocalStateRoot, LocalStateRootError};
+
 /// Why a [`CurrentStateStore`] operation failed. Always the underlying SQLite error or a
 /// stored row's own content failing to round-trip as JSON - this crate does not otherwise
 /// interpret or classify failures.
@@ -211,6 +217,11 @@ fn apply_migrations(conn: &Connection, migrations: &[&str]) -> Result<(), StoreE
 
 /// The value [`MIGRATIONS`]' first migration inserts into `cancellai_store_identity`.
 const STORE_IDENTITY_MARKER: &str = "cancellai-current-state-store-v1";
+
+/// The fixed filename [`CurrentStateStore::open`]'s production entry point joins onto a
+/// [`LocalStateRoot`] - never a caller-suppliable path (E13-S06, this crate's own
+/// [`local_state_root`] module doc).
+const CURRENT_STATE_FILENAME: &str = "current_state.sqlite3";
 
 /// Refuses to treat `conn` as a valid current-state store unless it carries this crate's own
 /// identity marker (SI-026, "reset --local-state cannot target provider roots"). `PRAGMA
@@ -375,11 +386,25 @@ pub struct CurrentStateStore {
 }
 
 impl CurrentStateStore {
-    /// Opens (creating if absent) the current-state database at `path`, applying any migration
-    /// this database has not already seen. Refuses (`Err`, no handle returned) a file whose
-    /// `user_version`/schema make [`apply_migrations`] treat it as already-migrated but which
-    /// does not carry this crate's own identity marker - see [`verify_store_identity`].
-    pub fn open(path: &Path) -> Result<Self, StoreError> {
+    /// Opens (creating if absent) cancellAI's own current-state database under `root`, at the
+    /// fixed [`CURRENT_STATE_FILENAME`] this crate alone names - never a path `root`'s caller
+    /// supplies directly (E13-S06: a provider-owned or mimicked file at any other location,
+    /// even one carrying this crate's own identity marker, is unreachable from this entry point
+    /// by construction, not because it is inspected and rejected - see [`local_state_root`]'s
+    /// own module doc). Existing unit tests keep exercising the underlying open/migrate/verify
+    /// path directly via [`Self::open_at_path`].
+    pub fn open(root: &LocalStateRoot) -> Result<Self, StoreError> {
+        Self::open_at_path(&root.path_for(CURRENT_STATE_FILENAME))
+    }
+
+    /// Opens (creating if absent) the current-state database at the exact `path` given, applying
+    /// any migration this database has not already seen. Refuses (`Err`, no handle returned) a
+    /// file whose `user_version`/schema make [`apply_migrations`] treat it as already-migrated
+    /// but which does not carry this crate's own identity marker - see
+    /// [`verify_store_identity`]. `pub(crate)` rather than a public API: production code reaches
+    /// this only through [`Self::open`]'s [`LocalStateRoot`]-bound path; this crate's own tests
+    /// call it directly with an explicit path, unchanged from before E13-S06.
+    pub(crate) fn open_at_path(path: &Path) -> Result<Self, StoreError> {
         let conn = Connection::open(path)?;
         verify_store_identity_before_migrating(&conn)?;
         apply_migrations(&conn, MIGRATIONS)?;
@@ -775,7 +800,7 @@ mod tests {
         let db_path = dir.join("current-state.sqlite3");
 
         {
-            let mut store = CurrentStateStore::open(&db_path).expect("open");
+            let mut store = CurrentStateStore::open_at_path(&db_path).expect("open");
             store
                 .rebuild(&[artifact("artifact-0001", "codex", ActivityState::Active)])
                 .expect("rebuild");
@@ -868,13 +893,14 @@ mod tests {
         let db_path = dir.join("current-state.sqlite3");
 
         {
-            let mut store = CurrentStateStore::open(&db_path).expect("first open");
+            let mut store = CurrentStateStore::open_at_path(&db_path).expect("first open");
             store
                 .rebuild(&[artifact("artifact-0001", "codex", ActivityState::Active)])
                 .expect("rebuild");
         }
         {
-            let store = CurrentStateStore::open(&db_path).expect("second open must not fail");
+            let store =
+                CurrentStateStore::open_at_path(&db_path).expect("second open must not fail");
             assert_eq!(
                 store.all().expect("all").len(),
                 1,
@@ -963,7 +989,7 @@ mod tests {
         let db_path = dir.join("current-state.sqlite3");
 
         {
-            let mut store = CurrentStateStore::open(&db_path).expect("open");
+            let mut store = CurrentStateStore::open_at_path(&db_path).expect("open");
             store
                 .rebuild(&[artifact("artifact-0001", "codex", ActivityState::Active)])
                 .expect("rebuild");
@@ -1018,7 +1044,7 @@ mod tests {
             .expect("craft a provider-owned lookalike database");
         }
 
-        let opened = CurrentStateStore::open(&provider_db_path);
+        let opened = CurrentStateStore::open_at_path(&provider_db_path);
         assert!(
             opened.is_err(),
             "open must refuse a file that mimics this crate's schema/user_version but was \
@@ -1038,6 +1064,71 @@ mod tests {
         // cleanup, matching this module's own established precedent (96f645e).
         drop(verify);
         std::fs::remove_dir_all(&dir).expect("clean up test dir");
+    }
+
+    #[test]
+    fn open_via_local_state_root_never_reaches_a_marker_bearing_mimic_elsewhere_on_disk() {
+        // E13-VERIFIER-REVIEW-ROUND3.md's actual reproduction: a provider-owned file carrying
+        // this crate's exact schema, `user_version`, and a byte-for-byte copy of
+        // `STORE_IDENTITY_MARKER` - stronger than the round-2 mimic above, which lacked the
+        // marker. `CurrentStateStore::open`'s production, `LocalStateRoot`-bound entry point
+        // must never touch this file at all, regardless of its content, because it never
+        // constructs a handle anywhere but `<resolved root>/current_state.sqlite3`.
+        let base = std::env::temp_dir().join(format!(
+            "cancellai-store-test-root-boundary-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        let state_dir = base.join("state-root");
+        let attacker_dir = base.join("attacker");
+        std::fs::create_dir_all(&state_dir).expect("create state root dir");
+        std::fs::create_dir_all(&attacker_dir).expect("create attacker dir");
+
+        // A full marker-bearing mimic, placed both outside the state root and, under the exact
+        // reserved filename, inside a sibling directory - not the resolved root itself.
+        let mimic_path = attacker_dir.join(CURRENT_STATE_FILENAME);
+        {
+            let conn = Connection::open(&mimic_path).expect("open raw sqlite file");
+            conn.execute_batch(&format!(
+                "CREATE TABLE agent_artifacts (
+                    artifact_id TEXT PRIMARY KEY,
+                    provider_id TEXT NOT NULL,
+                    activity_state TEXT NOT NULL,
+                    data TEXT NOT NULL
+                ) STRICT;
+                CREATE TABLE cancellai_store_identity (marker TEXT PRIMARY KEY) STRICT;
+                INSERT INTO cancellai_store_identity (marker) VALUES ('{STORE_IDENTITY_MARKER}');
+                INSERT INTO agent_artifacts (artifact_id, provider_id, activity_state, data)
+                    VALUES ('provider-row', 'some-provider', 'active', '{{}}');
+                PRAGMA user_version = 2;"
+            ))
+            .expect("craft a full marker-bearing mimic");
+        }
+
+        let root = LocalStateRoot::resolve(&state_dir).expect("resolve local-state root");
+        let mut store =
+            CurrentStateStore::open(&root).expect("open must succeed against the real root");
+        assert_eq!(
+            store.row_count().expect("row count"),
+            0,
+            "open via the resolved root must start from a fresh store, never the mimic's content"
+        );
+        store.reset().expect("reset the real store");
+
+        let verify = Connection::open(&mimic_path).expect("reopen the mimic file");
+        let row_count: i64 = verify
+            .query_row("SELECT COUNT(*) FROM agent_artifacts", [], |row| row.get(0))
+            .expect("count mimic rows");
+        assert_eq!(
+            row_count, 1,
+            "the marker-bearing mimic must be completely untouched - open() never named its path"
+        );
+
+        drop(verify);
+        std::fs::remove_dir_all(&base).expect("clean up test dir");
     }
 
     #[test]
@@ -1072,7 +1163,7 @@ mod tests {
         }
 
         assert!(
-            CurrentStateStore::open(&db_path).is_err(),
+            CurrentStateStore::open_at_path(&db_path).is_err(),
             "open must refuse this file"
         );
 

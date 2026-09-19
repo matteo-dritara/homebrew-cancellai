@@ -882,10 +882,12 @@ mod tests {
 
         {
             let mut current_state =
-                CurrentStateStore::open(&dir.join("current-state.sqlite3")).expect("open store");
-            let mut ledger = EventLedger::open(&dir.join("ledger.sqlite3")).expect("open ledger");
+                CurrentStateStore::open_at_path(&dir.join("current-state.sqlite3"))
+                    .expect("open store");
+            let mut ledger =
+                EventLedger::open_at_path(&dir.join("ledger.sqlite3")).expect("open ledger");
             let mut memory =
-                AnalyticalMemory::open(&dir.join("rollup.sqlite3")).expect("open memory");
+                AnalyticalMemory::open_at_path(&dir.join("rollup.sqlite3")).expect("open memory");
 
             current_state
                 .rebuild(&[artifact("artifact-0001")])

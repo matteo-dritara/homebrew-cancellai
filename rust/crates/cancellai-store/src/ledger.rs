@@ -187,6 +187,11 @@ fn apply_migrations(conn: &Connection, migrations: &[&str]) -> Result<(), Ledger
 /// precedent this crate already applies to schema, connection and error type.
 const LEDGER_IDENTITY_MARKER: &str = "cancellai-event-ledger-v1";
 
+/// The fixed filename [`EventLedger::open`]'s production entry point joins onto a
+/// [`crate::LocalStateRoot`] - never a caller-suppliable path (E13-S06,
+/// `crate::local_state_root`'s own module doc).
+const EVENT_LEDGER_FILENAME: &str = "event_ledger.sqlite3";
+
 /// Refuses to treat `conn` as a valid event ledger unless it carries this module's own identity
 /// marker - see [`LEDGER_IDENTITY_MARKER`]'s own doc and `crate::verify_store_identity`'s
 /// identical reasoning for `CurrentStateStore`.
@@ -372,10 +377,21 @@ pub struct EventLedger {
 }
 
 impl EventLedger {
-    /// Opens (creating if absent) the ledger database at `path`, applying any migration this
-    /// database has not already seen. Use a path distinct from
-    /// [`crate::CurrentStateStore::open`]'s - see this module's own doc on `MIGRATIONS`.
-    pub fn open(path: &Path) -> Result<Self, LedgerError> {
+    /// Opens (creating if absent) cancellAI's own event ledger under `root`, at the fixed
+    /// [`EVENT_LEDGER_FILENAME`] this module alone names - never a path `root`'s caller supplies
+    /// directly (E13-S06: see `crate::local_state_root`'s own module doc, and
+    /// [`crate::CurrentStateStore::open`]'s identical treatment). Existing unit tests keep
+    /// exercising the underlying open/migrate/verify path directly via [`Self::open_at_path`].
+    pub fn open(root: &crate::LocalStateRoot) -> Result<Self, LedgerError> {
+        Self::open_at_path(&root.path_for(EVENT_LEDGER_FILENAME))
+    }
+
+    /// Opens (creating if absent) the ledger database at the exact `path` given, applying any
+    /// migration this database has not already seen. `pub(crate)` rather than a public API:
+    /// production code reaches this only through [`Self::open`]'s `LocalStateRoot`-bound path;
+    /// this crate's own tests call it directly with an explicit path, unchanged from before
+    /// E13-S06.
+    pub(crate) fn open_at_path(path: &Path) -> Result<Self, LedgerError> {
         let conn = Connection::open(path)?;
         verify_ledger_identity_before_migrating(&conn)?;
         apply_migrations(&conn, MIGRATIONS)?;
@@ -1201,13 +1217,13 @@ mod tests {
         let db_path = dir.join("ledger.sqlite3");
 
         let first_id = {
-            let mut ledger = EventLedger::open(&db_path).expect("first open");
+            let mut ledger = EventLedger::open_at_path(&db_path).expect("first open");
             let a = ledger.append(discovered(1)).expect("append a");
             ledger.append(discovered(2)).expect("append b");
             a
         };
         {
-            let mut ledger = EventLedger::open(&db_path).expect("reopen after close");
+            let mut ledger = EventLedger::open_at_path(&db_path).expect("reopen after close");
             let events = ledger.read_all().expect("read_all after reopen");
             assert_eq!(events.len(), 2, "events must survive a close/reopen");
             let third = ledger.append(discovered(3)).expect("append after reopen");
@@ -1234,14 +1250,14 @@ mod tests {
         let db_path = dir.join("ledger.sqlite3");
 
         let (from, to) = {
-            let mut ledger = EventLedger::open(&db_path).expect("open");
+            let mut ledger = EventLedger::open_at_path(&db_path).expect("open");
             let a = ledger.append(discovered(1)).expect("append a");
             let b = ledger.append(discovered(2)).expect("append b");
             ledger.compact_range(a, b, 42).expect("compact");
             (a, b)
         };
         {
-            let ledger = EventLedger::open(&db_path).expect("reopen");
+            let ledger = EventLedger::open_at_path(&db_path).expect("reopen");
             assert!(ledger.read_all().expect("read_all").is_empty());
             let compactions = ledger.compactions().expect("compactions");
             assert_eq!(compactions.len(), 1);
@@ -1492,7 +1508,7 @@ mod tests {
         let db_path = dir.join("ledger.sqlite3");
 
         {
-            let mut ledger = EventLedger::open(&db_path).expect("open");
+            let mut ledger = EventLedger::open_at_path(&db_path).expect("open");
             ledger.append(discovered(1)).expect("append");
             ledger.reset().expect("reset");
         }
@@ -1548,7 +1564,7 @@ mod tests {
             .expect("craft a provider-owned lookalike database");
         }
 
-        let opened = EventLedger::open(&provider_db_path);
+        let opened = EventLedger::open_at_path(&provider_db_path);
         assert!(
             opened.is_err(),
             "open must refuse a file that mimics this module's schema/user_version but was \
@@ -1568,6 +1584,74 @@ mod tests {
         // cleanup, matching this module's own established precedent (96f645e).
         drop(verify);
         std::fs::remove_dir_all(&dir).expect("clean up test dir");
+    }
+
+    #[test]
+    fn open_via_local_state_root_never_reaches_a_marker_bearing_mimic_elsewhere_on_disk() {
+        // E13-VERIFIER-REVIEW-ROUND3.md's actual reproduction, this module's own copy: a
+        // provider-owned file carrying this module's exact schema, `user_version`, and a
+        // byte-for-byte copy of `LEDGER_IDENTITY_MARKER`. `EventLedger::open`'s production,
+        // `LocalStateRoot`-bound entry point must never touch this file, regardless of its
+        // content, because it never constructs a handle anywhere but
+        // `<resolved root>/event_ledger.sqlite3`.
+        let base = std::env::temp_dir().join(format!(
+            "cancellai-store-ledger-test-root-boundary-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        let state_dir = base.join("state-root");
+        let attacker_dir = base.join("attacker");
+        std::fs::create_dir_all(&state_dir).expect("create state root dir");
+        std::fs::create_dir_all(&attacker_dir).expect("create attacker dir");
+
+        let mimic_path = attacker_dir.join(EVENT_LEDGER_FILENAME);
+        {
+            let conn = Connection::open(&mimic_path).expect("open raw sqlite file");
+            conn.execute_batch(&format!(
+                "CREATE TABLE ledger_events (
+                    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    kind TEXT NOT NULL,
+                    recorded_at INTEGER NOT NULL,
+                    artifact_id TEXT,
+                    provider_id TEXT,
+                    category TEXT,
+                    policy_id TEXT,
+                    reason_code TEXT,
+                    plan_id TEXT,
+                    evidence_ids TEXT NOT NULL DEFAULT '[]'
+                ) STRICT;
+                CREATE TABLE cancellai_ledger_identity (marker TEXT PRIMARY KEY) STRICT;
+                INSERT INTO cancellai_ledger_identity (marker) VALUES ('{LEDGER_IDENTITY_MARKER}');
+                INSERT INTO ledger_events (kind, recorded_at, evidence_ids)
+                    VALUES ('DISCOVERED', 1, '[]');
+                PRAGMA user_version = 1;"
+            ))
+            .expect("craft a full marker-bearing mimic");
+        }
+
+        let root = crate::LocalStateRoot::resolve(&state_dir).expect("resolve local-state root");
+        let mut ledger = EventLedger::open(&root).expect("open must succeed against the real root");
+        assert_eq!(
+            ledger.read_all().expect("read all").len(),
+            0,
+            "open via the resolved root must start from a fresh ledger, never the mimic's content"
+        );
+        ledger.reset().expect("reset the real ledger");
+
+        let verify = Connection::open(&mimic_path).expect("reopen the mimic file");
+        let row_count: i64 = verify
+            .query_row("SELECT COUNT(*) FROM ledger_events", [], |row| row.get(0))
+            .expect("count mimic rows");
+        assert_eq!(
+            row_count, 1,
+            "the marker-bearing mimic must be completely untouched - open() never named its path"
+        );
+
+        drop(verify);
+        std::fs::remove_dir_all(&base).expect("clean up test dir");
     }
 
     #[test]
@@ -1609,7 +1693,7 @@ mod tests {
         }
 
         assert!(
-            EventLedger::open(&db_path).is_err(),
+            EventLedger::open_at_path(&db_path).is_err(),
             "open must refuse this file"
         );
 
@@ -1650,7 +1734,7 @@ mod tests {
         std::fs::create_dir_all(&dir).expect("create test dir");
         let db_path = dir.join("ledger.sqlite3");
 
-        let mut ledger = EventLedger::open(&db_path).expect("open");
+        let mut ledger = EventLedger::open_at_path(&db_path).expect("open");
         ledger.append(discovered(1)).expect("append");
 
         // A second connection to the same file holds an exclusive write lock open.

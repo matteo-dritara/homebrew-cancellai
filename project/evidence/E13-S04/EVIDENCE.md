@@ -16,8 +16,9 @@
 
 ## Outcome
 
-PARTIAL - see "Round 3 independent verifier review" below; AC2/SI-026 has a surviving,
-independently-confirmed gap. Story returned to `in_progress`.
+PASS - see "E13-S06 closes the round-3 residual" below. AC2/SI-026's round-3 gap is closed by
+`LocalStateRoot` (`project/evidence/E13-S06/EVIDENCE.md`); story returns to `ready_for_review`
+for a fresh independent review of both E13-S04 and E13-S06 together.
 
 ## Scope
 
@@ -437,11 +438,38 @@ production entry point to a single, non-caller-suppliable, resolved root, rather
 to inspect arbitrary paths' content. E13-S04 itself stays `in_progress` until E13-S06 lands and a
 fresh, story-scoped independent review confirms it.
 
+## E13-S06 closes the round-3 residual (2026-09-19)
+
+`project/evidence/E13-S06/EVIDENCE.md` implements the required repair round 3 named: `cancellai_
+store::LocalStateRoot::resolve` is now the crate's one reviewed way to establish cancellAI's own
+local-state root, and `CurrentStateStore::open`/`EventLedger::open`/`AnalyticalMemory::open` each
+take a `&LocalStateRoot` instead of an arbitrary `&Path`, deriving their database's location only
+by joining a filename the crate itself fixes. The round-3 reproduction (a synthetic provider file
+per layer, carrying the exact schema, `user_version`, and the literal compiled-in marker) is
+re-run against the new API in `open_via_local_state_root_never_reaches_a_marker_bearing_mimic_
+elsewhere_on_disk` (one per layer, in `lib.rs`/`ledger.rs`/`rollup.rs`): the mimic, placed at the
+fixed filename outside the resolved root, is left with its row count unchanged after `open(&root)`
++ `reset()` against the real root - `open()` never named its path, so there was nothing for the
+marker to authorize. AC2 ("`reset --local-state` cannot target provider roots") and SI-026 now
+hold by construction against this reproduction, not only against the narrower no-marker mimic
+round 2 already closed.
+
+This is the exact "one layer up, in whichever future orchestrator decides what path `open()` is
+ever called with" boundary this packet's own round-3 section anticipated as the likely shape of a
+real fix - realized inside `cancellai-store` itself as a capability type, not by depending on
+`cancellai-safety::ApprovedRoot` (which this crate continues not to depend on;
+`cargo_toml_declares_no_dependency_on_cancellai_safety` is unchanged and still passes). See
+`project/evidence/E13-S06/EVIDENCE.md`'s own "Residual risks" for what this repair does not
+close: the resolved root directory's own identity is not re-verified on every `open()`, unlike
+`ApprovedRoot`'s device/inode binding for provider roots - a disclosed, distinct residual, not
+the one round 3 reproduced.
+
 ## Verifier verdict
 
 Round 1 (Codex, 2026-09-17): FAIL - see the defect above. The ledger/rollup admission gap is
 repaired in this packet; the Layer 1 observation-only design is an accepted residual, not a
 repair, pending a product decision. Round 2 (Codex): FAIL - see "Round 1 independent review
 repair" above (repaired). Round 3 (Codex, 2026-09-19, owner-authorized ADR-0025 cost-ceiling
-round): FAIL - see "Round 3 independent verifier review" above. **Not closed.** E13-S02, E13-S03,
-and E13-S05 passed round 3 independently and moved to `done`; E13-S04 remains `in_progress`.
+round): FAIL - see "Round 3 independent verifier review" above, closed by E13-S06 (see above).
+E13-S02, E13-S03, and E13-S05 passed round 3 independently and moved to `done`; E13-S04 returns
+to `ready_for_review`, pending a fresh independent review of this repair alongside E13-S06.
