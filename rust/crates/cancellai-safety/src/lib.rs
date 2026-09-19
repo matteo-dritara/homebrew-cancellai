@@ -57,7 +57,7 @@ pub use knowledge_bundle::{
 pub use mutation_executor::{ActionResult, execute, execute_all, execute_with_system_capabilities};
 pub use remote_execution::{
     RemoteExecutionError, RemoteExecutionLog, RemoteExecutionRequest, TrustedRemoteController,
-    TrustedRemoteControllers, VerifiedRemoteIntent, parse_request, verify_remote_execution_request,
+    TrustedRemoteControllers, VerifiedRemoteIntent, parse_request,
 };
 pub use root_capability::{ApprovedRoot, BoundaryError, BoundedPath};
 pub use sealed_plan::{RevalidationOutcome, SealedPlan, revalidate};

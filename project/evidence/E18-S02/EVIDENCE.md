@@ -130,12 +130,53 @@ G1-G4 apply at the point a real caller wires this to a release-eligible surface.
 - **What happened**: RFC-0001/ADR-0031's first draft said the request verifier "writes one `cancellai_store::EventLedger` event" directly - but `cancellai-safety` is kernel ring and `cancellai-store` (which owns `EventLedger`) is outer ring specifically so the kernel stays free of `rusqlite` (ADR-0019), so that dependency edge would have been refused had it ever been attempted in code. **Prevented by**: nothing prompted the check automatically at RFC-drafting time - I found it by deliberately reading both crates' `Cargo.toml` dependency lists before writing any code, not because a gate or template asked for it; `docs/rfcs/README.md`'s RFC template has no prompt to verify a proposed mechanism against `ADR-0019`'s ring assignments before recommending it. **Disposition**: proposed 2026-09-18 - whether the RFC template or the `rust-kernel-guard` skill should explicitly prompt "check the ring of every crate a recommendation would touch" before a design is accepted is an owner call, not made here. The design itself was corrected in the same session, before implementation, at no cost to this story.
 - none otherwise.
 
+## Round 1 independent verifier review (`project/evidence/E18-VERIFIER-REVIEW.md`)
+
+FAIL. Two of three reproducible defects were repaired in this same story before any round 2:
+
+- **Replay bypass, repaired.** `verify_remote_execution_request` was `pub` and stateless
+  (performs every check except replay), so calling it directly - bypassing `RemoteExecutionLog`
+  entirely - yielded a usable `VerifiedRemoteIntent` for the same request any number of times.
+  It is no longer `pub`; `RemoteExecutionLog::verify_and_record` is now the only path that can
+  ever produce a `VerifiedRemoteIntent` outside this module's own tests.
+- **Target confusion, repaired.** A verified request's `requested_authority` carried no binding
+  to which target it was verified for, so a request valid for one target could be fed into
+  `AuthorityInputs::user_requested` while acting on a different one. `verify_remote_execution_
+  request`/`RemoteExecutionLog::verify_and_record` now take an `expected_target: &MachineId` and
+  return `RemoteExecutionError::TargetMismatch` unless `request.target` equals it, checked after
+  signature verification (so a request retargeted-then-recomputed-but-unsigned still fails
+  `InvalidSignature` first, preserving that pre-existing falsifier's own intent).
+- **Durable replay state across restart - not repaired, and not repairable inside this crate.**
+  The round's required repair also asked that "restart... cannot reset the sequence floor."
+  `RemoteExecutionLog` remains pure in-memory by this crate's own architecture (kernel-ring, no
+  I/O - ADR-0019); persisting and reloading the last-accepted-sequence-per-controller durably
+  needs an outer-ring caller this workspace does not have (`cancellai-store` owns the only
+  SQLite this project trusts for exactly this reason). This is the same "primitive delivered, no
+  orchestrator yet" shape as the "no production entry point calls any of this yet" residual
+  below, except this round makes explicit what it means in practice: **a CR4 Safety Verdict for
+  "replay is prevented" cannot be honestly granted until that durable-persistence caller exists**
+  - not because this crate's own logic is wrong, but because nothing yet stops a process restart
+  from resetting the sequence floor a real deployment would rely on. No story ID assigned yet;
+  this is an owner-level scope question (does E18 need a new story for durable replay-state
+  persistence before a real transport can be wired, or does that responsibility belong to
+  whichever future transport story already needs `cancellai-store` access), not one an executor
+  decides unilaterally.
+- **Design-record divergence - not repaired, escalated.** RFC-0001/ADR-0031 both explicitly
+  specify the signed payload carries an `ActionClass` and that controller policy bounds which
+  `ActionClass`es a tier may request - RFC-0001 explicitly considered and *rejected* "Option B"
+  (a request carrying an `AuthorityLevel` directly) as literally the shape TM-17/SI-031 name as
+  the threat. The shipped implementation signs and transmits `AuthorityLevel` - Option B, not the
+  accepted Option A. This is a material conflict between the accepted design record and the code,
+  not a small implementation gap; per `AGENTS.md`'s constitutional rule, a story/spec conflict
+  "needs escalation and an ADR/RFC/owner decision," not a same-session unilateral pick between
+  reinterpreting the RFC or redesigning the wire protocol under review pressure. Not repaired in
+  this pass; recorded here as the review's own required repair states it.
+
 ## Residual risks
 
-- `RemoteExecutionLog` is pure in-memory and does not survive a process restart - a caller that
-  needs replay protection to survive restarts must persist and reload it themselves; this crate,
-  by design (kernel-ring, no I/O), does not do so. Documented in `docs/architecture/TARGET.md`'s
-  own "Residual" note.
+- `RemoteExecutionLog` is pure in-memory and does not survive a process restart - see "Round 1
+  independent verifier review" above for why this is no longer only a residual note but the
+  reason a CR4 Safety Verdict is not yet supportable.
 - No production entry point calls any of this yet - it is a verified-but-unwired library
   primitive, identical in kind to E13's ledger and E18-S01's `RemoteTarget` at their own
   `ready_for_review`. The CR4 release gates (G1-G4) and an end-to-end exercise of TM-17's control

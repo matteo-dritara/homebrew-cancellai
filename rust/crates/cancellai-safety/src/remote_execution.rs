@@ -190,6 +190,13 @@ pub enum RemoteExecutionError {
     ContentDigestMismatch,
     /// The Ed25519 signature does not verify against the controller's public key.
     InvalidSignature,
+    /// `request.target` is not the [`MachineId`] the caller is verifying on behalf of - round 1
+    /// independent verifier review's exact reproduction: nothing previously bound a verified
+    /// request's authority to the target it named, so a request correctly signed for
+    /// `ci-runner-1` could be fed into `AuthorityInputs::user_requested` while acting on a
+    /// completely different local target. Checked against the caller-supplied expected target,
+    /// never inferred, matching this module's "shape cannot express the claim" pattern.
+    TargetMismatch,
     /// `expires_at` is at or before the verification clock.
     Expired,
     /// `requested_authority` exceeds the controller's own `authority_ceiling`. Never clamped -
@@ -208,6 +215,9 @@ impl fmt::Display for RemoteExecutionError {
             Self::MalformedSignature => "malformed remote execution request signature",
             Self::ContentDigestMismatch => "remote execution request content digest mismatch",
             Self::InvalidSignature => "invalid remote execution request signature",
+            Self::TargetMismatch => {
+                "remote execution request does not name the target it is being verified for"
+            }
             Self::Expired => "remote execution request has expired",
             Self::RequestedAuthorityExceedsCeiling => {
                 "requested authority exceeds the controller's trusted ceiling"
@@ -246,13 +256,21 @@ fn encode_hex(bytes: &[u8]) -> String {
 }
 
 /// Verifies `request` against `policy` at `now_unix` (Unix seconds - threaded in explicitly
-/// rather than read from the system clock, so tests can exercise expiry deterministically).
-/// Stateless: performs every check *except* replay/staleness, which needs to compare against
-/// previously accepted requests - see [`RemoteExecutionLog::verify_and_record`] for that.
-/// Never returns a [`VerifiedRemoteIntent`] for a request that failed any check.
-pub fn verify_remote_execution_request(
+/// rather than read from the system clock, so tests can exercise expiry deterministically), for
+/// the caller's own `expected_target`. Stateless: performs every check *except* replay/
+/// staleness, which needs to compare against previously accepted requests. Never returns a
+/// [`VerifiedRemoteIntent`] for a request that failed any check.
+///
+/// Deliberately not `pub`: round 1 independent verifier review reproduced calling this function
+/// directly, twice, with the identical signed request, both calls succeeding - a public stateless
+/// verifier is itself the replay bypass, independent of whether a well-behaved caller also has a
+/// [`RemoteExecutionLog`] available. [`RemoteExecutionLog::verify_and_record`] is the only
+/// production path that can ever produce a [`VerifiedRemoteIntent`] outside this module's own
+/// tests, and it always consults the log.
+fn verify_remote_execution_request(
     request: &RemoteExecutionRequest,
     policy: &TrustedRemoteControllers,
+    expected_target: &MachineId,
     now_unix: u64,
 ) -> Result<VerifiedRemoteIntent, RemoteExecutionError> {
     if request.schema_version < SUPPORTED_SCHEMA_VERSIONS.0
@@ -279,6 +297,15 @@ pub fn verify_remote_execution_request(
     verifying_key
         .verify_strict(&request.signing_bytes(), &signature)
         .map_err(|_| RemoteExecutionError::InvalidSignature)?;
+
+    // Checked only once the signature is confirmed genuine: `target` is itself part of the
+    // signed payload, so an attacker who merely re-targets a request (without a valid signature
+    // for the new target) is already caught above as `InvalidSignature` - this check instead
+    // catches a request that is genuinely, validly signed, but simply for a different target
+    // than the one the caller is verifying on behalf of.
+    if request.target != *expected_target {
+        return Err(RemoteExecutionError::TargetMismatch);
+    }
 
     if request
         .expires_at
@@ -314,18 +341,21 @@ impl RemoteExecutionLog {
         Self::default()
     }
 
-    /// Verifies `request`, then - only if every other check passed - refuses it as
-    /// [`RemoteExecutionError::Stale`] when `sequence` does not strictly exceed the last
-    /// accepted sequence from the *same* controller, and records the new sequence otherwise.
-    /// Scoped per controller: a first request from a controller this log has not seen before is
-    /// never stale, and a rejected request never advances the recorded sequence.
+    /// Verifies `request` against `policy` for `expected_target`, then - only if every other
+    /// check passed - refuses it as [`RemoteExecutionError::Stale`] when `sequence` does not
+    /// strictly exceed the last accepted sequence from the *same* controller, and records the
+    /// new sequence otherwise. Scoped per controller: a first request from a controller this log
+    /// has not seen before is never stale, and a rejected request never advances the recorded
+    /// sequence. The only production path that can ever produce a [`VerifiedRemoteIntent`] -
+    /// see [`verify_remote_execution_request`]'s own doc for why that function is not `pub`.
     pub fn verify_and_record(
         &mut self,
         request: &RemoteExecutionRequest,
         policy: &TrustedRemoteControllers,
+        expected_target: &MachineId,
         now_unix: u64,
     ) -> Result<VerifiedRemoteIntent, RemoteExecutionError> {
-        let verified = verify_remote_execution_request(request, policy, now_unix)?;
+        let verified = verify_remote_execution_request(request, policy, expected_target, now_unix)?;
         if self
             .last_sequence
             .get(&verified.controller_id)
@@ -349,6 +379,13 @@ mod tests {
 
     fn keypair() -> SigningKey {
         SigningKey::from_bytes(&[7u8; 32])
+    }
+
+    /// The target every `signed_request` below names, unless a test deliberately overrides it -
+    /// so `verify_remote_execution_request`'s `expected_target` argument reads as "the local
+    /// machine this request is actually for" at every call site.
+    fn target() -> MachineId {
+        MachineId::new("ci-runner-1")
     }
 
     fn signed_request(
@@ -394,7 +431,8 @@ mod tests {
         let policy = policy_with("fleet-1", AuthorityLevel::Quarantine, &key);
         let request = signed_request(&key, "fleet-1", 1, None, AuthorityLevel::Quarantine);
 
-        let verified = verify_remote_execution_request(&request, &policy, 1_500).expect("verify");
+        let verified =
+            verify_remote_execution_request(&request, &policy, &target(), 1_500).expect("verify");
         assert_eq!(verified.controller_id, "fleet-1");
         assert_eq!(verified.requested_authority, AuthorityLevel::Quarantine);
         assert_eq!(verified.target, MachineId::new("ci-runner-1"));
@@ -407,7 +445,7 @@ mod tests {
         let request = signed_request(&key, "fleet-1", 1, None, AuthorityLevel::Observe);
 
         assert_eq!(
-            verify_remote_execution_request(&request, &policy, 1_500),
+            verify_remote_execution_request(&request, &policy, &target(), 1_500),
             Err(RemoteExecutionError::UnknownController)
         );
     }
@@ -420,7 +458,7 @@ mod tests {
         request.schema_version = 99;
 
         assert_eq!(
-            verify_remote_execution_request(&request, &policy, 1_500),
+            verify_remote_execution_request(&request, &policy, &target(), 1_500),
             Err(RemoteExecutionError::UnsupportedSchemaVersion)
         );
     }
@@ -435,7 +473,7 @@ mod tests {
         request.content_digest = encode_hex(&Sha256::digest(request.payload_bytes()));
 
         assert_eq!(
-            verify_remote_execution_request(&request, &policy, 1_500),
+            verify_remote_execution_request(&request, &policy, &target(), 1_500),
             Err(RemoteExecutionError::InvalidSignature)
         );
     }
@@ -450,7 +488,7 @@ mod tests {
         // the (also-failing) signature check is even reached, because digest is checked first.
 
         assert_eq!(
-            verify_remote_execution_request(&request, &policy, 1_500),
+            verify_remote_execution_request(&request, &policy, &target(), 1_500),
             Err(RemoteExecutionError::ContentDigestMismatch)
         );
     }
@@ -463,7 +501,7 @@ mod tests {
         request.signature = "not hex".to_string();
 
         assert_eq!(
-            verify_remote_execution_request(&request, &policy, 1_500),
+            verify_remote_execution_request(&request, &policy, &target(), 1_500),
             Err(RemoteExecutionError::MalformedSignature)
         );
     }
@@ -474,9 +512,9 @@ mod tests {
         let policy = policy_with("fleet-1", AuthorityLevel::Autopilot, &key);
         let request = signed_request(&key, "fleet-1", 1, Some(2_000), AuthorityLevel::Observe);
 
-        assert!(verify_remote_execution_request(&request, &policy, 1_999).is_ok());
+        assert!(verify_remote_execution_request(&request, &policy, &target(), 1_999).is_ok());
         assert_eq!(
-            verify_remote_execution_request(&request, &policy, 2_000),
+            verify_remote_execution_request(&request, &policy, &target(), 2_000),
             Err(RemoteExecutionError::Expired)
         );
     }
@@ -488,7 +526,7 @@ mod tests {
         let request = signed_request(&key, "fleet-1", 1, None, AuthorityLevel::Autopilot);
 
         assert_eq!(
-            verify_remote_execution_request(&request, &policy, 1_500),
+            verify_remote_execution_request(&request, &policy, &target(), 1_500),
             Err(RemoteExecutionError::RequestedAuthorityExceedsCeiling)
         );
     }
@@ -499,7 +537,28 @@ mod tests {
         let policy = policy_with("fleet-1", AuthorityLevel::Quarantine, &key);
         let request = signed_request(&key, "fleet-1", 1, None, AuthorityLevel::Quarantine);
 
-        assert!(verify_remote_execution_request(&request, &policy, 1_500).is_ok());
+        assert!(verify_remote_execution_request(&request, &policy, &target(), 1_500).is_ok());
+    }
+
+    #[test]
+    fn a_correctly_signed_request_for_a_different_target_is_rejected() {
+        // Round 1 independent verifier review's exact reproduction: a request correctly signed
+        // and valid for "ci-runner-1" must never verify against a caller checking on behalf of a
+        // different machine - otherwise a verified request for one target could supply authority
+        // for another.
+        let key = keypair();
+        let policy = policy_with("fleet-1", AuthorityLevel::Quarantine, &key);
+        let request = signed_request(&key, "fleet-1", 1, None, AuthorityLevel::Quarantine);
+
+        assert_eq!(
+            verify_remote_execution_request(
+                &request,
+                &policy,
+                &MachineId::new("another-machine"),
+                1_500
+            ),
+            Err(RemoteExecutionError::TargetMismatch)
+        );
     }
 
     #[test]
@@ -509,7 +568,10 @@ mod tests {
         let mut log = RemoteExecutionLog::empty();
         let request = signed_request(&key, "fleet-1", 1, None, AuthorityLevel::Observe);
 
-        assert!(log.verify_and_record(&request, &policy, 1_500).is_ok());
+        assert!(
+            log.verify_and_record(&request, &policy, &target(), 1_500)
+                .is_ok()
+        );
     }
 
     #[test]
@@ -518,12 +580,12 @@ mod tests {
         let policy = policy_with("fleet-1", AuthorityLevel::Autopilot, &key);
         let mut log = RemoteExecutionLog::empty();
         let first = signed_request(&key, "fleet-1", 5, None, AuthorityLevel::Observe);
-        log.verify_and_record(&first, &policy, 1_500)
+        log.verify_and_record(&first, &policy, &target(), 1_500)
             .expect("first accepted");
 
         let replayed = signed_request(&key, "fleet-1", 5, None, AuthorityLevel::Observe);
         assert_eq!(
-            log.verify_and_record(&replayed, &policy, 1_500),
+            log.verify_and_record(&replayed, &policy, &target(), 1_500),
             Err(RemoteExecutionError::Stale)
         );
     }
@@ -534,12 +596,12 @@ mod tests {
         let policy = policy_with("fleet-1", AuthorityLevel::Autopilot, &key);
         let mut log = RemoteExecutionLog::empty();
         let newer = signed_request(&key, "fleet-1", 9, None, AuthorityLevel::Observe);
-        log.verify_and_record(&newer, &policy, 1_500)
+        log.verify_and_record(&newer, &policy, &target(), 1_500)
             .expect("higher sequence accepted");
 
         let older = signed_request(&key, "fleet-1", 3, None, AuthorityLevel::Observe);
         assert_eq!(
-            log.verify_and_record(&older, &policy, 1_500),
+            log.verify_and_record(&older, &policy, &target(), 1_500),
             Err(RemoteExecutionError::Stale)
         );
     }
@@ -550,20 +612,23 @@ mod tests {
         let policy = policy_with("fleet-1", AuthorityLevel::Quarantine, &key);
         let mut log = RemoteExecutionLog::empty();
         let accepted = signed_request(&key, "fleet-1", 1, None, AuthorityLevel::Observe);
-        log.verify_and_record(&accepted, &policy, 1_500)
+        log.verify_and_record(&accepted, &policy, &target(), 1_500)
             .expect("accepted");
 
         // Sequence 2 asks above the ceiling - rejected, but must not "use up" sequence 2.
         let over_ceiling = signed_request(&key, "fleet-1", 2, None, AuthorityLevel::Autopilot);
         assert_eq!(
-            log.verify_and_record(&over_ceiling, &policy, 1_500),
+            log.verify_and_record(&over_ceiling, &policy, &target(), 1_500),
             Err(RemoteExecutionError::RequestedAuthorityExceedsCeiling)
         );
 
         // Sequence 2, now correctly scoped, must still be accepted - proving the rejected
         // attempt above left the log's recorded sequence at 1, not 2.
         let retried = signed_request(&key, "fleet-1", 2, None, AuthorityLevel::Observe);
-        assert!(log.verify_and_record(&retried, &policy, 1_500).is_ok());
+        assert!(
+            log.verify_and_record(&retried, &policy, &target(), 1_500)
+                .is_ok()
+        );
     }
 
     #[test]
@@ -584,12 +649,15 @@ mod tests {
         ]);
         let mut log = RemoteExecutionLog::empty();
         let a_high = signed_request(&key_a, "fleet-a", 100, None, AuthorityLevel::Observe);
-        log.verify_and_record(&a_high, &policy, 1_500)
+        log.verify_and_record(&a_high, &policy, &target(), 1_500)
             .expect("fleet-a accepted at sequence 100");
 
         // fleet-b's own sequence 1 must not be treated as stale relative to fleet-a's 100.
         let b_low = signed_request(&key_b, "fleet-b", 1, None, AuthorityLevel::Observe);
-        assert!(log.verify_and_record(&b_low, &policy, 1_500).is_ok());
+        assert!(
+            log.verify_and_record(&b_low, &policy, &target(), 1_500)
+                .is_ok()
+        );
     }
 
     #[test]
@@ -620,7 +688,8 @@ mod tests {
         let key = keypair();
         let policy = policy_with("fleet-1", AuthorityLevel::Quarantine, &key);
         let request = signed_request(&key, "fleet-1", 1, None, AuthorityLevel::Quarantine);
-        let verified = verify_remote_execution_request(&request, &policy, 1_500).expect("verify");
+        let verified =
+            verify_remote_execution_request(&request, &policy, &target(), 1_500).expect("verify");
 
         let shared_inputs = |user_requested: AuthorityLevel| AuthorityInputs {
             user_requested,
@@ -638,15 +707,34 @@ mod tests {
     }
 
     #[test]
-    fn a_local_authority_decision_requires_zero_trusted_remote_controllers() {
-        // E18-S03 (docs/PRODUCT.md "Open-source and commercial boundary"): a single-machine
-        // workflow must be fully functional with no fleet/commercial coordination configured at
-        // all. An empty TrustedRemoteControllers - the state of a fresh install that has never
-        // heard of a remote controller - never enters effective_authority's computation; a local
-        // user_requested value produces exactly the answer it always did.
+    fn local_authority_is_unaffected_by_an_unconfigured_commercial_service() {
+        // E18-S03 (docs/PRODUCT.md "Open-source and commercial boundary"), round 1 independent
+        // verifier review's required repair: the prior version of this test constructed an empty
+        // `TrustedRemoteControllers` and never passed it anywhere, which proved only that
+        // `effective_authority`'s existing signature has no such parameter - true before this
+        // story and unrelated to what AC1/AC3 actually require. This version exercises real data
+        // flow: an empty policy (a fresh, single-machine install that has never heard of a
+        // controller) must refuse a remote request cleanly through the real verification path
+        // (AC2 - absence of commercial configuration never silently grants or corrupts
+        // anything), and that refusal must have no bearing at all on a local authority decision
+        // computed alongside it (AC1/AC3 - local functionality is not reduced or refused).
         let empty_policy = TrustedRemoteControllers::new(vec![]);
-        let _ = &empty_policy; // present, deliberately unused: proves the local path below never
-        // needs to consult it.
+        let key = keypair();
+        let unconfigured_remote_request =
+            signed_request(&key, "any-controller", 1, None, AuthorityLevel::Quarantine);
+        let mut log = RemoteExecutionLog::empty();
+
+        assert_eq!(
+            log.verify_and_record(
+                &unconfigured_remote_request,
+                &empty_policy,
+                &target(),
+                1_500
+            ),
+            Err(RemoteExecutionError::UnknownController),
+            "a remote request must be refused cleanly, never accepted or panicked on, when no \
+             commercial/fleet controller is configured"
+        );
 
         let local_inputs = AuthorityInputs {
             user_requested: AuthorityLevel::Quarantine,
@@ -660,10 +748,11 @@ mod tests {
 
         // Untrusted provider_trust caps the result at Observe (provider_trust_ceiling) - the
         // exact value matters less here than that it is fully, deterministically computed from
-        // local_inputs alone, with empty_policy never consulted.
+        // local_inputs alone, independent of - and unreduced by - the refusal just above.
         assert_eq!(
             effective_authority(local_inputs).level,
-            AuthorityLevel::Observe
+            AuthorityLevel::Observe,
+            "an unconfigured commercial service must never reduce or refuse local functionality"
         );
     }
 }

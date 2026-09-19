@@ -92,6 +92,23 @@ remote, rather than proving the remote path is bounded) and introduces no new at
 
 - none.
 
+## Round 1 independent verifier review (`project/evidence/E18-VERIFIER-REVIEW.md`)
+
+FAIL - inherited from E18-S02's own two now-repaired defects (this story's claimed protocol
+boundary is E18-S02's public API), plus its own test-quality finding: the sole offline
+conformance test constructed an empty `TrustedRemoteControllers` and never passed it anywhere,
+proving only that an existing function signature has no such parameter - not AC1/AC2/AC3.
+Replaced with `local_authority_is_unaffected_by_an_unconfigured_commercial_service`
+(`rust/crates/cancellai-safety/src/remote_execution.rs`), which exercises real data flow: an
+empty policy refuses a remote request through the real `RemoteExecutionLog::verify_and_record`
+path (AC2 - absence of commercial configuration never silently grants anything), and a local
+authority decision computed alongside that refusal is unaffected by it (AC1/AC3). E18-S02's own
+two unrepaired findings (durable replay-state persistence, and the `ActionClass`/`AuthorityLevel`
+design-record divergence) both propagate here unchanged, since this story's boundary claim rests
+on E18-S02's primitive - see `project/evidence/E18-S02/EVIDENCE.md`'s own "Round 1 independent
+verifier review" for detail. This story cannot honestly claim a closed CR4 boundary until those
+are resolved, independent of anything this story's own diff could fix.
+
 ## Residual risks
 
 - The claim "no networking dependency" is verified by direct inspection of `Cargo.toml` today,
