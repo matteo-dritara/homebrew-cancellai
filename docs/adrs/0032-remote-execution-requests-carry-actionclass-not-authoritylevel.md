@@ -1,6 +1,6 @@
 # ADR-0032: Remote execution requests carry `ActionClass`, not `AuthorityLevel`
 
-- Status: proposed
+- Status: Accepted
 - Date: 2026-09-19
 - Owners: owner (Matteo Pugliese)
 - Related: E18-S02, E18-S03, RFC-0001, ADR-0031, SI-031, TM-17, `docs/architecture/DOMAIN_MODEL.md`
