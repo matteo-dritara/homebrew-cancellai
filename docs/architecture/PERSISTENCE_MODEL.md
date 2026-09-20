@@ -395,24 +395,32 @@ No original path is required for long-term aggregate analytics unless an explici
 
 E12-S04 implements the tombstone as a typed, narrower front door onto Layer 2's own
 `EventKind::Purged` event rather than a fourth persisted layer: `cancellai_store::tombstone::
-Tombstone` carries exactly opaque artifact ID, provider/category, reason/policy ID, and action
-result/evidence references (plan ID + evidence IDs) - the same closed set `EventMetadata`/
-`MutationReference` already enforce at the SQLite layer and that layer's own schema-pin test
-already covers. Restricting which *columns* exist does not restrict what bytes a caller can put
-in them: an independent review found the original implementation left every field able to
-round-trip an arbitrary prompt, source excerpt, or path unchanged, since a column allowlist is
-not content validation. `record_purge_tombstone` therefore validates every caller-supplied field
-before writing anything: a value must be empty, or shaped like every real ID this system
-produces - ASCII letters/digits joined by up to four single hyphens, bounded per-segment and
-total length - or the call is refused with nothing written (AC1). Segment count is bounded
-alongside character class deliberately, because a character allowlist alone cannot distinguish a
-real ID from an attacker's message re-encoded with hyphens standing in for spaces. `size/reclaim
-observation`, the one item this section's
-illustrative list names that the ledger's own schema has no column for, is a disclosed residual
-rather than a new column - widening an already schema-pinned table for a per-artifact figure is a
-larger, separately reviewable change this story's acceptance criteria do not require;
-`AnalyticalMemory`'s `ReclaimableBytes` metric already tracks reclaimable bytes as an aggregate
-time series (Layer 3, above).
+Tombstone` carries only opaque artifact ID and action result/evidence references (plan ID +
+evidence IDs) - **deliberately narrower than the illustrative field list above.** Two independent
+review rounds rejected wider field sets: round 1 found that restricting which *columns* exist does
+not restrict what bytes a caller puts in them (every field round-tripped an arbitrary prompt,
+source excerpt, or path unchanged); round 2 found that a syntactic content-safety validator over
+those bytes does not close the gap either, because a short, ordinary phrase re-encoded with
+hyphens (`do-not-purge-this`) is exactly as "identifier-shaped" as a real ID and is still
+meaningful content - no further syntactic tightening fixes this, it is a structural limit. Rather
+than a third review round patching the same kind of check, `provider_id`/`category`/`reason_code`/
+`policy_id` were removed from `Tombstone` outright (the fields whose ordinary use is explanatory
+prose, and not needed to identify what was purged), matching the response this document's own
+`recover_pending_moves` history already gave a mechanism defeated three times in a row: narrow the
+surface instead of re-attempting the same repair. `record_purge_tombstone` still validates
+`artifact_id`/`plan_id`/`evidence_ids` against the same shape check (ASCII letters/digits joined
+by up to four single hyphens, bounded per-segment and total length) before writing anything, but
+this is now documented as a **disclosed residual, not a closed guarantee** (AC1): those three
+fields are still caller-supplied, and the shape check rejects an obvious prompt/source/path
+without proving the absence of all short, ordinary phrases. Closing this residual needs a real
+orchestrator that sources these values from already-trusted purge/evidence records instead of an
+arbitrary public caller - that story's scope, not this one's. `size/reclaim observation` and
+`provider/category`/`reason/policy`, the items this section's illustrative list names that the
+current implementation does not carry, are disclosed residuals rather than a smaller schema:
+widening an already schema-pinned table, or reintroducing those fields behind real closed
+vocabularies or an orchestrator-verified source, is a larger, separately reviewable change this
+story's acceptance criteria do not require. `AnalyticalMemory`'s `ReclaimableBytes` metric already
+tracks reclaimable bytes as an aggregate time series (Layer 3, above).
 
 `cancellai_store::tombstone::record_purge_tombstone` refuses - writing nothing - unless given
 exactly `ActionClass::Delete` with `Reversibility::Irreversible`; every other combination

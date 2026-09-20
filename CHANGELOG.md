@@ -226,14 +226,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added purge tombstones (E12-S04, CR4, SI-020, `docs/architecture/PERSISTENCE_MODEL.md`
   "Tombstones"): `cancellai_store::tombstone::record_purge_tombstone` is a typed, narrower front
   door onto the event ledger's existing `EventKind::Purged` capability (E13-S02), adding no new
-  schema, file or connection of its own. `Tombstone` carries only opaque artifact ID,
-  provider/category, reason/policy ID, and plan/evidence references - the same closed set
-  `EventMetadata`/`MutationReference` already enforce and schema-pin - and every one of those
-  caller-supplied fields is validated as a short, hyphen-joined ASCII identifier (character
-  class and segment count both bounded) before anything is written, refusing with nothing
-  persisted otherwise: a column allowlist alone does not stop a field from carrying prompt,
-  source, or path content, which an independent review round found and this closes (AC1).
-  `record_purge_tombstone` refuses, writing nothing, unless given exactly `ActionClass::Delete`
+  schema, file or connection of its own. `Tombstone` carries only opaque artifact ID and
+  plan/evidence references - two independent review rounds rejected a wider field set
+  (`provider_id`/`category`/`reason_code`/`policy_id`), first for accepting arbitrary caller
+  content unchecked, then for a syntactic content-safety check that still could not distinguish a
+  real ID from a short ordinary phrase; those fields were removed outright rather than validated a
+  third way. The three that remain are still validated as a short, hyphen-joined ASCII identifier
+  before anything is written, refusing with nothing persisted otherwise, but this is now
+  documented as a disclosed residual (AC1) rather than a closed guarantee - full closure needs a
+  future orchestrator that sources these values from already-trusted records instead of an
+  arbitrary caller. `record_purge_tombstone` refuses, writing nothing, unless given exactly
+  `ActionClass::Delete`
   with `Reversibility::Irreversible` - every other combination `cancellai-model`'s vocabulary
   admits is rejected, including `Reversibility::VendorConditional` paired with any action class
   (AC2), a strictly narrower restatement of the same coupling

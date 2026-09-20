@@ -2,8 +2,10 @@
 
 - Commit/PR: pending (this work item)
 - Executor: Claude
-- Independent verifier: Codex, round 1 - **FAIL** (`project/evidence/E12-S04-VERIFIER-REVIEW.md`),
-  repaired below; round 2 pending
+- Independent verifier: Codex, round 1 - **FAIL** (`project/evidence/E12-S04-VERIFIER-REVIEW.md`);
+  round 2 - **FAIL** (`project/evidence/E12-S04-VERIFIER-REVIEW-ROUND2.md`). Per the orchestrator's
+  policy (at most two review rounds per approach), round 2's finding is addressed by a scope
+  reduction (below) rather than a third syntactic patch; round 3 pending against the reduced scope
 - Change Risk: CR4 (declared CR4 at planning time in `project/epics/E12.json`, matching
   E12-S01/S02/S03's own level for SI-020; the diff adds no new mutation capability and no new
   cross-crate dependency, so no reclassification applies)
@@ -12,17 +14,18 @@
 
 ## Outcome
 
-PASS after repair (see "Repair - round 1 independent review finding" below)
+PASS with a disclosed residual (see "Repair - round 2 finding: scope reduction" below). Not a
+closed guarantee for AC1 - see that section.
 
 ## Scope
 
 `cancellai_store::tombstone` (new module, `rust/crates/cancellai-store/src/tombstone.rs`): a
 typed, narrower front door onto `cancellai_store::ledger::EventLedger`'s existing
 `EventKind::Purged` event kind (E13-S02), adding no new schema, file, connection, or crate
-dependency. `Tombstone` is the allowlisted record `docs/architecture/PERSISTENCE_MODEL.md`'s
-"Tombstones" section names (opaque artifact ID, provider/category, reason/policy ID, plan ID,
-evidence IDs). `record_purge_tombstone(ledger, action_class, reversibility, recorded_at,
-tombstone)` writes exactly one `Purged` ledger event, refusing - with nothing written - unless
+dependency. `Tombstone` carries only opaque artifact ID and plan/evidence references
+(`provider_id`/`category`/`reason_code`/`policy_id` were removed after round 2 - see Repair
+section). `record_purge_tombstone(ledger, action_class, reversibility, recorded_at, tombstone)`
+writes exactly one `Purged` ledger event, refusing - with nothing written - unless
 `action_class == ActionClass::Delete && reversibility == Reversibility::Irreversible`. No
 orchestrator wires this to a real purge yet (`mutation_executor::execute`'s `ActionClass::Delete`
 branch, E03-S05, is unchanged); this story delivers the primitive, matching every prior E12/E13
@@ -32,7 +35,7 @@ story's own "primitive delivered, no orchestrator yet" precedent.
 
 | AC | Evidence | Result |
 | --- | --- | --- |
-| AC1 - "Tombstones contain no prompts/source/file contents." | `Tombstone`'s field set is exactly `artifact_id`, `provider_id`, `category`, `reason_code`, `policy_id`, `plan_id`, `evidence_ids`, and `record_purge_tombstone` now validates every one of those caller-supplied values with `validate_content_safe`/`validate_optional_content_safe` before any ledger write: each non-empty value must be ASCII letters/digits joined by at most 4 single hyphens, at most 32 characters per segment and 64 total - the shape every real ID in this system already has - or the call is refused with `PurgeTombstoneError::UnsafeField` and nothing is written. This closes round 1's finding that a column allowlist alone does not restrict field *content* (see Repair section). `record_purge_tombstone_round_trips_exactly_the_given_allowlisted_fields` proves a *content-safe* tombstone still reads back with exactly and only the given fields. | PASS |
+| AC1 - "Tombstones contain no prompts/source/file contents." | `Tombstone`'s field set is now exactly `artifact_id`, `plan_id`, `evidence_ids` - `provider_id`/`category`/`reason_code`/`policy_id` were removed outright after round 2 showed no syntactic check over free-text fields can prove their absence of content (see Repair section). The three remaining fields are still validated by `validate_content_safe` (ASCII letters/digits joined by at most 4 single hyphens, ≤32 characters per segment, ≤64 total) before any ledger write, refusing with `PurgeTombstoneError::UnsafeField` and nothing written otherwise - but this is now documented as a **disclosed residual, not a closed guarantee**: it rejects an obvious prompt/source/path but cannot reject every short, ordinary phrase, as `record_purge_tombstone_accepts_a_short_ordinary_phrase_as_a_disclosed_residual` demonstrates on purpose. `record_purge_tombstone_round_trips_exactly_the_given_allowlisted_fields` proves a content-safe tombstone still reads back with exactly and only the given fields. | PASS WITH RESIDUAL |
 | AC2 - "Irreversible purge is distinguishable from vendor-native conditionally reversible operations." | `record_purge_tombstone_refuses_every_combination_except_delete_plus_irreversible` is the exhaustive falsification: all 5 `ActionClass` x 6 `Reversibility` combinations (30 total) `cancellai-model`'s shared vocabulary admits are exercised; only `Delete + Irreversible` is accepted and produces a `Purged` event, every other combination - including `Reversibility::VendorConditional` (the vocabulary's own name for a vendor-native conditionally-reversible outcome) paired with every action class, and `Quarantine`/`Archive`/`Restore`/`Observe` paired with every reversibility - is refused with `PurgeTombstoneError::NotAnIrreversiblePurge` and writes nothing. | PASS |
 
 ## Verification Contract Evidence
@@ -51,9 +54,9 @@ Falsification axes worked before implementation (`adversarial-cases` skill):
 | 7 | Boundary | Empty `plan_id` / empty `evidence_ids` | Refused, nothing written | `record_purge_tombstone_refuses_empty_plan_id_and_empty_evidence_ids` |
 | 8 | Second-path / SI-020 | Every `ActionClass` x `Reversibility` combination (30) except `Delete+Irreversible` | Refused, nothing written, including `VendorConditional` | `record_purge_tombstone_refuses_every_combination_except_delete_plus_irreversible` |
 | 10 | Malformed/untrusted | Round-trip of a fully-populated, content-safe tombstone | Exactly and only the given fields persist | `record_purge_tombstone_round_trips_exactly_the_given_allowlisted_fields` |
-| 10 | Malformed/untrusted (round 1 repair) | A prompt, source-text, or absolute/relative path sentinel in each of the 7 retained fields (21 cases) | Refused as `UnsafeField`, nothing written | `record_purge_tombstone_refuses_prompt_source_and_path_sentinels_in_every_field` |
-| 10 | Malformed/untrusted (round 1 repair) | Attacker words joined by hyphens instead of spaces, character-for-character as "safe" as a real ID | Refused on segment-count, not merely character class | `record_purge_tombstone_refuses_hyphen_joined_words_standing_in_for_a_sentence` |
-| 10 | Malformed/untrusted (round 1 repair) | Codex's exact round-1 reproduction (`PROMPT_SENTINEL_do_not_store_source_contents` in five fields, a path in `category`) | Refused, nothing written | `record_purge_tombstone_refuses_the_codex_round1_reproduction` |
+| 10 | Malformed/untrusted (round 1 repair) | A prompt, source-text, or absolute/relative path sentinel in each of the 3 remaining fields (9 cases) | Refused as `UnsafeField`, nothing written | `record_purge_tombstone_refuses_prompt_source_and_path_sentinels_in_every_remaining_field` |
+| 10 | Malformed/untrusted (round 1 repair) | Codex's exact round-1 reproduction, restricted to the fields that remain | Refused, nothing written | `record_purge_tombstone_refuses_the_codex_round1_reproduction` |
+| 10 | Malformed/untrusted (round 2 finding, disclosed residual) | A short, ordinary, identifier-shaped phrase (`do-not-purge-this`) that fits every bound `validate_content_safe` enforces | **Accepted** - deliberately, as a documented residual, not a regression | `record_purge_tombstone_accepts_a_short_ordinary_phrase_as_a_disclosed_residual` |
 | 1,2,3,4,9,11 | Path/identity, partial reads, links/mounts, provider drift, platform, scale | N/A - this module never touches a path or the filesystem; it operates only on an already-open `&mut EventLedger` and already-decided `cancellai-model` enum values | - |
 | 5 | Concurrency | Two concurrent `record_purge_tombstone` calls on one ledger | Impossible by construction - `&mut EventLedger` excludes aliasing at the borrow-checker level | - |
 | 6 | Crash/retry | Crash between a real OS purge succeeding and a tombstone being written | Not this story's mechanism to close - no orchestrator calls `record_purge_tombstone` from a real purge yet (disclosed residual, below) | - |
@@ -100,18 +103,51 @@ different layer, as E13-S04's marker-mimicry gap. An independent reproduction st
 `plan_id`/an evidence ID and `/private/provider/source.rs` in `category`, and `EventLedger::read_all`
 returned every sentinel unchanged.
 
-Repair: `tombstone.rs` adds `validate_content_safe`/`validate_optional_content_safe`, called on
-every caller-supplied field before `EventLedger::append` (atomic no-write on refusal by
-construction - the function returns before touching the ledger). A value is accepted only if it
-is empty (deferred to the ledger's own existing empty-`plan_id`/`evidence_ids` refusal, unchanged
-by this repair) or shaped like every real ID this system produces: ASCII letters/digits joined by
-up to 4 single hyphens, ≤32 characters per segment, ≤64 total. This is deliberately a shape check,
-not only a character-class check: a character allowlist alone cannot distinguish `policy-0001`
-from an attacker's message re-encoded as `prompt-sentinel-do-not-store-source-contents` (both are
-letters/digits/hyphens), so segment count is bounded too, since no real ID here is built from more
-than a few hyphenated words. Three new adversarial tests cover this (per-field sentinel sweep, the
-hyphen-joined-words variant, and Codex's exact reproduction) - see the Adversarial-cases table
-above.
+Repair (round 1): `tombstone.rs` added `validate_content_safe`/`validate_optional_content_safe`,
+called on every caller-supplied field before `EventLedger::append` (atomic no-write on refusal by
+construction). A value was accepted only if empty or shaped like every real ID this system
+produces: ASCII letters/digits joined by up to 4 single hyphens, ≤32 characters per segment, ≤64
+total - a shape check, not only a character-class check, since a character allowlist alone cannot
+distinguish `policy-0001` from an attacker's message re-encoded with hyphens.
+
+## Repair - round 2 finding: scope reduction (not a third syntactic patch)
+
+Codex's round-2 review (`project/evidence/E12-S04-VERIFIER-REVIEW-ROUND2.md`) FAILed AC1 again:
+`validate_content_safe` accepts any 1-4-word ASCII hyphen-joined string, and the ordinary short
+phrase `do-not-purge-this` is one of those - accepted and persisted through every field, exactly
+as meaningful as before, just shaped differently. Round 2's own conclusion: "a lexical
+length/character/segment predicate is insufficient because valid-looking short natural language
+is content." This is a structural limit of syntactic validation over free text, not a bug in one
+predicate's specific bounds - tightening the bounds again would only invite the same finding with
+a shorter phrase.
+
+Per the orchestrator's policy (at most two independent review rounds per approach before the next
+attempt must be a different kind of solution, not a third patch of the same kind), this repair is
+a scope reduction rather than a tighter validator: **`provider_id`, `category`, `reason_code`, and
+`policy_id` are removed from `Tombstone` entirely.** These were purely descriptive annotation
+fields, not structurally required to identify what was purged, and `reason_code` in particular is
+definitionally an invitation to explain in words - exactly the shape of field this class of attack
+targets. This mirrors this crate's own established precedent for a mechanism defeated repeatedly
+in successive review rounds (`docs/architecture/PERSISTENCE_MODEL.md` cites E12's own
+`recover_pending_moves` rounds 3-5): remove the mechanism rather than patch it a further time.
+
+`artifact_id`, `plan_id`, and `evidence_ids` remain, because a purge record naming neither what was
+purged nor which plan/evidence produced it is not a tombstone - these are structurally required,
+not merely lower-risk. They keep the same `validate_content_safe` shape check (still narrows
+obvious prompt/source/path content) but this is now explicitly documented, in `tombstone.rs`'s
+module doc, this evidence packet, and `docs/architecture/PERSISTENCE_MODEL.md`, as a **disclosed
+residual, not a closed guarantee**: `record_purge_tombstone_accepts_a_short_ordinary_phrase_as_a_disclosed_residual`
+is a passing test that a short ordinary phrase (`do-not-purge-this`) is still accepted in
+`plan_id`, kept deliberately rather than hidden, so the residual stays visible to a future reader
+instead of silently regressing. Full closure needs a future orchestrator story that sources these
+three values from the system's own already-validated purge/evidence records instead of accepting
+them from an arbitrary public caller - out of this story's scope, since no orchestrator exists yet
+(see "No orchestrator yet" below).
+
+The per-field sentinel sweep and the round-1 reproduction test were narrowed to the three
+remaining fields; the round-1 "hyphen-joined-words" test was removed because it asserted exactly
+the property round 2 falsified (that segment-count bounding closes the gap) - it is replaced by
+the residual-disclosure test above, which asserts the actual, honest current behavior.
 
 ## Compatibility
 
@@ -129,9 +165,10 @@ above.
 
 ## Documentation updated
 
-- `docs/architecture/PERSISTENCE_MODEL.md`: new paragraphs under "Tombstones" naming the
-  implementation, the AC1/AC2 discharge, and the size/reclaim-observation residual.
-- `CHANGELOG.md`: `### Added` entry under `[Unreleased]`.
+- `docs/architecture/PERSISTENCE_MODEL.md`: rewrote the "Tombstones" implementation paragraph -
+  the narrowed field set, why the two independent-review findings led to removal rather than a
+  third validator, and the disclosed residual for the three remaining fields.
+- `CHANGELOG.md`: updated the E12-S04 `### Added` entry under `[Unreleased]` to match.
 
 ## Method defects
 
@@ -139,14 +176,28 @@ above.
 
 ## Residual risks
 
-- **"Size/reclaim observation," one item `docs/architecture/PERSISTENCE_MODEL.md`'s "Tombstones"
+- **AC1 is a disclosed residual for `artifact_id`/`plan_id`/`evidence_ids`, not a closed
+  guarantee.** `validate_content_safe` narrows exposure (rejects an obvious prompt, source
+  fragment, or path) but two independent review rounds established that no syntactic check over a
+  caller-supplied free-text field can prove the absence of all meaningful content - a short,
+  ordinary, identifier-shaped phrase (`do-not-purge-this`) is accepted, and the same capacity could
+  carry a short secret or instruction. Closing this requires a future orchestrator story that
+  derives these three values from the system's own already-validated purge/evidence records
+  instead of accepting them from an arbitrary public caller. Tracked here rather than in a new
+  story ID, since no orchestrator work is currently scheduled to carry it; whoever schedules that
+  orchestrator should also carry this closure.
+- **`provider_id`/`category`/`reason_code`/`policy_id` are no longer recorded at all**, reducing
+  the tombstone's audit/analytics usefulness the architecture doc's illustrative field list
+  describes (e.g. "how many purges were `policy-expired`" is no longer answerable from this
+  record). Reintroducing them needs a real closed vocabulary or an orchestrator-verified source,
+  not caller-supplied free text - a larger, separately reviewable change this story's acceptance
+  criteria do not require.
+- **"Size/reclaim observation,"** one item `docs/architecture/PERSISTENCE_MODEL.md`'s "Tombstones"
   section names illustratively ("such as"), has no column in the ledger's already schema-pinned
-  event table and is not carried by `Tombstone`.** Widening `ledger_events`' pinned schema for a
+  event table and is not carried by `Tombstone`. Widening `ledger_events`' pinned schema for a
   per-artifact figure is a larger, separately reviewable change this story's acceptance criteria
-  (which name only the privacy-allowlist and distinguishability contracts) do not require.
-  `AnalyticalMemory`'s `ReclaimableBytes` metric already tracks reclaimable bytes as an aggregate
-  time series (Layer 3), which is a different granularity (aggregate, not per-tombstone). No
-  story currently carries adding a per-tombstone size column.
+  do not require. `AnalyticalMemory`'s `ReclaimableBytes` metric already tracks reclaimable bytes
+  as an aggregate time series (Layer 3), a different granularity (aggregate, not per-tombstone).
 - **No orchestrator wires `record_purge_tombstone` to a real purge yet.** A crash between
   `mutation_executor::execute`'s `ActionClass::Delete` branch (E03-S05) succeeding and a future
   caller invoking this function to record the tombstone is that future orchestrating story's
@@ -155,5 +206,7 @@ above.
 
 ## Verifier verdict
 
-Round 1: **FAIL** (Codex) - `project/evidence/E12-S04-VERIFIER-REVIEW.md`. Repaired above; round 2
-pending.
+Round 1: **FAIL** (Codex) - `project/evidence/E12-S04-VERIFIER-REVIEW.md`.
+Round 2: **FAIL** (Codex) - `project/evidence/E12-S04-VERIFIER-REVIEW-ROUND2.md`.
+Addressed above by scope reduction, not a third patch of the same kind. Round 3 (of a fresh,
+at-most-two-round budget against this reduced design) pending.
