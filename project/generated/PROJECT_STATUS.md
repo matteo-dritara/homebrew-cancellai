@@ -11,9 +11,9 @@ Epics: **33** | Stories: **167**
 - `blocked`: 2
 - `cancelled`: 1
 - `done`: 150
-- `in_progress`: 1
+- `in_progress`: 2
 - `planned`: 6
-- `ready_for_review`: 7
+- `ready_for_review`: 6
 
 ## Change risk distribution
 
@@ -35,4 +35,3 @@ Epics: **33** | Stories: **167**
 - **E14-S02** - Growth velocity and forecast (CR1)
 - **E14-S03** - Behavioral baseline anomaly detection (CR2)
 - **E14-S04** - Structural anomaly detection (CR2)
-- **E32-S01** - safety_verdict_passes reads the last verdict, not any verdict (CR2)
