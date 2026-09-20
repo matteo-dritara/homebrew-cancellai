@@ -87,6 +87,11 @@ REVIEW_ROUND_EXCEPTIONS = {
     "reviews that scope reduction, not a further patch. See "
     "E12-VERIFIER-REVIEW-ROUND3.md/-ROUND4.md/-ROUND5.md and the E12-S01/E12-S02/E12-S03 "
     "evidence packets' own 'round N' sections",
+    # Round 4 reviews E13-S04's repaired ownership boundary and new carrier E13-S06, not the
+    # already-closed E13-S02/S03/S05; see E13-VERIFIER-REVIEW-ROUND3.md and -ROUND4.md.
+    "E13": "round 4 is new/repaired E13-S04+E13-S06 scope after round 3's marker-mimicry "
+    "finding, not a repeated attempt at the already-closed E13-S02/S03/S05 stories; see "
+    "E13-VERIFIER-REVIEW-ROUND3.md and E13-VERIFIER-REVIEW-ROUND4.md",
 }
 # Matches both an epic-scoped record (`E07-VERIFIER-REVIEW.md`) and a story-scoped one
 # (`E07-S07-VERIFIER-REVIEW.md`), counting both against the *epic's* ceiling (captured

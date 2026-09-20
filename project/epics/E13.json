@@ -128,7 +128,7 @@
     {
       "id": "E13-S06",
       "title": "cancellAI-owned local-state root capability",
-      "status": "ready_for_review",
+      "status": "in_progress",
       "outcome": "Bind CurrentStateStore/EventLedger/AnalyticalMemory's reset-capable handles to a single, non-caller-suppliable, cancellAI-owned local-state root, closing the residual E13-S04's round-3 independent review recorded as accepted risk rather than a defect it could close itself.",
       "change_risk": "CR3",
       "risk_reclassification_note": "Declared CR3 at planning to match E13-S04's own level for the identical safety obligation (SI-026); may need reclassification at commit time once the actual diff shape (and any new cross-crate dependency it requires) is known, per this project's own standing precedent (E18-S01/E18-S03).",
