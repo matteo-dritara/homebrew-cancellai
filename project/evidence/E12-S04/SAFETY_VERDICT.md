@@ -216,3 +216,25 @@ This is a CR4 delivery-gate failure under C-16, so the story cannot close in thi
 Owner note: The SI-020 second-path bypass is closed and ADR-0033's residual remains accepted, but
 the required CR4 closure gate cannot accept an append-only verdict history. E12-S04 remains
 `in_progress` pending a separately reviewed repair to the safety-verdict gate.
+
+## Round 6 independent review
+
+- Review target: `31cf69d..86ec71e` on `main`
+- Verifier: Codex
+- Brief-Checksum: 13ff307a3683218ad373346e3d17d1530ec685aa514195ee7bd8251f394f2a12
+- Date: 2026-09-20
+
+`FAIL`
+
+Round 5's AC1/ADR-0033, AC2/SI-020, and E13-S02 mutation-reference conclusions remain intact;
+there is no `rust/` diff since `31cf69d`. E32-S01 fails independent review because its raw-text
+parser lets a verdict-shaped line inside a fenced code block control the verdict. A genuine
+current `REJECT` followed by a fenced illustrative `PASS` returns true. The gate therefore does
+not yet read the newest attributable verdict and cannot authorize E12-S04 closure.
+
+## Owner decision — Round 6
+
+`REJECT`
+
+Owner note: E12-S04 remains `in_progress`; the CR4 closing-gate parser defect in E32-S01 must not
+be treated as a passing Safety Verdict.
