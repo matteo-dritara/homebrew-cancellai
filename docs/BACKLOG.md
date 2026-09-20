@@ -1501,7 +1501,7 @@ Detect disk pressure, runaway growth, and structural anomalies using local evide
 
 ### E14-S01 - Pressure state model
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E13-S03 | **Safety obligations:** SI-027
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E13-S03 | **Safety obligations:** SI-027
 
 **Outcome.** Define GREEN/YELLOW/ORANGE/RED from free space, budgets, growth velocity, reclaimability, and active workload.
 
@@ -1520,7 +1520,7 @@ Detect disk pressure, runaway growth, and structural anomalies using local evide
 
 ### E14-S02 - Growth velocity and forecast
 
-**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E14-S01 | **Safety obligations:** none
+**Status:** `in_progress` | **Change Risk:** `CR1` | **Dependencies:** E14-S01 | **Safety obligations:** none
 
 **Outcome.** Estimate provider/project growth rate and conservative time-to-pressure forecasts.
 
@@ -1539,7 +1539,7 @@ Detect disk pressure, runaway growth, and structural anomalies using local evide
 
 ### E14-S03 - Behavioral baseline anomaly detection
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E13-S03 | **Safety obligations:** SI-027
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E13-S03 | **Safety obligations:** SI-027
 
 **Outcome.** Build local baselines and flag statistically/heuristically unusual growth without content inspection.
 
@@ -1558,7 +1558,7 @@ Detect disk pressure, runaway growth, and structural anomalies using local evide
 
 ### E14-S04 - Structural anomaly detection
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E05-S05, E14-S01 | **Safety obligations:** SI-004
+**Status:** `in_progress` | **Change Risk:** `CR2` | **Dependencies:** E05-S05, E14-S01 | **Safety obligations:** SI-004
 
 **Outcome.** Detect session explosion, unexpected giant files, orphan growth, and provider layout drift.
 

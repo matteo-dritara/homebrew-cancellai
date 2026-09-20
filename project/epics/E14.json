@@ -12,7 +12,7 @@
     {
       "id": "E14-S01",
       "title": "Pressure state model",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Define GREEN/YELLOW/ORANGE/RED from free space, budgets, growth velocity, reclaimability, and active workload.",
       "change_risk": "CR2",
       "dependencies": [
@@ -35,7 +35,7 @@
     {
       "id": "E14-S02",
       "title": "Growth velocity and forecast",
-      "status": "ready_for_review",
+      "status": "in_progress",
       "outcome": "Estimate provider/project growth rate and conservative time-to-pressure forecasts.",
       "change_risk": "CR1",
       "dependencies": [
@@ -56,7 +56,7 @@
     {
       "id": "E14-S03",
       "title": "Behavioral baseline anomaly detection",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Build local baselines and flag statistically/heuristically unusual growth without content inspection.",
       "change_risk": "CR2",
       "dependencies": [
@@ -79,7 +79,7 @@
     {
       "id": "E14-S04",
       "title": "Structural anomaly detection",
-      "status": "ready_for_review",
+      "status": "in_progress",
       "outcome": "Detect session explosion, unexpected giant files, orphan growth, and provider layout drift.",
       "change_risk": "CR2",
       "dependencies": [
