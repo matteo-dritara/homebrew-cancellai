@@ -228,8 +228,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   door onto the event ledger's existing `EventKind::Purged` capability (E13-S02), adding no new
   schema, file or connection of its own. `Tombstone` carries only opaque artifact ID,
   provider/category, reason/policy ID, and plan/evidence references - the same closed set
-  `EventMetadata`/`MutationReference` already enforce and schema-pin, so there is no path,
-  prompt, or content-typed field a caller could populate even by mistake (AC1).
+  `EventMetadata`/`MutationReference` already enforce and schema-pin - and every one of those
+  caller-supplied fields is validated as a short, hyphen-joined ASCII identifier (character
+  class and segment count both bounded) before anything is written, refusing with nothing
+  persisted otherwise: a column allowlist alone does not stop a field from carrying prompt,
+  source, or path content, which an independent review round found and this closes (AC1).
   `record_purge_tombstone` refuses, writing nothing, unless given exactly `ActionClass::Delete`
   with `Reversibility::Irreversible` - every other combination `cancellai-model`'s vocabulary
   admits is rejected, including `Reversibility::VendorConditional` paired with any action class

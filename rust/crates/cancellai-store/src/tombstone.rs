@@ -17,17 +17,30 @@
 //! section names - opaque artifact ID, provider/category, purge time (the ledger's own
 //! `recorded_at`), reason/policy ID, and action result/evidence references (plan ID + evidence
 //! IDs) - the same closed set [`crate::ledger::EventMetadata`]/[`crate::ledger::
-//! MutationReference`] already enforce at the SQLite layer. There is no path, prompt, or
-//! content-typed field on this struct for a caller to populate even by mistake - unlike
-//! [`crate::ledger::EventMetadata`]'s own residual (a `String` field can still be misused; see
-//! that module's doc), this module does not widen what the ledger already accepts, only narrows
-//! the door onto it. "size/reclaim observation," the one illustrative item this document's
-//! "Tombstones" section names that the ledger's own schema has no column for, is a disclosed
-//! residual (this crate's evidence packet) rather than a new column: `AnalyticalMemory`'s
-//! `ReclaimableBytes` metric already tracks reclaimable bytes as an aggregate time series
-//! (`docs/architecture/PERSISTENCE_MODEL.md`'s Layer 3), and widening the ledger's own
-//! already-pinned schema for a per-artifact figure is a larger, separately reviewable change
-//! this story's acceptance criteria do not require.
+//! MutationReference`] already enforce at the SQLite layer. Restricting *which columns* exist
+//! does not restrict *what bytes* a caller can put in the `String`/ID fields those columns hold
+//! (an independent review round 1 finding: this module previously asserted contentlessness from
+//! the column allowlist alone and left every field able to round-trip an arbitrary prompt,
+//! source excerpt, or absolute path unchanged). [`record_purge_tombstone`] therefore validates
+//! every caller-supplied field - `artifact_id`, `provider_id`, `category`, `reason_code`,
+//! `policy_id`, `plan_id`, and each evidence ID - against [`validate_content_safe`] before it
+//! writes anything: a short value shaped like every real ID this workspace produces - ASCII
+//! letters/digits joined by single hyphens, a handful of short segments (`policy-expired`,
+//! `plan-0001`) - is accepted, and anything else is refused with nothing appended to the
+//! ledger. This is a positive allowlist over both *characters* and *shape*, not a blocklist of
+//! known-bad patterns: prompt text, source code, and file paths usually contain a character the
+//! allowlist excludes outright (whitespace, `/`, `\`, quotes, braces, `.`, `_`, ...), and the one
+//! case that character check alone cannot catch - attacker-chosen words joined by hyphens
+//! instead of spaces, which is exactly as "safe" character-for-character as a real ID - is
+//! caught by the segment-count bound instead, since no real provider/category/reason/policy/
+//! plan/evidence ID in this system is built from more than a few hyphenated words. "size/reclaim
+//! observation," the one illustrative item this document's "Tombstones"
+//! section names that the ledger's own schema has no column for, is a disclosed residual (this
+//! crate's evidence packet) rather than a new column: `AnalyticalMemory`'s `ReclaimableBytes`
+//! metric already tracks reclaimable bytes as an aggregate time series (`docs/architecture/
+//! PERSISTENCE_MODEL.md`'s Layer 3), and widening the ledger's own already-pinned schema for a
+//! per-artifact figure is a larger, separately reviewable change this story's acceptance
+//! criteria do not require.
 //!
 //! ## Distinguishable from a reversible/conditionally-reversible outcome (AC2: "Irreversible
 //! purge is distinguishable from vendor-native conditionally reversible operations")
@@ -93,10 +106,15 @@ pub enum PurgeTombstoneError {
         action_class: ActionClass,
         reversibility: Reversibility,
     },
+    /// A field carried something other than a short, content-safe identifier - AC1
+    /// "Tombstones contain no prompts/source/file contents." Named by field, never by value:
+    /// echoing the rejected value back would hand the caller a second channel to retain
+    /// exactly what this rejection exists to keep out of any log or error report.
+    UnsafeField { field: &'static str },
     /// The underlying ledger append itself refused (SI-020 aside, [`EventLedger::append`]'s
     /// own fail-closed contract for mutation-class events: an empty `plan_id`/`evidence_ids`
-    /// is rejected there too - this variant is reached instead of `NotAnIrreversiblePurge` only
-    /// when the action_class/reversibility check already passed).
+    /// is rejected there too - this variant is reached instead of `NotAnIrreversiblePurge` or
+    /// `UnsafeField` only when both prior checks already passed).
     Ledger(LedgerError),
 }
 
@@ -112,12 +130,76 @@ impl std::fmt::Display for PurgeTombstoneError {
                  purge - only ActionClass::Delete with Reversibility::Irreversible may be \
                  recorded as a purge tombstone"
             ),
+            PurgeTombstoneError::UnsafeField { field } => write!(
+                f,
+                "tombstone field {field:?} is not a content-safe identifier (at most \
+                 {MAX_SEGMENTS} hyphen-separated segments of letters/digits, {MAX_SEGMENT_LEN} \
+                 characters each, {MAX_FIELD_LEN} total) - refusing to risk retaining prompt, \
+                 source, or path content in a purge tombstone"
+            ),
             PurgeTombstoneError::Ledger(e) => write!(f, "{e}"),
         }
     }
 }
 
 impl std::error::Error for PurgeTombstoneError {}
+
+/// Longest value [`validate_content_safe`] accepts in total, and the longest it accepts for any
+/// one hyphen-separated segment. Every provider/category/reason/policy/plan/evidence ID this
+/// workspace actually produces is a handful of short lowercase words and digits joined by single
+/// hyphens (`policy-expired`, `plan-0001`, `evidence-0001`, ...); these bounds are sized for
+/// that shape, not merely for "a short string."
+const MAX_FIELD_LEN: usize = 64;
+const MAX_SEGMENT_LEN: usize = 32;
+/// Most hyphen-separated segments [`validate_content_safe`] accepts. A character allowlist
+/// alone does not distinguish a legitimate identifier from an attacker's message re-encoded
+/// with hyphens standing in for spaces (`prompt-sentinel-do-not-store-source-contents` is,
+/// character-for-character, as "safe" as `policy-0001`) - bounding segment count catches what
+/// the allowlist cannot, the same way E13-S06 rejects a caller-suppliable proof of ownership on
+/// structural grounds rather than trying to pattern-match forged content.
+const MAX_SEGMENTS: usize = 4;
+
+/// Refuses a tombstone field that is not a short, content-safe identifier (AC1). Emptiness is
+/// not this function's concern - [`EventLedger::append`]'s own mutation-reference contract
+/// already refuses an empty `plan_id`/`evidence_ids`, and an absent `Option` field is simply not
+/// validated - so this judges shape: ASCII letters/digits only, joined by single hyphens (no
+/// leading/trailing/doubled hyphen, so no empty segment), at most [`MAX_SEGMENTS`] segments of
+/// at most [`MAX_SEGMENT_LEN`] characters each, [`MAX_FIELD_LEN`] characters total. A prompt, a
+/// line of source code, or a file path either contains a character this allowlist excludes
+/// (whitespace, `/`, `\`, quotes, braces, `.`, `_`, control characters, ...) or, once forced
+/// into hyphen-joined words to dodge that, exceeds the segment-count bound real IDs never reach.
+fn validate_content_safe(field: &'static str, value: &str) -> Result<(), PurgeTombstoneError> {
+    if value.is_empty() {
+        return Ok(());
+    }
+    let shape_safe = value.len() <= MAX_FIELD_LEN
+        && !value.starts_with('-')
+        && !value.ends_with('-')
+        && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+        && {
+            let segments: Vec<&str> = value.split('-').collect();
+            segments.len() <= MAX_SEGMENTS
+                && segments
+                    .iter()
+                    .all(|s| !s.is_empty() && s.len() <= MAX_SEGMENT_LEN)
+        };
+    if shape_safe {
+        Ok(())
+    } else {
+        Err(PurgeTombstoneError::UnsafeField { field })
+    }
+}
+
+/// [`validate_content_safe`] over an optional field - `None` carries nothing to validate.
+fn validate_optional_content_safe(
+    field: &'static str,
+    value: &Option<String>,
+) -> Result<(), PurgeTombstoneError> {
+    match value {
+        Some(v) => validate_content_safe(field, v),
+        None => Ok(()),
+    }
+}
 
 /// Records `tombstone` as a [`EventKind::Purged`] ledger event at `recorded_at` - refusing,
 /// with nothing written, unless `action_class`/`reversibility` together name exactly the one
@@ -136,6 +218,16 @@ pub fn record_purge_tombstone(
             action_class,
             reversibility,
         });
+    }
+
+    validate_content_safe("artifact_id", &tombstone.artifact_id.0)?;
+    validate_optional_content_safe("provider_id", &tombstone.provider_id)?;
+    validate_optional_content_safe("category", &tombstone.category)?;
+    validate_optional_content_safe("reason_code", &tombstone.reason_code)?;
+    validate_optional_content_safe("policy_id", &tombstone.policy_id)?;
+    validate_content_safe("plan_id", &tombstone.plan_id)?;
+    for evidence_id in &tombstone.evidence_ids {
+        validate_content_safe("evidence_id", &evidence_id.0)?;
     }
 
     let event = crate::ledger::NewEvent {
@@ -326,5 +418,128 @@ mod tests {
             .expect("a Purged event always carries a MutationReference");
         assert_eq!(mutation.plan_id, given.plan_id);
         assert_eq!(mutation.evidence_ids, given.evidence_ids);
+    }
+
+    #[test]
+    fn record_purge_tombstone_refuses_prompt_source_and_path_sentinels_in_every_field() {
+        // Independent review round 1 finding: every retained field accepted and round-tripped
+        // arbitrary prompt/source/path content unchanged (AC1, C-09, SI-020). Each sentinel here
+        // contains at least one character validate_content_safe's allowlist excludes.
+        let sentinels: [(&str, &str); 3] = [
+            ("prompt", "please do not store this instruction verbatim"),
+            (
+                "source",
+                "fn source() { /* do not store source contents */ }",
+            ),
+            ("path", "/private/provider/source.rs"),
+        ];
+
+        type FieldSetter = fn(&mut Tombstone, &str);
+        let fields: [(&str, FieldSetter); 7] = [
+            ("artifact_id", |t: &mut Tombstone, v: &str| {
+                t.artifact_id = ArtifactId::new(v)
+            }),
+            ("provider_id", |t: &mut Tombstone, v: &str| {
+                t.provider_id = Some(v.to_string())
+            }),
+            ("category", |t: &mut Tombstone, v: &str| {
+                t.category = Some(v.to_string())
+            }),
+            ("reason_code", |t: &mut Tombstone, v: &str| {
+                t.reason_code = Some(v.to_string())
+            }),
+            ("policy_id", |t: &mut Tombstone, v: &str| {
+                t.policy_id = Some(v.to_string())
+            }),
+            ("plan_id", |t: &mut Tombstone, v: &str| {
+                t.plan_id = v.to_string()
+            }),
+            ("evidence_id", |t: &mut Tombstone, v: &str| {
+                t.evidence_ids = vec![EvidenceId::new(v)]
+            }),
+        ];
+
+        for (field_name, set_field) in fields {
+            for (sentinel_name, sentinel) in sentinels {
+                let mut ledger = EventLedger::open_in_memory().expect("open");
+                let mut poisoned = tombstone("artifact-0001");
+                set_field(&mut poisoned, sentinel);
+                let result = record_purge_tombstone(
+                    &mut ledger,
+                    ActionClass::Delete,
+                    Reversibility::Irreversible,
+                    1_000,
+                    poisoned,
+                );
+                assert!(
+                    matches!(
+                        result,
+                        Err(PurgeTombstoneError::UnsafeField { field }) if field == field_name
+                    ),
+                    "{field_name} with a {sentinel_name} sentinel must be refused as \
+                     UnsafeField({field_name:?}), got {result:?}"
+                );
+                assert!(
+                    ledger.read_all().expect("read_all").is_empty(),
+                    "{field_name} with a {sentinel_name} sentinel must write nothing"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn record_purge_tombstone_refuses_hyphen_joined_words_standing_in_for_a_sentence() {
+        // A character allowlist alone cannot tell `policy-0001` from an attacker's message
+        // re-encoded with hyphens instead of spaces - both are letters/digits/hyphens. This is
+        // the independent review's own round-1 reproduction re-expressed with hyphens rather
+        // than underscores, which the segment-count bound must still catch.
+        let mut ledger = EventLedger::open_in_memory().expect("open");
+        let mut poisoned = tombstone("artifact-0001");
+        poisoned.reason_code = Some("prompt-sentinel-do-not-store-source-contents".to_string());
+        let result = record_purge_tombstone(
+            &mut ledger,
+            ActionClass::Delete,
+            Reversibility::Irreversible,
+            1_000,
+            poisoned,
+        );
+        assert!(
+            matches!(
+                result,
+                Err(PurgeTombstoneError::UnsafeField { field }) if field == "reason_code"
+            ),
+            "a long hyphen-joined message must be refused on segment count, got {result:?}"
+        );
+        assert!(ledger.read_all().expect("read_all").is_empty());
+    }
+
+    #[test]
+    fn record_purge_tombstone_refuses_the_codex_round1_reproduction() {
+        // The exact independent-review round-1 reproduction: every retained field poisoned at
+        // once with the same sentinel that previously round-tripped through EventLedger intact.
+        let mut ledger = EventLedger::open_in_memory().expect("open");
+        let poisoned = Tombstone {
+            artifact_id: ArtifactId::new("artifact-0001"),
+            provider_id: Some("PROMPT_SENTINEL_do_not_store_source_contents".to_string()),
+            category: Some("/private/provider/source.rs".to_string()),
+            reason_code: Some("PROMPT_SENTINEL_do_not_store_source_contents".to_string()),
+            policy_id: Some("PROMPT_SENTINEL_do_not_store_source_contents".to_string()),
+            plan_id: "PROMPT_SENTINEL_do_not_store_source_contents".to_string(),
+            evidence_ids: vec![EvidenceId::new(
+                "PROMPT_SENTINEL_do_not_store_source_contents",
+            )],
+        };
+        let result = record_purge_tombstone(
+            &mut ledger,
+            ActionClass::Delete,
+            Reversibility::Irreversible,
+            1_000,
+            poisoned,
+        );
+        assert!(
+            matches!(result, Err(PurgeTombstoneError::UnsafeField { .. })),
+            "the round-1 reproduction must be refused, got {result:?}"
+        );
+        assert!(ledger.read_all().expect("read_all").is_empty());
     }
 }

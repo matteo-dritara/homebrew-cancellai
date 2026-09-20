@@ -398,8 +398,16 @@ E12-S04 implements the tombstone as a typed, narrower front door onto Layer 2's 
 Tombstone` carries exactly opaque artifact ID, provider/category, reason/policy ID, and action
 result/evidence references (plan ID + evidence IDs) - the same closed set `EventMetadata`/
 `MutationReference` already enforce at the SQLite layer and that layer's own schema-pin test
-already covers; there is no path, prompt, or content-typed field on the struct for a caller to
-populate even by mistake (AC1). `size/reclaim observation`, the one item this section's
+already covers. Restricting which *columns* exist does not restrict what bytes a caller can put
+in them: an independent review found the original implementation left every field able to
+round-trip an arbitrary prompt, source excerpt, or path unchanged, since a column allowlist is
+not content validation. `record_purge_tombstone` therefore validates every caller-supplied field
+before writing anything: a value must be empty, or shaped like every real ID this system
+produces - ASCII letters/digits joined by up to four single hyphens, bounded per-segment and
+total length - or the call is refused with nothing written (AC1). Segment count is bounded
+alongside character class deliberately, because a character allowlist alone cannot distinguish a
+real ID from an attacker's message re-encoded with hyphens standing in for spaces. `size/reclaim
+observation`, the one item this section's
 illustrative list names that the ledger's own schema has no column for, is a disclosed residual
 rather than a new column - widening an already schema-pinned table for a per-artifact figure is a
 larger, separately reviewable change this story's acceptance criteria do not require;
