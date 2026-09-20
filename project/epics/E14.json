@@ -35,7 +35,7 @@
     {
       "id": "E14-S02",
       "title": "Growth velocity and forecast",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Estimate provider/project growth rate and conservative time-to-pressure forecasts.",
       "change_risk": "CR1",
       "dependencies": [

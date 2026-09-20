@@ -1520,7 +1520,7 @@ Detect disk pressure, runaway growth, and structural anomalies using local evide
 
 ### E14-S02 - Growth velocity and forecast
 
-**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E14-S01 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E14-S01 | **Safety obligations:** none
 
 **Outcome.** Estimate provider/project growth rate and conservative time-to-pressure forecasts.
 

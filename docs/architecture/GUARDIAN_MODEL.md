@@ -63,6 +63,28 @@ E13/E12's own "primitive delivered, no orchestrator yet" precedent.
 
 Forecasts can include estimated time to disk pressure or budget exhaustion. They must surface insufficient-data/uncertainty states and are never authorization inputs by themselves.
 
+E14-S02 implements growth-rate estimation and time-to-threshold forecasting:
+`cancellai_guardian::forecast`, the same pure, dependency-free shape as `pressure` (no
+`cancellai-safety` reference, no I/O, no clock - a caller supplies the time series, this crate's
+`cancellai-store` sibling's `AnalyticalMemory::raw_samples`/`hourly_rollups`/`daily_rollups` being
+the intended source, wired by a later orchestrator). `estimate_growth` and
+`forecast_time_to_threshold` share one fit (`fit_growth`): an ordinary-least-squares line over the
+caller's `(timestamp, value)` observations, with at most one outlier trimmed by a
+median-absolute-deviation check before judgment, so a single isolated burst cannot itself
+manufacture or hide a trend. AC1 ("forecast uncertainty is surfaced") holds because every non-
+insufficient answer carries an explicit, ordered `Confidence` (`Low`/`Medium`/`High`, from the
+fit's `r_squared`) alongside its number - uncertainty is a field on the result, not an
+implementation detail. AC2 ("sparse/noisy history produces insufficient-data rather than false
+precision") holds because `fit_growth` refuses to return a fit at all, not merely a low-confidence
+one, when there are too few usable points, too short a time span, or too poor a linear fit to
+support a trend claim - a named `InsufficientDataReason` distinguishes "too little history" from
+"history present but too noisy to trust." A declining or flat series never produces a negative
+velocity or a spurious exhaustion forecast: growth velocity floors at zero contribution (matching
+`PressureInputs::growth_velocity_fraction_per_window`'s own documented floor) and a non-positive
+trend, or a series already at or past the threshold, yields `NotTrendingTowardThreshold` rather
+than a nonsensical negative or infinite time. No caller wires this to a live `cancellai-store`
+scan yet, matching E14-S01/E13/E12's own "primitive delivered, no orchestrator yet" precedent.
+
 ## Baselines
 
 Baselines are local and metadata-only. The first implementation should prefer transparent robust statistics/heuristics over opaque ML. More sophisticated models are allowed only if their output remains advisory evidence and can be explained sufficiently for debugging.

@@ -248,6 +248,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one observation; a NaN or out-of-range axis resolves to its worst reading, never its safest.
   Imports no `AuthorityLevel`/`ActionClass`/`Reversibility` type, so AC2 ("pressure does not change
   authority by itself") holds by construction. No caller wires this to a live store yet.
+- Added Guardian growth velocity and time-to-pressure forecasting (E14-S02, CR1,
+  `docs/architecture/GUARDIAN_MODEL.md` "Forecasting"): `cancellai_guardian::forecast` fits an
+  ordinary-least-squares trend over a caller-supplied time series, with at most one outlier
+  trimmed by a median-absolute-deviation check so a single burst cannot manufacture or hide a
+  trend. Every non-insufficient answer carries an explicit, ordered `Confidence`
+  (`Low`/`Medium`/`High`) alongside its number (AC1); too few points, too short a span, or too
+  poor a fit refuses a fit outright rather than returning a low-confidence guess, distinguishing
+  "too little history" from "too noisy to trust" via `InsufficientDataReason` (AC2). A declining
+  or flat series floors growth velocity at zero and never yields a spurious exhaustion forecast.
+  No caller wires this to a live store yet.
 
 ### Fixed
 
