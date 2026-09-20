@@ -61,3 +61,28 @@ changed by this review.
 
 Owner note: Independent verifier rejection. Repair and re-review are required before a CR4
 Safety Verdict may record a passing result.
+
+## Round 3 independent review
+
+- Review target: `1ed7d24^..1ed7d24`
+- Verifier: Codex
+- Brief-Checksum: 13ff307a3683218ad373346e3d17d1530ec685aa514195ee7bd8251f394f2a12
+- Date: 2026-09-20
+- Verdict: `FAIL`
+
+The reduction removes `provider_id`, `category`, `reason_code`, and `policy_id` from the typed
+`Tombstone` struct, but it cannot discharge AC1/C-09: all three remaining references are
+caller-constructed strings and the deliberately accepted `do-not-purge-this` phrase persists.
+Further, `EventLedger::append(NewEvent { kind: EventKind::Purged, .. })` and its public
+`EventMetadata` fields reconstruct every removed annotation directly, including the original
+prompt/path sentinels, and bypass the typed helper's SI-020 pairing predicate.
+
+| Invariant | Required property | Round 3 evidence | Result |
+| --- | --- | --- | --- |
+| SI-020 | A permanent purge record is explicit, stronger-gated, and not disguiseable as cleanup metadata. | The typed helper has the right pair check, but public direct `PURGED` ledger append has neither that check nor the narrowed metadata surface. | FAIL |
+| C-09 | Persistent state does not copy prompts, source code, secrets, or file contents by default. | Public direct append persisted a prompt sentinel and `/private/provider/source.rs`; the typed helper also persists the documented short phrase in each remaining field. | FAIL |
+
+Required disposition: keep E12-S04 `in_progress`. An owner must either explicitly redefine AC1
+through the control plane or schedule an orchestrator/reference design that makes the three
+references authority-bound and prevents direct construction of `PURGED` events outside that
+boundary. A disclosed residual does not itself waive AC1.

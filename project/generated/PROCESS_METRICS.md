@@ -96,7 +96,7 @@ independent samples, and the population estimate collapses to what one round alr
 
 ## Evidence-ledger integrity
 
-- **142 of 157** story packets past `ready_for_review` carry a row per acceptance criterion.
+- **141 of 156** story packets past `ready_for_review` carry a row per acceptance criterion.
 - Packets that do not:
   - E00-S01 (CR4): 0 rows for 3 criteria
   - E00-S02 (CR4): 0 rows for 3 criteria
@@ -187,6 +187,7 @@ story-scoped records carrying four real findings, and it produced no row and no 
 - `project/evidence/E07-S07-VERIFIER-REVIEW.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
 - `project/evidence/E07-S09-VERIFIER-REVIEW.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
 - `project/evidence/E12-S04-VERIFIER-REVIEW-ROUND2.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
+- `project/evidence/E12-S04-VERIFIER-REVIEW-ROUND3.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
 - `project/evidence/E12-S04-VERIFIER-REVIEW.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
 - `project/evidence/E16-S07-VERIFIER-REVIEW.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
 - `project/evidence/E17-S08-VERIFIER-REVIEW.md (story-scoped; add `Review-Scope: epic` to count it as a round)`
