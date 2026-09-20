@@ -4,7 +4,7 @@
 
 Current phase: **P1**
 
-Epics: **32** | Stories: **166**
+Epics: **33** | Stories: **167**
 
 ## Story status
 
@@ -13,13 +13,13 @@ Epics: **32** | Stories: **166**
 - `done`: 150
 - `in_progress`: 1
 - `planned`: 6
-- `ready_for_review`: 6
+- `ready_for_review`: 7
 
 ## Change risk distribution
 
 - `CR0`: 14
 - `CR1`: 38
-- `CR2`: 50
+- `CR2`: 51
 - `CR3`: 30
 - `CR4`: 34
 
@@ -35,3 +35,4 @@ Epics: **32** | Stories: **166**
 - **E14-S02** - Growth velocity and forecast (CR1)
 - **E14-S03** - Behavioral baseline anomaly detection (CR2)
 - **E14-S04** - Structural anomaly detection (CR2)
+- **E32-S01** - safety_verdict_passes reads the last verdict, not any verdict (CR2)

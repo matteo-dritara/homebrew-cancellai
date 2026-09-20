@@ -217,8 +217,45 @@ class ProjectOSTests(unittest.TestCase):
             mixed.write_text("## Verdict\n\n`PASS`\n\n## Owner decision\n\n`REJECT`\n", encoding="utf-8")
             self.assertFalse(project_os.safety_verdict_passes(failing))
             self.assertTrue(project_os.safety_verdict_passes(passing))
-            # A pass that is overridden by a rejection elsewhere in the file is not a pass.
+            # A pass that is overridden by a rejection elsewhere in the file is not a pass -
+            # the rejection is the more recent, and therefore controlling, verdict.
             self.assertFalse(project_os.safety_verdict_passes(mixed))
+
+    def test_a_cr4_story_closes_over_an_append_only_history_ending_in_a_pass(self) -> None:
+        # E12-S04's round-5 independent review (project/evidence/E12-S04-VERIFIER-REVIEW-ROUND5.md,
+        # E32-S01): a Safety Verdict is an append-only round history, not a single verdict. An
+        # early round's FAIL must not outlive its own repair - what controls closure is the most
+        # recent verdict line, not whether any earlier line ever failed.
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            repaired = base / "SAFETY_VERDICT.md"
+            repaired.write_text(
+                "# Safety Verdict - E00-S01\n\n"
+                "## Verdict\n\n`FAIL`\n\n"
+                "## Owner decision\n\n`REJECT`\n\n"
+                "## Round 2 independent review\n\n"
+                "- Verdict: `FAIL` (unrelated inline mention, does not match the standalone-line pattern)\n\n"
+                "## Round 3 independent review\n\n`PASS_WITH_RESIDUALS`\n",
+                encoding="utf-8",
+            )
+            self.assertTrue(
+                project_os.safety_verdict_passes(repaired),
+                "a passing final round must close the story even though earlier rounds in the same append-only file recorded FAIL/REJECT",
+            )
+
+            still_open = base / "SAFETY_VERDICT_STILL_OPEN.md"
+            still_open.write_text(
+                "## Verdict\n\n`PASS_WITH_RESIDUALS`\n\n## Round 2 independent review\n\n`FAIL`\n",
+                encoding="utf-8",
+            )
+            self.assertFalse(
+                project_os.safety_verdict_passes(still_open),
+                "a later round's FAIL must still block closure even though an earlier round passed",
+            )
+
+            never_judged = base / "SAFETY_VERDICT_EMPTY.md"
+            never_judged.write_text("# Safety Verdict - E00-S01\n\nNo verdict recorded yet.\n", encoding="utf-8")
+            self.assertFalse(project_os.safety_verdict_passes(never_judged))
 
     def test_ready_for_review_does_not_require_a_safety_verdict(self) -> None:
         # The Safety Verdict is the reviewer's output; demanding it at handoff would force

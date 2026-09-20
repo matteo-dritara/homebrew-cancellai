@@ -126,16 +126,28 @@ def evidence_is_substantive(path: Path, story_id: str) -> bool:
 
 
 def safety_verdict_passes(path: Path) -> bool:
-    """Whether a Safety Verdict records a pass rather than merely existing.
+    """Whether a Safety Verdict's most recent standalone verdict line is a pass.
 
-    Checking only for a file named "verdict" lets a rejected story be marked done while the
-    rejection sits next to it in the repository.
+    A CR4 Safety Verdict is an append-only round history (docs/development/AGENT_PROTOCOL.md):
+    a rejected round's record stays in the file when a later round repairs and passes it, the
+    same way a rejected story is not deleted, just superseded. "Any FAIL/REJECT line anywhere
+    disqualifies the file" (this function's own prior behavior, E12-S04's round 5 found) cannot
+    ever accept such a history - every corrected multi-round CR4 story would carry its own
+    earlier rejection forever. What actually answers "is this story safe to close" is which
+    verdict is most recent, by position in the file, not whether an earlier one ever failed:
+    a `PASS` followed later by a `REJECT` is correctly still refused (the rejection is the last
+    word), while a `FAIL` followed later by a `PASS` is correctly accepted (the pass is).
     """
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return False
-    return bool(PASSING_VERDICT_RE.search(text)) and not FAILING_VERDICT_RE.search(text)
+    verdicts = [(m.start(), True) for m in PASSING_VERDICT_RE.finditer(text)]
+    verdicts += [(m.start(), False) for m in FAILING_VERDICT_RE.finditer(text)]
+    if not verdicts:
+        return False
+    _, most_recent_is_passing = max(verdicts, key=lambda verdict: verdict[0])
+    return most_recent_is_passing
 
 
 def evidence_states_residual_risk(path: Path) -> bool:

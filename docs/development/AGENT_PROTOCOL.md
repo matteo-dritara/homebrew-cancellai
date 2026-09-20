@@ -156,7 +156,14 @@ epic status.
 5. Inspect tests for false confidence, tautology, and gaps.
 6. Run or add adversarial tests where necessary.
 7. Issue one verdict: `PASS`, `PASS_WITH_RESIDUALS`, or `FAIL`.
-8. For CR4, populate the Safety Verdict template with concrete evidence.
+8. For CR4, populate the Safety Verdict template with concrete evidence. A multi-round CR4 story
+   keeps every round's verdict in the same file, append-only, rather than overwriting an earlier
+   round's record - the same reason a rejected story is not deleted, just superseded.
+   `scripts/project_os.py`'s `safety_verdict_passes` gate reads the **most recent** standalone
+   verdict line, by position in the file, not whether any earlier line ever failed (E32-S01: an
+   earlier version of this gate refused to close any CR4 story whose Safety Verdict recorded more
+   than one round, because a repaired-and-passed final round still carried its own corrected
+   round's `FAIL`/`REJECT` in the file). A later `REJECT` still overrides an earlier `PASS`.
 
 ## Failure cycle
 
