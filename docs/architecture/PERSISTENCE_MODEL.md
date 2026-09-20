@@ -289,30 +289,42 @@ mimic that forgot the marker, never one that copied it. A per-install random sec
 and rejected for the identical structural reason (an attacker who fabricates both the secret and the
 marker together controls both).
 
-E13-S06 closes this not with a better check but by removing the caller-suppliable path entirely:
-`cancellai_store::LocalStateRoot::resolve` is the crate's one public, reviewed way to establish
-cancellAI's own local-state root (creating the directory if absent, canonicalizing it once), and
-each layer's production `open()` now takes a `&LocalStateRoot` instead of a `Path`, deriving its own
-database's location by joining a filename the crate alone fixes
-(`current_state.sqlite3`/`event_ledger.sqlite3`/`analytical_memory.sqlite3`). A caller therefore
-names *which directory* is cancellAI's own local-state root, but never *which file* within it a
-layer opens - a provider-owned or marker-bearing mimic living anywhere else is unreachable from the
+E13-S06 closes this not with a better check but by removing the caller-suppliable path entirely.
+Its first attempt did not fully succeed: round 4 independent review found the crate's public
+`LocalStateRoot::resolve(dir: &Path)` still took an arbitrary caller-supplied directory - the same
+gap restated with the parameter renamed - and reproduced the identical `reset()`-erases-
+provider-data outcome by minting a root over a real provider directory; a second reproduction
+planted a symlink at the fixed leaf filename inside an otherwise-legitimate root and redirected
+production `open()`/`reset()` through it. `cancellai_store::LocalStateRoot::
+resolve_platform_default()` - taking no path argument at all - is now the crate's one public,
+reviewed way to establish cancellAI's own local-state root: it computes cancellAI's own configured
+location itself (`$CANCELLAI_HOME/state`, or `$HOME/.cancellai/state`), creating the directory if
+absent and canonicalizing it once, so a caller can choose *whether* to establish the root, never
+*which directory* is it. The original `resolve(dir)` survives narrowed to crate-private, reachable
+only from `resolve_platform_default` and this crate's own tests - a `compile_fail` doctest proves
+it unreachable from outside the crate. Each layer's production `open()` takes a `&LocalStateRoot`
+instead of a `Path`, deriving its own database's location by joining a filename the crate alone
+fixes (`current_state.sqlite3`/`event_ledger.sqlite3`/`analytical_memory.sqlite3`) through
+`LocalStateRoot::path_for`, which now also refuses to hand out a path that already exists as a
+symlink, closing round 4's second reproduction. A provider-owned or marker-bearing mimic living
+anywhere else, or reached via a pre-planted symlink at the fixed leaf, is unreachable from the
 production entry point by construction, not because its content is inspected and rejected. Each
 layer keeps a crate-private `open_at_path` alongside this for its own existing migration/marker/
 reopen unit tests, unchanged. The compiled-in identity marker stays in place as a corruption/
 migration sanity check on a file this crate already knows it owns; it is no longer the thing that
 decides ownership.
 
-**Disclosed residual:** `LocalStateRoot::resolve` canonicalizes the directory it is given once, but
-does not re-verify that identity (device/inode) on every subsequent use the way
-`cancellai-safety::ApprovedRoot::establish` does for provider roots. Reusing `ApprovedRoot` was
-considered and rejected, because it would add a dependency from `cancellai-store` onto
-`cancellai-safety`, contradicting this crate's own deliberate isolation stated above ("this crate
-never touches a provider path", "nothing this mechanism returns can reach the safety executor's
-mutation-execution capability even by accident"). A root directory replaced by a symlink between
-resolution and a later `open()` is therefore not defended against by this story; the threat this
-story closes is a mimicked file at a path a caller could otherwise have named, which is what round 3
-actually reproduced.
+**Disclosed residual:** `resolve_platform_default`/`resolve` canonicalize the directory once, but
+do not re-verify that identity (device/inode) on every subsequent use the way
+`cancellai-safety::ApprovedRoot::establish` does for provider roots, and `path_for`'s symlink check
+is a check-then-open, not an atomic operation. Reusing `ApprovedRoot` was considered and rejected,
+because it would add a dependency from `cancellai-store` onto `cancellai-safety`, contradicting
+this crate's own deliberate isolation stated above. A root directory replaced by a symlink between
+resolution and a later `open()`, and a race between `path_for`'s check and the `open()` call that
+follows it, are therefore not fully closed by this story - both require an attacker who already
+has write access to a location cancellAI itself resolved as its own, a narrower, different threat
+than round 3/4 reproduced (which required no such access). Closing either fully needs an
+fd-relative/`openat`-style mechanism this crate does not have today.
 
 ## Quarantine store
 

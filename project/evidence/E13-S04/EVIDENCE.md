@@ -2,7 +2,11 @@
 
 - Commit/PR: pending (this work item)
 - Executor: Claude
-- Independent verifier: pending - E13 epic review
+- Independent verifier: Codex, round 4 (of the new E13-S04+E13-S06 scope) - **FAIL**
+  (`project/evidence/E13-VERIFIER-REVIEW-ROUND4.md`) - AC2/SI-026 remained unclosed because
+  E13-S06's own repair still let a caller mint a `LocalStateRoot` over an arbitrary directory.
+  Closed via E13-S06's round-4 repair (see `project/evidence/E13-S06/EVIDENCE.md`); this story's
+  own AC1/AC3 were unaffected and already passing. Round 5 (final) pending
 - Change Risk: CR3 (declared CR3 at planning time in `project/epics/E13.json`; no risk floor in
   `project/risk_floors.json` applies to `rust/crates/cancellai-store/*` - only kernel-ring paths
   and `cancellai-model`/`cancellai-policy`/`cancellai.py` carry a floor above the declared level,
@@ -17,8 +21,12 @@
 ## Outcome
 
 PASS - see "E13-S06 closes the round-3 residual" below. AC2/SI-026's round-3 gap is closed by
-`LocalStateRoot` (`project/evidence/E13-S06/EVIDENCE.md`); story returns to `ready_for_review`
-for a fresh independent review of both E13-S04 and E13-S06 together.
+`LocalStateRoot` (`project/evidence/E13-S06/EVIDENCE.md`). Round 4 independent review of the new
+combined scope found E13-S06's first repair attempt itself still left AC2/SI-026 open (an
+arbitrary-directory `LocalStateRoot::resolve` and a fixed-filename symlink bypass); both are now
+closed by E13-S06's round-4 repair (`resolve_platform_default`, a symlink-refusing `path_for`) -
+see that story's own evidence packet for the reproduction and fix detail. This story's own AC1/AC3
+were never implicated and are unchanged.
 
 ## Scope
 
@@ -471,5 +479,9 @@ repaired in this packet; the Layer 1 observation-only design is an accepted resi
 repair, pending a product decision. Round 2 (Codex): FAIL - see "Round 1 independent review
 repair" above (repaired). Round 3 (Codex, 2026-09-19, owner-authorized ADR-0025 cost-ceiling
 round): FAIL - see "Round 3 independent verifier review" above, closed by E13-S06 (see above).
-E13-S02, E13-S03, and E13-S05 passed round 3 independently and moved to `done`; E13-S04 returns
+E13-S02, E13-S03, and E13-S05 passed round 3 independently and moved to `done`; E13-S04 returned
 to `ready_for_review`, pending a fresh independent review of this repair alongside E13-S06.
+Round 4 (Codex, 2026-09-20, first round of the new combined scope): FAIL - E13-S06's own repair
+still left AC2/SI-026 open (arbitrary-directory `resolve` and a fixed-filename symlink bypass);
+closed by E13-S06's round-4 repair, see `project/evidence/E13-S06/EVIDENCE.md`. Round 5 (final)
+pending.

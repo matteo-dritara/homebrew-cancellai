@@ -325,14 +325,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `project/evidence/E13-VERIFIER-REVIEW-ROUND3.md`). The marker was content inside a
   caller-supplied file, so a hand-crafted provider-owned database that copied it - reproduced
   independently against all three layers - passed the check and had its row deleted by
-  `reset()`. `cancellai_store::LocalStateRoot::resolve` is now the crate's one reviewed way to
-  establish cancellAI's own local-state root, and each layer's production `open()` takes a
-  `&LocalStateRoot` instead of a `Path`, deriving its database's location by joining a filename
-  the crate alone fixes. A mimicked file at any other location, marker included, is unreachable
-  from the production entry point by construction, not because its content is inspected and
-  rejected; the compiled-in marker remains only a corruption/migration sanity check. Existing
-  migration/marker/reopen unit tests keep exercising a crate-private `open_at_path` directly,
-  unchanged.
+  `reset()`. Each layer's production `open()` now takes a `&LocalStateRoot` instead of a `Path`,
+  deriving its database's location by joining a filename the crate alone fixes; a mimicked file
+  at any other location, marker included, is unreachable from the production entry point by
+  construction, not because its content is inspected and rejected; the compiled-in marker
+  remains only a corruption/migration sanity check. Existing migration/marker/reopen unit tests
+  keep exercising a crate-private `open_at_path` directly, unchanged. A first attempt at
+  `LocalStateRoot` itself still took an arbitrary caller-supplied directory as its only public
+  constructor - round 4 independent review reproduced the identical provider-data-erasure
+  outcome one call earlier, plus a fixed-filename symlink redirecting production `open()`
+  outside an otherwise-legitimate root. `LocalStateRoot::resolve_platform_default()` (no path
+  argument; computes `$CANCELLAI_HOME/state` or `$HOME/.cancellai/state` itself) is now the only
+  public constructor, and `path_for` refuses a symlinked leaf.
 
 ## [1.14.0] - 2026-09-14
 

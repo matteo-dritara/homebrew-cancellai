@@ -93,6 +93,12 @@ impl From<serde_json::Error> for LedgerError {
     }
 }
 
+impl From<crate::LocalStateRootError> for LedgerError {
+    fn from(e: crate::LocalStateRootError) -> Self {
+        Self(e.to_string())
+    }
+}
+
 /// The ledger's own migration history - a separate `PRAGMA user_version` namespace from
 /// [`crate::CurrentStateStore`]'s, because each opens its own `Connection` to its own file
 /// (`docs/architecture/PERSISTENCE_MODEL.md`'s Layer 1/Layer 2 carry separate self-budgets, so
@@ -383,7 +389,7 @@ impl EventLedger {
     /// [`crate::CurrentStateStore::open`]'s identical treatment). Existing unit tests keep
     /// exercising the underlying open/migrate/verify path directly via [`Self::open_at_path`].
     pub fn open(root: &crate::LocalStateRoot) -> Result<Self, LedgerError> {
-        Self::open_at_path(&root.path_for(EVENT_LEDGER_FILENAME))
+        Self::open_at_path(&root.path_for(EVENT_LEDGER_FILENAME)?)
     }
 
     /// Opens (creating if absent) the ledger database at the exact `path` given, applying any
@@ -1834,6 +1840,70 @@ mod tests {
         assert_eq!(
             row_count, 1,
             "the marker-bearing mimic must be completely untouched - open() never named its path"
+        );
+
+        drop(verify);
+        std::fs::remove_dir_all(&base).expect("clean up test dir");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn open_via_local_state_root_refuses_a_fixed_filename_symlink_planted_at_the_leaf() {
+        // Round 4 independent review of E13-S06's own reproduction: after a genuine, legitimate
+        // resolve() of a real root, a symlink at the fixed leaf filename redirected production
+        // open()/reset() to a provider-owned file elsewhere and erased its one row. open() must
+        // now refuse outright rather than follow the symlink.
+        let base = std::env::temp_dir().join(format!(
+            "cancellai-store-ledger-test-symlink-boundary-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        let state_dir = base.join("state-root");
+        let attacker_dir = base.join("attacker");
+        std::fs::create_dir_all(&state_dir).expect("create state root dir");
+        std::fs::create_dir_all(&attacker_dir).expect("create attacker dir");
+
+        let provider_owned_path = attacker_dir.join("provider-owned.sqlite3");
+        {
+            let conn = Connection::open(&provider_owned_path).expect("open raw sqlite file");
+            conn.execute_batch(
+                "CREATE TABLE ledger_events (
+                    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    kind TEXT NOT NULL,
+                    recorded_at INTEGER NOT NULL,
+                    artifact_id TEXT,
+                    provider_id TEXT,
+                    category TEXT,
+                    policy_id TEXT,
+                    reason_code TEXT,
+                    plan_id TEXT,
+                    evidence_ids TEXT NOT NULL DEFAULT '[]'
+                ) STRICT;
+                INSERT INTO ledger_events (kind, recorded_at, evidence_ids)
+                    VALUES ('DISCOVERED', 1, '[]');",
+            )
+            .expect("craft a provider-owned ledger-shaped file");
+        }
+
+        let root = crate::LocalStateRoot::resolve(&state_dir).expect("resolve local-state root");
+        std::os::unix::fs::symlink(&provider_owned_path, state_dir.join(EVENT_LEDGER_FILENAME))
+            .expect("plant symlink at the fixed leaf");
+
+        assert!(
+            EventLedger::open(&root).is_err(),
+            "open() must refuse a symlinked leaf, not follow it into a provider-owned file"
+        );
+
+        let verify = Connection::open(&provider_owned_path).expect("reopen the provider file");
+        let row_count: i64 = verify
+            .query_row("SELECT COUNT(*) FROM ledger_events", [], |row| row.get(0))
+            .expect("count provider rows");
+        assert_eq!(
+            row_count, 1,
+            "the provider-owned file must be completely untouched"
         );
 
         drop(verify);

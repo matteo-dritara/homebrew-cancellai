@@ -102,6 +102,12 @@ impl From<rusqlite::Error> for RollupError {
     }
 }
 
+impl From<crate::LocalStateRootError> for RollupError {
+    fn from(e: crate::LocalStateRootError) -> Self {
+        Self(e.to_string())
+    }
+}
+
 /// This module's own migration history - a separate `PRAGMA user_version` namespace from
 /// [`crate::CurrentStateStore`]'s and [`crate::ledger::EventLedger`]'s, because each opens its
 /// own `Connection` to its own file, matching both of their own documented precedent for why a
@@ -852,7 +858,7 @@ impl AnalyticalMemory {
     /// [`crate::CurrentStateStore::open`]'s identical treatment). Existing unit tests keep
     /// exercising the underlying open/migrate/verify path directly via [`Self::open_at_path`].
     pub fn open(root: &crate::LocalStateRoot) -> Result<Self, RollupError> {
-        Self::open_at_path(&root.path_for(ANALYTICAL_MEMORY_FILENAME))
+        Self::open_at_path(&root.path_for(ANALYTICAL_MEMORY_FILENAME)?)
     }
 
     /// Opens (creating if absent) the analytical-memory database at the exact `path` given,
@@ -1874,6 +1880,69 @@ mod tests {
         assert_eq!(
             row_count, 1,
             "the marker-bearing mimic must be completely untouched - open() never named its path"
+        );
+
+        drop(verify);
+        std::fs::remove_dir_all(&base).expect("clean up test dir");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn open_via_local_state_root_refuses_a_fixed_filename_symlink_planted_at_the_leaf() {
+        // Round 4 independent review of E13-S06's own reproduction: after a genuine, legitimate
+        // resolve() of a real root, a symlink at the fixed leaf filename redirected production
+        // open()/reset() to a provider-owned file elsewhere and erased its one row. open() must
+        // now refuse outright rather than follow the symlink.
+        let base = std::env::temp_dir().join(format!(
+            "cancellai-store-rollup-test-symlink-boundary-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        let state_dir = base.join("state-root");
+        let attacker_dir = base.join("attacker");
+        std::fs::create_dir_all(&state_dir).expect("create state root dir");
+        std::fs::create_dir_all(&attacker_dir).expect("create attacker dir");
+
+        let provider_owned_path = attacker_dir.join("provider-owned.sqlite3");
+        {
+            let conn = Connection::open(&provider_owned_path).expect("open raw sqlite file");
+            conn.execute_batch(
+                "CREATE TABLE raw_samples (
+                    sample_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    metric TEXT NOT NULL,
+                    recorded_at INTEGER NOT NULL,
+                    provider_id TEXT,
+                    category TEXT,
+                    value REAL NOT NULL
+                ) STRICT;
+                INSERT INTO raw_samples (metric, recorded_at, value)
+                    VALUES ('artifact_count', 1, 1.0);",
+            )
+            .expect("craft a provider-owned rollup-shaped file");
+        }
+
+        let root = crate::LocalStateRoot::resolve(&state_dir).expect("resolve local-state root");
+        std::os::unix::fs::symlink(
+            &provider_owned_path,
+            state_dir.join(ANALYTICAL_MEMORY_FILENAME),
+        )
+        .expect("plant symlink at the fixed leaf");
+
+        assert!(
+            AnalyticalMemory::open(&root).is_err(),
+            "open() must refuse a symlinked leaf, not follow it into a provider-owned file"
+        );
+
+        let verify = Connection::open(&provider_owned_path).expect("reopen the provider file");
+        let row_count: i64 = verify
+            .query_row("SELECT COUNT(*) FROM raw_samples", [], |row| row.get(0))
+            .expect("count provider rows");
+        assert_eq!(
+            row_count, 1,
+            "the provider-owned file must be completely untouched"
         );
 
         drop(verify);

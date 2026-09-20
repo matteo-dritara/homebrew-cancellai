@@ -169,6 +169,12 @@ impl From<serde_json::Error> for StoreError {
     }
 }
 
+impl From<LocalStateRootError> for StoreError {
+    fn from(e: LocalStateRootError) -> Self {
+        Self(e.to_string())
+    }
+}
+
 /// The ordered schema history. Index `n` (zero-based) is the migration that takes the database
 /// from `user_version = n` to `user_version = n + 1` - see this module's own doc, "Schema and
 /// migrations", for why a failure partway through any one of these leaves `user_version`
@@ -399,7 +405,7 @@ impl CurrentStateStore {
     /// own module doc). Existing unit tests keep exercising the underlying open/migrate/verify
     /// path directly via [`Self::open_at_path`].
     pub fn open(root: &LocalStateRoot) -> Result<Self, StoreError> {
-        Self::open_at_path(&root.path_for(CURRENT_STATE_FILENAME))
+        Self::open_at_path(&root.path_for(CURRENT_STATE_FILENAME)?)
     }
 
     /// Opens (creating if absent) the current-state database at the exact `path` given, applying
@@ -1130,6 +1136,64 @@ mod tests {
         assert_eq!(
             row_count, 1,
             "the marker-bearing mimic must be completely untouched - open() never named its path"
+        );
+
+        drop(verify);
+        std::fs::remove_dir_all(&base).expect("clean up test dir");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn open_via_local_state_root_refuses_a_fixed_filename_symlink_planted_at_the_leaf() {
+        // Round 4 independent review of E13-S06's own reproduction: after a genuine, legitimate
+        // resolve() of a real root, a symlink at the fixed leaf filename redirected production
+        // open()/reset() to a provider-owned file elsewhere and erased its one row. open() must
+        // now refuse outright rather than follow the symlink.
+        let base = std::env::temp_dir().join(format!(
+            "cancellai-store-test-symlink-boundary-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        let state_dir = base.join("state-root");
+        let attacker_dir = base.join("attacker");
+        std::fs::create_dir_all(&state_dir).expect("create state root dir");
+        std::fs::create_dir_all(&attacker_dir).expect("create attacker dir");
+
+        let provider_owned_path = attacker_dir.join("provider-owned.sqlite3");
+        {
+            let conn = Connection::open(&provider_owned_path).expect("open raw sqlite file");
+            conn.execute_batch(
+                "CREATE TABLE agent_artifacts (
+                    artifact_id TEXT PRIMARY KEY,
+                    provider_id TEXT NOT NULL,
+                    activity_state TEXT NOT NULL,
+                    data TEXT NOT NULL
+                ) STRICT;
+                INSERT INTO agent_artifacts (artifact_id, provider_id, activity_state, data)
+                    VALUES ('provider-row', 'some-provider', 'active', '{}');",
+            )
+            .expect("craft a provider-owned store-shaped file");
+        }
+
+        let root = LocalStateRoot::resolve(&state_dir).expect("resolve local-state root");
+        std::os::unix::fs::symlink(&provider_owned_path, state_dir.join(CURRENT_STATE_FILENAME))
+            .expect("plant symlink at the fixed leaf");
+
+        assert!(
+            CurrentStateStore::open(&root).is_err(),
+            "open() must refuse a symlinked leaf, not follow it into a provider-owned file"
+        );
+
+        let verify = Connection::open(&provider_owned_path).expect("reopen the provider file");
+        let row_count: i64 = verify
+            .query_row("SELECT COUNT(*) FROM agent_artifacts", [], |row| row.get(0))
+            .expect("count provider rows");
+        assert_eq!(
+            row_count, 1,
+            "the provider-owned file must be completely untouched"
         );
 
         drop(verify);

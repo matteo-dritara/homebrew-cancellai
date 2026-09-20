@@ -1472,7 +1472,7 @@ Persist only bounded metadata required for lifecycle, audit, undo, and Guardian 
 
 ### E13-S06 - cancellAI-owned local-state root capability
 
-**Status:** `in_progress` | **Change Risk:** `CR3` | **Dependencies:** E13-S04 | **Safety obligations:** SI-026
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E13-S04 | **Safety obligations:** SI-026
 
 **Outcome.** Bind CurrentStateStore/EventLedger/AnalyticalMemory's reset-capable handles to a single, non-caller-suppliable, cancellAI-owned local-state root, closing the residual E13-S04's round-3 independent review recorded as accepted risk rather than a defect it could close itself.
 
