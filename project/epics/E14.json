@@ -5,10 +5,9 @@
   "title": "Predictive Guardian Intelligence",
   "objective": "Detect disk pressure, runaway growth, and structural anomalies using local evidence without acquiring authority.",
   "dependencies": [
-    "E10",
-    "E13"
+    "E10"
   ],
-  "status": "planned",
+  "status": "in_progress",
   "stories": [
     {
       "id": "E14-S01",

@@ -328,3 +328,17 @@ Another review round is required while a round rejects 10% or more of the storie
 - An epic whose first round rejects little closes after one round, which PD-022 did not allow.
 - An epic whose rounds disagree entirely stops being a process question and becomes an owner decision.
 - ADR-0025 carries the full argument; this entry is the register's record of it, and PD-022 is superseded rather than edited so the earlier rule stays readable.
+
+## PD-025 - E14's epic-level dependency on E13 is not load-bearing and is removed
+
+**Status:** accepted
+
+E14 ("Predictive Guardian Intelligence") declared a coarse epic-level dependency on E13 ("Self-Budget and Local State Ownership") in addition to E10. E13-S04 and E13-S06 are ready_for_review pending an independent reviewer round, which holds the whole E13 epic at in_progress and, through the epic-level edge, blocked E14 from starting at all. What E14 actually reads from E13 is already committed and done: E14-S01 and E14-S03 each declare their own story-level dependency on E13-S03 (done), and E12-S04 - which shares this same review bottleneck - depends on E13-S02 (done) directly rather than on the E13 epic. The coarse E14->E13 epic edge added nothing E14's own story-level dependencies did not already state more precisely, so it is removed from project/epics/E14.json, leaving E14->E10. Owner-authorized 2026-09-20 to unblock E14 and E12-S04 while E13-S04/S06 await review.
+
+**Rationale.** Same pattern as PD-023: a coarse epic-level dependency edge can hold up work that a story-level dependency already gates correctly and more precisely. E14's actual prerequisite is the specific E13 output its stories read (E13-S03's local-state/self-budget model), not E13's full closure, which additionally requires E13-S04/S06 to clear independent review - a review-availability constraint unrelated to whether E14 can safely start.
+
+**Implications**
+
+- E14-S01 and E14-S03's own dependency on E13-S03 remains the real, enforced gate; nothing about E14's technical prerequisites changed.
+- E13 still needs E13-S04/S06 to pass independent review before the epic itself can close and cut its own release evidence - this decision does not close E13 or substitute for that review.
+- Backlog authors should check, as PD-023 already asks, whether a coarse epic-level dependency is standing in for a narrower story-level one before adding or keeping it.

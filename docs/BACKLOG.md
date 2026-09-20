@@ -1495,7 +1495,7 @@ Persist only bounded metadata required for lifecycle, audit, undo, and Guardian 
 
 ## E14 - Predictive Guardian Intelligence
 
-**Phase:** `P4` | **Status:** `planned` | **Epic dependencies:** E10, E13
+**Phase:** `P4` | **Status:** `in_progress` | **Epic dependencies:** E10
 
 Detect disk pressure, runaway growth, and structural anomalies using local evidence without acquiring authority.
 
