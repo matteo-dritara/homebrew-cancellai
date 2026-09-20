@@ -79,7 +79,7 @@
     {
       "id": "E14-S04",
       "title": "Structural anomaly detection",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Detect session explosion, unexpected giant files, orphan growth, and provider layout drift.",
       "change_risk": "CR2",
       "dependencies": [

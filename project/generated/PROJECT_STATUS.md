@@ -11,8 +11,8 @@ Epics: **32** | Stories: **166**
 - `blocked`: 2
 - `cancelled`: 1
 - `done`: 150
-- `planned`: 7
-- `ready_for_review`: 6
+- `planned`: 6
+- `ready_for_review`: 7
 
 ## Change risk distribution
 
@@ -34,3 +34,4 @@ Epics: **32** | Stories: **166**
 - **E14-S01** - Pressure state model (CR2)
 - **E14-S02** - Growth velocity and forecast (CR1)
 - **E14-S03** - Behavioral baseline anomaly detection (CR2)
+- **E14-S04** - Structural anomaly detection (CR2)

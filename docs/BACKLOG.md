@@ -1558,7 +1558,7 @@ Detect disk pressure, runaway growth, and structural anomalies using local evide
 
 ### E14-S04 - Structural anomaly detection
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E05-S05, E14-S01 | **Safety obligations:** SI-004
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E05-S05, E14-S01 | **Safety obligations:** SI-004
 
 **Outcome.** Detect session explosion, unexpected giant files, orphan growth, and provider layout drift.
 

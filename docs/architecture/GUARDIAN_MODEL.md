@@ -17,6 +17,33 @@ What is happening?
 - provider layout drift;
 - orphan-state growth.
 
+E14-S04 implements four of these signals as `cancellai_guardian::structural`: the same pure,
+dependency-free shape as `pressure`/`forecast`/`baseline` (no `cancellai-safety` reference, no
+I/O). `assess_session_explosion`, `assess_giant_artifact`, and `assess_orphan_growth` are thin,
+named wrappers over `baseline::Baseline::assess`, so "session-count explosion", "unexpected giant
+artifacts", and "orphan-state growth" exist as concrete, testable capabilities under the names
+this document uses, while reusing E14-S03's robust median/MAD judgment rather than a second
+comparison. `assess_layout` is different in kind: it compares an opaque `LayoutSignature` (a
+caller-computed, order-independent set of structural marker tokens - never a real path or file
+content) against a closed set of recognized signatures, returning `LayoutSupport::Recognized` or
+`LayoutSupport::Drifted` plus a `recommended_authority_ceiling: Option<AuthorityLevel>`
+(`cancellai-model`'s existing shared vocabulary type - no new crate dependency). AC1 ("layout
+drift can downgrade provider capabilities automatically") holds because the ceiling is computed
+deterministically from the signature comparison alone, with no manual step: `Recognized` always
+returns `None` (no reduction), `Drifted` always returns `Some(AuthorityLevel::Observe)` - the
+lowest ceiling this vocabulary expresses - including when `known_signatures` is empty or
+`observed` carries no markers at all, so an absent or inconclusive comparison is drift, never a
+default pass. `SI-004` ("cannot preserve destructive capabilities merely because the provider
+name is recognized") is discharged by construction, not by a runtime check: `assess_layout`
+takes a `provider_id` parameter it threads only into the returned finding's evidence string, and
+no branch in the function reads it - two calls that differ only in `provider_id` against the same
+signatures always reach the identical verdict and ceiling
+(`provider_name_never_changes_the_drift_verdict`/`..._recognized_verdict` tests). This module
+returns only a recommendation, never an execution: `cancellai-safety` remains the sole mutation
+executor (`docs/CONSTITUTION.md`: "route mutation through one safety boundary"), and no caller
+wires this to a live provider adapter yet, matching E14-S01/S02/S03's own "primitive delivered,
+no orchestrator yet" precedent.
+
 ### Decision
 
 What would improve the situation?

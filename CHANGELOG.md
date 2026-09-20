@@ -271,6 +271,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   MAD at a fraction of its own magnitude so it tolerates proportional noise instead of flagging
   every future wobble regardless of scale; NaN/infinite input is never admitted and always
   assesses as maximally anomalous. No caller wires this to a live store yet.
+- Added Guardian structural anomaly detection (E14-S04, CR2, SI-004,
+  `docs/architecture/GUARDIAN_MODEL.md` "Detection"): `cancellai_guardian::structural` names
+  session-count explosion, giant-artifact, and orphan-growth detection as thin wrappers over
+  `baseline::Baseline::assess`, and adds `assess_layout` for provider layout drift - a discrete
+  comparison of an opaque `LayoutSignature` against a closed set of recognized signatures,
+  returning `LayoutSupport::Recognized`/`Drifted` plus a `recommended_authority_ceiling:
+  Option<AuthorityLevel>` (`cancellai-model`'s existing vocabulary, no new crate dependency).
+  `Drifted` always recommends `Some(AuthorityLevel::Observe)`, including when nothing is yet
+  known or the observed layout carries no markers at all (AC1's automatic downgrade); a
+  `provider_id` is threaded only into evidence text and never read by the comparison, so two
+  calls differing only in provider name reach the identical verdict (SI-004: a recognized name
+  cannot rescue a drifted layout). A recognized layout never reduces the ceiling. This module
+  returns a recommendation only - `cancellai-safety` remains the sole mutation executor - and no
+  caller wires it to a live provider adapter yet.
 
 ### Fixed
 
