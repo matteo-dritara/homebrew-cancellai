@@ -238,3 +238,32 @@ not yet read the newest attributable verdict and cannot authorize E12-S04 closur
 
 Owner note: E12-S04 remains `in_progress`; the CR4 closing-gate parser defect in E32-S01 must not
 be treated as a passing Safety Verdict.
+
+## Round 8 independent review (final)
+
+- Review target: `31cf69d..74d1398` on `main`
+- Verifier: Codex
+- Brief-Checksum: 13ff307a3683218ad373346e3d17d1530ec685aa514195ee7bd8251f394f2a12
+- Date: 2026-09-20
+
+`PASS_WITH_RESIDUALS`
+
+E32-S01's final line-by-line fence-parser review is passing. Before this new section was
+appended, this file's actual most-recent standalone verdict was the Round 6 `REJECT`, and the
+repaired gate correctly returned `False`; it did not flip this CR4 story merely from parsing the
+old evidence. This new attributable passing round is therefore the only reason the repaired gate
+now accepts the Safety Verdict.
+
+The store implementation has no `rust/` diff since `31cf69d`. The final independent pass again
+confirms AC1/C-09 as narrowed by ADR-0033 (`PASS_WITH_ACCEPTED_RESIDUAL`), AC2/SI-020 (`PASS`),
+and the E13-S02 mutation-reference contract (`PASS`). `cargo fmt --check`, workspace Clippy with
+warnings denied, `cargo check --workspace --all-targets`, `cargo test --workspace`, and
+`cargo deny check` all pass. The accepted residual is unchanged: identifier-shaped linkage fields
+can still carry a short ordinary phrase until a future trusted orchestrator derives them.
+
+The E12-S04 story may close on this verdict. E12 remains `in_progress` until its separate release
+train creates the required release evidence; this review does not prepare or finalize that release.
+
+The E12 evidence packet mentions a Round 7 record, but no committed Round 7 review file or
+Safety Verdict section exists. This final pass independently reran the affected gates and does
+not rely on that missing record; all committed prior verdict material remains intact.

@@ -158,4 +158,6 @@ alongside the round-1 tests, which still pass unchanged.
 
 Round 1: **FAIL** (Codex) - `project/evidence/E32-S01-VERIFIER-REVIEW.md`.
 Round 2: **FAIL** (Codex) - `project/evidence/E32-S01-VERIFIER-REVIEW-ROUND2.md`. Addressed by
-a structurally different (line-by-line) parser, not a further regex patch. Round 3 pending.
+a structurally different (line-by-line) parser, not a further regex patch.
+Round 3: **PASS** (Codex) - `project/evidence/E32-S01-VERIFIER-REVIEW-ROUND3.md`. The parser
+fails closed for both unclosed and `~~~` fences, including the round-2 reproductions.

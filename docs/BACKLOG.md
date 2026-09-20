@@ -1348,7 +1348,7 @@ Introduce reversible lifecycle operations before expanding autonomy.
 
 ### E12-S04 - Purge and tombstones
 
-**Status:** `in_progress` | **Change Risk:** `CR4` | **Dependencies:** E12-S01, E13-S02 | **Safety obligations:** SI-020
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** E12-S01, E13-S02 | **Safety obligations:** SI-020
 
 **Outcome.** Permanently purge only within authority ceilings and preserve a minimal contentless tombstone.
 
@@ -3851,13 +3851,13 @@ The control plane can record that a story is blocked and cannot record by what. 
 
 ## E32 - Safety Verdict Gate Reads Round History, Not Round Existence
 
-**Phase:** `P1` | **Status:** `in_progress` | **Epic dependencies:** none
+**Phase:** `P1` | **Status:** `done_no_release` | **Epic dependencies:** none
 
 E12-S04's round-5 independent review (project/evidence/E12-S04-VERIFIER-REVIEW-ROUND5.md) found that `scripts/project_os.py`'s `safety_verdict_passes` cannot close any CR4 story whose Safety Verdict records more than one review round, because it treats any `FAIL`/`REJECT` line anywhere in the file as disqualifying, rather than reading the append-only round history the protocol requires (docs/development/AGENT_PROTOCOL.md's own multi-round precedent) for what it is: a passing final round after a corrected earlier one is not evidence the story is unsafe, it is the record of how it became safe. A verifier correctly found the implementation sound and could not record that finding through the gate. This epic exists so that defect lives in the backlog with its own story rather than inside a review record nobody re-reads (matching E29's own precedent for a review-discovered engineering-system defect).
 
 ### E32-S01 - safety_verdict_passes reads the last verdict, not any verdict
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** A Safety Verdict file's most recent standalone PASS/PASS_WITH_RESIDUALS/FAIL/REJECT line, by position in the file, determines whether the gate accepts it - not whether any such line exists anywhere in the file.
 

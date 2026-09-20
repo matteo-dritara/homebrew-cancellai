@@ -88,7 +88,7 @@
     {
       "id": "E12-S04",
       "title": "Purge and tombstones",
-      "status": "in_progress",
+      "status": "done",
       "outcome": "Permanently purge only within authority ceilings and preserve a minimal contentless tombstone.",
       "change_risk": "CR4",
       "ac_narrowing_note": "AC1 originally read 'Tombstones contain no prompts/source/file contents' as an unqualified guarantee. Two independent review rounds established that no local, orchestrator-less primitive can prove that property for a caller-supplied required identifier field - a finite character/shape predicate cannot distinguish a real ID from a short ordinary phrase re-encoded to look like one (round 2's own finding, `do-not-purge-this`). ADR-0033 narrows AC1, by owner decision, to the testable property below: no descriptive annotation fields at all, and a disclosed (not closed) residual for the three structurally required linkage fields, deferred to a future orchestrator story.",
