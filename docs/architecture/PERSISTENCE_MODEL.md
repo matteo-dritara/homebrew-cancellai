@@ -393,6 +393,36 @@ After permanent purge, retain only an allowlisted metadata tombstone such as:
 
 No original path is required for long-term aggregate analytics unless an explicit privacy review approves it. Prompt/source/transcript content is prohibited.
 
+E12-S04 implements the tombstone as a typed, narrower front door onto Layer 2's own
+`EventKind::Purged` event rather than a fourth persisted layer: `cancellai_store::tombstone::
+Tombstone` carries exactly opaque artifact ID, provider/category, reason/policy ID, and action
+result/evidence references (plan ID + evidence IDs) - the same closed set `EventMetadata`/
+`MutationReference` already enforce at the SQLite layer and that layer's own schema-pin test
+already covers; there is no path, prompt, or content-typed field on the struct for a caller to
+populate even by mistake (AC1). `size/reclaim observation`, the one item this section's
+illustrative list names that the ledger's own schema has no column for, is a disclosed residual
+rather than a new column - widening an already schema-pinned table for a per-artifact figure is a
+larger, separately reviewable change this story's acceptance criteria do not require;
+`AnalyticalMemory`'s `ReclaimableBytes` metric already tracks reclaimable bytes as an aggregate
+time series (Layer 3, above).
+
+`cancellai_store::tombstone::record_purge_tombstone` refuses - writing nothing - unless given
+exactly `ActionClass::Delete` with `Reversibility::Irreversible`; every other combination
+`cancellai-model`'s shared vocabulary admits is refused, including `Reversibility::
+VendorConditional` (the vocabulary's own name for a vendor-native conditionally-reversible
+outcome) paired with any action class (AC2). This restates, at the point the retained record is
+written, the same coupling `cancellai_safety::authority::reversibility_allowed` already enforces
+before the real OS call is attempted (SI-020) - as a strictly narrower predicate (it accepts only
+the one combination that check's own `Delete` arm accepts), so the two can never disagree, and
+never as a second, independent authorization decision: this function takes no `AuthorityLevel`
+and decides nothing about whether a mutation may happen, only whether an already-decided outcome
+is eligible to be labeled a purge tombstone. `cancellai-store` still does not depend on
+`cancellai-safety` (E13-S06's own documented isolation) - the predicate is expressed locally
+against the shared `cancellai-model` vocabulary. No orchestrator calls this from a real purge yet,
+matching every prior E13 story's own "primitive delivered, no orchestrator yet" precedent; wiring
+`mutation_executor::execute`'s `ActionClass::Delete` success path to a real tombstone write is a
+later story's scope.
+
 ## Ephemeral mode
 
 Read-only inspection can run without persistent writes for CI, temporary hosts, troubleshooting, or privacy-sensitive use.

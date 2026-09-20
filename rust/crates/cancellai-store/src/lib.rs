@@ -130,6 +130,11 @@ pub mod rollup;
 /// expose, deciding *when* to compact/reset, never *how* - see [`budget`]'s own module doc.
 pub mod budget;
 
+/// Purge tombstones (E12-S04) - `docs/architecture/PERSISTENCE_MODEL.md`'s "Tombstones",
+/// SI-020. Adds no schema of its own: a typed, narrower front door onto [`ledger::EventLedger`]'s
+/// existing `Purged` event kind - see [`tombstone`]'s own module doc.
+pub mod tombstone;
+
 /// cancellAI's own local-state root capability (E13-S06) - the one thing every layer's
 /// production `open()` derives its database path from, closing E13-S04's round-3 marker-mimicry
 /// finding. See [`local_state_root`]'s own module doc.

@@ -223,6 +223,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   verification `Result` itself carrying every field an `EventLedger` entry needs; writing one is
   deferred to whichever outer-ring caller eventually wires a real transport (E18-S03 or later) -
   library-level primitives only, no CLI/TUI/Guardian surface wires this yet.
+- Added purge tombstones (E12-S04, CR4, SI-020, `docs/architecture/PERSISTENCE_MODEL.md`
+  "Tombstones"): `cancellai_store::tombstone::record_purge_tombstone` is a typed, narrower front
+  door onto the event ledger's existing `EventKind::Purged` capability (E13-S02), adding no new
+  schema, file or connection of its own. `Tombstone` carries only opaque artifact ID,
+  provider/category, reason/policy ID, and plan/evidence references - the same closed set
+  `EventMetadata`/`MutationReference` already enforce and schema-pin, so there is no path,
+  prompt, or content-typed field a caller could populate even by mistake (AC1).
+  `record_purge_tombstone` refuses, writing nothing, unless given exactly `ActionClass::Delete`
+  with `Reversibility::Irreversible` - every other combination `cancellai-model`'s vocabulary
+  admits is rejected, including `Reversibility::VendorConditional` paired with any action class
+  (AC2), a strictly narrower restatement of the same coupling
+  `cancellai_safety::authority::reversibility_allowed` already enforces before the real OS call
+  (SI-020), never a second, independent authorization decision - this function takes no
+  `AuthorityLevel` and `cancellai-store` still does not depend on `cancellai-safety`. No
+  orchestrator calls this from a real purge yet, matching E13's own "primitive delivered, no
+  orchestrator yet" precedent.
 
 ### Fixed
 

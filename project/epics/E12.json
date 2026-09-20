@@ -88,7 +88,7 @@
     {
       "id": "E12-S04",
       "title": "Purge and tombstones",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Permanently purge only within authority ceilings and preserve a minimal contentless tombstone.",
       "change_risk": "CR4",
       "dependencies": [

@@ -11,8 +11,8 @@ Epics: **32** | Stories: **166**
 - `blocked`: 2
 - `cancelled`: 1
 - `done`: 150
-- `planned`: 11
-- `ready_for_review`: 2
+- `planned`: 10
+- `ready_for_review`: 3
 
 ## Change risk distribution
 
@@ -28,5 +28,6 @@ Epics: **32** | Stories: **166**
 
 ## Awaiting independent review
 
+- **E12-S04** - Purge and tombstones (CR4)
 - **E13-S04** - Self-budget and local reset (CR3)
 - **E13-S06** - cancellAI-owned local-state root capability (CR3)
