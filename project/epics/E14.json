@@ -56,7 +56,7 @@
     {
       "id": "E14-S03",
       "title": "Behavioral baseline anomaly detection",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Build local baselines and flag statistically/heuristically unusual growth without content inspection.",
       "change_risk": "CR2",
       "dependencies": [

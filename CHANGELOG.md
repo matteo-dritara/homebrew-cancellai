@@ -258,6 +258,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "too little history" from "too noisy to trust" via `InsufficientDataReason` (AC2). A declining
   or flat series floors growth velocity at zero and never yields a spurious exhaustion forecast.
   No caller wires this to a live store yet.
+- Added Guardian behavioral baseline anomaly detection (E14-S03, CR2, SI-027,
+  `docs/architecture/GUARDIAN_MODEL.md` "Baselines"): `cancellai_guardian::baseline::Baseline`
+  holds a robust local model (median/median-absolute-deviation, not mean/standard-deviation) over
+  a bounded window of numeric metadata observations, evicting the oldest reading before admitting
+  a new one past its configured capacity so its memory never grows with the number of observations
+  ever seen (AC1). `Baseline::assess` returns an `AnomalyAssessment` carrying the observed value,
+  the baseline's own median and MAD, and the deviation in MAD units alongside an ordered
+  `AnomalySeverity` (`Normal`/`Elevated`/`Anomalous`) - never a bare score (AC2) - and, like
+  `pressure`/`forecast`, imports no authority/mutation type. Fewer than three observations refuses
+  to assess rather than reading "no baseline yet" as normal; a perfectly flat baseline floors its
+  MAD at a fraction of its own magnitude so it tolerates proportional noise instead of flagging
+  every future wobble regardless of scale; NaN/infinite input is never admitted and always
+  assesses as maximally anomalous. No caller wires this to a live store yet.
 
 ### Fixed
 

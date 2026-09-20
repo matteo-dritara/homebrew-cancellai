@@ -1539,7 +1539,7 @@ Detect disk pressure, runaway growth, and structural anomalies using local evide
 
 ### E14-S03 - Behavioral baseline anomaly detection
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E13-S03 | **Safety obligations:** SI-027
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E13-S03 | **Safety obligations:** SI-027
 
 **Outcome.** Build local baselines and flag statistically/heuristically unusual growth without content inspection.
 

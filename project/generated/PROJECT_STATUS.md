@@ -11,8 +11,8 @@ Epics: **32** | Stories: **166**
 - `blocked`: 2
 - `cancelled`: 1
 - `done`: 150
-- `planned`: 8
-- `ready_for_review`: 5
+- `planned`: 7
+- `ready_for_review`: 6
 
 ## Change risk distribution
 
@@ -33,3 +33,4 @@ Epics: **32** | Stories: **166**
 - **E13-S06** - cancellAI-owned local-state root capability (CR3)
 - **E14-S01** - Pressure state model (CR2)
 - **E14-S02** - Growth velocity and forecast (CR1)
+- **E14-S03** - Behavioral baseline anomaly detection (CR2)

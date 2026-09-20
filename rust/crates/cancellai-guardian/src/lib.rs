@@ -7,5 +7,6 @@
 //! exercised directly by unit tests rather than through the (still unimplemented) compiled
 //! binary.
 
+pub mod baseline;
 pub mod forecast;
 pub mod pressure;

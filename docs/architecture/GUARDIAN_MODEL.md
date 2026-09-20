@@ -89,6 +89,32 @@ scan yet, matching E14-S01/E13/E12's own "primitive delivered, no orchestrator y
 
 Baselines are local and metadata-only. The first implementation should prefer transparent robust statistics/heuristics over opaque ML. More sophisticated models are allowed only if their output remains advisory evidence and can be explained sufficiently for debugging.
 
+E14-S03 implements the first baseline/anomaly primitive: `cancellai_guardian::baseline`, the same
+pure, dependency-free shape as `pressure`/`forecast` (no `cancellai-safety` reference, no I/O, no
+clock - a caller feeds it observations, this crate's `cancellai-store` sibling's bounded rollups
+being the intended source, wired by a later orchestrator). `Baseline` holds a robust local model -
+median and median-absolute-deviation (MAD), not mean/standard-deviation, so one outlier already in
+the window cannot itself dominate the comparison - over a plain numeric metadata reading (a count,
+a byte size, a rate; never a path or content, matching "without content inspection"). AC1
+("baseline uses bounded analytical memory") holds because `Baseline::observe` evicts the oldest
+reading before admitting a new one past its configured `capacity`, so its memory never grows with
+the number of observations ever seen, only with that fixed window. AC2 ("anomaly score is
+explanatory and never directly destructive") holds because `Baseline::assess` returns an
+`AnomalyAssessment` that always carries the observed value, the baseline's own median and MAD, and
+the deviation expressed in units of that MAD alongside an ordered `AnomalySeverity`
+(`Normal`/`Elevated`/`Anomalous`) - never a bare score - and because the module imports no
+authority/mutation type and returns none, the same by-construction argument `pressure` already
+makes for SI-027. A baseline with fewer than three observations refuses to assess at all
+(`AnomalyAssessment::InsufficientBaseline`) rather than reading "no baseline yet" as "normal" - the
+same unknown-to-safe promotion hazard the falsification axes name for mutation authority, here
+applied to detection. A degenerate, perfectly flat baseline (MAD of `0.0`) floors its MAD at a
+fraction of the baseline's own magnitude rather than an absolute epsilon, so a flat signal still
+tolerates proportional natural noise instead of reading every future wobble as maximally anomalous
+regardless of scale. NaN/infinite input is never admitted into the baseline and always assesses as
+`Anomalous` with infinite deviation - malformed detection input must not read as calm, matching
+`pressure`'s own NaN handling. No caller wires this to a live `cancellai-store` scan yet, matching
+E14-S01/S02's and E13/E12's own "primitive delivered, no orchestrator yet" precedent.
+
 ## Runtime
 
 Target user-service mechanisms:
