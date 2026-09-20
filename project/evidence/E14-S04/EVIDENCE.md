@@ -2,7 +2,10 @@
 
 - Commit/PR: pending (this work item)
 - Executor: Claude
-- Independent verifier: pending - E14 epic review
+- Independent verifier: Codex, round 1 - **FAIL** (`project/evidence/E14-VERIFIER-REVIEW.md`) -
+  `recommended_authority_ceiling` reached no actual authority computation anywhere in the
+  workspace; `authority.rs` explicitly documented `ProviderCapabilityAuthority` as unwired. An
+  advisory recommendation nobody consumes is not AC1's "automatic" downgrade. Repaired below
 - Change Risk: CR2 (declared at planning time in `project/epics/E14.json`; the diff adds a new,
   dependency-free, pure crate module reusing an existing sibling module and the crate's existing
   `cancellai-model` dependency - no filesystem, database, or execution surface, so no
@@ -12,7 +15,7 @@
 
 ## Outcome
 
-PASS
+PASS after repair (see "Repair - round 1 independent review finding" below)
 
 ## Scope
 
@@ -33,9 +36,14 @@ existing shared vocabulary type; no new crate dependency was added or considered
 the `rust-kernel-guard` verdict below) and an `evidence` string naming the concrete markers
 compared. `Recognized` always returns `None`; `Drifted` always returns
 `Some(AuthorityLevel::Observe)`. `provider_id` is threaded only into the evidence string and
-participates in no comparison. No orchestrator wires any of this to a live `cancellai-store` scan
-or a real provider adapter yet, matching E14-S01/S02/S03/E12/E13's own "primitive delivered, no
-orchestrator yet" precedent.
+participates in no comparison. `structural.rs` itself remains unchanged by the round-1 repair
+below and still holds no reference to `cancellai-safety`; the new
+`cancellai_guardian::capability_authority` module (`src/capability_authority.rs`) is where
+`recommended_authority_ceiling` actually reaches a real authority computation (see "Repair"
+below). No orchestrator wires any of this to a live `cancellai-store` scan or a real provider
+adapter yet, matching E14-S01/S02/S03/E12/E13's own "primitive delivered, no orchestrator yet"
+precedent - that residual is about who *invokes* the now-real chain in production, not whether the
+chain itself functions (which the round-1 repair's end-to-end test now proves it does).
 
 ## rust-kernel-guard verdict (dependency review)
 
@@ -63,7 +71,7 @@ Decision: implemented without adding any new crate dependency.
 
 | AC | Evidence | Result |
 | --- | --- | --- |
-| AC1 - "Layout drift can downgrade provider capabilities automatically." | `assess_layout` computes `recommended_authority_ceiling` deterministically from the signature comparison alone with no manual step: `unrecognized_layout_reduces_ceiling_to_observe` (drifted -> `Some(Observe)`), `empty_known_signatures_never_recognizes_anything` (nothing yet known -> drifted, still reduced), `empty_observed_markers_is_drift_not_a_vacuous_match` (no markers observed -> drifted, not vacuously recognized), `recognized_layout_does_not_reduce_ceiling` (exact match -> `None`). | PASS |
+| AC1 - "Layout drift can downgrade provider capabilities automatically." | `assess_layout` computes `recommended_authority_ceiling` deterministically from the signature comparison alone with no manual step: `unrecognized_layout_reduces_ceiling_to_observe` (drifted -> `Some(Observe)`), `empty_known_signatures_never_recognizes_anything` (nothing yet known -> drifted, still reduced), `empty_observed_markers_is_drift_not_a_vacuous_match` (no markers observed -> drifted, not vacuously recognized), `recognized_layout_does_not_reduce_ceiling` (exact match -> `None`). Round 1 found this recommendation reached no actual authority computation anywhere - "automatically" was unmet in practice. **Fix:** new module `cancellai_guardian::capability_authority::effective_authority_after_layout_assessment` routes `recommended_authority_ceiling` into the new `cancellai_safety::effective_authority_for_provider_capability` (the ninth, previously-unwired Effective Authority constraint). `e14s04_end_to_end_a_destructive_capable_input_ends_at_observe_under_real_layout_drift` proves a real `assess_layout` drift finding, combined with `AuthorityInputs` that are destructive-capable on every other constraint, resolves to `AuthorityLevel::Observe` with `provider_capability_authority` as the binding constraint. | PASS |
 | AC2 - "Structural signals reference concrete observed evidence." | Every `StructuralFinding` carries the full `AnomalyAssessment` (observed value, baseline median/MAD, deviation) via `session_explosion_is_flagged_with_observed_count_in_evidence`, `giant_artifact_is_flagged_with_observed_size_in_evidence`; every `LayoutDriftFinding.evidence` names the concrete compared markers (asserted via `evidence.contains(...)` in `recognized_layout_does_not_reduce_ceiling` and `unrecognized_layout_reduces_ceiling_to_observe`) - never an opaque score/boolean. | PASS |
 
 ## Verification Contract Evidence
@@ -88,13 +96,15 @@ Falsification axes worked before implementation (`adversarial-cases` skill):
 | safety-specific: second-path check | Does this module decide anything `cancellai-safety` decides? Does a provider name change the decision? | No - no `cancellai-safety` import anywhere in the diff; `provider_id` never branches the comparison (proven, not just asserted, by the two `provider_name_never_changes_the_..._verdict` tests) | `provider_name_never_changes_the_drift_verdict`, `provider_name_never_changes_the_recognized_verdict`; verified by the diff itself (no `cancellai-safety` import) |
 | n/a | Path/identity, partial reads, links/mounts, concurrency, crash/retry, platform differences | Not applicable - pure in-memory functions over caller-supplied primitives (`f64`, `String` tokens), no filesystem/database/network/shared-state surface | - |
 | domain-specific (not one of the eleven) | Recognized-layout case gets a `None` ceiling, never a "no-op" sentinel a future edit could confuse with a real reduced value | `RECOGNIZED_CEILING`/`RECOGNIZED_CEILING` is a named `None` constant, distinct in the diff from `DRIFTED_CEILING`'s `Some(Observe)` | `recognized_layout_does_not_reduce_ceiling` |
+| second-path (round 1 repair) | An `AuthorityInputs` destructive-capable on every one of the six base constraints (`Autopilot` user/artifact, verified confidence, idle/normal/healthy lifecycle, real `TrustedTier::promote`d to `BuiltinVerified`), combined with a real drifted `LayoutDriftFinding` | Resolves to `AuthorityLevel::Observe`, attributed to `provider_capability_authority` - and a `None`-ceiling baseline with the identical inputs reaches `Autopilot`, proving the test is not vacuous | `e14s04_end_to_end_a_destructive_capable_input_ends_at_observe_under_real_layout_drift` |
+| 8 (round 1 repair) | The same destructive-capable input, with both a well-known and an unheard-of `provider_id` producing the identical drifted layout | Both end at `Observe` - the provider name does not bypass the ceiling at the authority-computation layer either, not only inside `assess_layout` itself | `e14s04_a_recognized_provider_name_does_not_bypass_the_drift_verdict` |
 
 ## Safety Evidence
 
 | Invariant | Counterexample tested | Evidence | Result |
 | --- | --- | --- | --- |
 | SI-004 "Unknown provider layout/version reduces capability" | A well-known `provider_id` ("claude") paired with a structurally drifted layout still reduces the ceiling; an unheard-of `provider_id` paired with a genuinely matching layout still reads `Recognized` | `provider_name_never_changes_the_drift_verdict`, `provider_name_never_changes_the_recognized_verdict` - `assess_layout` has no branch on `provider_id` anywhere in the diff (verified by inspection of the function body, not only by test) | PASS |
-| SI-027 "Detection severity does not create authority" (module-level isolation, same principle `pressure`/`forecast`/`baseline` already carry) | No `cancellai-safety` type is imported or referenced anywhere in `structural.rs`; `recommended_authority_ceiling` is a recommendation only, consumed by no execution path in this crate graph | Verified by absence in the diff (no such import exists in the new file) | PASS |
+| SI-027 "Detection severity does not create authority" (module-level isolation, same principle `pressure`/`forecast`/`baseline` already carry) | No `cancellai-safety` type is imported or referenced anywhere in `structural.rs`; `recommended_authority_ceiling` is a recommendation only. After the round-1 repair it *is* consumed - by `capability_authority::effective_authority_after_layout_assessment` - but only through the one existing `compute_effective_authority` monotonic-minimum computation every other constraint already goes through, never by a second, independent authority decision or a direct execution | `structural.rs` unchanged, verified by absence in that file's diff; `capability_authority.rs` makes no classification/execution decision of its own, verified by inspection (it only builds one more `AuthorityConstraint` and calls the existing function) | PASS |
 
 ## Verification Commands
 
@@ -102,7 +112,7 @@ Falsification axes worked before implementation (`adversarial-cases` skill):
 cd rust && cargo fmt --check                                              # PASS (after one fmt pass over the new module)
 cd rust && cargo clippy --workspace --all-targets --all-features -- -D warnings   # PASS, no findings
 cd rust && cargo check --workspace --all-targets                          # PASS
-cd rust && cargo test --workspace                                         # PASS - 0 failed (15 new cancellai-guardian::structural tests, 72 total in the crate, no regressions in any other crate)
+cd rust && cargo test --workspace                                         # PASS - 0 failed (15 cancellai-guardian::structural tests + 2 new cancellai-guardian::capability_authority end-to-end tests + 5 new cancellai-safety::authority tests after repair, no regressions in any other crate)
 cd rust && cargo deny check                                               # PASS - advisories, bans, licenses, sources OK; no new dependency
 python3 scripts/check_mutation_boundary.py check                         # PASS - only the existing platform/safety mutation seam deletes anything
 python3 scripts/check_rust_workspace.py check                            # PASS - 13 crates match TARGET.md, acyclic
@@ -130,12 +140,49 @@ runs this crate on all three platforms before merge.
   scale by `baseline.rs`'s own performance test. No new unbounded state is introduced by this
   module.
 
+## Repair - round 1 independent review finding
+
+Codex's round-1 review (`project/evidence/E14-VERIFIER-REVIEW.md`) FAILed AC1: `assess_layout`
+correctly computed `recommended_authority_ceiling`, and `authority.rs`'s own module doc explicitly
+documented `ProviderCapabilityAuthority` (the ninth of the nine constraints
+`docs/architecture/DOMAIN_MODEL.md`'s "Effective Authority" formula names) as unwired - "no
+capability-classification subsystem exists yet to supply it." A workspace-wide search confirmed
+`assess_layout`/`LayoutDriftFinding`/`recommended_authority_ceiling` were referenced only inside
+`structural.rs` itself. A correctly-computed recommendation nobody consumes is not AC1's
+"automatic" downgrade; it permits TM-05's layout-drift condition to leave destructive authority
+intact.
+
+Repair, in two crates:
+
+1. `cancellai-safety::authority::effective_authority_for_provider_capability(inputs,
+   provider_capability_ceiling: Option<AuthorityLevel>) -> EffectiveAuthority` is the ninth
+   constraint, wired the same way `effective_authority_for_channel` (E17-S05) already wires the
+   eighth: a separate function rather than a new required `AuthorityInputs` field, so existing
+   callers that predate capability-classification are not forced to supply a value with no
+   honest answer. Five new unit tests in that crate prove its own contract directly (a `Some`
+   ceiling collapses even a maximally-permissive input; `None` adds no constraint; the trace
+   correctly attributes the bottleneck).
+2. `cancellai_guardian::capability_authority::effective_authority_after_layout_assessment(inputs,
+   finding: &LayoutDriftFinding) -> EffectiveAuthority` is the bridge: it takes
+   `finding.recommended_authority_ceiling` and calls the new `cancellai-safety` function. It
+   lives one module up from `structural.rs`, specifically so `structural.rs`'s own "no reference
+   to `cancellai-safety`" isolation stays true. `cancellai-guardian` already depended on
+   `cancellai-safety` (for reasons predating this story), so no new crate dependency was added -
+   the `rust-kernel-guard` verdict above, about *not* adding `cancellai-provider-api`, is
+   unaffected. Two end-to-end tests here prove the actual chain round 1 found missing: a real
+   `assess_layout` drift finding, combined with an `AuthorityInputs` destructive-capable on every
+   other constraint (built from real API calls - `TrustedTier::untrusted().promote(..)` with real
+   evidence, not a test-only backdoor - since `TrustedTier` cannot be forged from outside
+   `cancellai-safety`), resolves to `AuthorityLevel::Observe`; and a well-known provider name does
+   not bypass this at the authority-computation layer either.
+
 ## Documentation updated
 
-- `docs/architecture/GUARDIAN_MODEL.md` - new paragraph after the "Detection" signal list
-  documenting the implementation, the AC1 automatic-downgrade mechanism, and the SI-004
-  discharge, matching `pressure`/`forecast`/`baseline`'s own entry style.
-- `CHANGELOG.md` - `Unreleased`/`Added` entry.
+- `docs/architecture/GUARDIAN_MODEL.md` - "Detection" section rewritten for the round-1 repair
+  (the `capability_authority` bridge and what AC1's "automatically" now actually means).
+- `rust/crates/cancellai-safety/src/authority.rs`'s own module doc updated: `ProviderCapabilityAuthority`
+  is no longer documented as unwired.
+- `CHANGELOG.md` - `Unreleased`/`Added` entries for E14-S02 and E14-S04 updated for both repairs.
 
 ## Method defects
 
@@ -143,9 +190,13 @@ runs this crate on all three platforms before merge.
 
 ## Residual risks
 
-- No orchestrator calls any function in this module from a live `cancellai-store` scan or a real
-  provider adapter yet - a later story's scope, matching every other primitive delivered in
-  E12/E13/E14-S01/S02/S03.
+- No orchestrator calls `capability_authority::effective_authority_after_layout_assessment` from
+  a live `cancellai-store` scan or a real provider adapter yet - a later story's scope, matching
+  every other primitive delivered in E12/E13/E14-S01/S02/S03. Unlike before the round-1 repair,
+  this is now honestly a residual about who *invokes* an already-real, already-end-to-end-tested
+  chain, not a stand-in for the chain not existing: round 1 found the latter framing was actually
+  masking AC1 being unmet, since the recommendation reached no computation to invoke in the first
+  place.
 - `assess_layout`'s two-state model (`Recognized`/`Drifted`) does not reproduce
   `cancellai-provider-api::capability::SupportState`'s full six-state vocabulary
   (`Verified`/`SupportedObserved`/`Unsupported`/`UnknownVersion`/`LayoutDrift`/`ErrorPartial`) -
@@ -161,3 +212,8 @@ runs this crate on all three platforms before merge.
 - The three counting/size wrappers handle one numeric signal at a time via one `Baseline` per
   signal (same scope boundary `baseline.rs` itself already discloses); this story does not add a
   combined, cross-signal structural explanation.
+
+## Verifier verdict
+
+Round 1: **FAIL** (Codex) - `project/evidence/E14-VERIFIER-REVIEW.md`. Repaired above; round 2
+pending.

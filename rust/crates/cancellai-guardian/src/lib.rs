@@ -8,6 +8,7 @@
 //! binary.
 
 pub mod baseline;
+pub mod capability_authority;
 pub mod forecast;
 pub mod pressure;
 pub mod structural;

@@ -26,6 +26,13 @@
 //! applied or executed by this module. `cancellai-safety` remains the sole executor
 //! (`docs/CONSTITUTION.md`: "All ... route mutation through one safety boundary"); nothing here
 //! is a second path to that decision, only an unapplied observation feeding it.
+//!
+//! Round 1 independent review found that, before [`crate::capability_authority`] existed, this
+//! observation reached no actual authority computation anywhere - AC1's "automatically" was
+//! unmet in practice, not merely undemonstrated. [`crate::capability_authority::
+//! effective_authority_after_layout_assessment`] is where `recommended_authority_ceiling`
+//! actually reaches `cancellai_safety::effective_authority_for_provider_capability`; this module
+//! stays exactly as isolated from `cancellai-safety` as its own doc above already promises.
 
 use cancellai_model::AuthorityLevel;
 

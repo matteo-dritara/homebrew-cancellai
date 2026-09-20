@@ -28,10 +28,13 @@
 //! module doc for the E05 verifier round 1 defect this closes) plus an explicit
 //! `ConstitutionalSafetyFloor` restating SI-001's own rule as its own always-present constraint
 //! (SI-006: known protection is checked in more than one place, on purpose).
-//! `ProviderCapabilityAuthority` is not wired in - no capability-classification subsystem
-//! exists yet to supply it - `compute_effective_authority` needing no redesign to add it later
-//! is exactly the point of keeping it generic over named constraints rather than a fixed
-//! nine-argument function.
+//! `ProviderCapabilityAuthority` (E14-S04, SI-004) is [`effective_authority_for_provider_capability`],
+//! the ninth and last documented constraint - a separate function from [`effective_authority`]
+//! for the same reason [`effective_authority_for_channel`] is (see that function's own doc): no
+//! required field is added to [`AuthorityInputs`] that would force every pre-existing caller to
+//! supply a value with no honest answer yet. `compute_effective_authority` needing no redesign
+//! to add either of these later was exactly the point of keeping it generic over named
+//! constraints rather than a fixed nine-argument function.
 //!
 //! [`effective_authority_for_channel`] (E17-S05, SI-030) adds the ninth: `ReleaseChannelAuthority`
 //! (from [`crate::BuildChannel`], `docs/security/SUPPLY_CHAIN.md` "Release channels" -
@@ -257,6 +260,40 @@ pub fn effective_authority_for_channel(
         name: "release_channel_authority",
         ceiling: release_channel_ceiling(channel.level()),
     });
+    compute_effective_authority(&constraints)
+}
+
+/// [`effective_authority`], plus a provider-capability/layout ceiling (E14-S04, `SI-004`:
+/// "Unknown provider layout/version reduces capability") - the ninth documented constraint this
+/// module's own doc previously named as unwired. Separate function rather than a new required
+/// field on [`AuthorityInputs`], for the identical reason [`effective_authority_for_channel`]
+/// is: existing callers that predate structural-drift detection are not forced to supply a value
+/// with no honest answer.
+///
+/// `provider_capability_ceiling` is meant to be `cancellai_guardian::structural::
+/// LayoutDriftFinding::recommended_authority_ceiling` verbatim: `None` when the observed layout
+/// was recognized (no additional cap; the base constraints alone still apply), or
+/// `Some(ceiling)` (currently always `Some(AuthorityLevel::Observe)`) when it drifted. This
+/// crate does not depend on `cancellai-guardian` and takes only the already-shared
+/// `cancellai_model::AuthorityLevel` value, never a `LayoutDriftFinding` itself.
+/// `cancellai-guardian` (which already depends on this crate) is where the two are actually
+/// connected and where the end-to-end regression proving a destructive-capable input ends at
+/// `Observe` under drift lives, since only that crate can see both sides without introducing a
+/// cycle. Guardian detection stays advisory in the sense that matters: this function makes no
+/// classification decision of its own and introduces no second path to one - it only extends the
+/// same monotonic-minimum computation every other constraint already goes through with one more
+/// named input.
+pub fn effective_authority_for_provider_capability(
+    inputs: AuthorityInputs,
+    provider_capability_ceiling: Option<AuthorityLevel>,
+) -> EffectiveAuthority {
+    let mut constraints = base_constraints(&inputs);
+    if let Some(ceiling) = provider_capability_ceiling {
+        constraints.push(AuthorityConstraint {
+            name: "provider_capability_authority",
+            ceiling,
+        });
+    }
     compute_effective_authority(&constraints)
 }
 
@@ -736,6 +773,73 @@ mod tests {
         assert_eq!(
             release_channel_ceiling(ReleaseChannel::Nightly),
             AuthorityLevel::Recommend
+        );
+    }
+
+    // --- E14-S04, SI-004: provider-capability/layout drift bounds default authority --------
+    // Uses effective_authority_for_provider_capability, not effective_authority - see the
+    // module doc for why provider_capability is a separate opt-in function rather than a
+    // required AuthorityInputs field. The full drift -> Observe chain, starting from
+    // cancellai_guardian::structural::assess_layout's own real output, is proven end-to-end in
+    // that crate (it can see both this function and `assess_layout`; this crate does not depend
+    // on it); these tests prove this function's own contract using an equivalent literal
+    // `Option<AuthorityLevel>` in place of a `LayoutDriftFinding`.
+
+    #[test]
+    fn e14s04_drifted_layout_collapses_to_observe_even_at_maximum_everything_else() {
+        let inputs = permissive_inputs(AuthorityLevel::Autopilot, AuthorityLevel::Autopilot);
+        let result =
+            effective_authority_for_provider_capability(inputs, Some(AuthorityLevel::Observe));
+        assert_eq!(result.level, AuthorityLevel::Observe);
+    }
+
+    #[test]
+    fn e14s04_recognized_layout_does_not_cap_below_a_fully_permissive_result() {
+        // Not vacuously true: proves a recognized layout (None) adds no constraint at all, not a
+        // bug that happens to also produce a high level here.
+        let inputs = permissive_inputs(AuthorityLevel::Autopilot, AuthorityLevel::Autopilot);
+        let result = effective_authority_for_provider_capability(inputs, None);
+        assert_eq!(result.level, AuthorityLevel::Autopilot);
+    }
+
+    #[test]
+    fn e14s04_raising_user_authority_never_raises_past_the_drifted_layout_ceiling() {
+        for &user in &ALL_LEVELS {
+            let inputs = permissive_inputs(user, AuthorityLevel::Autopilot);
+            let result =
+                effective_authority_for_provider_capability(inputs, Some(AuthorityLevel::Observe));
+            assert_eq!(
+                result.level,
+                AuthorityLevel::Observe,
+                "user={user:?} must never exceed the drifted-layout ceiling, got {:?}",
+                result.level
+            );
+        }
+    }
+
+    #[test]
+    fn e14s04_ac3_provider_capability_authority_is_named_when_it_is_the_unique_bottleneck() {
+        let inputs = permissive_inputs(AuthorityLevel::Autopilot, AuthorityLevel::Autopilot);
+        let result =
+            effective_authority_for_provider_capability(inputs, Some(AuthorityLevel::Observe));
+        assert_eq!(
+            result.binding_constraints,
+            vec!["provider_capability_authority"]
+        );
+    }
+
+    #[test]
+    fn e14s04_effective_authority_for_provider_capability_agrees_with_effective_authority_when_recognized_and_not_the_bottleneck()
+     {
+        // The two functions must never silently diverge on the six shared constraints when the
+        // layout is recognized (None) - proven directly rather than assumed.
+        let inputs = permissive_inputs(AuthorityLevel::Quarantine, AuthorityLevel::Quarantine);
+        let plain = effective_authority(inputs);
+        let with_capability = effective_authority_for_provider_capability(inputs, None);
+        assert_eq!(plain.level, with_capability.level);
+        assert_eq!(
+            plain.binding_constraints,
+            with_capability.binding_constraints
         );
     }
 }

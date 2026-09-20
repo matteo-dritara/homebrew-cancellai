@@ -268,9 +268,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   trend. Every non-insufficient answer carries an explicit, ordered `Confidence`
   (`Low`/`Medium`/`High`) alongside its number (AC1); too few points, too short a span, or too
   poor a fit refuses a fit outright rather than returning a low-confidence guess, distinguishing
-  "too little history" from "too noisy to trust" via `InsufficientDataReason` (AC2). A declining
-  or flat series floors growth velocity at zero and never yields a spurious exhaustion forecast.
-  No caller wires this to a live store yet.
+  "too little history" from "too noisy to trust" via `InsufficientDataReason` (AC2). A second,
+  independent fit over the most recent half of the series must retain at least half the
+  whole-series slope, or the fit is refused the same way - round 1 independent review found a
+  burst followed by a sustained plateau otherwise fits a deceptively good whole-series line and
+  reports the historical average as a false *current* growth rate. A declining or flat series
+  floors growth velocity at zero and never yields a spurious exhaustion forecast. No caller wires
+  this to a live store yet.
 - Added Guardian behavioral baseline anomaly detection (E14-S03, CR2, SI-027,
   `docs/architecture/GUARDIAN_MODEL.md` "Baselines"): `cancellai_guardian::baseline::Baseline`
   holds a robust local model (median/median-absolute-deviation, not mean/standard-deviation) over
@@ -295,9 +299,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   known or the observed layout carries no markers at all (AC1's automatic downgrade); a
   `provider_id` is threaded only into evidence text and never read by the comparison, so two
   calls differing only in provider name reach the identical verdict (SI-004: a recognized name
-  cannot rescue a drifted layout). A recognized layout never reduces the ceiling. This module
-  returns a recommendation only - `cancellai-safety` remains the sole mutation executor - and no
-  caller wires it to a live provider adapter yet.
+  cannot rescue a drifted layout). A recognized layout never reduces the ceiling.
+  `cancellai_guardian::capability_authority::effective_authority_after_layout_assessment` connects
+  that recommendation to a real `cancellai_safety::effective_authority_for_provider_capability`
+  computation (the ninth, previously-unwired Effective Authority constraint) - round 1 independent
+  review found the recommendation reached no actual authority computation anywhere, so AC1's
+  "automatically" was unmet in practice; an end-to-end test now proves a destructive-capable input
+  still ends at `Observe` under a real drift finding. `structural.rs` itself is unchanged and
+  still holds no reference to `cancellai-safety` - `cancellai-safety` remains the sole mutation
+  executor, and no caller wires this bridge to a live provider adapter yet.
 
 ### Fixed
 

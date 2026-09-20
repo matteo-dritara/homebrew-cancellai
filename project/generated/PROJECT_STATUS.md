@@ -11,16 +11,16 @@ Epics: **33** | Stories: **167**
 - `blocked`: 2
 - `cancelled`: 1
 - `done`: 156
-- `in_progress`: 2
 - `planned`: 6
+- `ready_for_review`: 2
 
 ## Change risk distribution
 
 - `CR0`: 14
 - `CR1`: 38
-- `CR2`: 51
+- `CR2`: 50
 - `CR3`: 30
-- `CR4`: 34
+- `CR4`: 35
 
 ## Explicitly ready work
 
@@ -28,4 +28,5 @@ Epics: **33** | Stories: **167**
 
 ## Awaiting independent review
 
-- none
+- **E14-S02** - Growth velocity and forecast (CR1)
+- **E14-S04** - Structural anomaly detection (CR4)

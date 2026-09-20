@@ -38,11 +38,27 @@ name is recognized") is discharged by construction, not by a runtime check: `ass
 takes a `provider_id` parameter it threads only into the returned finding's evidence string, and
 no branch in the function reads it - two calls that differ only in `provider_id` against the same
 signatures always reach the identical verdict and ceiling
-(`provider_name_never_changes_the_drift_verdict`/`..._recognized_verdict` tests). This module
-returns only a recommendation, never an execution: `cancellai-safety` remains the sole mutation
-executor (`docs/CONSTITUTION.md`: "route mutation through one safety boundary"), and no caller
-wires this to a live provider adapter yet, matching E14-S01/S02/S03's own "primitive delivered,
-no orchestrator yet" precedent.
+(`provider_name_never_changes_the_drift_verdict`/`..._recognized_verdict` tests).
+
+Round 1 independent review found the ceiling computed above never actually reached anywhere: no
+caller connected `recommended_authority_ceiling` to `cancellai_safety::authority::
+compute_effective_authority` at all, so AC1's "automatically" was unmet in practice - a
+correctly-computed recommendation nobody consumed is not an automatic downgrade.
+`cancellai_guardian::capability_authority::effective_authority_after_layout_assessment` closes
+this: it takes an `AuthorityInputs` and a `LayoutDriftFinding` and returns the one real
+`EffectiveAuthority` result, via the new `cancellai_safety::effective_authority_for_provider_capability`
+(the ninth, previously-unwired constraint that function's own module doc names) - the same
+monotonic-minimum computation every other constraint already goes through, extended by one named
+input, not a second authority decision. An end-to-end test proves a destructive-capable input
+(every other constraint at its most permissive) still ends at `Observe` once a real
+`assess_layout` finding reports drift. `assess_layout`/`structural.rs` itself is unchanged: it
+still holds no reference to `cancellai-safety`, matching `pressure`/`forecast`/`baseline`'s own
+isolation - the bridge lives one level up, in `capability_authority`, specifically so this
+remains true. `cancellai-safety` remains the sole mutation executor (`docs/CONSTITUTION.md`:
+"route mutation through one safety boundary"), and no caller wires this bridge to a live provider
+adapter yet, matching E14-S01/S02/S03's own "primitive delivered, no orchestrator yet" precedent
+- that residual is about who *invokes* the now-real chain in production, not whether the chain
+itself functions.
 
 ### Decision
 
@@ -105,7 +121,17 @@ implementation detail. AC2 ("sparse/noisy history produces insufficient-data rat
 precision") holds because `fit_growth` refuses to return a fit at all, not merely a low-confidence
 one, when there are too few usable points, too short a time span, or too poor a linear fit to
 support a trend claim - a named `InsufficientDataReason` distinguishes "too little history" from
-"history present but too noisy to trust." A declining or flat series never produces a negative
+"history present but too noisy to trust." Round 1 independent review found a further false-
+precision case `r_squared` alone cannot see: a burst followed by a sustained plateau (a jump, then
+no further change) fits a deceptively good whole-series line, because both shapes fit a
+positive-slope line reasonably well over only a few points - the whole series passing muster is
+not the same claim as the trend still holding at the most recent observations. `fit_growth` now
+also fits the most recent half of the series on its own (with the identical one-outlier-trim
+handling, so a lone noisy recent point cannot itself manufacture a false stall) and requires its
+slope to retain at least half the whole-series slope; a burst that has since leveled off or
+reversed fails this and is reported as `NoDiscernibleTrend`, the same insufficiency AC2 already
+names, rather than the whole-series average being reported as the *current* rate. A declining or
+flat series never produces a negative
 velocity or a spurious exhaustion forecast: growth velocity floors at zero contribution (matching
 `PressureInputs::growth_velocity_fraction_per_window`'s own documented floor) and a non-positive
 trend, or a series already at or past the threshold, yields `NotTrendingTowardThreshold` rather
