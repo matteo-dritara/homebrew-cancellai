@@ -173,3 +173,46 @@ pairing proof, and that `append_purged` still applies the content-shape check as
 Round 5 should judge whether this closes AC2/SI-020's "no second path to the `PURGED` label"
 property completely, and re-confirm AC1/ADR-0033 and the round-3 content bypass remain closed (no
 change was made to that logic beyond moving it into `append_purged`).
+
+## Round 5 independent review
+
+- Review target: repair commit `31cf69d` (`31cf69d^..31cf69d`); full story history `f215d33..31cf69d` on `main`
+- Verifier: Codex
+- Brief-Checksum: 13ff307a3683218ad373346e3d17d1530ec685aa514195ee7bd8251f394f2a12
+- Date: 2026-09-20
+- Verdict: `FAIL`
+
+Round 4's exact public reproduction was independently re-run: a well-shaped `NewEvent` with
+`EventKind::Purged`, absent annotations, and valid artifact/plan/evidence linkage passed to the
+public `EventLedger::append` is now refused and leaves `read_all()` empty. An external integration
+test that attempted `ledger.append_purged(event)` failed to compile with `E0624` because the
+method is `pub(crate)`. A workspace search found the sole production `INSERT INTO ledger_events`
+in the private `append_row`, and the sole call of `append_purged` in
+`tombstone::record_purge_tombstone`; neither CLI nor Guardian references this ledger. Thus every
+currently writable `PURGED` row reaches `record_purge_tombstone`'s prior
+`ActionClass::Delete + Reversibility::Irreversible` check.
+
+| Invariant | Required property | Round 5 evidence | Result |
+| --- | --- | --- | --- |
+| SI-020 / AC2 | A `PURGED` record cannot label a conditionally reversible or otherwise unproven operation as an irreversible purge. | Public `append` refuses `Purged` unconditionally; the only current writer is crate-private `append_purged`, reached solely after `record_purge_tombstone` checks `Delete + Irreversible`. | PASS |
+| AC1 / C-09, narrowed by ADR-0033 | No descriptive annotations persist; linkage rejects obvious prompt/source/path forms while retaining the accepted short-phrase residual. | `append_purged` requires all four annotations absent and identifier-shaped linkage before `append_row`; its tests and the tombstone sentinel tests pass. `do-not-purge-this` remains deliberately accepted exactly as ADR-0033 records. | PASS_WITH_ACCEPTED_RESIDUAL |
+| E13-S02 mutation-reference contract | Every mutation-class event requires a non-empty plan ID and at least one evidence ID. | Both public `append` and `append_purged` delegate to `append_row`, whose `EventKind::is_mutation` check rejects absent/blank plan IDs and empty evidence lists before insertion. | PASS |
+
+All requested code-quality and evidence checks passed before the final state transition: `cargo fmt --check`; `cargo clippy --workspace --all-targets
+--all-features -- -D warnings`; `cargo check --workspace --all-targets`; `cargo test --workspace`;
+`cargo deny check`; `python3 scripts/project_os.py check`; `python3 scripts/check_process.py check`;
+`python3 scripts/check_evidence.py check`; `python3 scripts/verifier_handoff.py check`; and
+`python3 scripts/check_docs.py check`. `cargo deny` and the Python process/evidence checks report
+only their pre-existing, recorded warnings. However, after setting E12-S04 to `done`,
+`python3 scripts/project_os.py generate` failed: its `safety_verdict_passes` gate rejects an
+append-only Safety Verdict file whenever any historical line is exactly `FAIL` or `REJECT`, even
+when the final Round 5 verdict is passing. The protocol requires those historical rounds to remain.
+This is a CR4 delivery-gate failure under C-16, so the story cannot close in this review.
+
+## Owner decision — Round 5
+
+`REJECT`
+
+Owner note: The SI-020 second-path bypass is closed and ADR-0033's residual remains accepted, but
+the required CR4 closure gate cannot accept an append-only verdict history. E12-S04 remains
+`in_progress` pending a separately reviewed repair to the safety-verdict gate.
