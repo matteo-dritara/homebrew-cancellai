@@ -239,6 +239,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `AuthorityLevel` and `cancellai-store` still does not depend on `cancellai-safety`. No
   orchestrator calls this from a real purge yet, matching E13's own "primitive delivered, no
   orchestrator yet" precedent.
+- Added the Guardian pressure state model (E14-S01, CR2, SI-027,
+  `docs/architecture/GUARDIAN_MODEL.md` "Pressure states"): `cancellai_guardian::pressure` is a
+  pure, dependency-free `classify(inputs, previous) -> PressureState` over the five named signals
+  (free space, self-budget usage, growth velocity, reclaimability, active workload), deterministic
+  in both arguments and independently unit-tested with no live scanner. Per-boundary up/down
+  thresholds give GREEN/YELLOW/ORANGE/RED hysteresis that holds even across a multi-level jump in
+  one observation; a NaN or out-of-range axis resolves to its worst reading, never its safest.
+  Imports no `AuthorityLevel`/`ActionClass`/`Reversibility` type, so AC2 ("pressure does not change
+  authority by itself") holds by construction. No caller wires this to a live store yet.
 
 ### Fixed
 

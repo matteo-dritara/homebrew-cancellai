@@ -1501,7 +1501,7 @@ Detect disk pressure, runaway growth, and structural anomalies using local evide
 
 ### E14-S01 - Pressure state model
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E13-S03 | **Safety obligations:** SI-027
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E13-S03 | **Safety obligations:** SI-027
 
 **Outcome.** Define GREEN/YELLOW/ORANGE/RED from free space, budgets, growth velocity, reclaimability, and active workload.
 

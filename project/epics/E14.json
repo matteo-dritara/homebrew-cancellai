@@ -12,7 +12,7 @@
     {
       "id": "E14-S01",
       "title": "Pressure state model",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Define GREEN/YELLOW/ORANGE/RED from free space, budgets, growth velocity, reclaimability, and active workload.",
       "change_risk": "CR2",
       "dependencies": [

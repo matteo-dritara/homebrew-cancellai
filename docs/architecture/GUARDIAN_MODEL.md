@@ -40,6 +40,25 @@ The exact function is calibrated later, but the semantic states are:
 
 Hysteresis prevents notification/action flapping.
 
+E14-S01 implements the classification itself: `cancellai_guardian::pressure`, a pure, dependency-free
+module (no `cancellai-safety`/`cancellai-store` reference, no I/O, no clock) - `PressureState` is a
+closed four-value enum and `classify(inputs, previous) -> PressureState` is deterministic in both
+arguments (AC1), independently unit-tested without any live scanner or store. `PressureInputs`
+carries the five named signals as plain primitives (free space, self-budget usage, growth velocity
+- an opaque number this module consumes but does not compute; E14-S02 is where it comes from -
+reclaimability, and whether a provider is actively writing). A continuous internal score combines
+them (worst-axis-wins across free space/budget/growth, reclaimability dampens by a bounded amount
+that can never mask a genuinely full disk, an active workload raises the score since the same
+numbers observed mid-write describe a still-worsening trend); `classify` then walks that score
+through explicit per-boundary up/down thresholds, stepping at most one level per boundary crossed
+until none remain clear, so hysteresis holds even across a multi-level jump in one observation. A
+NaN or out-of-range input on any axis resolves to that axis's worst reading, never its safest one -
+malformed detection input must not read as calm. AC2 (SI-027: "pressure does not change authority
+by itself") holds by construction: this module imports no `AuthorityLevel`/`ActionClass`/
+`Reversibility` type and cannot express one - `PressureState` is not a type any authority decision
+in this crate graph reads. No caller wires this to a live `cancellai-store` scan yet, matching
+E13/E12's own "primitive delivered, no orchestrator yet" precedent.
+
 ## Forecasting
 
 Forecasts can include estimated time to disk pressure or budget exhaustion. They must surface insufficient-data/uncertainty states and are never authorization inputs by themselves.
