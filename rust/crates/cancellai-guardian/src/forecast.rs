@@ -221,6 +221,56 @@ fn maybe_trim_outlier_and_refit(points: &[(f64, f64)], initial: LinearFit) -> Li
     ols_fit(&trimmed).unwrap_or(initial)
 }
 
+/// Fraction of the fitted (whole-series) slope the *recent segment*'s own slope must retain for
+/// the whole-series fit to be trusted as an *ongoing* trend, not a burst that has already ended.
+/// Round 1 independent review of E14-S02: a jump followed by a flat plateau (`(0, 0.0)`,
+/// `(3600, 100.0)`, `(7200, 100.0)`) produces a deceptively good OLS fit over the whole series -
+/// `r_squared` alone cannot distinguish it from a genuinely continuing trend, because both shapes
+/// fit a positive-slope line reasonably well with only a few points. But the *whole series*
+/// fitting a line is not the same claim as the trend *still holding at the most recent
+/// observations*, which is what a forward-looking velocity/forecast actually promises.
+const RECENT_SLOPE_MIN_FRACTION: f64 = 0.5;
+
+/// How much of the series (from the end) counts as "recent" for
+/// [`trend_still_holds_at_the_most_recent_observation`] - a fraction rather than a fixed count so
+/// this scales with series length, floored at [`MIN_RECENT_SEGMENT_POINTS`] so a short series
+/// still gets a meaningful comparison.
+const RECENT_SEGMENT_FRACTION: f64 = 0.5;
+const MIN_RECENT_SEGMENT_POINTS: usize = 2;
+
+/// Whether the fitted trend still holds at the most recent observations, judged by fitting the
+/// most recent segment of the series *on its own* and comparing its slope to the whole series's.
+/// A continuing trend keeps growing at roughly the fitted rate right through the recent segment;
+/// a burst that has since leveled off or reversed does not, and reporting the whole-series
+/// average as the *current* rate in that case is exactly the false precision AC2 exists to
+/// refuse. This deliberately mirrors [`fit_growth`]'s own outlier handling
+/// ([`maybe_trim_outlier_and_refit`]) rather than comparing two raw points: a bare two-point
+/// delta is exactly as vulnerable to one noisy sample as the whole-series fit would be without
+/// trimming, and would flag ordinary noise (e.g. `moderate_scatter_around_a_real_trend_is_
+/// reported_at_lower_confidence_not_withheld`'s alternating wobble) as a false stall.
+fn trend_still_holds_at_the_most_recent_observation(
+    points: &[(f64, f64)],
+    fit: &LinearFit,
+) -> bool {
+    if fit.slope_per_sec <= 0.0 {
+        // A flat or declining fit makes no forward-looking growth claim that could go stale -
+        // NotTrendingTowardThreshold and the velocity floor already handle this case.
+        return true;
+    }
+    let recent_count = ((points.len() as f64 * RECENT_SEGMENT_FRACTION).ceil() as usize)
+        .clamp(MIN_RECENT_SEGMENT_POINTS, points.len());
+    let Some(recent) = points.get(points.len() - recent_count..) else {
+        return true;
+    };
+    let Some(recent_initial_fit) = ols_fit(recent) else {
+        // Degenerate recent segment (e.g. every point at the same timestamp); do not
+        // additionally reject on this axis - fit_growth's own span/count gates already cover it.
+        return true;
+    };
+    let recent_fit = maybe_trim_outlier_and_refit(recent, recent_initial_fit);
+    recent_fit.slope_per_sec >= fit.slope_per_sec * RECENT_SLOPE_MIN_FRACTION
+}
+
 fn confidence_from_r_squared(r_squared: f64) -> Confidence {
     if r_squared >= HIGH_CONFIDENCE_R_SQUARED {
         Confidence::High
@@ -273,6 +323,9 @@ fn fit_growth(
     let fit = maybe_trim_outlier_and_refit(&points, initial_fit);
 
     if fit.r_squared < MIN_R_SQUARED {
+        return Err(InsufficientDataReason::NoDiscernibleTrend);
+    }
+    if !trend_still_holds_at_the_most_recent_observation(&points, &fit) {
         return Err(InsufficientDataReason::NoDiscernibleTrend);
     }
     let confidence = confidence_from_r_squared(fit.r_squared);
@@ -590,6 +643,51 @@ mod tests {
                 assert!(confidence < Confidence::High);
             }
             other => panic!("expected a reportable (if lower-confidence) trend, got {other:?}"),
+        }
+    }
+
+    // --- Burst followed by a sustained plateau (round 1 independent review, E14-S02) ---
+
+    #[test]
+    fn burst_then_flat_plateau_is_insufficient_data_not_a_continuing_trend() {
+        // Round 1 independent review's own reproduction: a jump from 0 to 100 in the first hour,
+        // then no further change for a second hour. The whole-series OLS fit alone reports this
+        // as `Available { velocity_per_window: 50.0, .. }` - a completed burst is not an ongoing
+        // trend, and reporting half its magnitude as the *current* growth rate is exactly the
+        // false precision AC2 exists to refuse.
+        let observations = series(&[(0, 0.0), (HOUR, 100.0), (2 * HOUR, 100.0)]);
+        assert_eq!(
+            estimate_growth(&observations, HOUR),
+            GrowthEstimate::InsufficientData(InsufficientDataReason::NoDiscernibleTrend)
+        );
+        assert_eq!(
+            forecast_time_to_threshold(&observations, 100.0, 200.0),
+            PressureForecast::InsufficientData(InsufficientDataReason::NoDiscernibleTrend)
+        );
+    }
+
+    #[test]
+    fn burst_then_a_longer_plateau_never_reports_a_large_velocity() {
+        // The same shape, spread over more points so the plateau itself has more than two
+        // samples. Here the whole-series fit is already dominated by the flat majority (its own
+        // slope is at or near zero), so the pre-existing zero-floor in `estimate_growth` already
+        // gives the right answer without needing the recent-segment check to intervene - this
+        // confirms that stays true rather than regressing to the round-1 false `50.0`.
+        let mut points = vec![(0, 0.0), (HOUR, 100.0)];
+        for h in 2..8 {
+            points.push((h * HOUR, 100.0));
+        }
+        let observations = series(&points);
+        match estimate_growth(&observations, HOUR) {
+            GrowthEstimate::InsufficientData(_) => {}
+            GrowthEstimate::Available {
+                velocity_per_window,
+                ..
+            } => assert!(
+                velocity_per_window < 5.0,
+                "a burst absorbed into a long plateau must not still report a large velocity, \
+                 got {velocity_per_window}"
+            ),
         }
     }
 
