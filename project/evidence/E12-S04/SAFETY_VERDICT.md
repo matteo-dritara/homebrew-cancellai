@@ -111,3 +111,46 @@ Two things changed since round 3, ahead of the next independent review round:
 
 Round 4 should judge the current diff against the narrowed AC1 in `project/epics/E12.json` and
 ADR-0033, not against the original unqualified reading rounds 1-3 correctly falsified.
+
+## Round 4 independent review
+
+- Review target: repair commit `4ce61c3` (`4ce61c3^..4ce61c3`); full story history `f215d33..4ce61c3`
+- Verifier: Codex
+- Brief-Checksum: 13ff307a3683218ad373346e3d17d1530ec685aa514195ee7bd8251f394f2a12
+- Date: 2026-09-20
+- Verdict: `FAIL`
+
+ADR-0033 is a legitimate, owner-authorized narrowing of AC1: its resulting property is explicit,
+testable, and the remaining three caller-supplied linkage fields' short-phrase capacity is
+accurately disclosed rather than treated as a closed guarantee. The repair also closes the
+round-3 content/annotation bypass at the actual persistence boundary: a public direct
+`EventLedger::append` carrying `provider_id`, `category`, `policy_id`, or `reason_code` now
+refuses before writing. The supplied verifier brief remains checksum-valid but stale on the
+original AC1 wording; this verdict therefore judges the authoritative current control-plane text
+and ADR-0033, not the brief's superseded wording.
+
+| Invariant | Required property | Round 4 evidence | Result |
+| --- | --- | --- | --- |
+| AC1 / C-09 (as narrowed) | No descriptive annotations on any persisted `PURGED` event; linkage fields receive the identical disclosed-residual shape check through either public route. | Independent public-API reproduction of the old direct-append sentinel route was refused and left the ledger empty. Source inspection confirms all four annotations are rejected in `EventLedger::append`; helper and direct append call the same `is_identifier_shaped` predicate. | PASS |
+| AC2 / SI-020 | A `PURGED` event may only represent `ActionClass::Delete + Reversibility::Irreversible`, never a conditionally reversible action. | Independent public-API reproduction directly appended a well-shaped `EventKind::Purged` record successfully. `EventLedger::append` receives no `ActionClass` or `Reversibility` and therefore cannot enforce the helper's pairing predicate. The event is persisted as `PURGED` without proof it was an irreversible delete. | FAIL |
+
+The direct append acceptance is the SI-020 part of the round-3 bypass that the repair did not
+close. It remains a public alternate path that can label a vendor-native conditional operation as
+an irreversible purge. The exact required repair is to make every public construction/write path
+for `EventKind::Purged` carry and enforce the `Delete + Irreversible` proof, or to make direct
+construction of `PURGED` impossible outside a controlled API that enforces that proof. Merely
+checking metadata fields or identifier shape does not satisfy AC2/SI-020.
+
+Empty `plan_id` and empty `evidence_ids` remain fail-closed before writing through both routes;
+the pre-existing mutation-reference contract is intact. No production caller currently depends on
+the removed annotation fields for a `PURGED` event; the workspace search found no production
+`EventKind::Purged` construction outside this store implementation and its tests.
+
+The story returns to `in_progress`. No code repair was attempted by this verifier.
+
+## Owner decision — Round 4
+
+`REJECT`
+
+Owner note: Independent CR4 review rejects closure because the direct public `PURGED` write path
+does not enforce AC2/SI-020. E12-S04 remains `in_progress` pending the exact repair stated above.
