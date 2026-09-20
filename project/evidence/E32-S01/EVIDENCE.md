@@ -4,7 +4,9 @@
 - Executor: Claude
 - Independent verifier: Codex, round 1 - **FAIL** (`project/evidence/E32-S01-VERIFIER-REVIEW.md`) -
   a verdict-shaped word inside a fenced code example could override a real current verdict;
-  repaired below
+  round 2 - **FAIL** (`project/evidence/E32-S01-VERIFIER-REVIEW-ROUND2.md`) - the round-1 regex
+  repair still missed an unclosed fence and the `~~~` fence style; repaired below with a
+  structurally different (line-by-line) parser
 - Change Risk: CR2 (process/tooling gate logic in `scripts/project_os.py`; touches no runtime
   mutation code, no shipped Rust/Python product surface, no persisted schema)
 - Spec version/commit: `docs/development/AGENT_PROTOCOL.md`'s CR4 Safety Verdict section (updated
@@ -12,7 +14,8 @@
 
 ## Outcome
 
-PASS after repair (see "Repair - round 1 independent review finding" below)
+PASS after repair (see "Repair - round 2 independent review finding: a line-by-line parser"
+below)
 
 ## Scope
 
@@ -50,7 +53,9 @@ a later `FAIL`/`REJECT` still blocks it even if an earlier round passed.
 | 10 | Malformed/untrusted | A file with no verdict-shaped line at all (prose only) | Refused (`False`), not a crash or a default-accept | `never_judged` fixture, see AC3 |
 | 7 | Boundary | Multiple verdict lines with the tie-breaking one (by position) being the deciding factor in both directions (pass-then-fail and fail-then-pass) | Only the later one controls, in both directions | `repaired` and `still_open` fixtures, see AC1/AC2 |
 | second-path | Does a later `PASS` silently launder an earlier real safety rejection instead of representing an actual repair? | No new authority is created: this function only decides whether a *file a human/verifier wrote* reads as passing - it does not itself decide CR4 safety, verify code, or run gates. Making it read history correctly does not weaken the requirement that a real independent verifier round produced that later `PASS`; `verifier_handoff.py check`'s brief-checksum requirement is unaffected and still separately enforced. | Documented here; no code path in this change touches verdict authorship or attribution |
-| 10 | Malformed/untrusted (round 1 repair) | A verdict-shaped word inside a fenced code block (a reproduction transcript or documentation example) placed after a real current verdict, in both directions | Fenced content never overrides the real verdict, in either direction | `test_a_verdict_word_inside_a_fenced_code_block_is_not_a_verdict` |
+| 10 | Malformed/untrusted (round 1 repair) | A verdict-shaped word inside a balanced ` ``` ` fenced code block placed after a real current verdict, in both directions | Fenced content never overrides the real verdict, in either direction | `test_a_verdict_word_inside_a_fenced_code_block_is_not_a_verdict` |
+| 10 | Malformed/untrusted (round 2 repair) | A fence that opens but is never closed before end of file (both `` ``` `` and `~~~`) | Everything after the opening fence stays code through end of file - fails closed, does not default to prose | `test_an_unclosed_or_tilde_fence_still_hides_its_verdict_shaped_content` |
+| 10 | Malformed/untrusted (round 2 repair) | A balanced `~~~` fence (CommonMark's other delimiter, not just ` ``` `) | Recognized and stripped the same as a backtick fence | Same test, `closed_tilde_fence` case |
 
 ## Safety Evidence
 
@@ -60,8 +65,8 @@ an already-written verdict file; it does not itself make a safety determination.
 ## Verification Commands
 
 ```text
-python3 -m pytest tests/test_project_os.py -v                              # PASS - 27 tests, incl. 3 new
-python3 -m pytest tests -q                                                 # PASS - 667 passed, 578 subtests
+python3 -m pytest tests/test_project_os.py -v                              # PASS - 30 tests, incl. 6 new
+python3 -m pytest tests -q                                                 # PASS - 668 passed, 578 subtests
 python3 -m ruff check .                                                    # PASS
 python3 -m ruff format --check .                                          # PASS
 python3 -m mypy scripts/project_os.py (+ full AGENTS.md target list)       # PASS
@@ -106,11 +111,31 @@ current verdict declaration. The independent reproduction: a file reading `` `RE
 by a fenced ```` ```text\n`PASS`\n``` ```` block returned `True` from the pre-repair function,
 letting an illustrative example override a real, current rejection.
 
-Repair: `safety_verdict_passes` now strips fenced code blocks (`FENCED_CODE_RE`, the same pattern
-`scripts/check_evidence.py`'s own `FENCED`/`prose_only` convention already uses) before scanning
-for verdict lines, so only prose-level verdict declarations count. Two new adversarial tests cover
-both directions: a fenced `PASS` must not override a real `REJECT`, and a fenced `REJECT` must not
-override a real `PASS` (`test_a_verdict_word_inside_a_fenced_code_block_is_not_a_verdict`).
+Repair (round 1): `safety_verdict_passes` stripped fenced code blocks with a regex
+(`FENCED_CODE_RE`, matching `scripts/check_evidence.py`'s own `FENCED`/`prose_only` convention)
+before scanning for verdict lines. Two adversarial tests covered both directions of a *balanced*
+fence: a fenced `PASS` must not override a real `REJECT`, and a fenced `REJECT` must not override
+a real `PASS`.
+
+## Repair - round 2 independent review finding: a line-by-line parser
+
+Codex's round-2 review (`project/evidence/E32-S01-VERIFIER-REVIEW-ROUND2.md`) FAILed the round-1
+regex two further ways: an *unclosed* fence (opened, never closed before end of file) let its
+content default back to prose because `^```.*?^```` simply never matched anything for it, and a
+balanced `~~~` fence - CommonMark's other delimiter, which the regex never looked for - was
+scanned as prose outright. Both reproductions let a later illustrative `PASS` override a real
+current `REJECT`.
+
+Per the orchestrator's policy (at most two review rounds per approach before the next attempt
+must be a structurally different kind of fix), this repair replaces the single whole-text regex
+with `strip_fenced_code`, a line-by-line scanner that tracks whether it is currently inside a
+fence (opened by three or more `` ` `` or `~` characters, closed only by a line of at least that
+many of the *same* character) and drops every line while inside one. Critically, a fence that is
+never closed simply never lets the scanner exit "inside a fence" - its content stays excluded
+through end of file by the shape of the algorithm, not by a pattern happening to match past it.
+Three new adversarial tests cover an unclosed backtick fence, a closed `~~~` fence, and an
+unclosed `~~~` fence (`test_an_unclosed_or_tilde_fence_still_hides_its_verdict_shaped_content`),
+alongside the round-1 tests, which still pass unchanged.
 
 ## Documentation updated
 
@@ -131,5 +156,6 @@ override a real `PASS` (`test_a_verdict_word_inside_a_fenced_code_block_is_not_a
 
 ## Verifier verdict
 
-Round 1: **FAIL** (Codex) - `project/evidence/E32-S01-VERIFIER-REVIEW.md`. Repaired above; round 2
-pending.
+Round 1: **FAIL** (Codex) - `project/evidence/E32-S01-VERIFIER-REVIEW.md`.
+Round 2: **FAIL** (Codex) - `project/evidence/E32-S01-VERIFIER-REVIEW-ROUND2.md`. Addressed by
+a structurally different (line-by-line) parser, not a further regex patch. Round 3 pending.

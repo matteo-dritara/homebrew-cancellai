@@ -11,8 +11,10 @@
   (`project/evidence/E12-S04-VERIFIER-REVIEW-ROUND5.md`), confirmed the implementation fully
   correct but blocked on a separate CR4 closing-gate defect (E32-S01); round 6 - **FAIL**
   (`project/evidence/E12-S04-VERIFIER-REVIEW-ROUND6.md`), re-confirmed no code regression, still
-  blocked because E32-S01's first repair itself failed review. Round 7 (final) pending, against
-  E32-S01's now-repaired gate
+  blocked because E32-S01's first repair itself failed review; round 7 - **FAIL**
+  (`project/evidence/E12-S04-VERIFIER-REVIEW-ROUND7.md`), re-confirmed no code regression again,
+  still blocked because E32-S01's second repair also failed review. Round 8 (final) pending,
+  against E32-S01's now structurally-repaired gate
 - Change Risk: CR4 (declared CR4 at planning time in `project/epics/E12.json`, matching
   E12-S01/S02/S03's own level for SI-020; the diff adds no new mutation capability and no new
   cross-crate dependency, so no reclassification applies)
@@ -23,8 +25,8 @@
 
 PASS against AC1 (ADR-0033) and AC2/SI-020, with both the round-3 content bypass and the round-4
 action/reversibility bypass closed (see Repair sections below). No `rust/` change since round 4;
-rounds 5-6 independently re-confirmed this and found only the separate CR4 closing-gate defect
-(E32-S01), now repaired. Verdict pending round 7 (final).
+rounds 5-7 independently re-confirmed this and found only the separate CR4 closing-gate defect
+(E32-S01), now structurally repaired. Verdict pending round 8 (final).
 
 ## Scope
 
@@ -309,5 +311,13 @@ not close because E32-S01's first repair attempt itself failed independent revie
 code-block example could override a real current verdict). E32-S01 has since been repaired (see
 its own evidence packet) - `project/evidence/E12-S04/SAFETY_VERDICT.md` is confirmed to still
 correctly evaluate as not-yet-passing at its current (round 6) state under the repaired gate.
-Round 7 (final) pending, against E12-S04's own unchanged, already-confirmed-correct implementation
-and E32-S01's repaired gate.
+Round 7: **FAIL** (Codex) - `project/evidence/E12-S04-VERIFIER-REVIEW-ROUND7.md`. Re-confirmed no
+`rust/` diff since round 6 and the same PASS/PASS/PASS_WITH_ACCEPTED_RESIDUAL result; still could
+not close because E32-S01's second repair attempt (round-1's regex fix) itself failed round 2 of
+independent review (an unclosed fence and the `~~~` fence style still let fenced content override
+a real verdict). E32-S01 has since been repaired again with a structurally different line-by-line
+parser (see its own evidence packet) - `project/evidence/E12-S04/SAFETY_VERDICT.md` is confirmed
+to still correctly evaluate as not-yet-passing at its current (round 7) state under the repaired
+gate.
+Round 8 (final) pending, against E12-S04's own unchanged, already-confirmed-correct implementation
+and E32-S01's structurally repaired gate.

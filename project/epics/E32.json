@@ -10,7 +10,7 @@
     {
       "id": "E32-S01",
       "title": "safety_verdict_passes reads the last verdict, not any verdict",
-      "status": "in_progress",
+      "status": "ready_for_review",
       "outcome": "A Safety Verdict file's most recent standalone PASS/PASS_WITH_RESIDUALS/FAIL/REJECT line, by position in the file, determines whether the gate accepts it - not whether any such line exists anywhere in the file.",
       "change_risk": "CR2",
       "dependencies": [],

@@ -56,9 +56,12 @@ FAILING_VERDICT_RE = re.compile(r"^\s*`?(FAIL|REJECT)`?\s*$", re.MULTILINE | re.
 PASSING_VERDICT_RE = re.compile(r"^\s*`?(PASS|PASS_WITH_RESIDUALS)`?\s*$", re.MULTILINE | re.IGNORECASE)
 # A verdict word inside a fenced example (an illustration of the convention, a reproduction
 # transcript) is not a verdict - E32-S01's own round-1 independent review found the naive scan
-# below reading exactly that as if it were current. Matches `scripts/check_evidence.py`'s own
-# FENCED convention.
-FENCED_CODE_RE = re.compile(r"^```.*?^```", re.MULTILINE | re.DOTALL)
+# below reading exactly that as if it were current, and round 2 defeated a regex-based "balanced
+# open/close pair" attempt at fixing it two more ways: an unclosed fence (no closing delimiter
+# before end of file) and CommonMark's other fence style, `~~~`. `strip_fenced_code`, below,
+# handles both by walking the file line by line instead of matching a pattern against the whole
+# text - a fence that never closes stays code through end of file by construction, rather than by
+# a regex happening not to match past it.
 
 
 class GovernanceError(RuntimeError):
@@ -130,6 +133,34 @@ def evidence_is_substantive(path: Path, story_id: str) -> bool:
     return any(term in lowered for term in EVIDENCE_OUTCOME_TERMS) and any(term in lowered for term in EVIDENCE_METHOD_TERMS)
 
 
+def strip_fenced_code(text: str) -> str:
+    """`text` with every fenced code block's content removed, line by line.
+
+    Recognizes both CommonMark fence delimiters (` ``` ` and `~~~`), of three or more
+    characters, and - unlike a regex matching a balanced open/close pair - treats a fence that
+    opens and is never closed as code through end of file, rather than defaulting its
+    unterminated content back to prose. Untrusted/freeform evidence input must fail closed.
+    """
+    kept: list[str] = []
+    fence_char = ""
+    fence_len = 0
+    for line in text.splitlines():
+        stripped = line.strip()
+        if fence_char:
+            is_closing = stripped[:1] == fence_char and stripped == fence_char * len(stripped) and len(stripped) >= fence_len
+            if is_closing:
+                fence_char = ""
+                fence_len = 0
+            continue
+        if stripped[:3] in ("```", "~~~"):
+            char = stripped[0]
+            fence_char = char
+            fence_len = len(stripped) - len(stripped.lstrip(char))
+            continue
+        kept.append(line)
+    return "\n".join(kept)
+
+
 def safety_verdict_passes(path: Path) -> bool:
     """Whether a Safety Verdict's most recent standalone verdict line is a pass.
 
@@ -145,13 +176,13 @@ def safety_verdict_passes(path: Path) -> bool:
 
     Fenced code blocks are stripped first: a verdict-shaped word inside a reproduction transcript
     or a documentation example is not a verdict, and scanning raw text let one override a real
-    current rejection (E32-S01's own round-1 independent review).
+    current rejection (E32-S01's own round-1 and round-2 independent reviews).
     """
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return False
-    text = FENCED_CODE_RE.sub("", text)
+    text = strip_fenced_code(text)
     verdicts = [(m.start(), True) for m in PASSING_VERDICT_RE.finditer(text)]
     verdicts += [(m.start(), False) for m in FAILING_VERDICT_RE.finditer(text)]
     if not verdicts:

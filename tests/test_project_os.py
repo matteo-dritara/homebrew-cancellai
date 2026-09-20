@@ -283,6 +283,31 @@ class ProjectOSTests(unittest.TestCase):
                 "a fenced example REJECT must not override a real, current PASS",
             )
 
+    def test_an_unclosed_or_tilde_fence_still_hides_its_verdict_shaped_content(self) -> None:
+        # E32-S01's own round-2 independent review defeated a regex matching a balanced
+        # ```...``` pair two more ways: a fence opened but never closed before end of file, and
+        # CommonMark's other fence delimiter, ~~~. Both must still fail closed - a malformed or
+        # differently-delimited example is not license to read its content as a real verdict.
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            unclosed_backtick_fence = base / "UNCLOSED_BACKTICK_FENCE.md"
+            unclosed_backtick_fence.write_text("`REJECT`\n\n```text\n`PASS`\n", encoding="utf-8")
+            self.assertFalse(
+                project_os.safety_verdict_passes(unclosed_backtick_fence),
+                "an unclosed fence must stay code through end of file, not fall back to prose",
+            )
+
+            closed_tilde_fence = base / "CLOSED_TILDE_FENCE.md"
+            closed_tilde_fence.write_text("`REJECT`\n\n~~~text\n`PASS`\n~~~\n", encoding="utf-8")
+            self.assertFalse(
+                project_os.safety_verdict_passes(closed_tilde_fence),
+                "a ~~~ fence is fenced code too, not merely the ``` form",
+            )
+
+            unclosed_tilde_fence = base / "UNCLOSED_TILDE_FENCE.md"
+            unclosed_tilde_fence.write_text("`REJECT`\n\n~~~text\n`PASS`\n", encoding="utf-8")
+            self.assertFalse(project_os.safety_verdict_passes(unclosed_tilde_fence))
+
     def test_ready_for_review_does_not_require_a_safety_verdict(self) -> None:
         # The Safety Verdict is the reviewer's output; demanding it at handoff would force
         # the executor to sign off on its own CR4 work.

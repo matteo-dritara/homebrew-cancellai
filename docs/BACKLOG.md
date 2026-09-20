@@ -3857,7 +3857,7 @@ E12-S04's round-5 independent review (project/evidence/E12-S04-VERIFIER-REVIEW-R
 
 ### E32-S01 - safety_verdict_passes reads the last verdict, not any verdict
 
-**Status:** `in_progress` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** A Safety Verdict file's most recent standalone PASS/PASS_WITH_RESIDUALS/FAIL/REJECT line, by position in the file, determines whether the gate accepts it - not whether any such line exists anywhere in the file.
 
