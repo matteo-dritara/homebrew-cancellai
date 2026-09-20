@@ -2,7 +2,9 @@
 
 - Commit/PR: pending (this work item)
 - Executor: Claude
-- Independent verifier: pending
+- Independent verifier: Codex, round 1 - **FAIL** (`project/evidence/E32-S01-VERIFIER-REVIEW.md`) -
+  a verdict-shaped word inside a fenced code example could override a real current verdict;
+  repaired below
 - Change Risk: CR2 (process/tooling gate logic in `scripts/project_os.py`; touches no runtime
   mutation code, no shipped Rust/Python product surface, no persisted schema)
 - Spec version/commit: `docs/development/AGENT_PROTOCOL.md`'s CR4 Safety Verdict section (updated
@@ -10,7 +12,7 @@
 
 ## Outcome
 
-PASS
+PASS after repair (see "Repair - round 1 independent review finding" below)
 
 ## Scope
 
@@ -48,6 +50,7 @@ a later `FAIL`/`REJECT` still blocks it even if an earlier round passed.
 | 10 | Malformed/untrusted | A file with no verdict-shaped line at all (prose only) | Refused (`False`), not a crash or a default-accept | `never_judged` fixture, see AC3 |
 | 7 | Boundary | Multiple verdict lines with the tie-breaking one (by position) being the deciding factor in both directions (pass-then-fail and fail-then-pass) | Only the later one controls, in both directions | `repaired` and `still_open` fixtures, see AC1/AC2 |
 | second-path | Does a later `PASS` silently launder an earlier real safety rejection instead of representing an actual repair? | No new authority is created: this function only decides whether a *file a human/verifier wrote* reads as passing - it does not itself decide CR4 safety, verify code, or run gates. Making it read history correctly does not weaken the requirement that a real independent verifier round produced that later `PASS`; `verifier_handoff.py check`'s brief-checksum requirement is unaffected and still separately enforced. | Documented here; no code path in this change touches verdict authorship or attribution |
+| 10 | Malformed/untrusted (round 1 repair) | A verdict-shaped word inside a fenced code block (a reproduction transcript or documentation example) placed after a real current verdict, in both directions | Fenced content never overrides the real verdict, in either direction | `test_a_verdict_word_inside_a_fenced_code_block_is_not_a_verdict` |
 
 ## Safety Evidence
 
@@ -57,8 +60,8 @@ an already-written verdict file; it does not itself make a safety determination.
 ## Verification Commands
 
 ```text
-python3 -m pytest tests/test_project_os.py -v                              # PASS - 26 tests, incl. 2 new
-python3 -m pytest tests -q                                                 # PASS - 666 passed, 577 subtests
+python3 -m pytest tests/test_project_os.py -v                              # PASS - 27 tests, incl. 3 new
+python3 -m pytest tests -q                                                 # PASS - 667 passed, 578 subtests
 python3 -m ruff check .                                                    # PASS
 python3 -m ruff format --check .                                          # PASS
 python3 -m mypy scripts/project_os.py (+ full AGENTS.md target list)       # PASS
@@ -94,6 +97,21 @@ were not run: this change touches no file under `rust/`.
 - `safety_verdict_passes` now runs two regex scans instead of two `search()` calls and sorts a
   small list of match positions (typically under ten per file) - no measurable cost change.
 
+## Repair - round 1 independent review finding
+
+Codex's round-1 review (`project/evidence/E32-S01-VERIFIER-REVIEW.md`) FAILed: `safety_verdict_passes`
+scanned raw file text, so a verdict-shaped word inside a fenced code block - a reproduction
+transcript quoting `` `PASS` ``, or a documentation example - was indistinguishable from a real
+current verdict declaration. The independent reproduction: a file reading `` `REJECT` `` followed
+by a fenced ```` ```text\n`PASS`\n``` ```` block returned `True` from the pre-repair function,
+letting an illustrative example override a real, current rejection.
+
+Repair: `safety_verdict_passes` now strips fenced code blocks (`FENCED_CODE_RE`, the same pattern
+`scripts/check_evidence.py`'s own `FENCED`/`prose_only` convention already uses) before scanning
+for verdict lines, so only prose-level verdict declarations count. Two new adversarial tests cover
+both directions: a fenced `PASS` must not override a real `REJECT`, and a fenced `REJECT` must not
+override a real `PASS` (`test_a_verdict_word_inside_a_fenced_code_block_is_not_a_verdict`).
+
 ## Documentation updated
 
 - `docs/development/AGENT_PROTOCOL.md`: added a note under the verifier procedure's CR4 step
@@ -113,4 +131,5 @@ were not run: this change touches no file under `rust/`.
 
 ## Verifier verdict
 
-(pending independent review)
+Round 1: **FAIL** (Codex) - `project/evidence/E32-S01-VERIFIER-REVIEW.md`. Repaired above; round 2
+pending.

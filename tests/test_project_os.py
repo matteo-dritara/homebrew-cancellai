@@ -257,6 +257,32 @@ class ProjectOSTests(unittest.TestCase):
             never_judged.write_text("# Safety Verdict - E00-S01\n\nNo verdict recorded yet.\n", encoding="utf-8")
             self.assertFalse(project_os.safety_verdict_passes(never_judged))
 
+    def test_a_verdict_word_inside_a_fenced_code_block_is_not_a_verdict(self) -> None:
+        # E32-S01's own round-1 independent review: a verdict-shaped word inside a fenced
+        # reproduction transcript or documentation example is not a current verdict. Scanning raw
+        # text let a later fenced illustration override a real current rejection.
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            fenced_pass_after_real_reject = base / "FENCED_PASS_AFTER_REJECT.md"
+            fenced_pass_after_real_reject.write_text(
+                "`REJECT`\n\n```text\n`PASS`\n```\n",
+                encoding="utf-8",
+            )
+            self.assertFalse(
+                project_os.safety_verdict_passes(fenced_pass_after_real_reject),
+                "a fenced example PASS must not override a real, current REJECT",
+            )
+
+            fenced_reject_after_real_pass = base / "FENCED_REJECT_AFTER_PASS.md"
+            fenced_reject_after_real_pass.write_text(
+                "`PASS_WITH_RESIDUALS`\n\n```text\nan example of a rejected round: `REJECT`\n```\n",
+                encoding="utf-8",
+            )
+            self.assertTrue(
+                project_os.safety_verdict_passes(fenced_reject_after_real_pass),
+                "a fenced example REJECT must not override a real, current PASS",
+            )
+
     def test_ready_for_review_does_not_require_a_safety_verdict(self) -> None:
         # The Safety Verdict is the reviewer's output; demanding it at handoff would force
         # the executor to sign off on its own CR4 work.

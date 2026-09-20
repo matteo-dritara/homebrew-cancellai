@@ -54,6 +54,11 @@ EVIDENCE_RESIDUAL_TERMS = ("residual", "known risk")
 # committed FAIL is evidence that the story is not finished, not evidence that it is.
 FAILING_VERDICT_RE = re.compile(r"^\s*`?(FAIL|REJECT)`?\s*$", re.MULTILINE | re.IGNORECASE)
 PASSING_VERDICT_RE = re.compile(r"^\s*`?(PASS|PASS_WITH_RESIDUALS)`?\s*$", re.MULTILINE | re.IGNORECASE)
+# A verdict word inside a fenced example (an illustration of the convention, a reproduction
+# transcript) is not a verdict - E32-S01's own round-1 independent review found the naive scan
+# below reading exactly that as if it were current. Matches `scripts/check_evidence.py`'s own
+# FENCED convention.
+FENCED_CODE_RE = re.compile(r"^```.*?^```", re.MULTILINE | re.DOTALL)
 
 
 class GovernanceError(RuntimeError):
@@ -137,11 +142,16 @@ def safety_verdict_passes(path: Path) -> bool:
     verdict is most recent, by position in the file, not whether an earlier one ever failed:
     a `PASS` followed later by a `REJECT` is correctly still refused (the rejection is the last
     word), while a `FAIL` followed later by a `PASS` is correctly accepted (the pass is).
+
+    Fenced code blocks are stripped first: a verdict-shaped word inside a reproduction transcript
+    or a documentation example is not a verdict, and scanning raw text let one override a real
+    current rejection (E32-S01's own round-1 independent review).
     """
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return False
+    text = FENCED_CODE_RE.sub("", text)
     verdicts = [(m.start(), True) for m in PASSING_VERDICT_RE.finditer(text)]
     verdicts += [(m.start(), False) for m in FAILING_VERDICT_RE.finditer(text)]
     if not verdicts:
