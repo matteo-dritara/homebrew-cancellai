@@ -154,3 +154,22 @@ The story returns to `in_progress`. No code repair was attempted by this verifie
 
 Owner note: Independent CR4 review rejects closure because the direct public `PURGED` write path
 does not enforce AC2/SI-020. E12-S04 remains `in_progress` pending the exact repair stated above.
+
+## Executor note - repair for round 5 (not a verdict)
+
+Round 4's exact required repair is applied: `EventLedger::append` now refuses `EventKind::Purged`
+unconditionally (not "unless well-shaped" - always), with no exception. The previous
+`Purged`-specific content-shape check moved to a new crate-private `EventLedger::append_purged`,
+reachable only from within `cancellai-store` - in practice, only from
+`crate::tombstone::record_purge_tombstone`, which has already checked `ActionClass::Delete +
+Reversibility::Irreversible` before calling it. There is now exactly one path to a written
+`Purged` row anywhere in this crate, and it is gated by that pairing check before it is reached -
+satisfying round 4's stated repair ("make every public construction/write path for
+`EventKind::Purged` carry and enforce the `Delete + Irreversible` proof, or make direct
+construction of `PURGED` impossible outside a controlled API that enforces that proof") via the
+second option. New tests (`ledger.rs`) prove `append` refuses a well-shaped `Purged` event with no
+pairing proof, and that `append_purged` still applies the content-shape check as defense in depth.
+
+Round 5 should judge whether this closes AC2/SI-020's "no second path to the `PURGED` label"
+property completely, and re-confirm AC1/ADR-0033 and the round-3 content bypass remain closed (no
+change was made to that logic beyond moving it into `append_purged`).

@@ -416,9 +416,15 @@ those three fields are still caller-supplied, and the shape check rejects an obv
 prompt/source/path without proving the absence of all short, ordinary phrases. A round-3
 independent review additionally found that `EventLedger::append` being public let a caller
 reconstruct the same content-smuggling channel directly, past `record_purge_tombstone`'s own
-validation entirely; `append` now enforces the identical shape check (and the four annotation
-fields' absence) itself for `EventKind::Purged`, so the check is no longer optional for any
-caller, only the residual for the three linkage fields remains. Closing that residual needs a
+validation entirely; round 4 then found that closing only the content channel still left
+`append` accepting a well-shaped `Purged` event with no `ActionClass`/`Reversibility` proof at
+all (AC2/SI-020 - nothing distinguished a genuine irreversible deletion from a caller simply
+choosing the label). Rather than teach the generic `append` a kind-specific pairing check it has
+no columns to verify against, `EventLedger::append` now refuses `EventKind::Purged`
+**unconditionally**: the only path to a written `Purged` row is the crate-private
+`append_purged`, reachable exclusively from `record_purge_tombstone` after it has already checked
+`ActionClass::Delete + Reversibility::Irreversible`, and which still applies the identical
+content-shape check as defense in depth. Closing the remaining linkage-field residual needs a
 real orchestrator that sources these values from already-trusted purge/evidence records instead
 of an arbitrary public caller - that story's scope, not this one's (ADR-0033). `size/reclaim
 observation` and

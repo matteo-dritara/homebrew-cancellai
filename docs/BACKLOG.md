@@ -1348,7 +1348,7 @@ Introduce reversible lifecycle operations before expanding autonomy.
 
 ### E12-S04 - Purge and tombstones
 
-**Status:** `in_progress` | **Change Risk:** `CR4` | **Dependencies:** E12-S01, E13-S02 | **Safety obligations:** SI-020
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E12-S01, E13-S02 | **Safety obligations:** SI-020
 
 **Outcome.** Permanently purge only within authority ceilings and preserve a minimal contentless tombstone.
 

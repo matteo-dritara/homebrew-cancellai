@@ -232,15 +232,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   content unchecked, then for a syntactic content-safety check that still could not distinguish a
   real ID from a short ordinary phrase; those fields were removed outright rather than validated a
   third way. The three that remain are still validated as a short, hyphen-joined ASCII identifier
-  before anything is written, refusing with nothing persisted otherwise - now enforced inside
-  `EventLedger::append` itself for `EventKind::Purged`, after a third review round showed the
-  narrower `Tombstone` API alone was reachable around via the ledger's own public `append`. AC1
-  is narrowed by owner decision to state exactly this testable property rather than an unqualified
-  guarantee no local primitive can prove - a disclosed residual, not a closed guarantee, full
-  closure deferred to a future orchestrator that sources these values from already-trusted
-  records instead of an arbitrary caller
-  ([ADR-0033](docs/adrs/0033-purge-tombstone-content-safety-is-a-disclosed-residual.md)).
-  `record_purge_tombstone` refuses, writing nothing, unless given exactly `ActionClass::Delete`
+  before anything is written, refusing with nothing persisted otherwise. AC1 is narrowed by owner
+  decision to state exactly this testable property rather than an unqualified guarantee no local
+  primitive can prove - a disclosed residual, not a closed guarantee, full closure deferred to a
+  future orchestrator that sources these values from already-trusted records instead of an
+  arbitrary caller
+  ([ADR-0033](docs/adrs/0033-purge-tombstone-content-safety-is-a-disclosed-residual.md)). A third
+  review round then found `EventLedger::append` being public let a caller construct a `Purged`
+  event directly with no `ActionClass`/`Reversibility` proof at all (AC2/SI-020); `append` now
+  refuses `EventKind::Purged` unconditionally, and the crate-private `append_purged` - reachable
+  only from `record_purge_tombstone` after it has checked `Delete + Irreversible` - is the sole
+  path to a written `Purged` row. `record_purge_tombstone` refuses, writing nothing, unless given
+  exactly `ActionClass::Delete`
   with `Reversibility::Irreversible` - every other combination `cancellai-model`'s vocabulary
   admits is rejected, including `Reversibility::VendorConditional` paired with any action class
   (AC2), a strictly narrower restatement of the same coupling

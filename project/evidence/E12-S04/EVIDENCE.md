@@ -4,9 +4,10 @@
 - Executor: Claude
 - Independent verifier: Codex, round 1 - **FAIL** (`project/evidence/E12-S04-VERIFIER-REVIEW.md`);
   round 2 - **FAIL** (`project/evidence/E12-S04-VERIFIER-REVIEW-ROUND2.md`); round 3 - **FAIL**
-  (`project/evidence/E12-S04-VERIFIER-REVIEW-ROUND3.md`), addressed below by closing a concrete
-  bypass plus an owner decision narrowing AC1 ([ADR-0033](../../../docs/adrs/0033-purge-tombstone-content-safety-is-a-disclosed-residual.md)).
-  Round 4 pending against the narrowed AC1 and closed bypass
+  (`project/evidence/E12-S04-VERIFIER-REVIEW-ROUND3.md`), addressed by closing a content bypass
+  plus an owner decision narrowing AC1 ([ADR-0033](../../../docs/adrs/0033-purge-tombstone-content-safety-is-a-disclosed-residual.md));
+  round 4 - **FAIL** (`project/evidence/E12-S04-VERIFIER-REVIEW-ROUND4.md`), confirmed the AC1/
+  content fix but found a further AC2/SI-020 bypass, addressed below. Round 5 pending
 - Change Risk: CR4 (declared CR4 at planning time in `project/epics/E12.json`, matching
   E12-S01/S02/S03's own level for SI-020; the diff adds no new mutation capability and no new
   cross-crate dependency, so no reclassification applies)
@@ -15,8 +16,8 @@
 
 ## Outcome
 
-PASS against AC1 as narrowed by owner decision (ADR-0033) and with the round-3 ledger bypass
-closed (see "Repair - round 3 finding" below). Verdict pending round 4.
+PASS against AC1 (ADR-0033) and AC2/SI-020, with both the round-3 content bypass and the round-4
+action/reversibility bypass closed (see Repair sections below). Verdict pending round 5.
 
 ## Scope
 
@@ -37,7 +38,7 @@ story's own "primitive delivered, no orchestrator yet" precedent.
 | AC | Evidence | Result |
 | --- | --- | --- |
 | AC1 (narrowed by ADR-0033) - "Tombstones carry no descriptive annotation fields ...; artifact_id/plan_id/evidence_ids are each validated as a short, identifier-shaped value ...; this is a disclosed residual against arbitrary short phrases, not a closed guarantee." | `Tombstone`'s field set is exactly `artifact_id`, `plan_id`, `evidence_ids` - `provider_id`/`category`/`reason_code`/`policy_id` were removed outright (round 2). All three remaining fields are validated by `validate_content_safe`/`is_identifier_shaped` (ASCII letters/digits joined by at most 4 single hyphens, ≤32 characters per segment, ≤64 total) - and, since round 3, this check is enforced inside `EventLedger::append` itself for `EventKind::Purged`, not only in `record_purge_tombstone`, closing the direct-ledger bypass round 3 found (see Repair section). `record_purge_tombstone_accepts_a_short_ordinary_phrase_as_a_disclosed_residual` deliberately demonstrates the residual the narrowed AC1 now names explicitly rather than hides. `record_purge_tombstone_round_trips_exactly_the_given_allowlisted_fields` proves a content-safe tombstone still reads back with exactly and only the given fields. | PASS (against narrowed AC1; residual disclosed, not closed) |
-| AC2 - "Irreversible purge is distinguishable from vendor-native conditionally reversible operations." | `record_purge_tombstone_refuses_every_combination_except_delete_plus_irreversible` is the exhaustive falsification: all 5 `ActionClass` x 6 `Reversibility` combinations (30 total) `cancellai-model`'s shared vocabulary admits are exercised; only `Delete + Irreversible` is accepted and produces a `Purged` event, every other combination - including `Reversibility::VendorConditional` (the vocabulary's own name for a vendor-native conditionally-reversible outcome) paired with every action class, and `Quarantine`/`Archive`/`Restore`/`Observe` paired with every reversibility - is refused with `PurgeTombstoneError::NotAnIrreversiblePurge` and writes nothing. | PASS |
+| AC2 - "Irreversible purge is distinguishable from vendor-native conditionally reversible operations." | `record_purge_tombstone_refuses_every_combination_except_delete_plus_irreversible` is the exhaustive falsification for the typed helper: all 5 `ActionClass` x 6 `Reversibility` combinations (30 total) are exercised; only `Delete + Irreversible` is accepted, every other combination - including `Reversibility::VendorConditional` paired with every action class - is refused with `PurgeTombstoneError::NotAnIrreversiblePurge` and writes nothing. Round 4 found this check meant nothing at the actual persistence boundary: `EventLedger::append` accepted a directly-constructed, well-shaped `Purged` event with no `ActionClass`/`Reversibility` argument at all. **Fix:** `append` now refuses `EventKind::Purged` unconditionally - the crate-private `append_purged` (see Repair section) is the only path to a written `Purged` row, reachable exclusively from `record_purge_tombstone` after it has already checked the pairing. `append_refuses_every_purged_event_even_a_well_shaped_one_round4_independent_review_found` proves this directly. | PASS |
 
 ## Verification Contract Evidence
 
@@ -59,8 +60,9 @@ Falsification axes worked before implementation (`adversarial-cases` skill):
 | 10 | Malformed/untrusted (round 1 repair) | Codex's exact round-1 reproduction, restricted to the fields that remain | Refused, nothing written | `record_purge_tombstone_refuses_the_codex_round1_reproduction` |
 | 10 | Malformed/untrusted (round 2 finding, disclosed residual) | A short, ordinary, identifier-shaped phrase (`do-not-purge-this`) that fits every bound `validate_content_safe` enforces | **Accepted** - deliberately, as a documented residual, not a regression | `record_purge_tombstone_accepts_a_short_ordinary_phrase_as_a_disclosed_residual` |
 | second-path (round 3 repair) | A caller constructs `EventKind::Purged` directly via public `EventLedger::append`, bypassing `record_purge_tombstone` entirely, with every removed annotation field populated with a sentinel | Refused by `append` itself, nothing written | `append_refuses_the_direct_public_bypass_round3_independent_review_found` (`ledger.rs`) |
-| second-path (round 3 repair) | Direct `append` with no annotation fields but a non-identifier-shaped `artifact_id` | Refused by `append` itself | `append_refuses_a_purged_event_whose_linkage_fields_are_not_identifier_shaped` (`ledger.rs`) |
-| second-path (round 3 repair) | Direct `append` with the exact shape `record_purge_tombstone` itself produces | Accepted - the boundary narrows what can be smuggled in, not the one legitimate shape | `append_accepts_a_purged_event_with_no_annotations_and_identifier_shaped_linkage` (`ledger.rs`) |
+| second-path (round 4 repair) | A caller constructs a well-shaped `EventKind::Purged` `NewEvent` - no annotations, identifier-shaped linkage - directly via public `append`, with no `ActionClass`/`Reversibility` proof at all | Refused by `append` itself, unconditionally, nothing written | `append_refuses_every_purged_event_even_a_well_shaped_one_round4_independent_review_found` (`ledger.rs`) |
+| second-path (round 4 repair) | The crate-private `append_purged` (only reachable from `record_purge_tombstone`) still refuses a non-identifier-shaped linkage field | Refused | `append_purged_refuses_a_purged_event_whose_linkage_fields_are_not_identifier_shaped` (`ledger.rs`) |
+| second-path (round 4 repair) | `append_purged` accepts the exact shape `record_purge_tombstone` itself produces | Accepted - the boundary narrows what can be smuggled in via the public API, not the one legitimate internal shape | `append_purged_accepts_a_purged_event_with_no_annotations_and_identifier_shaped_linkage` (`ledger.rs`) |
 | 1,2,3,4,9,11 | Path/identity, partial reads, links/mounts, provider drift, platform, scale | N/A - this module never touches a path or the filesystem; it operates only on an already-open `&mut EventLedger` and already-decided `cancellai-model` enum values | - |
 | 5 | Concurrency | Two concurrent `record_purge_tombstone` calls on one ledger | Impossible by construction - `&mut EventLedger` excludes aliasing at the borrow-checker level | - |
 | 6 | Crash/retry | Crash between a real OS purge succeeding and a tombstone being written | Not this story's mechanism to close - no orchestrator calls `record_purge_tombstone` from a real purge yet (disclosed residual, below) | - |
@@ -183,6 +185,36 @@ things, and both are addressed here rather than one being mistaken for a fix to 
    through the control plane and recorded in an ADR precisely because a verifier's own review
    record said it could not make this call.
 
+## Repair - round 4 finding: close the action/reversibility bypass
+
+Codex's round-4 review (`project/evidence/E12-S04-VERIFIER-REVIEW-ROUND4.md`) confirmed ADR-0033
+and the round-3 content-bypass fix both hold, but found a further, independent gap: a caller
+could still construct a well-shaped `EventKind::Purged` `NewEvent` directly via public
+`EventLedger::append` - no annotations, valid identifier-shaped linkage - with no
+`ActionClass`/`Reversibility` argument at all, so `append` could not tell a genuine irreversible
+deletion from a caller simply choosing the `Purged` label. `NewEvent`/`EventMetadata` carry no
+column for that pairing (it was only ever checked inside `record_purge_tombstone`, never
+persisted), so teaching the generic `append` a `Purged`-specific check to run against nothing
+made no sense; the fix instead closes the last gap in the same boundary-enforcement move round 3
+started:
+
+- `EventLedger::append` now refuses `EventKind::Purged` **unconditionally** - not "unless
+  well-shaped," but always - directing callers to `record_purge_tombstone`.
+- The previous Purged-specific content-shape logic moved to a new crate-private
+  `EventLedger::append_purged`, reachable only from within `cancellai-store` - in practice, only
+  from `record_purge_tombstone`, which has already checked `ActionClass::Delete +
+  Reversibility::Irreversible` before calling it.
+- A shared private `append_row` now holds the mutation-reference check and raw insert both
+  `append` and `append_purged` delegate to, so neither duplicates it.
+
+This makes the property literal: the only way any code, anywhere, can cause a `Purged` row to be
+written is by first passing `record_purge_tombstone`'s `Delete + Irreversible` check - there is no
+second path to that label, closing AC2/SI-020 at the same boundary AC1 is enforced at, not merely
+in the narrower typed helper. One test in `ledger.rs`
+(`append_rejects_a_mutation_event_with_no_evidence_ids`) switched its fixture from `Purged` to
+`Archived`, since it exists to test the generic mutation-reference contract, which a
+Purged-specific fixture would now pass trivially (refused for the wrong reason) rather than test.
+
 ## Compatibility
 
 - No schema change, no new dependency, no wire-format change. `Tombstone` and
@@ -206,7 +238,8 @@ things, and both are addressed here rather than one being mistaken for a fix to 
 - `docs/architecture/PERSISTENCE_MODEL.md`: rewrote the "Tombstones" implementation paragraph -
   the narrowed field set, why the independent-review findings led to removal rather than a third
   validator, the closed `EventLedger::append` bypass, and the ADR-0033 reference.
-- `rust/crates/cancellai-store/src/tombstone.rs`: module doc references ADR-0033.
+- `rust/crates/cancellai-store/src/tombstone.rs`: module doc references ADR-0033 and
+  `append_purged`.
 - `CHANGELOG.md`: updated the E12-S04 `### Added` entry under `[Unreleased]` to match.
 
 ## Method defects
@@ -251,7 +284,11 @@ scope reduction (a new design, not a third patch of round 1/2's approach).
 Round 3: **FAIL** (Codex) - `project/evidence/E12-S04-VERIFIER-REVIEW-ROUND3.md`. Confirmed the
 scope reduction was genuine but found it reachable around via public `EventLedger::append`, and
 held that a disclosed residual cannot itself satisfy an unqualified AC1 without an owner decision.
-Addressed above: the bypass is closed in code, and AC1 is narrowed by owner decision
-(ADR-0033) rather than by verifier or executor assertion.
-Round 4 (of the fresh, at-most-two-round budget this repair opens) pending, against the narrowed
-AC1 and closed bypass.
+Addressed by closing the content bypass in code and narrowing AC1 by owner decision (ADR-0033).
+Round 4: **FAIL** (Codex) - `project/evidence/E12-S04-VERIFIER-REVIEW-ROUND4.md`. Confirmed AC1/
+ADR-0033 and the content-bypass fix both hold, but found `EventLedger::append` still accepted a
+well-shaped `Purged` event with no `ActionClass`/`Reversibility` proof (AC2/SI-020). Addressed
+above: `append` refuses `EventKind::Purged` unconditionally; only the crate-private
+`append_purged`, reachable exclusively from `record_purge_tombstone` after its pairing check, can
+write one.
+Round 5 pending, against both closed bypasses and the narrowed AC1.

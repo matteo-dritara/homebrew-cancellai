@@ -124,7 +124,7 @@ pub enum PurgeTombstoneError {
     /// echoing the rejected value back would hand the caller a second channel to retain
     /// exactly what this rejection exists to keep out of any log or error report.
     UnsafeField { field: &'static str },
-    /// The underlying ledger append itself refused (SI-020 aside, [`EventLedger::append`]'s
+    /// The underlying ledger append itself refused (SI-020 aside, [`EventLedger::append_purged`]'s
     /// own fail-closed contract for mutation-class events: an empty `plan_id`/`evidence_ids`
     /// is rejected there too - this variant is reached instead of `NotAnIrreversiblePurge` or
     /// `UnsafeField` only when both prior checks already passed).
@@ -183,13 +183,14 @@ const MAX_SEGMENTS: usize = 4;
 /// it does not and cannot reject every short, ordinary, hyphen-joined phrase, which is a
 /// disclosed residual, not a gap in this function.
 ///
-/// `pub(crate)` because [`crate::ledger::EventLedger::append`] enforces this same predicate on
-/// [`EventKind::Purged`] events directly - round 3 independent review found that this module's
-/// own check, applied only in [`record_purge_tombstone`], was reachable around by any caller
-/// using the ledger's own public `append` to construct a `Purged` event directly. The one
-/// database-writing function is the actual boundary AC1 needs enforced at; this module's own
-/// check stays as an earlier, friendlier error path (naming which field failed), not the only
-/// gate.
+/// `pub(crate)` because [`crate::ledger::EventLedger::append_purged`] enforces this same
+/// predicate on every [`EventKind::Purged`] event directly - round 3 independent review found
+/// that this module's own check, applied only in [`record_purge_tombstone`], was reachable
+/// around by any caller using the ledger's own public `append` to construct a `Purged` event
+/// directly (round 4 additionally closed that route to `EventKind::Purged` entirely - see
+/// `EventLedger::append`'s own doc). The actual database-writing function is the boundary AC1
+/// needs enforced at; this module's own check stays as an earlier, friendlier error path (naming
+/// which field failed), not the only gate.
 pub(crate) fn is_identifier_shaped(value: &str) -> bool {
     value.is_empty()
         || (value.len() <= MAX_FIELD_LEN
@@ -253,7 +254,9 @@ pub fn record_purge_tombstone(
             evidence_ids: tombstone.evidence_ids,
         }),
     };
-    ledger.append(event).map_err(PurgeTombstoneError::Ledger)
+    ledger
+        .append_purged(event)
+        .map_err(PurgeTombstoneError::Ledger)
 }
 
 #[cfg(test)]
