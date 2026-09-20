@@ -410,11 +410,18 @@ prose, and not needed to identify what was purged), matching the response this d
 surface instead of re-attempting the same repair. `record_purge_tombstone` still validates
 `artifact_id`/`plan_id`/`evidence_ids` against the same shape check (ASCII letters/digits joined
 by up to four single hyphens, bounded per-segment and total length) before writing anything, but
-this is now documented as a **disclosed residual, not a closed guarantee** (AC1): those three
-fields are still caller-supplied, and the shape check rejects an obvious prompt/source/path
-without proving the absence of all short, ordinary phrases. Closing this residual needs a real
-orchestrator that sources these values from already-trusted purge/evidence records instead of an
-arbitrary public caller - that story's scope, not this one's. `size/reclaim observation` and
+this is now documented as a **disclosed residual, not a closed guarantee** (AC1, narrowed by
+owner decision - [ADR-0033](../adrs/0033-purge-tombstone-content-safety-is-a-disclosed-residual.md)):
+those three fields are still caller-supplied, and the shape check rejects an obvious
+prompt/source/path without proving the absence of all short, ordinary phrases. A round-3
+independent review additionally found that `EventLedger::append` being public let a caller
+reconstruct the same content-smuggling channel directly, past `record_purge_tombstone`'s own
+validation entirely; `append` now enforces the identical shape check (and the four annotation
+fields' absence) itself for `EventKind::Purged`, so the check is no longer optional for any
+caller, only the residual for the three linkage fields remains. Closing that residual needs a
+real orchestrator that sources these values from already-trusted purge/evidence records instead
+of an arbitrary public caller - that story's scope, not this one's (ADR-0033). `size/reclaim
+observation` and
 `provider/category`/`reason/policy`, the items this section's illustrative list names that the
 current implementation does not carry, are disclosed residuals rather than a smaller schema:
 widening an already schema-pinned table, or reintroducing those fields behind real closed

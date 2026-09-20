@@ -1348,18 +1348,18 @@ Introduce reversible lifecycle operations before expanding autonomy.
 
 ### E12-S04 - Purge and tombstones
 
-**Status:** `in_progress` | **Change Risk:** `CR4` | **Dependencies:** E12-S01, E13-S02 | **Safety obligations:** SI-020
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E12-S01, E13-S02 | **Safety obligations:** SI-020
 
 **Outcome.** Permanently purge only within authority ceilings and preserve a minimal contentless tombstone.
 
 **Acceptance criteria**
 
-- Tombstones contain no prompts/source/file contents.
+- Tombstones carry no descriptive annotation fields (provider_id/category/reason_code/policy_id are absent, not merely validated); artifact_id/plan_id/evidence_ids are each validated as a short, identifier-shaped value, rejecting an obvious prompt/source/path - this is a disclosed residual against arbitrary short phrases, not a closed guarantee (ADR-0033).
 - Irreversible purge is distinguishable from vendor-native conditionally reversible operations.
 
 **Verification**
 
-- Privacy field allowlist test and purge evidence tests.
+- Privacy field allowlist test, purge evidence tests, direct-ledger-bypass regression test, and a deliberately-passing disclosed-residual test.
 
 **Documentation impact**
 

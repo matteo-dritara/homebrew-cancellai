@@ -33,7 +33,11 @@
 //! What remains - `artifact_id`, `plan_id`, `evidence_ids` - is retained because a purge record
 //! naming neither what was purged nor which plan/evidence produced it is not a tombstone at all;
 //! this is a structurally required minimum, not a lower-risk version of the same annotation
-//! fields. **This is a disclosed residual, not a closed guarantee**: these three fields are still
+//! fields. **This is a disclosed residual, not a closed guarantee** - AC1 was narrowed to say so
+//! explicitly by owner decision (`docs/adrs/0033-purge-tombstone-content-safety-is-a-disclosed-
+//! residual.md`), after round 3 independent review held that a verifier cannot accept a residual
+//! in place of an unqualified acceptance criterion on its own authority: these three fields are
+//! still
 //! caller-supplied `String`/`ArtifactId`/`EvidenceId` values, still validated by
 //! [`validate_content_safe`] (the same shape check - short, ASCII, hyphen-joined, bounded
 //! segments), and that check still cannot prove a short value carries no meaning, only that it
@@ -170,32 +174,39 @@ const MAX_SEGMENT_LEN: usize = 32;
 /// removed rather than tightened further.
 const MAX_SEGMENTS: usize = 4;
 
-/// Narrows (does not prove) a tombstone field to a short, identifier-shaped value (AC1's
-/// disclosed residual - see this module's own doc). Emptiness is not this function's concern -
-/// [`EventLedger::append`]'s own mutation-reference contract already refuses an empty
-/// `plan_id`/`evidence_ids` - so this judges shape: ASCII letters/digits only, joined by single
-/// hyphens (no leading/trailing/doubled hyphen, so no empty segment), at most [`MAX_SEGMENTS`]
-/// segments of at most [`MAX_SEGMENT_LEN`] characters each, [`MAX_FIELD_LEN`] characters total.
-/// This rejects an obvious prompt, source line, or file path (each usually contains a character
-/// this allowlist excludes: whitespace, `/`, `\`, quotes, braces, `.`, `_`, control characters,
-/// ...); it does not and cannot reject every short, ordinary, hyphen-joined phrase, which is a
+/// Judges whether `value` is a short, identifier-shaped string (AC1's disclosed residual - see
+/// this module's own doc): empty, or ASCII letters/digits only joined by single hyphens (no
+/// leading/trailing/doubled hyphen, so no empty segment), at most [`MAX_SEGMENTS`] segments of
+/// at most [`MAX_SEGMENT_LEN`] characters each, [`MAX_FIELD_LEN`] characters total. This rejects
+/// an obvious prompt, source line, or file path (each usually contains a character this
+/// allowlist excludes: whitespace, `/`, `\`, quotes, braces, `.`, `_`, control characters, ...);
+/// it does not and cannot reject every short, ordinary, hyphen-joined phrase, which is a
 /// disclosed residual, not a gap in this function.
+///
+/// `pub(crate)` because [`crate::ledger::EventLedger::append`] enforces this same predicate on
+/// [`EventKind::Purged`] events directly - round 3 independent review found that this module's
+/// own check, applied only in [`record_purge_tombstone`], was reachable around by any caller
+/// using the ledger's own public `append` to construct a `Purged` event directly. The one
+/// database-writing function is the actual boundary AC1 needs enforced at; this module's own
+/// check stays as an earlier, friendlier error path (naming which field failed), not the only
+/// gate.
+pub(crate) fn is_identifier_shaped(value: &str) -> bool {
+    value.is_empty()
+        || (value.len() <= MAX_FIELD_LEN
+            && !value.starts_with('-')
+            && !value.ends_with('-')
+            && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+            && {
+                let segments: Vec<&str> = value.split('-').collect();
+                segments.len() <= MAX_SEGMENTS
+                    && segments
+                        .iter()
+                        .all(|s| !s.is_empty() && s.len() <= MAX_SEGMENT_LEN)
+            })
+}
+
 fn validate_content_safe(field: &'static str, value: &str) -> Result<(), PurgeTombstoneError> {
-    if value.is_empty() {
-        return Ok(());
-    }
-    let shape_safe = value.len() <= MAX_FIELD_LEN
-        && !value.starts_with('-')
-        && !value.ends_with('-')
-        && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
-        && {
-            let segments: Vec<&str> = value.split('-').collect();
-            segments.len() <= MAX_SEGMENTS
-                && segments
-                    .iter()
-                    .all(|s| !s.is_empty() && s.len() <= MAX_SEGMENT_LEN)
-        };
-    if shape_safe {
+    if is_identifier_shaped(value) {
         Ok(())
     } else {
         Err(PurgeTombstoneError::UnsafeField { field })

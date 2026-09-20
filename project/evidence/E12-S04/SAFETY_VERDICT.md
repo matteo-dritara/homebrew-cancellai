@@ -86,3 +86,28 @@ Required disposition: keep E12-S04 `in_progress`. An owner must either explicitl
 through the control plane or schedule an orchestrator/reference design that makes the three
 references authority-bound and prevents direct construction of `PURGED` events outside that
 boundary. A disclosed residual does not itself waive AC1.
+
+## Executor note - repair for round 4 (not a verdict)
+
+Two things changed since round 3, ahead of the next independent review round:
+
+1. **The `EventLedger::append` bypass is closed.** `append` now enforces, for
+   `EventKind::Purged` specifically, that `provider_id`/`category`/`policy_id`/`reason_code` are
+   all absent and that `artifact_id`/`plan_id`/`evidence_ids` are each identifier-shaped - the
+   identical predicate `record_purge_tombstone` already applied, now unbypassable because it
+   lives in the one function every write path must call. New regression tests reproduce round
+   3's exact direct-append reproduction and confirm it is now refused
+   (`rust/crates/cancellai-store/src/ledger.rs`,
+   `append_refuses_the_direct_public_bypass_round3_independent_review_found`).
+2. **AC1 is narrowed by owner decision, recorded as `docs/adrs/0033-purge-tombstone-content-safety-is-a-disclosed-residual.md`.**
+   Per round 3's own first offered path ("either an owner-approved control-plane change narrows
+   AC1... or a new orchestrator/authority-bound-reference story"), the owner chose the former:
+   `project/epics/E12.json`'s AC1 no longer reads as an unqualified guarantee. It now states
+   exactly the property this primitive can make and test - no descriptive annotation fields, and
+   a disclosed (not closed) residual for the three structurally required linkage fields, with
+   closure explicitly deferred to a future orchestrator story. This is the owner decision round
+   3 said a verifier cannot make on its own; it is made here, on the record, not asserted by the
+   executor.
+
+Round 4 should judge the current diff against the narrowed AC1 in `project/epics/E12.json` and
+ADR-0033, not against the original unqualified reading rounds 1-3 correctly falsified.

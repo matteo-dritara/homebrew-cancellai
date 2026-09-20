@@ -410,7 +410,27 @@ impl EventLedger {
     /// Appends one event, returning the [`EventId`] SQLite assigned it. Fails closed - no row
     /// is written at all - when `event.kind.is_mutation()` and `event.mutation` is absent, or
     /// carries an empty `plan_id`/`evidence_ids` (this module's own doc, "Mutation events carry
-    /// plan/evidence references").
+    /// plan/evidence references"), or when `event.kind == EventKind::Purged` and the event does
+    /// not meet [`crate::tombstone`]'s content-safety contract (below) - independent of whether
+    /// the caller went through [`crate::tombstone::record_purge_tombstone`] or called this
+    /// method directly.
+    ///
+    /// ## `Purged` is content-checked here, not only by `crate::tombstone` (AC1)
+    ///
+    /// `crate::tombstone::record_purge_tombstone` is a narrower, friendlier front door onto this
+    /// method, not the only way to reach it - `EventLedger`, `NewEvent`, `EventMetadata`, and
+    /// `EventKind` are all public. Round 3 independent review of E12-S04 demonstrated exactly
+    /// that: a caller can construct a `Purged`-kind `NewEvent` directly, past
+    /// `record_purge_tombstone`'s own validation entirely, and this method previously accepted
+    /// it unchanged - reconstructing the same content-smuggling channel two prior rounds had
+    /// already closed at the narrower API. This method now enforces, for `Purged` events only,
+    /// the two properties `crate::tombstone`'s own module doc states: `provider_id`/`category`/
+    /// `policy_id`/`reason_code` must all be absent (a permanent purge tombstone never carries
+    /// these annotations, by the same round-2 scope-reduction decision), and `artifact_id` (if
+    /// present) plus the mutation reference's `plan_id`/`evidence_ids` must each be
+    /// [`crate::tombstone::is_identifier_shaped`] - the identical disclosed-residual shape check
+    /// `record_purge_tombstone` already applies, now unbypassable because it lives at the one
+    /// function every code path to a written row must call.
     pub fn append(&mut self, event: NewEvent) -> Result<EventId, LedgerError> {
         if event.kind.is_mutation() {
             match &event.mutation {
@@ -422,6 +442,33 @@ impl EventLedger {
                         event.kind.key()
                     )));
                 }
+            }
+        }
+
+        if event.kind == EventKind::Purged {
+            let annotations_absent = event.metadata.provider_id.is_none()
+                && event.metadata.category.is_none()
+                && event.metadata.policy_id.is_none()
+                && event.metadata.reason_code.is_none();
+            let artifact_id_safe = event
+                .metadata
+                .artifact_id
+                .as_ref()
+                .is_none_or(|id| crate::tombstone::is_identifier_shaped(&id.0));
+            let mutation_safe = event.mutation.as_ref().is_some_and(|m| {
+                crate::tombstone::is_identifier_shaped(&m.plan_id)
+                    && m.evidence_ids
+                        .iter()
+                        .all(|e| crate::tombstone::is_identifier_shaped(&e.0))
+            });
+            if !(annotations_absent && artifact_id_safe && mutation_safe) {
+                return Err(LedgerError(
+                    "a Purged event must carry no provider_id/category/policy_id/reason_code, \
+                     and its artifact_id/plan_id/evidence_ids must each be a short, \
+                     identifier-shaped value - see crate::tombstone's own doc for why this is \
+                     enforced here rather than only in record_purge_tombstone"
+                        .into(),
+                ));
             }
         }
 
@@ -956,6 +1003,85 @@ mod tests {
     fn append_accepts_a_pure_observation_event_with_no_mutation_reference() {
         let mut ledger = EventLedger::open_in_memory().expect("open");
         assert!(ledger.append(discovered(1)).is_ok());
+    }
+
+    #[test]
+    fn append_refuses_the_direct_public_bypass_round3_independent_review_found() {
+        // Round 3 independent review of E12-S04: crate::tombstone::record_purge_tombstone
+        // validates its own inputs, but EventLedger/NewEvent/EventMetadata/EventKind are all
+        // public, so a caller could construct a Purged event directly, skip that validation
+        // entirely, and reconstruct the exact content-smuggling channel two prior rounds closed
+        // at the narrower API. This is that exact reproduction: every annotation field populated
+        // with a sentinel, called through append() directly, never through the tombstone module.
+        let mut ledger = EventLedger::open_in_memory().expect("open");
+        let event = NewEvent {
+            kind: EventKind::Purged,
+            recorded_at: 1,
+            metadata: EventMetadata {
+                artifact_id: Some(ArtifactId::new("artifact-0001")),
+                provider_id: Some("PROMPT_SENTINEL_do_not_store_source_contents".to_string()),
+                category: Some("/private/provider/source.rs".to_string()),
+                policy_id: Some("policy-free-text".to_string()),
+                reason_code: Some("do-not-purge-this".to_string()),
+            },
+            mutation: Some(MutationReference {
+                plan_id: "plan-0001".to_string(),
+                evidence_ids: vec![EvidenceId::new("evidence-0001")],
+            }),
+        };
+        assert!(
+            ledger.append(event).is_err(),
+            "a Purged event carrying provider_id/category/policy_id/reason_code must be \
+             refused by append() itself, not only by record_purge_tombstone"
+        );
+        assert!(
+            ledger.read_all().expect("read_all").is_empty(),
+            "a refused Purged append must leave nothing written"
+        );
+    }
+
+    #[test]
+    fn append_refuses_a_purged_event_whose_linkage_fields_are_not_identifier_shaped() {
+        // Same boundary, direct-append route: even with every annotation field absent (as
+        // record_purge_tombstone itself always sends), a non-identifier-shaped artifact_id,
+        // plan_id, or evidence_id must still be refused at append() - the disclosed-residual
+        // shape check crate::tombstone applies is not optional for a direct caller either.
+        let mut ledger = EventLedger::open_in_memory().expect("open");
+        let event = NewEvent {
+            kind: EventKind::Purged,
+            recorded_at: 1,
+            metadata: EventMetadata {
+                artifact_id: Some(ArtifactId::new("/private/provider/source.rs")),
+                ..EventMetadata::default()
+            },
+            mutation: Some(MutationReference {
+                plan_id: "plan-0001".to_string(),
+                evidence_ids: vec![EvidenceId::new("evidence-0001")],
+            }),
+        };
+        assert!(ledger.append(event).is_err());
+        assert!(ledger.read_all().expect("read_all").is_empty());
+    }
+
+    #[test]
+    fn append_accepts_a_purged_event_with_no_annotations_and_identifier_shaped_linkage() {
+        // The shape record_purge_tombstone itself always produces must keep working through the
+        // direct append() route too - this boundary narrows what a caller can smuggle in, it
+        // does not additionally restrict the one legitimate shape.
+        let mut ledger = EventLedger::open_in_memory().expect("open");
+        let event = NewEvent {
+            kind: EventKind::Purged,
+            recorded_at: 1,
+            metadata: EventMetadata {
+                artifact_id: Some(ArtifactId::new("artifact-0001")),
+                ..EventMetadata::default()
+            },
+            mutation: Some(MutationReference {
+                plan_id: "plan-0001".to_string(),
+                evidence_ids: vec![EvidenceId::new("evidence-0001")],
+            }),
+        };
+        assert!(ledger.append(event).is_ok());
     }
 
     #[test]
