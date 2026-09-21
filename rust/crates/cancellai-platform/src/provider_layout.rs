@@ -207,6 +207,7 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     #[test]
     fn observes_real_markers_with_trailing_slash_for_directories() {
         let dir = TempDir::new("markers");
@@ -253,6 +254,7 @@ mod tests {
         assert!(!err.0.is_empty());
     }
 
+    #[cfg(unix)]
     #[test]
     fn two_observations_of_the_same_real_root_carry_the_same_identity() {
         let dir = TempDir::new("stable-identity");
@@ -262,6 +264,27 @@ mod tests {
         let second = BoundLayoutObservation::observe(&dir.0).unwrap();
 
         assert_eq!(first.root_identity(), second.root_identity());
+    }
+
+    // `BoundLayoutObservation::observe` only succeeds on Unix today (module doc, "Round 5,
+    // second self-correction" in ADR-0036): `cancellai_sealedfs::SealedRoot::metadata`/
+    // `list_child_names` fail closed with `Unsupported` on every other platform, since no
+    // verified handle-bound implementation exists there yet. This is the non-Unix counterpart
+    // to the two Unix-only tests above, proving the fail-closed behavior is real rather than
+    // merely claimed - a real, existing, readable directory still refuses to observe, instead
+    // of silently reporting an empty layout the way a portable-but-unverified implementation
+    // could have.
+    #[cfg(not(unix))]
+    #[test]
+    fn fails_closed_on_a_platform_with_no_verified_handle_bound_observation() {
+        let dir = TempDir::new("non-unix-unsupported");
+        std::fs::write(dir.0.join("config.json"), b"{}").unwrap();
+
+        let err = BoundLayoutObservation::observe(&dir.0).expect_err(
+            "a platform with no verified handle-bound observation must refuse, not silently \
+             report an empty layout",
+        );
+        assert!(!err.0.is_empty());
     }
 
     #[cfg(unix)]
