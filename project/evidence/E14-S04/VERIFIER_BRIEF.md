@@ -3,14 +3,14 @@ header; a verdict answering this brief repeats it, so the ledger can tell whethe
 verifier was given this document or a paraphrase of it. -->
 
 Story: E14-S04
-Rendered-by: Claude (orchestrator, E12/E13/E14 review coordination)
-Rendered-on: 2026-09-20
-Brief-Checksum: 06830bdaa24f243876d2b4751e2358c21b8ec8ff381d8abee72636d1e7430a4c
+Rendered-by: claude-sonnet-5
+Rendered-on: 2026-09-21
+Brief-Checksum: 1f1c8220ff4c6384fdc01b75c86d400421aea406743e5bad126aac9fb669b27c
 
 <!-- end handoff header -->
 # Verifier Brief - E14-S04 - Structural anomaly detection
 
-Status: ready_for_review | Change Risk: CR2
+Status: ready_for_review | Change Risk: CR4
 Outcome: Detect session explosion, unexpected giant files, orphan growth, and provider layout drift.
 Dependencies: E05-S05, E14-S01
 

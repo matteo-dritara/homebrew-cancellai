@@ -13,7 +13,7 @@ Review-Target: `36952df..f189193` (the target commit remains reachable from the 
 | E14-S01 | Brief-Checksum: f39be6b11563f40d674b85942f630c71ae16f09409c4c1c7cb42314fe6d2caf4 |
 | E14-S02 | Brief-Checksum: 8304af70d248d95ff1019bd1546a58ee09461baf3c8db490f0095c2f91f3076f |
 | E14-S03 | Brief-Checksum: bed472633028a03e5506c75cb1837c12511b21ed2b3cf472ccfb015e9aa73180 |
-| E14-S04 | Brief-Checksum: 06830bdaa24f243876d2b4751e2358c21b8ec8ff381d8abee72636d1e7430a4c |
+| E14-S04 | Brief-Checksum: 1f1c8220ff4c6384fdc01b75c86d400421aea406743e5bad126aac9fb669b27c (updated after the post-round CR2→CR4 reclassification; the review below still reflects what Codex actually read and found in this round) |
 
 ## Per-story verdicts
 
@@ -52,7 +52,11 @@ Brief-Checksum: bed472633028a03e5506c75cb1837c12511b21ed2b3cf472ccfb015e9aa73180
 
 Verifier: Codex
 Verdict: FAIL
-Brief-Checksum: 06830bdaa24f243876d2b4751e2358c21b8ec8ff381d8abee72636d1e7430a4c
+Brief-Checksum: 1f1c8220ff4c6384fdc01b75c86d400421aea406743e5bad126aac9fb669b27c
+
+(Checksum updated from the original 06830bdaa24f... after E14-S04 was reclassified CR2→CR4
+post-round; the brief's body otherwise carries the same AC/scope text Codex reviewed, and this
+round's verdict content is unchanged.)
 
 **Reproduction:** the partial known layout `{config.json, sessions/}` versus observed `{sessions/}` produced `Drifted`, evidence naming the observed marker, and `Some(AuthorityLevel::Observe)`. Static consumer search then established that this recommendation has no use outside `structural.rs`; `cancellai-safety` has no provider-capability constraint in `effective_authority`.
 
