@@ -109,7 +109,11 @@ REVIEW_ROUND_EXCEPTIONS = {
     "found a distinct TOCTOU defect (identity and markers read via two separate path-based "
     "syscalls); the owner was consulted directly and authorized both the repair "
     "(cancellai-sealedfs handle-bound metadata/listing) and one further, sixth review round "
-    "- see E14-S04-VERIFIER-REVIEW-ROUND5-PASS2.md.",
+    "- see E14-S04-VERIFIER-REVIEW-ROUND5-PASS2.md. Round 6 confirmed the TOCTOU/symlink "
+    "repair sound but found list_child_names could not distinguish a real readdir() failure "
+    "from end-of-directory, returning a truncated-but-Ok listing; repaired with POSIX errno "
+    "discrimination and submitted for a seventh review round - see "
+    "E14-S04-VERIFIER-REVIEW-ROUND6.md.",
 }
 # Matches both an epic-scoped record (`E07-VERIFIER-REVIEW.md`) and a story-scoped one
 # (`E07-S07-VERIFIER-REVIEW.md`), counting both against the *epic's* ceiling (captured

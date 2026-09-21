@@ -289,6 +289,33 @@ mod unix_impl {
         Ok(unsafe { File::from_raw_fd(fd) })
     }
 
+    /// A pointer to the calling thread's `errno` storage - the platform-specific location the C
+    /// library actually keeps it (glibc: `__errno_location`; the BSD family, including macOS:
+    /// `__error`). Needed only by [`list_child_names`](SealedRoot::list_child_names): `readdir`
+    /// returns a null pointer both at end-of-directory and on a real read failure, and POSIX's
+    /// own contract for telling them apart is "the caller clears `errno` before the call and
+    /// checks it after a null result", not a distinct return value.
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    unsafe fn errno_location() -> *mut libc::c_int {
+        // SAFETY: `__errno_location` takes no arguments and always returns a valid pointer to
+        // the calling thread's own `errno` storage - it cannot fail or alias another thread's.
+        unsafe { libc::__errno_location() }
+    }
+
+    #[cfg(any(
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd",
+        target_os = "dragonfly"
+    ))]
+    unsafe fn errno_location() -> *mut libc::c_int {
+        // SAFETY: `__error` takes no arguments and always returns a valid pointer to the calling
+        // thread's own `errno` storage - it cannot fail or alias another thread's.
+        unsafe { libc::__error() }
+    }
+
     /// `true` if `name`, looked up directly under `parent_fd` without following it, is a
     /// symlink. Used only to classify an ambiguous `ENOTDIR` error for accurate reporting
     /// (see [`open_child_dir_nofollow`]) - never as the containment check itself, which is the
@@ -857,12 +884,16 @@ mod unix_impl {
         /// itself) is necessary because `fdopendir` takes ownership of the descriptor it is
         /// given; `closedir` closing a fd `self.dir` still owns would be a double-close.
         ///
-        /// **Residual, stated rather than implied**: a `readdir` failure partway through a
-        /// stream is not distinguished from reaching the end of it (both return a null entry;
-        /// distinguishing them needs a platform-specific `errno` read this crate does not yet
-        /// perform). A directory that becomes unreadable mid-enumeration is therefore reported
-        /// as complete rather than as an error - narrower than a full read failure, and not the
-        /// TOCTOU this method exists to close, but disclosed rather than silently accepted.
+        /// A `readdir` failure partway through a stream and reaching the genuine end of it both
+        /// return a null entry from `readdir` itself; this method clears `errno` before each
+        /// call and checks it after a null result, per POSIX's own contract for telling the two
+        /// apart, and returns an error rather than the entries collected so far. E14-S04 round-6
+        /// independent review's finding: an earlier version of this method treated any null as
+        /// end-of-stream, so a mid-enumeration failure could return a truncated-but-`Ok` listing,
+        /// and its only production consumer decides a layout is "recognized" by exact signature
+        /// equality, so a truncated listing could coincidentally equal a known-good one. The
+        /// `DT_UNKNOWN` `fstatat` fallback is held to the same standard: a failed lookup there is
+        /// also a failed listing, never a silently-assumed "not a directory".
         pub fn list_child_names(&self) -> Result<Vec<(String, bool)>, SealError> {
             let duplicate = self.dir.try_clone().map_err(SealError::Io)?;
             let dup_fd = duplicate.into_raw_fd();
@@ -898,10 +929,23 @@ mod unix_impl {
 
             let mut entries = Vec::new();
             loop {
+                // SAFETY: `errno_location()` returns a valid pointer to this thread's own
+                // `errno` storage. POSIX's `readdir` contract requires clearing `errno` before
+                // the call to tell a real read failure (null result, `errno` left nonzero) apart
+                // from genuine end-of-directory (null result, `errno` still zero) - `readdir`
+                // itself has no other way to report the difference.
+                unsafe {
+                    *errno_location() = 0;
+                }
                 // SAFETY: `guard.0` is the live `DIR*` this loop owns for its duration;
                 // `readdir` is safe to call repeatedly on it until it returns null.
                 let entry = unsafe { libc::readdir(guard.0) };
                 if entry.is_null() {
+                    // SAFETY: same pointer as the clear immediately above this call.
+                    let errno = unsafe { *errno_location() };
+                    if errno != 0 {
+                        return Err(SealError::Io(io::Error::from_raw_os_error(errno)));
+                    }
                     break;
                 }
                 // SAFETY: `entry` was just returned non-null by `readdir` and is valid until the
@@ -933,7 +977,18 @@ mod unix_impl {
                             libc::AT_SYMLINK_NOFOLLOW,
                         )
                     };
-                    rc == 0 && (stat.st_mode & libc::S_IFMT) == libc::S_IFDIR
+                    if rc != 0 {
+                        // The filesystem left this entry's kind unclassified (`DT_UNKNOWN`) and
+                        // the fallback lookup meant to resolve it also failed - report that
+                        // honestly as a failed listing (round-6 independent review's finding: a
+                        // silently-defaulted `false`/"not a directory" here let an incomplete
+                        // enumeration still return `Ok`, which its caller could not distinguish
+                        // from a genuinely complete one). A concurrent removal of this exact
+                        // entry between `readdir` reporting it and this lookup is the most likely
+                        // real cause; that is itself missing evidence, not a fact to guess at.
+                        return Err(SealError::Io(io::Error::last_os_error()));
+                    }
+                    (stat.st_mode & libc::S_IFMT) == libc::S_IFDIR
                 } else {
                     false
                 };
@@ -1385,6 +1440,48 @@ mod unix_impl {
             let root = SealedRoot::establish(&base.path("root")).unwrap();
             let entries = root.list_child_names().unwrap();
             assert!(entries.iter().all(|(name, _)| name != "." && name != ".."));
+        }
+
+        #[test]
+        fn list_child_names_fails_rather_than_silently_succeeding_on_a_broken_descriptor() {
+            // Round-6 independent review's finding: an earlier version of this method treated
+            // every null `readdir` result as end-of-stream, so a real read failure - reachable
+            // whenever the underlying descriptor stops being valid mid-enumeration, e.g. a
+            // concurrent close of the same fd number by unrelated code in the same process, or
+            // (on some platforms) the directory itself being removed while open - returned a
+            // truncated-but-`Ok` listing instead of an error. `mod tests` is a descendant module
+            // of `unix_impl`, so it can reach `SealedRoot`'s private `dir` field directly to
+            // reproduce a broken descriptor deterministically, without a dedicated test-only
+            // hook on the production API.
+            let base = TempDir::new("list-child-names-broken-fd");
+            std::fs::create_dir_all(base.path("root")).unwrap();
+            std::fs::write(base.path("root/marker"), b"x").unwrap();
+            let root = SealedRoot::establish(&base.path("root")).unwrap();
+
+            let raw_fd = root.dir.as_raw_fd();
+            // SAFETY: `raw_fd` is `root.dir`'s own descriptor. Closing it directly, bypassing
+            // `File`'s normal ownership, deliberately invalidates it for this test - the point
+            // is to observe how `list_child_names` reacts to a descriptor that stops being
+            // usable, matching a real failure mode `try_clone`/`fdopendir`/`readdir` can all
+            // meet in production.
+            unsafe {
+                libc::close(raw_fd);
+            }
+
+            let result = root.list_child_names();
+            // `root.dir` now wraps an already-closed fd; letting `root` drop normally would
+            // make `std`'s I/O-safety check abort the process (a real double-close it correctly
+            // refuses to perform silently). `root` is never used again after the assertion
+            // below, so suppressing its `Drop` here via `ManuallyDrop` - test-only, and only
+            // after the one call this test exists to exercise - is the honest way to end this
+            // specific reproduction, not a resource leak this process would ever repeat outside
+            // this test.
+            let _ = std::mem::ManuallyDrop::new(root);
+            assert!(
+                result.is_err(),
+                "a broken descriptor must be reported as a failure, never as a successful, \
+                 possibly-truncated listing: got {result:?}"
+            );
         }
 
         #[test]

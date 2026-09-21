@@ -198,3 +198,30 @@ than an honest refusal (SI-017, this crate's own stated reason for every other U
 A future story bringing this to Windows needs its own handle-bound `NtQueryDirectoryFile`-based
 implementation in `cancellai-sealedfs::windows_sealed`, mirroring `establish`'s existing Windows
 no-follow walk.
+
+## Round 5, third self-correction: a read failure was not distinguished from a clean listing
+
+A third independent-review pass on the fix above
+(`project/evidence/E14-S04-VERIFIER-REVIEW-ROUND6.md`) found the TOCTOU/symlink repair itself
+sound (the unsafe descriptor-ownership and pointer-lifetime reasoning in `list_child_names` was
+audited and confirmed correct), but found one remaining logical gap: `readdir` returns a null
+pointer both at the genuine end of a directory and on a real read failure, and the first version
+of `list_child_names` treated every null as end-of-stream. A directory that failed partway
+through enumeration therefore returned a *truncated but `Ok`* marker list - and because the sole
+consumer of this observation (`resolve_provider_execution_authority`) decides "recognized" by
+exact signature equality against `known_signatures`, a truncated listing could in principle
+coincidentally equal a known-good signature, silently avoiding the SI-004 ceiling a complete,
+honest listing would have triggered. The same review found the `DT_UNKNOWN` `fstatat` fallback
+had the identical fail-open shape for its own I/O errors.
+
+Owner-authorized repair (this session, same conversation): `list_child_names` now clears `errno`
+immediately before each `readdir` call and checks it after a null result - POSIX's own documented
+contract for telling a real failure apart from genuine end-of-stream, which `readdir` has no
+other way to report. A nonzero `errno` after a null result now returns `SealError::Io` rather than
+the entries collected so far. The `DT_UNKNOWN` fallback's `fstatat` failure is held to the same
+standard: a failed lookup now returns an error rather than silently defaulting to "not a
+directory". A deterministic regression test (`list_child_names_fails_rather_than_silently_
+succeeding_on_a_broken_descriptor`) reproduces a broken descriptor by closing the bound root's
+own fd directly from within the crate's own test module (a descendant module can reach
+`SealedRoot`'s private `dir` field) and confirms the method now fails rather than returning a
+partial, successful-looking result.
