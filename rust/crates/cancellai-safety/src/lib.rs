@@ -46,8 +46,9 @@ pub mod sealed_plan;
 pub mod trust_promotion;
 
 pub use authority::{
-    AuthorityConstraint, AuthorityInputs, EffectiveAuthority, compute_effective_authority,
-    effective_authority, effective_authority_for_channel,
+    AuthorityConstraint, AuthorityInputs, EffectiveAuthority, ProviderExecutionPermit,
+    compute_effective_authority, effective_authority, effective_authority_for_channel,
+    resolve_provider_execution_authority,
 };
 pub use build_channel::BuildChannel;
 pub use knowledge_bundle::{
@@ -56,7 +57,7 @@ pub use knowledge_bundle::{
     verify_bundle,
 };
 pub use mutation_executor::{ActionResult, execute, execute_all, execute_with_system_capabilities};
-pub use provider_layout::{LayoutSignature, ProviderLayoutAssessment};
+pub use provider_layout::LayoutSignature;
 pub use remote_execution::{
     RemoteExecutionError, RemoteExecutionLog, RemoteExecutionRequest, TrustedRemoteController,
     TrustedRemoteControllers, VerifiedRemoteIntent, parse_request,

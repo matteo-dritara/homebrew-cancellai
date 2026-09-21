@@ -314,14 +314,19 @@ SI-021) - see [`PROVIDER_MODEL.md`](PROVIDER_MODEL.md) "Trust chain" for the ful
 including `TrustedTier::promote`, the sole gate that can raise a trust tier, and the E05
 verifier round 1 repair that made `AuthorityInputs::provider_trust` require this opaque type
 rather than accepting a bare, externally-constructible `ProviderTrust` directly.
-`ProviderCapabilityAuthority` joins these in E14-S04/ADR-0034/ADR-0035, as a **mandatory**
-`AuthorityInputs::provider_layout` field (not an opt-in extra constraint like
-`ReleaseChannelAuthority` below) carrying the raw observed/known `LayoutSignature` facts
-themselves, not a pre-computed ceiling (ADR-0035: a caller-supplied ceiling was found
-discardable independently of the facts it claimed to summarize) - `base_constraints` derives the
-constraint from those facts directly, the same comparison
-`cancellai_guardian::structural::assess_layout` performs for its own detection report.
-`ReversibilityAuthority` and
+`ProviderCapabilityAuthority` (E14-S04, SI-004) does **not** live on `AuthorityInputs` at all,
+unlike every constraint above - three prior designs (ADR-0034, then ADR-0035) each put a layout
+fact there in a different shape (a bare recommendation, then a caller-asserted ceiling, then the
+raw observed/known facts themselves) and each was found, across four independent review rounds,
+to be a plain, publicly constructible value a caller could supply honestly once and then omit or
+contradict in a second, independently constructed `AuthorityInputs`. ADR-0036 (round 5) removes
+the constraint from `effective_authority`'s reach entirely: `resolve_provider_execution_authority`
+is the only path from a real layout fact to authority, and it requires a
+`cancellai_platform::BoundLayoutObservation` - built exclusively from real directory I/O, never
+from caller-asserted marker strings - returning an opaque `ProviderExecutionPermit` with no
+public constructor a caller could substitute for one. `effective_authority` itself is now purely
+an analysis computation over the remaining eight constraints, honest for callers with no live
+observation and structurally incapable of expressing one. `ReversibilityAuthority` and
 `ReleaseChannelAuthority` are not wired into the plain `effective_authority` (the latter is
 available opt-in via `effective_authority_for_channel`) - adding a constraint like this is a
 matter of supplying more named constraints to the same generic function, not a redesign.

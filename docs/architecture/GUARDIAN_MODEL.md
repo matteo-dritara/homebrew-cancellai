@@ -33,48 +33,54 @@ evidence string, and no branch in the function reads it - two calls that differ 
 `provider_id` against the same signatures always reach the identical verdict,
 `provider_name_never_changes_the_drift_verdict`/`..._recognized_verdict`).
 
-**This module carries no authority ceiling at all (ADR-0035) - three independent review rounds
-found three successive ways one did not actually, unavoidably reduce authority.** Round 1: a
-correctly-computed `recommended_authority_ceiling` reached no authority computation anywhere -
-an unconsumed recommendation is not an automatic downgrade. Round 2: the fix (a second, opt-in
+**This module carries no authority ceiling at all, and never will (ADR-0036) - four independent
+review rounds across three designs found four successive ways an authority-typed value derived
+from this module's output could be discarded, fabricated, or otherwise separated from the real
+observation it claimed to represent.** Round 1: a correctly-computed
+`recommended_authority_ceiling` reached no authority computation anywhere - an unconsumed
+recommendation is not an automatic downgrade. Round 2: the fix (a second, opt-in
 `cancellai_safety::effective_authority_for_provider_capability` function) was bypassable via the
 pre-existing, still-public plain `effective_authority`, and `LayoutDriftFinding`'s public fields
 let a caller fabricate a fake `Recognized` result. Round 3, against ADR-0034's mandatory-but-
 caller-asserted `Option<AuthorityLevel>` ceiling field: a caller could compute the right ceiling
 once, then separately construct an otherwise-identical `AuthorityInputs` asserting no ceiling,
 discarding the real finding it still held - the ceiling was a *conclusion*, disconnected from the
-*facts* it was drawn from.
+*facts* it was drawn from. Round 4, against ADR-0035's raw-observation field
+(`AuthorityInputs::provider_layout: ProviderLayoutAssessment`): the same discard was still
+possible one layer down - a caller holding a real `Observed{Drifted}` value could still
+construct a second, sibling `AuthorityInputs` asserting `NotAssessed`, because `AuthorityInputs`
+remained a plain, publicly constructible struct with no binding to the real object either value
+claimed to describe.
 
-ADR-0035's resolution: `cancellai_safety::authority::AuthorityInputs::provider_layout` carries
-the raw `known_signatures`/`observed` facts themselves
-(`cancellai_safety::ProviderLayoutAssessment`), never a pre-computed ceiling.
-`cancellai_safety::authority::base_constraints` performs the *identical* signature comparison
-`assess_layout` performs, from those same raw facts, and derives whatever constraint it implies
-itself - there is no ceiling value left anywhere between the two crates for a caller to assert,
-discard, or disagree with once it supplies the observation.
-`cancellai_guardian::capability_authority::authority_inputs_with_layout_observation` converts
-this crate's own `LayoutSignature` into `cancellai-safety`'s structurally identical, deliberately
-separate type of the same name, and sets `provider_layout` accordingly; it computes no ceiling
-either. `LayoutDriftFinding` itself dropped its ceiling field entirely (there is nothing left for
-it to carry) and keeps its private fields/`assess_layout`-only construction from round 2's fix (a
-`compile_fail` doctest still proves external construction is impossible). An end-to-end test
-proves `assess_layout`'s own detection output and feeding the identical raw signatures into a
-real effective-authority computation agree: a destructive-capable input (every other constraint
-at its most permissive) ends at `Observe` once the observed layout is drift.
-`structural.rs`/`assess_layout` still hold no reference to `cancellai-safety` - more literally
-than before, since this module can no longer produce an authority-typed value at all, matching
-`pressure`/`forecast`/`baseline`'s own isolation (SI-027, "Detection severity does not create
-authority"). `cancellai-safety` remains the sole mutation executor (`docs/CONSTITUTION.md`:
-"route mutation through one safety boundary").
+ADR-0036 (round 5) stops trying to make the *field* undiscardable and removes it instead:
+`AuthorityInputs` no longer carries a layout fact in any shape, and `effective_authority` is now
+purely an analysis computation, honest for a caller with no live observation and structurally
+incapable of expressing one. A real observation now reaches authority only through
+`cancellai_safety::resolve_provider_execution_authority`, which requires a
+`cancellai_platform::BoundLayoutObservation` - built exclusively from real directory I/O against
+a real path, never from caller-asserted marker strings, the same non-forgeability
+`cancellai-platform::mutation::confirmed_delete_file_inner` already relies on for a single file's
+identity - and returns an opaque `ProviderExecutionPermit` with no public constructor a caller
+could substitute for one. This module's own `assess_layout`/`LayoutDriftFinding` remain useful
+for reporting and explanation (`GUARDIAN_MODEL.md`'s "Detection" vocabulary), but are no longer
+the path anything authority-typed is derived from - the former bridge
+(`cancellai_guardian::capability_authority`) is removed, because converting this module's
+caller-supplied facts into an authority input was exactly the discardable construction round 4
+found unsafe, regardless of which crate performed the conversion. `structural.rs`/`assess_layout`
+still hold no reference to `cancellai-safety` - more literally than before, since authority no
+longer flows through this crate even as a converted value, matching `pressure`/`forecast`/
+`baseline`'s own isolation (SI-027, "Detection severity does not create authority").
+`cancellai-safety` remains the sole mutation executor (`docs/CONSTITUTION.md`: "route mutation
+through one safety boundary").
 
-ADR-0035 discloses, narrower than ADR-0034 but not closed: no current production caller
-constructs a real `ProviderLayoutAssessment::Observed` at all (Guardian's structural detection
-operates at the scope of a whole provider root, not the per-artifact scope
-`cancellai_policy::retention::reachable_authority` runs at, and no CLI call site wires a live
-probe in yet). Removing the discardable-ceiling defect makes a *real* observation, once supplied,
-unavoidable; it cannot compel a caller that never made one to go make it - that live-wiring
-integration is future orchestrator work the ADR names explicitly, matching E14-S01/S02/S03's own
-"primitive delivered, no orchestrator yet" precedent.
+ADR-0036 discloses two residuals, both narrower than what it closes: (1) `known_signatures` -
+what a "recognized" layout looks like - is still caller-supplied data, not yet drawn from a
+trust-bounded provider manifest, so every current call resolves to `AuthorityLevel::Observe` for
+the layout constraint rather than a silently invented "recognized" answer; and (2) no production
+call site mints a permit yet, and the mutation boundary (`cancellai_safety::mutation_executor`)
+does not yet require one - this round establishes the non-forgeable primitive, not the live
+wiring, matching E14-S01/S02/S03's own "primitive delivered, no orchestrator yet" precedent and
+ADR-0034/ADR-0035's identically-shaped disclosed residual before it.
 
 ### Decision
 

@@ -11,9 +11,8 @@ Epics: **33** | Stories: **168**
 - `blocked`: 2
 - `cancelled`: 1
 - `done`: 156
-- `in_progress`: 1
 - `planned`: 7
-- `ready_for_review`: 1
+- `ready_for_review`: 2
 
 ## Change risk distribution
 
@@ -29,4 +28,5 @@ Epics: **33** | Stories: **168**
 
 ## Awaiting independent review
 
+- **E14-S04** - Structural anomaly detection (CR4)
 - **E21-S03** - Scan completeness propagation in provider adapters (CR4)

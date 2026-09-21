@@ -443,7 +443,6 @@ impl RemoteExecutionLog {
 mod tests {
     use super::*;
     use crate::authority::{AuthorityInputs, effective_authority};
-    use crate::provider_layout::ProviderLayoutAssessment;
     use crate::trust_promotion::TrustedTier;
     use cancellai_model::{ActivityState, IntegrityState, KnowledgeConfidence, ProtectionState};
     use ed25519_dalek::{Signer, SigningKey};
@@ -828,7 +827,6 @@ mod tests {
             protection: ProtectionState::Normal,
             integrity: IntegrityState::Healthy,
             provider_trust: TrustedTier::untrusted(),
-            provider_layout: ProviderLayoutAssessment::NotAssessed,
         };
 
         let from_remote = effective_authority(shared_inputs(minimum_authority_for(
@@ -876,7 +874,6 @@ mod tests {
             protection: ProtectionState::Normal,
             integrity: IntegrityState::Healthy,
             provider_trust: TrustedTier::untrusted(),
-            provider_layout: ProviderLayoutAssessment::NotAssessed,
         };
 
         // Untrusted provider_trust caps the result at Observe (provider_trust_ceiling) - the

@@ -289,12 +289,13 @@ fn reachable_authority(
         protection,
         integrity,
         provider_trust,
-        // ADR-0034 disclosed residual: this scan-time classification has no live
-        // cancellai-guardian layout assessment to consult yet, so it states plainly that none
-        // has been performed rather than fabricating a "recognized" claim - see the ADR for why
-        // wiring a real one in is future orchestrator work, not this function's job.
-        provider_layout: cancellai_safety::ProviderLayoutAssessment::NotAssessed,
     });
+    // ADR-0036: this scan-time classification has no live provider-root layout observation to
+    // consult at per-artifact scope, and `AuthorityInputs` no longer carries a field for one -
+    // only `resolve_provider_execution_authority`, called with a real
+    // `cancellai_platform::BoundLayoutObservation`, can produce a layout-governed permit. Wiring
+    // one in at whatever scope actually has a live provider root remains future orchestrator
+    // work, not this function's job.
     (result.level, result.binding_constraints)
 }
 

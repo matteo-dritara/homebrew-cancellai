@@ -56,6 +56,7 @@ pub mod identity;
 pub mod mutation;
 pub mod path_resolver;
 pub mod process;
+pub mod provider_layout;
 pub mod snapshot;
 pub mod wsl;
 
@@ -77,6 +78,7 @@ pub use path_resolver::{PathResolver, SyntheticPathResolver, SystemPathResolver}
 pub use process::{
     ProcessObservation, ProcessObserver, SyntheticProcessObserver, SystemProcessObserver,
 };
+pub use provider_layout::{BoundLayoutObservation, LayoutObservationError};
 pub use snapshot::{Snapshot, build_snapshot};
 pub use wsl::{
     EnvironmentObserver, FilesystemContext, FilesystemContextObservation,

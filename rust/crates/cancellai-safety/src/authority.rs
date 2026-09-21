@@ -28,27 +28,33 @@
 //! module doc for the E05 verifier round 1 defect this closes) plus an explicit
 //! `ConstitutionalSafetyFloor` restating SI-001's own rule as its own always-present constraint
 //! (SI-006: known protection is checked in more than one place, on purpose).
-//! `ProviderCapabilityAuthority` (E14-S04, SI-004, ADR-0034, ADR-0035) is the ninth and last
-//! documented constraint, and - unlike [`effective_authority_for_channel`] - it is a *mandatory*
-//! [`AuthorityInputs::provider_layout`] field, not a second, opt-in function, and not a
-//! caller-asserted ceiling. Three independent review rounds on two designs found successively
-//! narrower ways a caller could hold a real drift observation and still reach an authority level
-//! the drift is supposed to cap: round 1 found the recommendation reached no authority
-//! computation at all; round 2 found the first fix (a second, opt-in
-//! `effective_authority_for_provider_capability` function) ignorable via the still-public plain
-//! [`effective_authority`]; round 3 (ADR-0034) found its mandatory-but-caller-asserted
-//! `Option<AuthorityLevel>` ceiling field discardable - a caller could compute the right ceiling
-//! once, then separately construct an otherwise-identical `AuthorityInputs` with `None`, holding
-//! the real finding the whole time. ADR-0035 removes the ceiling as an independent input
-//! entirely: `provider_layout` carries [`crate::provider_layout::ProviderLayoutAssessment`] - the
-//! raw `known_signatures`/`observed` facts, or [`crate::provider_layout::
-//! ProviderLayoutAssessment::NotAssessed`] - and [`base_constraints`] derives the ceiling from
-//! those facts itself via [`crate::provider_layout::layout_ceiling`]. There is no longer a
-//! ceiling value for a caller to assert, discard, or disagree with once it supplies the raw
-//! observation - see `provider_layout.rs`'s own module doc for the full account.
-//! `compute_effective_authority` needing no redesign across any of this was exactly the point of
-//! keeping it generic over named constraints rather than a fixed nine-argument function; only
-//! [`AuthorityInputs`], [`base_constraints`], and `provider_layout.rs` changed.
+//!
+//! `ProviderCapabilityAuthority` (E14-S04, SI-004) does **not** live on [`AuthorityInputs`] at
+//! all, unlike the eight constraints above - it is the one constraint [`effective_authority`]
+//! never computes. Four independent review rounds across three designs (ADR-0034, ADR-0035,
+//! `project/evidence/E14-S04-VERIFIER-REVIEW-ROUND3.md`,
+//! `project/evidence/E14-S04-VERIFIER-REVIEW-ROUND4.md`) each found a way a caller holding a
+//! real drift observation could still reach an authority level the drift was supposed to cap,
+//! because in every prior design the layout fact - first a bare recommendation, then a
+//! caller-asserted ceiling, then the raw observation itself - was carried on `AuthorityInputs`,
+//! a plain, publicly constructible value. Nothing stopped a caller from supplying that fact
+//! honestly once and then, in a second, independently constructed `AuthorityInputs`, omitting or
+//! contradicting it while still holding the real finding: no field shape closes that, because
+//! the type doing the asserting has no binding to the real-world object it claims to describe.
+//!
+//! ADR-0036 (round 5) removes the layout fact from `AuthorityInputs` entirely rather than
+//! attempting a fourth field shape. [`effective_authority`] is now purely an *analysis*
+//! computation over the eight constraints above - honest for the two production call sites that
+//! have never had a live layout observation to supply, and structurally incapable of expressing
+//! one at all, so there is nothing left for a caller to discard. A real layout fact instead
+//! reaches authority only through [`resolve_provider_execution_authority`], which requires a
+//! [`cancellai_platform::BoundLayoutObservation`] - built exclusively from real directory I/O
+//! against a real path, never from caller-asserted marker strings - and returns an opaque
+//! [`ProviderExecutionPermit`] with no public constructor a caller could fabricate to stand in
+//! for one. See `provider_layout.rs`'s own module doc for the full account, and ADR-0036 for the
+//! disclosed residuals this round leaves open (no trusted source of "known-recognized" layouts
+//! yet, and no consuming call site at the mutation boundary yet - this round establishes the
+//! non-forgeable primitive, not the live wiring).
 //!
 //! [`effective_authority_for_channel`] (E17-S05, SI-030) adds the ninth: `ReleaseChannelAuthority`
 //! (from [`crate::BuildChannel`], `docs/security/SUPPLY_CHAIN.md` "Release channels" -
@@ -78,7 +84,7 @@ use cancellai_model::{
 };
 
 use crate::build_channel::BuildChannel;
-use crate::provider_layout::{ProviderLayoutAssessment, layout_ceiling};
+use crate::provider_layout::LayoutSignature;
 use crate::trust_promotion::TrustedTier;
 
 /// One named input to an Effective Authority computation.
@@ -223,27 +229,12 @@ pub struct AuthorityInputs {
     pub protection: ProtectionState,
     pub integrity: IntegrityState,
     pub provider_trust: TrustedTier,
-    /// `SI-004`, ADR-0034, ADR-0035: the raw layout observation, never a pre-computed ceiling -
-    /// see `provider_layout.rs`'s own module doc for why. [`base_constraints`] derives whatever
-    /// constraint this implies itself, via [`layout_ceiling`]; there is no ceiling value here
-    /// for a caller to assert, discard, or disagree with once it supplies a real observation.
-    /// [`ProviderLayoutAssessment::NotAssessed`] (no observation reached this construction) adds
-    /// no constraint, the same as a recognized layout would. A mandatory field, not an opt-in
-    /// extra argument or a second function, precisely so no caller of [`effective_authority`]
-    /// can bypass it (E14 round 2 independent review) or discard a real finding while
-    /// technically supplying *some* value for it (E14 round 3 independent review, against
-    /// ADR-0034's `Option<AuthorityLevel>` shape). This crate does not depend on
-    /// `cancellai-guardian`; `ProviderLayoutAssessment`/`LayoutSignature` live in this crate
-    /// (`provider_layout.rs`), structurally identical to but never the same type as
-    /// `cancellai_guardian::structural`'s own `LayoutSignature`, which independently performs
-    /// the same comparison for its own detection report.
-    pub provider_layout: ProviderLayoutAssessment,
 }
 
 /// The constraint list [`effective_authority`] and [`effective_authority_for_channel`] share -
 /// factored out so the latter cannot drift from the former by re-deriving these six by hand.
 fn base_constraints(inputs: &AuthorityInputs) -> Vec<AuthorityConstraint> {
-    let mut constraints = vec![
+    vec![
         AuthorityConstraint {
             name: "user_authority",
             ceiling: inputs.user_requested,
@@ -268,14 +259,97 @@ fn base_constraints(inputs: &AuthorityInputs) -> Vec<AuthorityConstraint> {
             name: "constitutional_safety_floor",
             ceiling: constitutional_safety_floor(inputs.protection, inputs.confidence),
         },
-    ];
-    if let Some(ceiling) = layout_ceiling(&inputs.provider_layout) {
+    ]
+}
+
+/// The authority ceiling a real layout observation implies, computed identically for every
+/// caller: `None` for a layout matching one of `known_signatures` (no additional constraint -
+/// the other base constraints alone still apply), otherwise `Some(AuthorityLevel::Observe)`, the
+/// lowest ceiling this vocabulary expresses, including when `known_signatures` is empty or
+/// `observed` carries no markers at all, so an absent or inconclusive comparison is drift, never
+/// a default pass (E14-S04, SI-004).
+///
+/// Not `pub`: [`resolve_provider_execution_authority`] is the only caller. There is no path
+/// from outside this crate to a pre-computed ceiling - a caller supplies the raw observation
+/// (via [`cancellai_platform::BoundLayoutObservation`]) and `known_signatures`, never a ceiling
+/// value to assert, discard, or disagree with.
+fn layout_ceiling(
+    known_signatures: &[LayoutSignature],
+    observed: &LayoutSignature,
+) -> Option<AuthorityLevel> {
+    if known_signatures.iter().any(|known| known == observed) {
+        None
+    } else {
+        Some(AuthorityLevel::Observe)
+    }
+}
+
+/// An authority result bound to one real, non-forgeable observation of one provider root -
+/// never constructible from caller-supplied facts, and never equal to, or convertible from, a
+/// plain [`EffectiveAuthority`]. This is what closes E14-S04 round 4's finding: the *type*
+/// [`effective_authority`] returns is now structurally incapable of authorizing a
+/// layout-governed action at all, so there is no longer a plain, publicly constructible value a
+/// caller could substitute for a real permit while claiming to hold one.
+///
+/// `root_identity` is carried so a future consumer at the mutation boundary can refuse a permit
+/// whose root has since changed underneath it - the same binding
+/// `cancellai-platform::mutation::confirmed_delete_file_inner` already applies to a single file.
+/// No such consumer exists yet (ADR-0036's disclosed residual): this round establishes the
+/// non-forgeable primitive, not the live wiring.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderExecutionPermit {
+    root_identity: cancellai_platform::IdentityToken,
+    level: AuthorityLevel,
+    binding_constraints: Vec<&'static str>,
+}
+
+impl ProviderExecutionPermit {
+    pub fn root_identity(&self) -> &cancellai_platform::IdentityToken {
+        &self.root_identity
+    }
+
+    pub fn level(&self) -> AuthorityLevel {
+        self.level
+    }
+
+    pub fn binding_constraints(&self) -> &[&'static str] {
+        &self.binding_constraints
+    }
+}
+
+/// The only production path from a real [`cancellai_platform::BoundLayoutObservation`] to an
+/// authority decision (E14-S04 round 5, SI-004, ADR-0036). `base` carries the same eight
+/// constraints [`effective_authority`] computes - there is no separate "execution" input shape
+/// to keep in sync, since `AuthorityInputs` no longer carries a layout field for one to differ
+/// on. `known_signatures` is the closed set of layouts this caller currently recognizes;
+/// `observation` is a real, unforgeable reading of the root actually being authorized.
+///
+/// Disclosed residual (ADR-0036, matching ADR-0034/ADR-0035's own precedent): `known_signatures`
+/// is still caller-supplied data, not yet drawn from a trust-bounded provider manifest - wiring
+/// a real "what does a recognized layout for this provider look like" source is future
+/// orchestrator work, the same residual ADR-0034 disclosed for live layout wiring generally. No
+/// production caller supplies a non-empty `known_signatures` today, so every current call
+/// resolves to `AuthorityLevel::Observe` for the layout constraint - a safe, honest default, not
+/// a silently invented "recognized" answer.
+pub fn resolve_provider_execution_authority(
+    base: AuthorityInputs,
+    observation: &cancellai_platform::BoundLayoutObservation,
+    known_signatures: &[LayoutSignature],
+) -> ProviderExecutionPermit {
+    let mut constraints = base_constraints(&base);
+    let observed = LayoutSignature::new(observation.markers().iter().cloned());
+    if let Some(ceiling) = layout_ceiling(known_signatures, &observed) {
         constraints.push(AuthorityConstraint {
             name: "provider_capability_authority",
             ceiling,
         });
     }
-    constraints
+    let result = compute_effective_authority(&constraints);
+    ProviderExecutionPermit {
+        root_identity: observation.root_identity().clone(),
+        level: result.level,
+        binding_constraints: result.binding_constraints,
+    }
 }
 
 /// Compute Effective Authority from the constraints this story wires up for real (module
@@ -360,7 +434,6 @@ mod tests {
             protection: ProtectionState::Normal,
             integrity: IntegrityState::Healthy,
             provider_trust: TrustedTier::for_tests(ProviderTrust::BuiltinVerified),
-            provider_layout: ProviderLayoutAssessment::NotAssessed,
         }
     }
 
@@ -780,114 +853,169 @@ mod tests {
         );
     }
 
-    // --- E14-S04, SI-004, ADR-0034, ADR-0035: provider-capability/layout drift bounds default
-    // authority - provider_layout is a mandatory AuthorityInputs field carrying the raw
-    // observation, never a caller-asserted ceiling (provider_layout.rs's own module doc, and its
-    // own unit tests for layout_ceiling's contract in isolation). Every test below calls the one
-    // public effective_authority, not a second opt-in function, and constructs the observation
-    // fresh each time rather than reusing a pre-computed ceiling - that is exactly the property
-    // ADR-0035 exists to guarantee. The full drift -> Observe chain, starting from
-    // cancellai_guardian::structural::assess_layout's own real output, is proven end-to-end in
-    // that crate (it can see both this function and `assess_layout`; this crate does not depend
-    // on it).
+    // --- E14-S04, SI-004, ADR-0036 (round 5): provider-capability/layout drift bounds
+    // authority only through a real, non-forgeable `cancellai_platform::BoundLayoutObservation`
+    // and the opaque `ProviderExecutionPermit` `resolve_provider_execution_authority` mints from
+    // it - `AuthorityInputs`/`effective_authority` no longer carry or compute a layout fact at
+    // all. Four independent review rounds across three prior designs (ADR-0034, ADR-0035, round
+    // 3, round 4) each found a way a caller-supplied layout fact - a bare recommendation, then a
+    // ceiling, then the raw observation itself - was discardable in a second, independently
+    // constructed value. This round closes it by removing the field, not by reshaping it again.
 
-    fn drifted_observation() -> ProviderLayoutAssessment {
-        ProviderLayoutAssessment::Observed {
-            known_signatures: vec![crate::provider_layout::LayoutSignature::new([
-                "sessions/".to_string()
-            ])],
-            observed: crate::provider_layout::LayoutSignature::new([
-                "totally_different_shape/".to_string()
-            ]),
+    struct TempDir(std::path::PathBuf);
+
+    impl TempDir {
+        fn new(label: &str) -> Self {
+            static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let unique = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let base = std::fs::canonicalize(std::env::temp_dir())
+                .unwrap_or_else(|_| std::env::temp_dir());
+            let dir = base.join(format!(
+                "cancellai-safety-authority-test-{label}-{}-{unique}",
+                std::process::id()
+            ));
+            std::fs::create_dir_all(&dir).expect("create temp dir");
+            Self(dir)
         }
     }
 
-    #[test]
-    fn e14s04_drifted_layout_collapses_to_observe_even_at_maximum_everything_else() {
-        let inputs = AuthorityInputs {
-            provider_layout: drifted_observation(),
-            ..permissive_inputs(AuthorityLevel::Autopilot, AuthorityLevel::Autopilot)
-        };
-        assert_eq!(effective_authority(inputs).level, AuthorityLevel::Observe);
-    }
-
-    #[test]
-    fn e14s04_recognized_layout_does_not_cap_below_a_fully_permissive_result() {
-        // Not vacuously true: proves a not-yet-assessed layout adds no constraint at all, not a
-        // bug that happens to also produce a high level here.
-        let inputs = permissive_inputs(AuthorityLevel::Autopilot, AuthorityLevel::Autopilot);
-        assert_eq!(effective_authority(inputs).level, AuthorityLevel::Autopilot);
-    }
-
-    #[test]
-    fn e14s04_raising_user_authority_never_raises_past_the_drifted_layout_ceiling() {
-        for &user in &ALL_LEVELS {
-            let inputs = AuthorityInputs {
-                provider_layout: drifted_observation(),
-                ..permissive_inputs(user, AuthorityLevel::Autopilot)
-            };
-            let result = effective_authority(inputs);
-            assert_eq!(
-                result.level,
-                AuthorityLevel::Observe,
-                "user={user:?} must never exceed the drifted-layout ceiling, got {:?}",
-                result.level
-            );
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.0).ok();
         }
     }
 
+    /// A real observation of `dir` - the only way this crate's own tests can obtain a
+    /// [`cancellai_platform::BoundLayoutObservation`], for the same reason no other crate can:
+    /// its only constructor performs real directory I/O.
+    fn observe(dir: &TempDir) -> cancellai_platform::BoundLayoutObservation {
+        cancellai_platform::BoundLayoutObservation::observe(
+            &dir.0,
+            &cancellai_platform::SystemIdentityObserver,
+        )
+        .expect("a real, existing temp dir must observe cleanly")
+    }
+
     #[test]
-    fn e14s04_ac3_provider_capability_authority_is_named_when_it_is_the_unique_bottleneck() {
-        let inputs = AuthorityInputs {
-            provider_layout: drifted_observation(),
-            ..permissive_inputs(AuthorityLevel::Autopilot, AuthorityLevel::Autopilot)
-        };
-        let result = effective_authority(inputs);
+    fn e14s04_a_real_drifted_observation_caps_the_permit_at_observe_even_at_maximum_everything_else()
+     {
+        let dir = TempDir::new("drifted");
+        std::fs::create_dir_all(dir.0.join("totally_different_shape")).unwrap();
+        let observation = observe(&dir);
+        let known = vec![LayoutSignature::new(["sessions/".to_string()])];
+
+        let permit = resolve_provider_execution_authority(
+            permissive_inputs(AuthorityLevel::Autopilot, AuthorityLevel::Autopilot),
+            &observation,
+            &known,
+        );
+        assert_eq!(permit.level(), AuthorityLevel::Observe);
         assert_eq!(
-            result.binding_constraints,
+            permit.binding_constraints().to_vec(),
             vec!["provider_capability_authority"]
         );
     }
 
     #[test]
-    fn e14s04_adr0034_the_plain_public_effective_authority_cannot_be_used_to_bypass_a_drifted_ceiling()
-     {
-        // The exact counterexample E14 round 2 independent review used: calling the
-        // pre-existing, still-public effective_authority directly, with a real drift finding in
-        // hand, used to reach Autopilot because the ceiling lived in a second, skippable
-        // function. There is no longer a "plain" computation that omits it.
-        let inputs = AuthorityInputs {
-            provider_layout: drifted_observation(),
-            ..permissive_inputs(AuthorityLevel::Autopilot, AuthorityLevel::Autopilot)
-        };
-        assert_eq!(effective_authority(inputs).level, AuthorityLevel::Observe);
+    fn e14s04_a_recognized_observation_does_not_cap_below_a_fully_permissive_result() {
+        // Not vacuously true: proves a recognized layout adds no constraint at all, not a bug
+        // that happens to also produce a high level here.
+        let dir = TempDir::new("recognized");
+        std::fs::create_dir_all(dir.0.join("sessions")).unwrap();
+        let observation = observe(&dir);
+        let known = vec![LayoutSignature::new(["sessions/".to_string()])];
+
+        let permit = resolve_provider_execution_authority(
+            permissive_inputs(AuthorityLevel::Autopilot, AuthorityLevel::Autopilot),
+            &observation,
+            &known,
+        );
+        assert_eq!(permit.level(), AuthorityLevel::Autopilot);
     }
 
     #[test]
-    fn e14s04_adr0035_a_real_observation_cannot_be_supplied_and_then_separately_discarded() {
-        // The exact counterexample E14 round 3 independent review used against ADR-0034: it
-        // built AuthorityInputs with a real drifted ceiling, confirmed Observe, then built a
-        // second, otherwise-identical AuthorityInputs with `provider_capability_ceiling: None`
-        // while still holding the same finding, and reached Autopilot - the ceiling was
-        // caller-asserted data with no binding to what was actually observed. That field no
-        // longer exists: `provider_layout` carries the raw observation itself, and there is no
-        // second, independently-settable field left to omit while still supplying it. Once a
-        // caller constructs `ProviderLayoutAssessment::Observed` with the real drifted
-        // signatures, `effective_authority` derives Observe from those signatures directly -
-        // there is no alternative construction that keeps the same observation and reaches a
-        // higher level.
+    fn e14s04_raising_user_authority_never_raises_past_the_drifted_layout_ceiling() {
+        let dir = TempDir::new("drifted-all-users");
+        std::fs::create_dir_all(dir.0.join("totally_different_shape")).unwrap();
+        let observation = observe(&dir);
+        let known = vec![LayoutSignature::new(["sessions/".to_string()])];
+
+        for &user in &ALL_LEVELS {
+            let permit = resolve_provider_execution_authority(
+                permissive_inputs(user, AuthorityLevel::Autopilot),
+                &observation,
+                &known,
+            );
+            assert_eq!(
+                permit.level(),
+                AuthorityLevel::Observe,
+                "user={user:?} must never exceed the drifted-layout ceiling, got {:?}",
+                permit.level()
+            );
+        }
+    }
+
+    #[test]
+    fn e14s04_round4_a_permissive_analysis_result_is_never_a_permit() {
+        // The exact counterexample round 4 independent review used: a caller retains a real
+        // drifted finding, then separately builds an `AuthorityInputs`/`effective_authority`
+        // computation over the same base inputs and reaches `Autopilot`. That computation still
+        // exists - "what would this be if layout were not in question?" is still a legitimate,
+        // honest analysis question, and still legitimately returns `Autopilot` here. What round
+        // 4 found missing was a way to stop that analysis result from being usable as if it
+        // authorized a layout-governed action. It now cannot be: `EffectiveAuthority` and
+        // `ProviderExecutionPermit` are different, unrelated types with no conversion between
+        // them, and the only way to obtain a `ProviderExecutionPermit` at all is
+        // `resolve_provider_execution_authority`, which requires a real
+        // `BoundLayoutObservation` by value - there is no `Option`, no `NotAssessed`, no second
+        // call that omits it.
+        let dir = TempDir::new("round4-drifted");
+        std::fs::create_dir_all(dir.0.join("totally_different_shape")).unwrap();
+        let observation = observe(&dir);
+        let known = vec![LayoutSignature::new(["sessions/".to_string()])];
         let base = permissive_inputs(AuthorityLevel::Autopilot, AuthorityLevel::Autopilot);
-        let with_the_real_observation = AuthorityInputs {
-            provider_layout: drifted_observation(),
-            ..base.clone()
-        };
+
+        let analysis = effective_authority(base.clone());
         assert_eq!(
-            effective_authority(with_the_real_observation).level,
-            AuthorityLevel::Observe
+            analysis.level,
+            AuthorityLevel::Autopilot,
+            "test setup: the analysis-only computation, which never mentions layout, must reach \
+             the top level here, or this test would not be proving anything about the permit \
+             path"
         );
-        // The only way to reach Autopilot is to never supply the observation at all - an
-        // honestly different, distinguishable construction (NotAssessed), not a second
-        // assertion that contradicts the first while claiming the same finding.
-        assert_eq!(effective_authority(base).level, AuthorityLevel::Autopilot);
+
+        let permit = resolve_provider_execution_authority(base, &observation, &known);
+        assert_eq!(
+            permit.level(),
+            AuthorityLevel::Observe,
+            "a real drifted observation must cap the permit even though the analysis-only \
+             computation over the identical base inputs reaches Autopilot"
+        );
+    }
+
+    #[test]
+    fn e14s04_empty_known_signatures_never_recognizes_anything() {
+        let dir = TempDir::new("empty-known");
+        std::fs::write(dir.0.join("config.json"), b"{}").unwrap();
+        let observation = observe(&dir);
+
+        let permit = resolve_provider_execution_authority(
+            permissive_inputs(AuthorityLevel::Autopilot, AuthorityLevel::Autopilot),
+            &observation,
+            &[],
+        );
+        assert_eq!(permit.level(), AuthorityLevel::Observe);
+    }
+
+    #[test]
+    fn e14s04_the_permit_carries_the_observed_roots_own_identity() {
+        let dir = TempDir::new("identity");
+        let observation = observe(&dir);
+        let permit = resolve_provider_execution_authority(
+            permissive_inputs(AuthorityLevel::Autopilot, AuthorityLevel::Autopilot),
+            &observation,
+            &[],
+        );
+        assert_eq!(permit.root_identity(), observation.root_identity());
     }
 }

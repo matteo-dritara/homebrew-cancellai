@@ -32,9 +32,18 @@
 //! still holds no reference to `cancellai-safety` and never will (SI-027, "Detection severity
 //! does not create authority" - stated even more literally now than before: this module cannot
 //! influence authority even in principle, because it does not produce an authority-typed value
-//! at all). [`crate::capability_authority`] converts this module's own [`LayoutSignature`] into
-//! `cancellai_safety`'s type of the same shape, for a caller that wants to feed a real
-//! observation into an actual authority computation; it computes no ceiling either.
+//! at all).
+//!
+//! ADR-0036 (round 5) goes further: authority no longer flows through this crate at all, even as
+//! a converted value. A caller that wants layout drift to actually bound authority now obtains a
+//! real `cancellai_platform::BoundLayoutObservation` (built from actual directory I/O, never
+//! from this module's caller-supplied `known_signatures`/`observed`) and calls
+//! `cancellai_safety::resolve_provider_execution_authority` directly - this module's own
+//! `assess_layout`/[`LayoutDriftFinding`] remain useful for reporting/explanation (matching
+//! `GUARDIAN_MODEL.md`'s "Detection" vocabulary) but are no longer the path anything authority-
+//! typed is derived from. The former bridge (`capability_authority.rs`) is removed: converting
+//! this module's caller-supplied facts into an authority input was exactly the discardable
+//! construction round 4 found unsafe, regardless of which crate performed the conversion.
 
 use crate::baseline::{AnomalyAssessment, Baseline};
 
