@@ -862,8 +862,15 @@ mod tests {
     // ceiling, then the raw observation itself - was discardable in a second, independently
     // constructed value. This round closes it by removing the field, not by reshaping it again.
 
+    // E14-S04's real `BoundLayoutObservation` only succeeds on Unix (round 5's TOCTOU repair,
+    // ADR-0036: `cancellai_sealedfs::SealedRoot::metadata`/`list_child_names` fail closed with
+    // `Unsupported` on every other platform, since no verified handle-bound implementation
+    // exists there yet) - every test below that needs a real observation is Unix-only for that
+    // reason, matching `cancellai-platform::provider_layout`'s own tests.
+    #[cfg(unix)]
     struct TempDir(std::path::PathBuf);
 
+    #[cfg(unix)]
     impl TempDir {
         fn new(label: &str) -> Self {
             static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -879,6 +886,7 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     impl Drop for TempDir {
         fn drop(&mut self) {
             std::fs::remove_dir_all(&self.0).ok();
@@ -888,11 +896,13 @@ mod tests {
     /// A real observation of `dir` - the only way this crate's own tests can obtain a
     /// [`cancellai_platform::BoundLayoutObservation`], for the same reason no other crate can:
     /// its only constructor performs real directory I/O.
+    #[cfg(unix)]
     fn observe(dir: &TempDir) -> cancellai_platform::BoundLayoutObservation {
         cancellai_platform::BoundLayoutObservation::observe(&dir.0)
             .expect("a real, existing temp dir must observe cleanly")
     }
 
+    #[cfg(unix)]
     #[test]
     fn e14s04_a_real_drifted_observation_caps_the_permit_at_observe_even_at_maximum_everything_else()
      {
@@ -913,6 +923,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn e14s04_a_recognized_observation_does_not_cap_below_a_fully_permissive_result() {
         // Not vacuously true: proves a recognized layout adds no constraint at all, not a bug
@@ -930,6 +941,7 @@ mod tests {
         assert_eq!(permit.level(), AuthorityLevel::Autopilot);
     }
 
+    #[cfg(unix)]
     #[test]
     fn e14s04_raising_user_authority_never_raises_past_the_drifted_layout_ceiling() {
         let dir = TempDir::new("drifted-all-users");
@@ -952,6 +964,7 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     #[test]
     fn e14s04_round4_a_permissive_analysis_result_is_never_a_permit() {
         // The exact counterexample round 4 independent review used: a caller retains a real
@@ -990,6 +1003,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn e14s04_empty_known_signatures_never_recognizes_anything() {
         let dir = TempDir::new("empty-known");
@@ -1004,6 +1018,7 @@ mod tests {
         assert_eq!(permit.level(), AuthorityLevel::Observe);
     }
 
+    #[cfg(unix)]
     #[test]
     fn e14s04_the_permit_carries_the_observed_roots_own_identity() {
         let dir = TempDir::new("identity");
