@@ -309,8 +309,10 @@ Know its reach before reading its silence as safety. Miri cannot call foreign fu
 shim for, and this workspace's `unsafe` is almost entirely `libc` and Win32 FFI - **it cannot
 execute a single one of the 38 `unsafe` blocks in `cancellai-sealedfs`**. Four crates run clean
 (`model`, `inventory`, `provider-api`, `tui`); `sealedfs` and `platform` stop at `statfs`, `policy`
-at `fsetattrlist`, and `safety` inside `sha2`'s aarch64 SHA-512 intrinsics. E27-S06's evidence
-packet has the detail.
+at `fsetattrlist`, `safety` inside `sha2`'s aarch64 SHA-512 intrinsics, and `store` at
+`sqlite3_threadsafe` - `rusqlite`'s `bundled` feature links compiled SQLite C source, which Miri
+cannot execute at all (found 2026-09-21, excluded in `rust-benchmark.yml` accordingly). E27-S06's
+evidence packet has the detail on the rest.
 
 ### Lint policy
 

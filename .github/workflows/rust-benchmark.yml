@@ -61,7 +61,6 @@ jobs:
             cancellai-provider-api
             cancellai-provider-claude
             cancellai-guardian
-            cancellai-store
             cancellai-tui
           )
           excluded=(
@@ -71,6 +70,11 @@ jobs:
             cancellai-policy
             cancellai-provider-codex
             cancellai-safety
+            # cancellai-store: rusqlite's `bundled` feature links compiled SQLite C source;
+            # Connection::open(_in_memory) calls sqlite3_threadsafe(), a foreign function Miri
+            # has no shim for (discovered 2026-09-21, when budget.rs's ledger-budget test first
+            # exercised a real Connection under this job).
+            cancellai-store
           )
           expected="$(printf '%s\n' "${executable[@]}" "${excluded[@]}" | sort)"
           actual="$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json, sys; print(*sorted(package["name"] for package in json.load(sys.stdin)["packages"]), sep="\n")')"
