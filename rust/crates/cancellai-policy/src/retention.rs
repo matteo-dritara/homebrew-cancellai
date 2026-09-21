@@ -289,6 +289,11 @@ fn reachable_authority(
         protection,
         integrity,
         provider_trust,
+        // ADR-0034 disclosed residual: this scan-time classification has no live
+        // cancellai-guardian layout assessment to consult yet, so it states plainly that none
+        // has been performed rather than fabricating a "recognized" claim - see the ADR for why
+        // wiring a real one in is future orchestrator work, not this function's job.
+        provider_capability_ceiling: None,
     });
     (result.level, result.binding_constraints)
 }

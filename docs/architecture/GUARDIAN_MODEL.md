@@ -43,22 +43,40 @@ signatures always reach the identical verdict and ceiling
 Round 1 independent review found the ceiling computed above never actually reached anywhere: no
 caller connected `recommended_authority_ceiling` to `cancellai_safety::authority::
 compute_effective_authority` at all, so AC1's "automatically" was unmet in practice - a
-correctly-computed recommendation nobody consumed is not an automatic downgrade.
-`cancellai_guardian::capability_authority::effective_authority_after_layout_assessment` closes
-this: it takes an `AuthorityInputs` and a `LayoutDriftFinding` and returns the one real
-`EffectiveAuthority` result, via the new `cancellai_safety::effective_authority_for_provider_capability`
-(the ninth, previously-unwired constraint that function's own module doc names) - the same
-monotonic-minimum computation every other constraint already goes through, extended by one named
-input, not a second authority decision. An end-to-end test proves a destructive-capable input
-(every other constraint at its most permissive) still ends at `Observe` once a real
-`assess_layout` finding reports drift. `assess_layout`/`structural.rs` itself is unchanged: it
-still holds no reference to `cancellai-safety`, matching `pressure`/`forecast`/`baseline`'s own
-isolation - the bridge lives one level up, in `capability_authority`, specifically so this
-remains true. `cancellai-safety` remains the sole mutation executor (`docs/CONSTITUTION.md`:
-"route mutation through one safety boundary"), and no caller wires this bridge to a live provider
-adapter yet, matching E14-S01/S02/S03's own "primitive delivered, no orchestrator yet" precedent
-- that residual is about who *invokes* the now-real chain in production, not whether the chain
-itself functions.
+correctly-computed recommendation nobody consumed is not an automatic downgrade. The first repair
+wired it through a second, opt-in `cancellai_safety::effective_authority_for_provider_capability`
+function; round 2 found that bypassable two ways - the pre-existing, still-public plain
+`effective_authority` reached `Autopilot` on the identical inputs regardless, and
+`LayoutDriftFinding`'s public fields let a caller fabricate a fake `Recognized` result to discard
+a real drifted one.
+
+ADR-0034 replaced that shape rather than patching it. `provider_capability_ceiling` is now a
+**mandatory** field on `cancellai_safety::authority::AuthorityInputs`, consumed by the same
+`base_constraints` both `effective_authority` and `effective_authority_for_channel` share -
+`effective_authority_for_provider_capability` no longer exists, so there is no second, more
+permissive authority computation left to reach for. `LayoutDriftFinding`'s fields are private,
+with `assess_layout` as the only production constructor (a `compile_fail` doctest proves external
+construction is impossible) - a caller can no longer swap in a fabricated result. Together,
+`cancellai_guardian::capability_authority::effective_authority_after_layout_assessment` now does
+nothing but read `finding`'s ceiling through its accessor and call the one public
+`effective_authority`; a test asserts the bridge and a direct call to `effective_authority` with
+the identical resulting `AuthorityInputs` can only ever agree, since they are now the same
+function. An end-to-end test still proves a destructive-capable input (every other constraint at
+its most permissive) ends at `Observe` once a real `assess_layout` finding reports drift.
+`assess_layout`/`structural.rs` itself is unchanged in shape: it still holds no reference to
+`cancellai-safety`, matching `pressure`/`forecast`/`baseline`'s own isolation - the bridge lives
+one level up, in `capability_authority`, specifically so this remains true. `cancellai-safety`
+remains the sole mutation executor (`docs/CONSTITUTION.md`: "route mutation through one safety
+boundary").
+
+ADR-0034 discloses, rather than silently accepts, what this still does not close: no current
+production caller performs a live layout assessment before computing authority (Guardian's
+structural detection operates at the scope of a whole provider root, not the per-artifact scope
+`cancellai_policy::retention::reachable_authority` runs at, and no CLI call site wires a live
+probe in yet). A mandatory field makes discarding a real finding impossible; it cannot compel a
+caller that never obtained one to go get it - that live-wiring integration is future orchestrator
+work the ADR names explicitly, matching E14-S01/S02/S03's own "primitive delivered, no
+orchestrator yet" precedent.
 
 ### Decision
 

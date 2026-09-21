@@ -288,26 +288,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   MAD at a fraction of its own magnitude so it tolerates proportional noise instead of flagging
   every future wobble regardless of scale; NaN/infinite input is never admitted and always
   assesses as maximally anomalous. No caller wires this to a live store yet.
-- Added Guardian structural anomaly detection (E14-S04, CR2, SI-004,
-  `docs/architecture/GUARDIAN_MODEL.md` "Detection"): `cancellai_guardian::structural` names
-  session-count explosion, giant-artifact, and orphan-growth detection as thin wrappers over
-  `baseline::Baseline::assess`, and adds `assess_layout` for provider layout drift - a discrete
-  comparison of an opaque `LayoutSignature` against a closed set of recognized signatures,
-  returning `LayoutSupport::Recognized`/`Drifted` plus a `recommended_authority_ceiling:
+- Added Guardian structural anomaly detection (E14-S04, CR4 - raised from the declared CR2 by
+  `project/risk_floors.json`'s safety-kernel floor once the fix below landed inside
+  `rust/crates/cancellai-safety/src/authority.rs`, SI-004, `docs/architecture/GUARDIAN_MODEL.md`
+  "Detection"): `cancellai_guardian::structural` names session-count explosion, giant-artifact,
+  and orphan-growth detection as thin wrappers over `baseline::Baseline::assess`, and adds
+  `assess_layout` for provider layout drift - a discrete comparison of an opaque
+  `LayoutSignature` against a closed set of recognized signatures, returning
+  `LayoutSupport::Recognized`/`Drifted` plus a `recommended_authority_ceiling:
   Option<AuthorityLevel>` (`cancellai-model`'s existing vocabulary, no new crate dependency).
   `Drifted` always recommends `Some(AuthorityLevel::Observe)`, including when nothing is yet
   known or the observed layout carries no markers at all (AC1's automatic downgrade); a
   `provider_id` is threaded only into evidence text and never read by the comparison, so two
   calls differing only in provider name reach the identical verdict (SI-004: a recognized name
   cannot rescue a drifted layout). A recognized layout never reduces the ceiling.
+  `LayoutDriftFinding`'s fields are private with `assess_layout` as its only production
+  constructor (a `compile_fail` doctest proves external construction is impossible).
   `cancellai_guardian::capability_authority::effective_authority_after_layout_assessment` connects
-  that recommendation to a real `cancellai_safety::effective_authority_for_provider_capability`
-  computation (the ninth, previously-unwired Effective Authority constraint) - round 1 independent
-  review found the recommendation reached no actual authority computation anywhere, so AC1's
-  "automatically" was unmet in practice; an end-to-end test now proves a destructive-capable input
-  still ends at `Observe` under a real drift finding. `structural.rs` itself is unchanged and
-  still holds no reference to `cancellai-safety` - `cancellai-safety` remains the sole mutation
-  executor, and no caller wires this bridge to a live provider adapter yet.
+  a real finding to `cancellai_safety::authority::AuthorityInputs::provider_capability_ceiling` -
+  a **mandatory** field (ADR-0034), not an opt-in extra argument, consumed by the one public
+  `effective_authority` every existing caller already uses. Round 1 independent review found the
+  recommendation reached no authority computation at all; round 2 found the first fix (a second,
+  opt-in `effective_authority_for_provider_capability` function, since deleted) bypassable via
+  the still-public plain `effective_authority`. An end-to-end test proves a destructive-capable
+  input still ends at `Observe` under a real drift finding, and a further test proves the bridge
+  and a direct call to `effective_authority` can only ever agree, since they are now the same
+  function. `structural.rs` itself is unchanged in shape and still holds no reference to
+  `cancellai-safety`; ADR-0034 discloses that no current caller performs a live layout assessment
+  before computing authority as a residual for a future orchestrator story to close.
 
 ### Fixed
 

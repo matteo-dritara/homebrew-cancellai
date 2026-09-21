@@ -146,6 +146,7 @@ mod tests {
             protection,
             integrity: IntegrityState::Healthy,
             provider_trust: crate::trust::builtin_provider_trust(),
+            provider_capability_ceiling: None,
         });
         assert_eq!(
             result.level,

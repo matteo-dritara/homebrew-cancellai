@@ -29,10 +29,16 @@
 //!
 //! Round 1 independent review found that, before [`crate::capability_authority`] existed, this
 //! observation reached no actual authority computation anywhere - AC1's "automatically" was
-//! unmet in practice, not merely undemonstrated. [`crate::capability_authority::
-//! effective_authority_after_layout_assessment`] is where `recommended_authority_ceiling`
-//! actually reaches `cancellai_safety::effective_authority_for_provider_capability`; this module
-//! stays exactly as isolated from `cancellai-safety` as its own doc above already promises.
+//! unmet in practice, not merely undemonstrated. Round 2 then found the fix itself bypassable
+//! two ways: the bridge was a second, skippable function (closed in `cancellai-safety` by
+//! ADR-0034, which makes the capability ceiling a mandatory `AuthorityInputs` field instead),
+//! and [`LayoutDriftFinding`]'s fields were public, so any external caller could construct a
+//! fake `Recognized`/no-ceiling finding in place of a real drifted one. [`LayoutDriftFinding`]'s
+//! fields are now private - [`assess_layout`] is its only production constructor, mirroring
+//! `cancellai-safety::TrustedTier`'s identical defect and fix (that type's own module doc). This
+//! module still holds no reference to `cancellai-safety`, exactly as promised above;
+//! [`crate::capability_authority::effective_authority_after_layout_assessment`] is where a real
+//! finding actually reaches the mandatory field.
 
 use cancellai_model::AuthorityLevel;
 
@@ -129,11 +135,60 @@ pub enum LayoutSupport {
 /// The result of [`assess_layout`]: the support determination, human-readable evidence naming
 /// the concrete markers compared (AC2), and the authority ceiling this drift recommends
 /// (`SI-004`) - `None` only when the layout was [`LayoutSupport::Recognized`].
+///
+/// Fields are private and [`assess_layout`] is the only production constructor - E14 round 2
+/// independent review found the previous public-field version let any caller replace a real
+/// drifted finding with a fabricated `Recognized`/no-ceiling one immediately before it reached
+/// an authority computation. This doctest is the regression proving that no longer compiles:
+///
+/// ```compile_fail
+/// # use cancellai_guardian::structural::{LayoutDriftFinding, LayoutSupport};
+/// // LayoutDriftFinding's fields are private: no struct-literal construction from outside this
+/// // crate, so a caller cannot fabricate a "recognized, no ceiling" finding to stand in for a
+/// // real one - assess_layout is the only way to produce a value of this type.
+/// let forged = LayoutDriftFinding {
+///     support: LayoutSupport::Recognized,
+///     evidence: "fabricated".to_string(),
+///     recommended_authority_ceiling: None,
+/// };
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayoutDriftFinding {
-    pub support: LayoutSupport,
-    pub evidence: String,
-    pub recommended_authority_ceiling: Option<AuthorityLevel>,
+    support: LayoutSupport,
+    evidence: String,
+    recommended_authority_ceiling: Option<AuthorityLevel>,
+}
+
+impl LayoutDriftFinding {
+    pub fn support(&self) -> LayoutSupport {
+        self.support
+    }
+
+    pub fn evidence(&self) -> &str {
+        &self.evidence
+    }
+
+    pub fn recommended_authority_ceiling(&self) -> Option<AuthorityLevel> {
+        self.recommended_authority_ceiling
+    }
+
+    /// Constructs an arbitrary `LayoutDriftFinding` with no comparison performed at all -
+    /// visible only inside this crate (`pub(crate)`) and only compiled for tests, mirroring
+    /// `cancellai-safety::TrustedTier::for_tests` for the identical reason: it lets this crate's
+    /// own tests set up a fixture finding (e.g. a same-inputs baseline "as if recognized") without
+    /// giving any other crate a way to fabricate one.
+    #[cfg(test)]
+    pub(crate) fn for_tests(
+        support: LayoutSupport,
+        evidence: impl Into<String>,
+        recommended_authority_ceiling: Option<AuthorityLevel>,
+    ) -> Self {
+        LayoutDriftFinding {
+            support,
+            evidence: evidence.into(),
+            recommended_authority_ceiling,
+        }
+    }
 }
 
 /// A recognized layout never reduces the caller's own authority ceiling - this function returns
@@ -311,9 +366,9 @@ mod tests {
         ])];
         let observed = LayoutSignature::new(["config.json".to_string(), "sessions/".to_string()]);
         let finding = assess_layout("claude", &known, &observed);
-        assert_eq!(finding.support, LayoutSupport::Recognized);
-        assert_eq!(finding.recommended_authority_ceiling, None);
-        assert!(finding.evidence.contains("claude"));
+        assert_eq!(finding.support(), LayoutSupport::Recognized);
+        assert_eq!(finding.recommended_authority_ceiling(), None);
+        assert!(finding.evidence().contains("claude"));
     }
 
     #[test]
@@ -333,21 +388,21 @@ mod tests {
         ])];
         let observed = LayoutSignature::new(["totally_different_shape/".to_string()]);
         let finding = assess_layout("claude", &known, &observed);
-        assert_eq!(finding.support, LayoutSupport::Drifted);
+        assert_eq!(finding.support(), LayoutSupport::Drifted);
         assert_eq!(
-            finding.recommended_authority_ceiling,
+            finding.recommended_authority_ceiling(),
             Some(AuthorityLevel::Observe)
         );
-        assert!(finding.evidence.contains("totally_different_shape/"));
+        assert!(finding.evidence().contains("totally_different_shape/"));
     }
 
     #[test]
     fn empty_known_signatures_never_recognizes_anything() {
         let observed = LayoutSignature::new(["config.json".to_string()]);
         let finding = assess_layout("claude", &[], &observed);
-        assert_eq!(finding.support, LayoutSupport::Drifted);
+        assert_eq!(finding.support(), LayoutSupport::Drifted);
         assert_eq!(
-            finding.recommended_authority_ceiling,
+            finding.recommended_authority_ceiling(),
             Some(AuthorityLevel::Observe)
         );
     }
@@ -357,7 +412,7 @@ mod tests {
         let known = vec![LayoutSignature::new(Vec::<String>::new())];
         let observed = LayoutSignature::new(["config.json".to_string()]);
         let finding = assess_layout("claude", &known, &observed);
-        assert_eq!(finding.support, LayoutSupport::Drifted);
+        assert_eq!(finding.support(), LayoutSupport::Drifted);
     }
 
     /// SI-004: a recognized provider name never rescues a drifted layout. Two calls that differ
@@ -370,14 +425,14 @@ mod tests {
         let well_known = assess_layout("claude", &known, &observed);
         let unknown_name = assess_layout("some-unheard-of-provider-xyz", &known, &observed);
 
-        assert_eq!(well_known.support, unknown_name.support);
+        assert_eq!(well_known.support(), unknown_name.support());
         assert_eq!(
-            well_known.recommended_authority_ceiling,
-            unknown_name.recommended_authority_ceiling
+            well_known.recommended_authority_ceiling(),
+            unknown_name.recommended_authority_ceiling()
         );
-        assert_eq!(well_known.support, LayoutSupport::Drifted);
+        assert_eq!(well_known.support(), LayoutSupport::Drifted);
         assert_eq!(
-            well_known.recommended_authority_ceiling,
+            well_known.recommended_authority_ceiling(),
             Some(AuthorityLevel::Observe)
         );
     }
@@ -392,11 +447,11 @@ mod tests {
         let well_known = assess_layout("claude", &known, &observed);
         let unknown_name = assess_layout("some-unheard-of-provider-xyz", &known, &observed);
 
-        assert_eq!(well_known.support, unknown_name.support);
+        assert_eq!(well_known.support(), unknown_name.support());
         assert_eq!(
-            well_known.recommended_authority_ceiling,
-            unknown_name.recommended_authority_ceiling
+            well_known.recommended_authority_ceiling(),
+            unknown_name.recommended_authority_ceiling()
         );
-        assert_eq!(well_known.support, LayoutSupport::Recognized);
+        assert_eq!(well_known.support(), LayoutSupport::Recognized);
     }
 }

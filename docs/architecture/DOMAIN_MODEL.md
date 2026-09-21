@@ -313,11 +313,15 @@ opaque wrapper around `cancellai_model::ProviderTrust`, `docs/PROVIDERS.md` "Tru
 SI-021) - see [`PROVIDER_MODEL.md`](PROVIDER_MODEL.md) "Trust chain" for the full account,
 including `TrustedTier::promote`, the sole gate that can raise a trust tier, and the E05
 verifier round 1 repair that made `AuthorityInputs::provider_trust` require this opaque type
-rather than accepting a bare, externally-constructible `ProviderTrust` directly. `Reversibility`
-authority, `ProviderCapabilityAuthority`, and
-`ReleaseChannelAuthority` are not wired in yet - no capability-classification or
-release-channel subsystem exists to supply them - and adding them later is a matter of
-supplying more named constraints to the same generic function, not a redesign.
+rather than accepting a bare, externally-constructible `ProviderTrust` directly.
+`ProviderCapabilityAuthority` joins these in E14-S04/ADR-0034, as a **mandatory**
+`AuthorityInputs::provider_capability_ceiling` field (not an opt-in extra constraint like
+`ReleaseChannelAuthority` below) - `cancellai_guardian::structural::LayoutDriftFinding`'s
+recommendation, whose fields are private with `assess_layout` as its only production
+constructor, mirroring `TrustedTier`'s own unforgeability. `ReversibilityAuthority` and
+`ReleaseChannelAuthority` are not wired into the plain `effective_authority` (the latter is
+available opt-in via `effective_authority_for_channel`) - adding a constraint like this is a
+matter of supplying more named constraints to the same generic function, not a redesign.
 
 ## Action
 

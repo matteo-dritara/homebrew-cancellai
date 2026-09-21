@@ -71,7 +71,7 @@ Decision: implemented without adding any new crate dependency.
 
 | AC | Evidence | Result |
 | --- | --- | --- |
-| AC1 - "Layout drift can downgrade provider capabilities automatically." | `assess_layout` computes `recommended_authority_ceiling` deterministically from the signature comparison alone with no manual step: `unrecognized_layout_reduces_ceiling_to_observe` (drifted -> `Some(Observe)`), `empty_known_signatures_never_recognizes_anything` (nothing yet known -> drifted, still reduced), `empty_observed_markers_is_drift_not_a_vacuous_match` (no markers observed -> drifted, not vacuously recognized), `recognized_layout_does_not_reduce_ceiling` (exact match -> `None`). Round 1 found this recommendation reached no actual authority computation anywhere - "automatically" was unmet in practice. **Fix:** new module `cancellai_guardian::capability_authority::effective_authority_after_layout_assessment` routes `recommended_authority_ceiling` into the new `cancellai_safety::effective_authority_for_provider_capability` (the ninth, previously-unwired Effective Authority constraint). `e14s04_end_to_end_a_destructive_capable_input_ends_at_observe_under_real_layout_drift` proves a real `assess_layout` drift finding, combined with `AuthorityInputs` that are destructive-capable on every other constraint, resolves to `AuthorityLevel::Observe` with `provider_capability_authority` as the binding constraint. | PASS |
+| AC1 - "Layout drift can downgrade provider capabilities automatically." | `assess_layout` computes `recommended_authority_ceiling` deterministically from the signature comparison alone with no manual step: `unrecognized_layout_reduces_ceiling_to_observe` (drifted -> `Some(Observe)`), `empty_known_signatures_never_recognizes_anything` (nothing yet known -> drifted, still reduced), `empty_observed_markers_is_drift_not_a_vacuous_match` (no markers observed -> drifted, not vacuously recognized), `recognized_layout_does_not_reduce_ceiling` (exact match -> `None`). Round 1 found this recommendation reached no actual authority computation anywhere; round 2 found the round-1 fix (a second, opt-in function) bypassable via the still-public plain `effective_authority`, and `LayoutDriftFinding`'s public fields forgeable. **Fix (ADR-0034):** `cancellai_safety::authority::AuthorityInputs` gained a *mandatory* `provider_capability_ceiling` field consumed by the one `effective_authority` every caller uses (`effective_authority_for_provider_capability` deleted); `LayoutDriftFinding`'s fields are private with `assess_layout` as its only production constructor (`compile_fail` doctest). `e14s04_end_to_end_a_destructive_capable_input_ends_at_observe_under_real_layout_drift` still proves a real `assess_layout` drift finding, combined with `AuthorityInputs` destructive-capable on every other constraint, resolves to `AuthorityLevel::Observe`; `e14s04_adr0034_the_bridge_and_a_direct_call_to_effective_authority_can_only_ever_agree` (guardian) and `e14s04_adr0034_the_plain_public_effective_authority_cannot_be_used_to_bypass_a_drifted_ceiling` (safety) prove round 2's own counterexample no longer reproduces. | PASS |
 | AC2 - "Structural signals reference concrete observed evidence." | Every `StructuralFinding` carries the full `AnomalyAssessment` (observed value, baseline median/MAD, deviation) via `session_explosion_is_flagged_with_observed_count_in_evidence`, `giant_artifact_is_flagged_with_observed_size_in_evidence`; every `LayoutDriftFinding.evidence` names the concrete compared markers (asserted via `evidence.contains(...)` in `recognized_layout_does_not_reduce_ceiling` and `unrecognized_layout_reduces_ceiling_to_observe`) - never an opaque score/boolean. | PASS |
 
 ## Verification Contract Evidence
@@ -98,6 +98,8 @@ Falsification axes worked before implementation (`adversarial-cases` skill):
 | domain-specific (not one of the eleven) | Recognized-layout case gets a `None` ceiling, never a "no-op" sentinel a future edit could confuse with a real reduced value | `RECOGNIZED_CEILING`/`RECOGNIZED_CEILING` is a named `None` constant, distinct in the diff from `DRIFTED_CEILING`'s `Some(Observe)` | `recognized_layout_does_not_reduce_ceiling` |
 | second-path (round 1 repair) | An `AuthorityInputs` destructive-capable on every one of the six base constraints (`Autopilot` user/artifact, verified confidence, idle/normal/healthy lifecycle, real `TrustedTier::promote`d to `BuiltinVerified`), combined with a real drifted `LayoutDriftFinding` | Resolves to `AuthorityLevel::Observe`, attributed to `provider_capability_authority` - and a `None`-ceiling baseline with the identical inputs reaches `Autopilot`, proving the test is not vacuous | `e14s04_end_to_end_a_destructive_capable_input_ends_at_observe_under_real_layout_drift` |
 | 8 (round 1 repair) | The same destructive-capable input, with both a well-known and an unheard-of `provider_id` producing the identical drifted layout | Both end at `Observe` - the provider name does not bypass the ceiling at the authority-computation layer either, not only inside `assess_layout` itself | `e14s04_a_recognized_provider_name_does_not_bypass_the_drift_verdict` |
+| second-path (round 2 repair, ADR-0034) | A caller that reaches for the pre-existing, still-public plain `effective_authority` directly, holding a real drifted ceiling in `AuthorityInputs` - round 2's own exploit | Reaches `Observe`, not `Autopilot`: there is no more permissive computation to reach for once the field is mandatory | `e14s04_adr0034_the_plain_public_effective_authority_cannot_be_used_to_bypass_a_drifted_ceiling` (safety), `e14s04_adr0034_the_bridge_and_a_direct_call_to_effective_authority_can_only_ever_agree` (guardian) |
+| 10 (round 2 repair, ADR-0034) | A caller constructs `LayoutDriftFinding { support: Recognized, recommended_authority_ceiling: None, .. }` directly, in place of a real drifted finding - round 2's own exploit | Does not compile from outside `cancellai-guardian`: `LayoutDriftFinding`'s fields are private and `assess_layout` is the only production constructor | `compile_fail` doctest on `LayoutDriftFinding` (`structural.rs`) |
 
 ## Safety Evidence
 
@@ -176,13 +178,76 @@ Repair, in two crates:
    `cancellai-safety`), resolves to `AuthorityLevel::Observe`; and a well-known provider name does
    not bypass this at the authority-computation layer either.
 
+## Repair - round 2 independent review finding
+
+Codex's round-2 review (`project/evidence/E14-VERIFIER-REVIEW-ROUND2.md`) FAILed AC1 again, on a
+different defect: `effective_authority_for_provider_capability` was correct in isolation, but a
+real `assess_layout` drift finding fed through it to `Observe`, while the identical
+`AuthorityInputs`, unchanged, still reached `Autopilot` through the pre-existing, equally public
+plain `effective_authority` - nothing forced a caller to prefer the capability-aware function.
+`LayoutDriftFinding`'s public fields compounded this: the reviewer's own reproduction constructed
+`LayoutDriftFinding { support: Recognized, evidence: ..., recommended_authority_ceiling: None }`
+directly, in place of a real drifted finding, and the bridge accepted it without complaint. The
+review named this the second failure of the same approach (round 1: no consumer; round 2:
+optional/bypassable consumer) and, per the owner's two-round limit, blocked the story rather than
+authorizing a third patch attempt: an owner-level ADR/scope decision was required first.
+
+The owner authorized developing that alternative solution immediately (not blocking on a future
+session), specifically along the lines of "a mandatory, non-forgeable authority-construction
+boundary, analogous to `TrustedTier`, with existing public APIs restricted/migrated" - recorded as
+[ADR-0034](../../../docs/adrs/0034-provider-capability-authority-is-a-mandatory-authorityinputs-field.md).
+Repair, replacing round 1's fix rather than patching it:
+
+1. `cancellai_safety::authority::AuthorityInputs` gained a **mandatory**
+   `provider_capability_ceiling: Option<AuthorityLevel>` field, consumed inside `base_constraints`
+   - the function `effective_authority` and `effective_authority_for_channel` already share.
+   `effective_authority_for_provider_capability` was deleted outright: there is no longer a
+   second, more permissive authority computation next to `effective_authority` for a caller to
+   reach for. `None` (no assessment performed, or a recognized layout) is a safe, honest default
+   that adds no constraint, so no pre-existing caller's already-verified scenario changed; every
+   `AuthorityInputs` literal in the workspace (the compiler enforced finding every one of them)
+   now states a value for this field.
+2. `cancellai_guardian::structural::LayoutDriftFinding`'s fields became private, with
+   `assess_layout` as the only production constructor and a `#[cfg(test)] pub(crate) for_tests`
+   escape hatch for this crate's own fixtures - mirroring `cancellai-safety::TrustedTier`'s
+   identical defect-and-fix shape exactly (that type's own module doc names the same "existing
+   and working correctly is not the same as being the *only* path" lesson). A `compile_fail`
+   doctest proves an external crate cannot construct a `LayoutDriftFinding` at all, let alone a
+   fabricated `Recognized`/`None` one.
+3. `capability_authority::effective_authority_after_layout_assessment` now does nothing but read
+   `finding`'s ceiling through its accessor and call the one public `effective_authority` - a new
+   test (`e14s04_adr0034_the_bridge_and_a_direct_call_to_effective_authority_can_only_ever_agree`)
+   asserts the bridge and a direct call to `effective_authority` with the identical resulting
+   `AuthorityInputs` produce the exact same `EffectiveAuthority`, since they are now the same
+   function; a matching `authority.rs` test
+   (`e14s04_adr0034_the_plain_public_effective_authority_cannot_be_used_to_bypass_a_drifted_ceiling`)
+   reproduces round 2's own counterexample and proves it is now closed.
+4. The two real, non-test production call sites of `AuthorityInputs { .. }` outside
+   `cancellai-safety` itself (`cancellai_policy::resolver`'s caller-supplied inputs construction
+   site, and `cancellai_policy::retention::reachable_authority`) now state
+   `provider_capability_ceiling: None` explicitly, each with a comment pointing at ADR-0034's
+   disclosed residual rather than silently omitting the concept.
+
+ADR-0034 discloses, rather than closes, the residual round 2 did not ask this story to close: no
+current production caller performs a live layout assessment before computing authority at all
+(Guardian's structural detection operates at provider-root scope, not the per-artifact scope
+`reachable_authority` runs at). A mandatory field makes discarding a real finding impossible; it
+cannot compel a caller that never obtained one to go get it - see the ADR's own "Disclosed
+residual" section and Residual risks below.
+
 ## Documentation updated
 
-- `docs/architecture/GUARDIAN_MODEL.md` - "Detection" section rewritten for the round-1 repair
-  (the `capability_authority` bridge and what AC1's "automatically" now actually means).
-- `rust/crates/cancellai-safety/src/authority.rs`'s own module doc updated: `ProviderCapabilityAuthority`
-  is no longer documented as unwired.
-- `CHANGELOG.md` - `Unreleased`/`Added` entries for E14-S02 and E14-S04 updated for both repairs.
+- `docs/architecture/GUARDIAN_MODEL.md` - "Detection" section rewritten twice: for the round-1
+  repair (the `capability_authority` bridge and what AC1's "automatically" first meant), then for
+  the round-2/ADR-0034 repair (the mandatory field, the private `LayoutDriftFinding`, and the
+  disclosed residual).
+- `docs/architecture/DOMAIN_MODEL.md` - "Effective Authority" section corrected:
+  `ProviderCapabilityAuthority` is no longer listed as "not wired in yet."
+- `rust/crates/cancellai-safety/src/authority.rs`'s own module doc rewritten for ADR-0034 (the
+  mandatory-field rationale, contrasted with `effective_authority_for_channel`'s opt-in shape).
+- `docs/adrs/0034-provider-capability-authority-is-a-mandatory-authorityinputs-field.md` - new.
+- `CHANGELOG.md` - `Unreleased`/`Added` entry for E14-S04 rewritten for the round-2/ADR-0034
+  repair (CR2 -> CR4).
 
 ## Method defects
 
@@ -192,11 +257,16 @@ Repair, in two crates:
 
 - No orchestrator calls `capability_authority::effective_authority_after_layout_assessment` from
   a live `cancellai-store` scan or a real provider adapter yet - a later story's scope, matching
-  every other primitive delivered in E12/E13/E14-S01/S02/S03. Unlike before the round-1 repair,
-  this is now honestly a residual about who *invokes* an already-real, already-end-to-end-tested
-  chain, not a stand-in for the chain not existing: round 1 found the latter framing was actually
-  masking AC1 being unmet, since the recommendation reached no computation to invoke in the first
-  place.
+  every other primitive delivered in E12/E13/E14-S01/S02/S03. This is a residual about who
+  *invokes* an already-real, already-end-to-end-tested, now-mandatory-when-invoked chain, not a
+  stand-in for the chain not existing or being skippable once invoked: round 1 found the chain
+  didn't reach a computation at all, round 2 found the computation it reached was skippable, and
+  ADR-0034 closes the second problem while explicitly disclosing that the first is not fully
+  closed either - no current production caller (`resolve_effective_authority`'s caller,
+  `reachable_authority`) performs a live layout assessment before computing authority, so both
+  state `provider_capability_ceiling: None` honestly rather than fabricating a "recognized" claim.
+  A future orchestrator story wiring a live probe into a real authority-resolution call site is
+  what actually closes this, per the ADR's own "Disclosed residual" section.
 - `assess_layout`'s two-state model (`Recognized`/`Drifted`) does not reproduce
   `cancellai-provider-api::capability::SupportState`'s full six-state vocabulary
   (`Verified`/`SupportedObserved`/`Unsupported`/`UnknownVersion`/`LayoutDrift`/`ErrorPartial`) -
@@ -215,5 +285,6 @@ Repair, in two crates:
 
 ## Verifier verdict
 
-Round 1: **FAIL** (Codex) - `project/evidence/E14-VERIFIER-REVIEW.md`. Repaired above; round 2
-pending.
+Round 1: **FAIL** (Codex) - `project/evidence/E14-VERIFIER-REVIEW.md`. Repaired above.
+Round 2: **FAIL** (Codex) - `project/evidence/E14-VERIFIER-REVIEW-ROUND2.md`; blocked pending an
+owner-level ADR per the two-round limit. Repaired above via ADR-0034; round 3 pending.

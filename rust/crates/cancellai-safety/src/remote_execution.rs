@@ -827,6 +827,7 @@ mod tests {
             protection: ProtectionState::Normal,
             integrity: IntegrityState::Healthy,
             provider_trust: TrustedTier::untrusted(),
+            provider_capability_ceiling: None,
         };
 
         let from_remote = effective_authority(shared_inputs(minimum_authority_for(
@@ -874,6 +875,7 @@ mod tests {
             protection: ProtectionState::Normal,
             integrity: IntegrityState::Healthy,
             provider_trust: TrustedTier::untrusted(),
+            provider_capability_ceiling: None,
         };
 
         // Untrusted provider_trust caps the result at Observe (provider_trust_ceiling) - the

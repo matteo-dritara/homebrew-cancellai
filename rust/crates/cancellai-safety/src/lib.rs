@@ -47,7 +47,6 @@ pub mod trust_promotion;
 pub use authority::{
     AuthorityConstraint, AuthorityInputs, EffectiveAuthority, compute_effective_authority,
     effective_authority, effective_authority_for_channel,
-    effective_authority_for_provider_capability,
 };
 pub use build_channel::BuildChannel;
 pub use knowledge_bundle::{

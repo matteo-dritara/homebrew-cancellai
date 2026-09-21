@@ -79,15 +79,15 @@
     {
       "id": "E14-S04",
       "title": "Structural anomaly detection",
-      "status": "blocked",
-      "blocked_by": {
-        "summary": "Round-2 independent review reproduced that the new provider-capability authority function is optional: the same public AuthorityInputs reach Autopilot through the pre-existing public effective_authority API after a real layout-drift finding reaches Observe through the new bridge. LayoutDriftFinding's public fields and the public compute_effective_authority API provide further ways to discard or omit the cap. This is the second failure of the current approach (round 1: no consumer; round 2: optional/bypassable consumer). Per the owner's two-round limit, no third patch-and-repeat round is authorized. An owner-level ADR/scope decision must define a mandatory, non-forgeable provider-capability authority boundary and a new work item must own its implementation.",
-        "argument": "project/evidence/E14-VERIFIER-REVIEW-ROUND2.md",
-        "recorded": "2026-09-21"
-      },
+      "status": "ready_for_review",
       "outcome": "Detect session explosion, unexpected giant files, orphan growth, and provider layout drift.",
       "change_risk": "CR4",
       "risk_reclassification_note": "Declared CR2 at planning time; raised to CR4 at commit time (round-1 repair) because the change adds ProviderCapabilityAuthority as the ninth wired constraint in rust/crates/cancellai-safety/src/authority.rs - the CR4-floor safety-kernel path (project/risk_floors.json: 'rust/crates/cancellai-safety/src/*') - and a matching cancellai-guardian bridge that reaches it. The addition is opt-in/additive (a new function, not a change to an existing caller's behavior) but it is still an authority-boundary decision, matching this project's own precedent (E12-S03) for raising a declared level once a change actually lands inside the one mutation/authority-boundary seam rather than merely calling it.",
+      "repair_history": [
+        "Round 1 (project/evidence/E14-VERIFIER-REVIEW.md): the layout-drift recommendation reached no authority consumer at all. Fixed by wiring it into cancellai_safety::effective_authority_for_provider_capability via cancellai_guardian::capability_authority.",
+        "Round 2 (project/evidence/E14-VERIFIER-REVIEW-ROUND2.md): that fix was a second, optional function next to the pre-existing public effective_authority, and LayoutDriftFinding's public fields let a caller fabricate a fake 'recognized' result. Per the owner's two-round limit, blocked pending an owner-level ADR rather than a third patch attempt.",
+        "ADR-0034 (owner decision): provider_capability_ceiling is now a mandatory AuthorityInputs field (effective_authority_for_provider_capability deleted; the one effective_authority enforces it for every caller), and LayoutDriftFinding's fields are private with assess_layout as its only production constructor (compile_fail doctest proves external construction is impossible). Moved back to ready_for_review for a fresh review round against this design; see the ADR for the disclosed residual it leaves open."
+      ],
       "dependencies": [
         "E05-S05",
         "E14-S01"
