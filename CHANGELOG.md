@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- v1.15.1's tagged release workflow failed too, once the Windows tempdir-cleanup fix cleared
+  `verify-rust`: `tests/test_release.py::ReleaseConsistencyTests::
+  test_the_formula_never_lags_by_more_than_the_in_flight_window` hardcoded the legitimate
+  in-flight formula target as `{cut[0], cut[1]}` - the two most recent changelog entries - which
+  does not hold once a failed, unpublished release (v1.15.0) sits between two valid ones.
+  `release.py`'s own `formula_should_point_at` already correctly skips past an unpublished
+  version; the test now delegates to it directly instead of re-deriving a narrower version of the
+  same rule by hand.
+
 ## [1.15.1] - 2026-09-21
 
 ### Fixed
