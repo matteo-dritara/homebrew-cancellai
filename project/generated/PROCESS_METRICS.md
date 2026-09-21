@@ -49,6 +49,7 @@ distinguished by the next round, which is why the ceiling matters.
 | E14 | 1 | independent | 4 | 2 | 2 | 50% |
 | E14 | 2 | independent | 2 | 1 | 1 | 50% |
 | E14 | 3 | independent | 1 | 1 | 1 | 100% |
+| E14 | 4 | independent | 1 | 1 | 1 | 100% |
 | E16 | 1 | independent | 6 | 0 | 0 | 0% |
 | E17 | 1 | independent | 6 | 0 | 0 | 0% |
 | E18 | 1 | independent | 3 | 2 | 2 | 67% |
@@ -102,7 +103,7 @@ independent samples, and the population estimate collapses to what one round alr
 
 ## Evidence-ledger integrity
 
-- **143 of 158** story packets past `ready_for_review` carry a row per acceptance criterion.
+- **142 of 157** story packets past `ready_for_review` carry a row per acceptance criterion.
 - Packets that do not:
   - E00-S01 (CR4): 0 rows for 3 criteria
   - E00-S02 (CR4): 0 rows for 3 criteria
