@@ -6,7 +6,7 @@
 - Commit: recorded by the release workflow at the tag
 - Channel: stable
 - Date: 2026-09-21
-- Published: pending
+- Published: no - verify-rust passed (the store-handle Windows fix worked), but the verify job's pytest failed: tests/test_release.py::ReleaseConsistencyTests::test_the_formula_never_lags_by_more_than_the_in_flight_window hardcoded the in-flight formula target as {cut[0], cut[1]}, which does not hold once a failed/unpublished release (v1.15.0) sits between two valid ones and formula_should_point_at correctly skips past it to v1.14.0 (run 35584808497); repaired by making the test call formula_should_point_at itself instead of hardcoding the two-release assumption
 
 ## Included work
 

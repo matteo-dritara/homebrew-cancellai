@@ -18,12 +18,17 @@ class ReleaseConsistencyTests(unittest.TestCase):
 
     def test_the_formula_never_lags_by_more_than_the_in_flight_window(self) -> None:
         # Between `prepare` and `finalize` the formula legitimately points at the previous
-        # release, because the archive checksum cannot exist before the tag does. Anything
-        # further behind, or ahead, means shipping a build nobody verified.
+        # *published* release, because the archive checksum cannot exist before the tag does -
+        # not necessarily cut[1]: a version cut and never published (release.outcome --state no)
+        # is never a valid target either, and formula_should_point_at skips past it the same way
+        # release.py check does. Anything else means shipping a build nobody verified.
         versions = release.current_versions()
         cut = release.released_versions()
         self.assertEqual(versions.source, cut[0])
-        self.assertIn(versions.formula, {cut[0], cut[1]})
+        if versions.formula == versions.source:
+            return  # fully finalized; nothing in flight
+        expected = release.formula_should_point_at(versions.source, cut, release.release_outcomes())
+        self.assertEqual(versions.formula, expected)
 
     def test_a_closed_epic_is_at_least_a_minor_release(self) -> None:
         # An epic changes what the tool is willing to do; that is never a patch.
