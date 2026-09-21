@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.15.0] - 2026-09-21
+
 ### Added
 
 - Defined the declarative policy document schema v1 (E11-S01, CR3 - raised from the declared

@@ -1283,7 +1283,7 @@ Compile human-readable policy into typed constraints and a fully explainable Eff
 
 ## E12 - Quarantine, Archive, Restore, Purge
 
-**Phase:** `P3` | **Status:** `in_progress` | **Epic dependencies:** E11
+**Phase:** `P3` | **Status:** `done` | **Epic dependencies:** E11
 
 Introduce reversible lifecycle operations before expanding autonomy.
 
@@ -1367,7 +1367,7 @@ Introduce reversible lifecycle operations before expanding autonomy.
 
 ## E13 - Local State, Event Ledger, Analytical Memory
 
-**Phase:** `P3` | **Status:** `in_progress` | **Epic dependencies:** E11
+**Phase:** `P3` | **Status:** `done` | **Epic dependencies:** E11
 
 Persist only bounded metadata required for lifecycle, audit, undo, and Guardian intelligence.
 
