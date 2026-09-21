@@ -293,7 +293,7 @@ fn reachable_authority(
         // cancellai-guardian layout assessment to consult yet, so it states plainly that none
         // has been performed rather than fabricating a "recognized" claim - see the ADR for why
         // wiring a real one in is future orchestrator work, not this function's job.
-        provider_capability_ceiling: None,
+        provider_layout: cancellai_safety::ProviderLayoutAssessment::NotAssessed,
     });
     (result.level, result.binding_constraints)
 }

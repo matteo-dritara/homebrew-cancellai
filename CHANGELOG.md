@@ -295,27 +295,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and orphan-growth detection as thin wrappers over `baseline::Baseline::assess`, and adds
   `assess_layout` for provider layout drift - a discrete comparison of an opaque
   `LayoutSignature` against a closed set of recognized signatures, returning
-  `LayoutSupport::Recognized`/`Drifted` plus a `recommended_authority_ceiling:
-  Option<AuthorityLevel>` (`cancellai-model`'s existing vocabulary, no new crate dependency).
-  `Drifted` always recommends `Some(AuthorityLevel::Observe)`, including when nothing is yet
-  known or the observed layout carries no markers at all (AC1's automatic downgrade); a
-  `provider_id` is threaded only into evidence text and never read by the comparison, so two
-  calls differing only in provider name reach the identical verdict (SI-004: a recognized name
-  cannot rescue a drifted layout). A recognized layout never reduces the ceiling.
-  `LayoutDriftFinding`'s fields are private with `assess_layout` as its only production
+  `LayoutSupport::Recognized`/`Drifted` (`cancellai-model`'s existing vocabulary, no new crate
+  dependency, and - after ADR-0035 - no authority ceiling at all: see below). A `provider_id` is
+  threaded only into evidence text and never read by the comparison, so two calls differing only
+  in provider name reach the identical verdict (SI-004: a recognized name cannot rescue a drifted
+  layout). `LayoutDriftFinding`'s fields are private with `assess_layout` as its only production
   constructor (a `compile_fail` doctest proves external construction is impossible).
-  `cancellai_guardian::capability_authority::effective_authority_after_layout_assessment` connects
-  a real finding to `cancellai_safety::authority::AuthorityInputs::provider_capability_ceiling` -
-  a **mandatory** field (ADR-0034), not an opt-in extra argument, consumed by the one public
-  `effective_authority` every existing caller already uses. Round 1 independent review found the
-  recommendation reached no authority computation at all; round 2 found the first fix (a second,
-  opt-in `effective_authority_for_provider_capability` function, since deleted) bypassable via
-  the still-public plain `effective_authority`. An end-to-end test proves a destructive-capable
-  input still ends at `Observe` under a real drift finding, and a further test proves the bridge
-  and a direct call to `effective_authority` can only ever agree, since they are now the same
-  function. `structural.rs` itself is unchanged in shape and still holds no reference to
-  `cancellai-safety`; ADR-0034 discloses that no current caller performs a live layout assessment
-  before computing authority as a residual for a future orchestrator story to close.
+  `cancellai_safety::authority::AuthorityInputs::provider_layout` - a **mandatory** field
+  (ADR-0034, ADR-0035) - carries the raw `known_signatures`/`observed` facts themselves, never a
+  pre-computed ceiling; `base_constraints` derives whatever constraint they imply itself, the
+  identical comparison `assess_layout` performs. `cancellai_guardian::capability_authority::
+  authority_inputs_with_layout_observation` converts this crate's own `LayoutSignature` into
+  `cancellai-safety`'s structurally identical, separate type of the same name and sets the field;
+  it computes no ceiling either. Three independent review rounds found three successive ways an
+  earlier shape failed to actually, unavoidably reduce authority: round 1, an unconsumed
+  recommendation; round 2, a skippable opt-in `effective_authority_for_provider_capability`
+  function (since deleted); round 3 (against ADR-0034's mandatory `Option<AuthorityLevel>`
+  ceiling field), a caller-asserted conclusion disconnected from the facts it claimed to
+  summarize, discardable while the real finding was still held. ADR-0035 removes the ceiling as
+  an independent value entirely. An end-to-end test proves `assess_layout`'s own detection output
+  and feeding the identical raw signatures into a real effective-authority computation agree: a
+  destructive-capable input still ends at `Observe` under real drift. `structural.rs` itself
+  still holds no reference to `cancellai-safety`, more literally than before (it can no longer
+  produce an authority-typed value at all); ADR-0035 discloses, narrower than ADR-0034 but not
+  closed, that no current caller constructs a real observation at all, as a residual for a future
+  orchestrator story to close.
 
 ### Fixed
 

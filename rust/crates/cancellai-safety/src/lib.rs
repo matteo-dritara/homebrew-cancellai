@@ -39,6 +39,7 @@ pub mod authority;
 pub mod build_channel;
 pub mod knowledge_bundle;
 pub mod mutation_executor;
+pub mod provider_layout;
 pub mod remote_execution;
 pub mod root_capability;
 pub mod sealed_plan;
@@ -55,6 +56,7 @@ pub use knowledge_bundle::{
     verify_bundle,
 };
 pub use mutation_executor::{ActionResult, execute, execute_all, execute_with_system_capabilities};
+pub use provider_layout::{LayoutSignature, ProviderLayoutAssessment};
 pub use remote_execution::{
     RemoteExecutionError, RemoteExecutionLog, RemoteExecutionRequest, TrustedRemoteController,
     TrustedRemoteControllers, VerifiedRemoteIntent, parse_request,

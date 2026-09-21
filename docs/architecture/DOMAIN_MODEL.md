@@ -314,11 +314,14 @@ SI-021) - see [`PROVIDER_MODEL.md`](PROVIDER_MODEL.md) "Trust chain" for the ful
 including `TrustedTier::promote`, the sole gate that can raise a trust tier, and the E05
 verifier round 1 repair that made `AuthorityInputs::provider_trust` require this opaque type
 rather than accepting a bare, externally-constructible `ProviderTrust` directly.
-`ProviderCapabilityAuthority` joins these in E14-S04/ADR-0034, as a **mandatory**
-`AuthorityInputs::provider_capability_ceiling` field (not an opt-in extra constraint like
-`ReleaseChannelAuthority` below) - `cancellai_guardian::structural::LayoutDriftFinding`'s
-recommendation, whose fields are private with `assess_layout` as its only production
-constructor, mirroring `TrustedTier`'s own unforgeability. `ReversibilityAuthority` and
+`ProviderCapabilityAuthority` joins these in E14-S04/ADR-0034/ADR-0035, as a **mandatory**
+`AuthorityInputs::provider_layout` field (not an opt-in extra constraint like
+`ReleaseChannelAuthority` below) carrying the raw observed/known `LayoutSignature` facts
+themselves, not a pre-computed ceiling (ADR-0035: a caller-supplied ceiling was found
+discardable independently of the facts it claimed to summarize) - `base_constraints` derives the
+constraint from those facts directly, the same comparison
+`cancellai_guardian::structural::assess_layout` performs for its own detection report.
+`ReversibilityAuthority` and
 `ReleaseChannelAuthority` are not wired into the plain `effective_authority` (the latter is
 available opt-in via `effective_authority_for_channel`) - adding a constraint like this is a
 matter of supplying more named constraints to the same generic function, not a redesign.

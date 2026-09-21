@@ -15,32 +15,26 @@
 //! Layout drift is different in kind from the other three: it is a discrete match/mismatch
 //! against a closed set of previously recognized structural signatures, not a continuous
 //! numeric deviation, so it gets its own comparison in [`assess_layout`] rather than reusing
-//! [`crate::baseline::Baseline`]. `SI-004` ("Provider/version/layout drift cannot preserve
-//! destructive capabilities merely because the provider name is recognized") is discharged by
-//! construction: [`assess_layout`]'s decision is a pure function of `known_signatures` and
-//! `observed` alone - `provider_id` is carried only as an opaque evidence label threaded into
-//! the returned finding's `evidence` string, and no branch anywhere in this module reads it.
-//! `recommended_authority_ceiling` is exactly that - a recommendation carried as
-//! `cancellai_model::AuthorityLevel`, this crate's existing kernel-vocabulary dependency,
-//! evaluated automatically from the observed signature (AC1's "automatically") but never
-//! applied or executed by this module. `cancellai-safety` remains the sole executor
-//! (`docs/CONSTITUTION.md`: "All ... route mutation through one safety boundary"); nothing here
-//! is a second path to that decision, only an unapplied observation feeding it.
+//! [`crate::baseline::Baseline`]. [`assess_layout`]'s decision is a pure function of
+//! `known_signatures` and `observed` alone - `provider_id` is carried only as an opaque evidence
+//! label threaded into the returned finding's `evidence` string, and no branch anywhere in this
+//! module reads it.
 //!
-//! Round 1 independent review found that, before [`crate::capability_authority`] existed, this
-//! observation reached no actual authority computation anywhere - AC1's "automatically" was
-//! unmet in practice, not merely undemonstrated. Round 2 then found the fix itself bypassable
-//! two ways: the bridge was a second, skippable function (closed in `cancellai-safety` by
-//! ADR-0034, which makes the capability ceiling a mandatory `AuthorityInputs` field instead),
-//! and [`LayoutDriftFinding`]'s fields were public, so any external caller could construct a
-//! fake `Recognized`/no-ceiling finding in place of a real drifted one. [`LayoutDriftFinding`]'s
-//! fields are now private - [`assess_layout`] is its only production constructor, mirroring
-//! `cancellai-safety::TrustedTier`'s identical defect and fix (that type's own module doc). This
-//! module still holds no reference to `cancellai-safety`, exactly as promised above;
-//! [`crate::capability_authority::effective_authority_after_layout_assessment`] is where a real
-//! finding actually reaches the mandatory field.
-
-use cancellai_model::AuthorityLevel;
+//! **This module computes no authority ceiling at all (ADR-0035) - it never has held one that
+//! mattered.** Rounds 1-3 of independent review found three successive ways a Guardian-computed
+//! ceiling failed to actually, unavoidably reduce authority: unconsumed (round 1), consumed by a
+//! skippable second function (round 2), and consumed by a mandatory-but-caller-discardable field
+//! (round 3, against ADR-0034). ADR-0035's resolution is that [`assess_layout`] never computes a
+//! ceiling in the first place: `cancellai_safety::authority::base_constraints` performs the
+//! *identical* `known_signatures`/`observed` comparison itself, from the same raw
+//! `cancellai_safety::LayoutSignature` facts, and derives whatever constraint that implies -
+//! there is no ceiling value out here for a caller to consume correctly or discard. This module
+//! still holds no reference to `cancellai-safety` and never will (SI-027, "Detection severity
+//! does not create authority" - stated even more literally now than before: this module cannot
+//! influence authority even in principle, because it does not produce an authority-typed value
+//! at all). [`crate::capability_authority`] converts this module's own [`LayoutSignature`] into
+//! `cancellai_safety`'s type of the same shape, for a caller that wants to feed a real
+//! observation into an actual authority computation; it computes no ceiling either.
 
 use crate::baseline::{AnomalyAssessment, Baseline};
 
@@ -132,31 +126,31 @@ pub enum LayoutSupport {
     Drifted,
 }
 
-/// The result of [`assess_layout`]: the support determination, human-readable evidence naming
-/// the concrete markers compared (AC2), and the authority ceiling this drift recommends
-/// (`SI-004`) - `None` only when the layout was [`LayoutSupport::Recognized`].
+/// The result of [`assess_layout`]: the support determination and human-readable evidence naming
+/// the concrete markers compared (AC2). Carries no authority ceiling (ADR-0035) - see the module
+/// doc for why: `cancellai_safety::authority::base_constraints` performs this identical
+/// comparison itself, from the same raw [`LayoutSignature`] facts, so there is nothing
+/// authority-shaped here to consume correctly or discard.
 ///
 /// Fields are private and [`assess_layout`] is the only production constructor - E14 round 2
-/// independent review found the previous public-field version let any caller replace a real
-/// drifted finding with a fabricated `Recognized`/no-ceiling one immediately before it reached
-/// an authority computation. This doctest is the regression proving that no longer compiles:
+/// independent review found an earlier, public-field version of this type (which then also
+/// carried a ceiling) let any caller fabricate a fake finding in place of a real one. This
+/// doctest is the regression proving construction from outside this crate still does not
+/// compile:
 ///
 /// ```compile_fail
 /// # use cancellai_guardian::structural::{LayoutDriftFinding, LayoutSupport};
 /// // LayoutDriftFinding's fields are private: no struct-literal construction from outside this
-/// // crate, so a caller cannot fabricate a "recognized, no ceiling" finding to stand in for a
-/// // real one - assess_layout is the only way to produce a value of this type.
+/// // crate - assess_layout is the only way to produce a value of this type.
 /// let forged = LayoutDriftFinding {
 ///     support: LayoutSupport::Recognized,
 ///     evidence: "fabricated".to_string(),
-///     recommended_authority_ceiling: None,
 /// };
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayoutDriftFinding {
     support: LayoutSupport,
     evidence: String,
-    recommended_authority_ceiling: Option<AuthorityLevel>,
 }
 
 impl LayoutDriftFinding {
@@ -167,40 +161,7 @@ impl LayoutDriftFinding {
     pub fn evidence(&self) -> &str {
         &self.evidence
     }
-
-    pub fn recommended_authority_ceiling(&self) -> Option<AuthorityLevel> {
-        self.recommended_authority_ceiling
-    }
-
-    /// Constructs an arbitrary `LayoutDriftFinding` with no comparison performed at all -
-    /// visible only inside this crate (`pub(crate)`) and only compiled for tests, mirroring
-    /// `cancellai-safety::TrustedTier::for_tests` for the identical reason: it lets this crate's
-    /// own tests set up a fixture finding (e.g. a same-inputs baseline "as if recognized") without
-    /// giving any other crate a way to fabricate one.
-    #[cfg(test)]
-    pub(crate) fn for_tests(
-        support: LayoutSupport,
-        evidence: impl Into<String>,
-        recommended_authority_ceiling: Option<AuthorityLevel>,
-    ) -> Self {
-        LayoutDriftFinding {
-            support,
-            evidence: evidence.into(),
-            recommended_authority_ceiling,
-        }
-    }
 }
-
-/// A recognized layout never reduces the caller's own authority ceiling - this function returns
-/// `None` rather than a "no change" sentinel that a future edit could mistake for a real value.
-const RECOGNIZED_CEILING: Option<AuthorityLevel> = None;
-
-/// A drifted or unrecognized layout is capped at `Observe` - the lowest ceiling this crate's
-/// vocabulary can express, matching `SI-004`'s "cannot preserve destructive capabilities":
-/// whatever the caller's authority was computed to be from provider identity alone, a structural
-/// mismatch recommends refusing it down to observation-only, never a partial reduction that
-/// still permits mutation.
-const DRIFTED_CEILING: Option<AuthorityLevel> = Some(AuthorityLevel::Observe);
 
 /// Compares `observed` against `known_signatures`, the closed set of layouts this caller
 /// currently recognizes for the provider named by `provider_id`.
@@ -208,10 +169,10 @@ const DRIFTED_CEILING: Option<AuthorityLevel> = Some(AuthorityLevel::Observe);
 /// `provider_id` is carried only as an opaque evidence label baked into the returned finding's
 /// `evidence` string - it never participates in the comparison itself. This is `SI-004`
 /// discharged by construction: two calls with different `provider_id` values and identical
-/// `known_signatures`/`observed` always return the identical [`LayoutSupport`] and
-/// `recommended_authority_ceiling` (see the `provider_name_never_changes_the_drift_verdict`
-/// test) - a recognized provider name cannot rescue a structurally drifted layout, because
-/// nothing here ever looks at the name to decide that.
+/// `known_signatures`/`observed` always return the identical [`LayoutSupport`] (see the
+/// `provider_name_never_changes_the_drift_verdict` test) - a recognized provider name cannot
+/// rescue a structurally drifted layout, because nothing here ever looks at the name to decide
+/// that.
 pub fn assess_layout(
     provider_id: &str,
     known_signatures: &[LayoutSignature],
@@ -224,7 +185,6 @@ pub fn assess_layout(
                 "provider_id={provider_id}: observed layout markers {:?} match a known signature",
                 observed.markers()
             ),
-            recommended_authority_ceiling: RECOGNIZED_CEILING,
         }
     } else {
         LayoutDriftFinding {
@@ -234,7 +194,6 @@ pub fn assess_layout(
                 observed.markers(),
                 known_signatures.len()
             ),
-            recommended_authority_ceiling: DRIFTED_CEILING,
         }
     }
 }
@@ -367,7 +326,6 @@ mod tests {
         let observed = LayoutSignature::new(["config.json".to_string(), "sessions/".to_string()]);
         let finding = assess_layout("claude", &known, &observed);
         assert_eq!(finding.support(), LayoutSupport::Recognized);
-        assert_eq!(finding.recommended_authority_ceiling(), None);
         assert!(finding.evidence().contains("claude"));
     }
 
@@ -389,10 +347,6 @@ mod tests {
         let observed = LayoutSignature::new(["totally_different_shape/".to_string()]);
         let finding = assess_layout("claude", &known, &observed);
         assert_eq!(finding.support(), LayoutSupport::Drifted);
-        assert_eq!(
-            finding.recommended_authority_ceiling(),
-            Some(AuthorityLevel::Observe)
-        );
         assert!(finding.evidence().contains("totally_different_shape/"));
     }
 
@@ -401,10 +355,6 @@ mod tests {
         let observed = LayoutSignature::new(["config.json".to_string()]);
         let finding = assess_layout("claude", &[], &observed);
         assert_eq!(finding.support(), LayoutSupport::Drifted);
-        assert_eq!(
-            finding.recommended_authority_ceiling(),
-            Some(AuthorityLevel::Observe)
-        );
     }
 
     #[test]
@@ -416,7 +366,7 @@ mod tests {
     }
 
     /// SI-004: a recognized provider name never rescues a drifted layout. Two calls that differ
-    /// only in `provider_id` must reach the identical verdict and ceiling.
+    /// only in `provider_id` must reach the identical verdict.
     #[test]
     fn provider_name_never_changes_the_drift_verdict() {
         let known = vec![LayoutSignature::new(["sessions/".to_string()])];
@@ -426,15 +376,7 @@ mod tests {
         let unknown_name = assess_layout("some-unheard-of-provider-xyz", &known, &observed);
 
         assert_eq!(well_known.support(), unknown_name.support());
-        assert_eq!(
-            well_known.recommended_authority_ceiling(),
-            unknown_name.recommended_authority_ceiling()
-        );
         assert_eq!(well_known.support(), LayoutSupport::Drifted);
-        assert_eq!(
-            well_known.recommended_authority_ceiling(),
-            Some(AuthorityLevel::Observe)
-        );
     }
 
     /// Same proof for the recognized branch: a well-known provider name gets no special
@@ -448,10 +390,6 @@ mod tests {
         let unknown_name = assess_layout("some-unheard-of-provider-xyz", &known, &observed);
 
         assert_eq!(well_known.support(), unknown_name.support());
-        assert_eq!(
-            well_known.recommended_authority_ceiling(),
-            unknown_name.recommended_authority_ceiling()
-        );
         assert_eq!(well_known.support(), LayoutSupport::Recognized);
     }
 }

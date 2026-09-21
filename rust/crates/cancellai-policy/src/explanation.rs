@@ -131,7 +131,7 @@ mod tests {
             protection: ProtectionState::Normal,
             integrity: IntegrityState::Healthy,
             provider_trust: crate::trust::builtin_provider_trust(),
-            provider_capability_ceiling: None,
+            provider_layout: cancellai_safety::ProviderLayoutAssessment::NotAssessed,
         }
     }
 
@@ -143,7 +143,7 @@ mod tests {
         let context = PolicyContext::default();
         let inputs = permissive_inputs(AuthorityLevel::Observe);
 
-        let first = explain_policy(&document, &context, inputs);
+        let first = explain_policy(&document, &context, inputs.clone());
         let second = explain_policy(&document, &context, inputs);
         assert_eq!(first, second);
     }

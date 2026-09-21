@@ -92,6 +92,16 @@ REVIEW_ROUND_EXCEPTIONS = {
     "E13": "round 4 is new/repaired E13-S04+E13-S06 scope after round 3's marker-mimicry "
     "finding, not a repeated attempt at the already-closed E13-S02/S03/S05 stories; see "
     "E13-VERIFIER-REVIEW-ROUND3.md and E13-VERIFIER-REVIEW-ROUND4.md",
+    # E14-S04 alone hit three successive design failures (round 1: no consumer; round 2: a
+    # skippable opt-in function; round 3/ADR-0034: a mandatory but caller-discardable ceiling
+    # field) - the owner explicitly authorized continuing past the 3-round ceiling for a fourth,
+    # structurally different design (ADR-0035: the raw observation itself, not a derived
+    # ceiling, is the authority input) rather than accepting round 3's finding as final. E14-S01/
+    # S02/S03 closed in round 1/2 and are not part of this count's repeated-attempt story.
+    "E14": "round 4 reviews E14-S04's ADR-0035 redesign (raw observation as the authority "
+    "input) after round 3 found ADR-0034's mandatory-but-discardable ceiling field "
+    "insufficient - the owner authorized this specific fourth attempt rather than accepting "
+    "round 3 as final; see E14-S04-VERIFIER-REVIEW-ROUND3.md and ADR-0035",
 }
 # Matches both an epic-scoped record (`E07-VERIFIER-REVIEW.md`) and a story-scoped one
 # (`E07-S07-VERIFIER-REVIEW.md`), counting both against the *epic's* ceiling (captured
