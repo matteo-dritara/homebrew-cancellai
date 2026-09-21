@@ -10,9 +10,8 @@ Epics: **33** | Stories: **168**
 
 - `blocked`: 2
 - `cancelled`: 1
-- `done`: 157
+- `done`: 158
 - `planned`: 7
-- `ready_for_review`: 1
 
 ## Change risk distribution
 
@@ -28,4 +27,4 @@ Epics: **33** | Stories: **168**
 
 ## Awaiting independent review
 
-- **E14-S04** - Structural anomaly detection (CR4)
+- none
