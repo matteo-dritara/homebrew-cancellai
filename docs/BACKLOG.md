@@ -2294,7 +2294,7 @@ Make Windows native and WSL2 first-class platform targets, once a real Windows/W
 
 ## E21 - Target Engine Trust Remediation
 
-**Phase:** `P1` | **Status:** `in_progress` | **Epic dependencies:** none
+**Phase:** `P1` | **Status:** `done` | **Epic dependencies:** none
 
 Repair the target engine's scan-completeness authority so that unknown state cannot become destructive permission, and make the differential gate capable of proving it.
 
@@ -2347,7 +2347,7 @@ Repair the target engine's scan-completeness authority so that unknown state can
 
 ### E21-S03 - Scan completeness propagation in provider adapters
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E21-S02 | **Safety obligations:** SI-008, SI-009, SI-010, SI-014
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** E21-S02 | **Safety obligations:** SI-008, SI-009, SI-010, SI-014
 
 **Outcome.** Make an unobservable directory reduce authority in the Rust engine exactly as it does in the frozen Python reference: reported, never silently skipped, and never a basis for deletion.
 

@@ -5,7 +5,7 @@
   "title": "Target Engine Trust Remediation",
   "objective": "Repair the target engine's scan-completeness authority so that unknown state cannot become destructive permission, and make the differential gate capable of proving it.",
   "dependencies": [],
-  "status": "in_progress",
+  "status": "done",
   "stories": [
     {
       "id": "E21-S01",
@@ -63,11 +63,12 @@
     {
       "id": "E21-S03",
       "title": "Scan completeness propagation in provider adapters",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Make an unobservable directory reduce authority in the Rust engine exactly as it does in the frozen Python reference: reported, never silently skipped, and never a basis for deletion.",
       "change_risk": "CR4",
       "repair_history": [
-        "Round 2 (project/evidence/E21-S03-S07-INDEPENDENT-REVIEW-ROUND2.md, Codex, 2026-09-21, requested late against the E21-CLOSURE.md residual 'no independent confirmation of the round-1 repairs'): a present, non-symlink projects root that is not a directory fell into the same structurally-empty branch as an absent root - clean --yes exited 0 where the frozen Python reference exits 4. Repaired in rust/crates/cancellai-provider-claude/src/session.rs by removing the `!is_dir()` clause from the early return, letting the existing fs::read_dir failure path (already used for every other read failure) see the real ENOTDIR. Evidence: project/evidence/E21-S03/EVIDENCE-ROUND2-REPAIR.md. Moved back to ready_for_review for independent reconfirmation; not self-closed."
+        "Round 2 (project/evidence/E21-S03-S07-INDEPENDENT-REVIEW-ROUND2.md, Codex, 2026-09-21, requested late against the E21-CLOSURE.md residual 'no independent confirmation of the round-1 repairs'): a present, non-symlink projects root that is not a directory fell into the same structurally-empty branch as an absent root - clean --yes exited 0 where the frozen Python reference exits 4. Repaired in rust/crates/cancellai-provider-claude/src/session.rs by removing the `!is_dir()` clause from the early return, letting the existing fs::read_dir failure path (already used for every other read failure) see the real ENOTDIR. Evidence: project/evidence/E21-S03/EVIDENCE-ROUND2-REPAIR.md. Moved back to ready_for_review for independent reconfirmation; not self-closed.",
+        "Independent reconfirmation (project/evidence/E21-S03-ROUND2-REPAIR-VERIFICATION.md, Codex, 2026-09-21): PASS. Regular-file and FIFO Claude projects roots, and the Codex-provider equivalent, all withhold and exit 4 across clean --yes, clean --dry-run, plan, and inspect --json; parity and full Rust gate suite pass. CR4 Safety Verdict recorded."
       ],
       "dependencies": [
         "E21-S02"
