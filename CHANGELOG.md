@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.15.2] - 2026-09-21
+
 ### Fixed
 
 - v1.15.1's tagged release workflow failed too, once the Windows tempdir-cleanup fix cleared
