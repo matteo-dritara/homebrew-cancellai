@@ -146,9 +146,15 @@ pub fn discover_claude_sessions(claude_home: &Path) -> SessionDiscoveryResult {
         Err(error) if error.kind() == io::ErrorKind::NotFound => return structurally_empty(),
         Err(error) => return unobservable(&projects, &error),
     };
-    if projects_meta.file_type().is_symlink() || !projects_meta.is_dir() {
+    if projects_meta.file_type().is_symlink() {
         return structurally_empty();
     }
+    // A present, non-symlink `projects` that is not a directory (E21-S03 round-2 independent
+    // review, CR-TE-01's sibling case: `fs::read_dir` below naturally fails with `ENOTDIR` for
+    // this, which is unobservable evidence, not a structurally empty install - only an absent
+    // or symlinked root is that). Falling through here, rather than special-casing
+    // `!is_dir()` above, lets the real OS error (and its message) drive `unobservable`, the
+    // same way every other read failure in this function already does.
     let project_entries = match fs::read_dir(&projects) {
         Ok(entries) => entries,
         Err(error) => return unobservable(&projects, &error),
@@ -622,6 +628,35 @@ mod tests {
                 cancellai_inventory::ScopeCompleteness::Unknown { .. }
             ),
             "an unreadable scope root is Unknown, not Complete: got {:?}",
+            result.observation
+        );
+        assert_eq!(result.observation.unobserved_count(), 1);
+    }
+
+    #[test]
+    fn a_regular_file_projects_root_is_unobservable_not_a_clean_empty_scope() {
+        // E21-S03 round-2 independent review: a present `projects` that is a regular file (not
+        // absent, not a symlink) was falling into the same `structurally_empty` branch as a
+        // missing root, so `clean --yes` reported a clean empty scan and exited `0` where the
+        // frozen Python reference records `ENOTDIR` and exits `4`. Distinct from the mode-`000`
+        // case above: this root exists and is even nominally "readable" by permission bits, but
+        // it is not the directory this walk needs, so `fs::read_dir` fails on kind, not access.
+        let tree = TempTree::new("regular-file-projects-root");
+        fs::write(tree.0.join("projects"), b"not a directory").unwrap();
+
+        let result = discover_claude_sessions(&tree.0);
+
+        assert_eq!(
+            result.scope,
+            SessionDiscoveryScope::Unobservable,
+            "a present non-directory root must not be treated as a structurally empty install"
+        );
+        assert!(
+            matches!(
+                result.observation.completeness(),
+                cancellai_inventory::ScopeCompleteness::Unknown { .. }
+            ),
+            "a non-directory scope root is Unknown, not Complete: got {:?}",
             result.observation
         );
         assert_eq!(result.observation.unobserved_count(), 1);

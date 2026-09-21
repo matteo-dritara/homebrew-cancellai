@@ -10,9 +10,10 @@ Epics: **33** | Stories: **168**
 
 - `blocked`: 2
 - `cancelled`: 1
-- `done`: 157
+- `done`: 156
 - `in_progress`: 1
 - `planned`: 7
+- `ready_for_review`: 1
 
 ## Change risk distribution
 
@@ -28,4 +29,4 @@ Epics: **33** | Stories: **168**
 
 ## Awaiting independent review
 
-- none
+- **E21-S03** - Scan completeness propagation in provider adapters (CR4)

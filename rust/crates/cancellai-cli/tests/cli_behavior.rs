@@ -933,6 +933,111 @@ fn an_unreadable_claude_projects_root_is_reported_incomplete_with_a_real_count()
     );
 }
 
+// ----------------------------------------------------------------------------------------
+// E21-S03 round-2 independent review: a `projects/` that exists but is a regular file (not
+// absent, not a symlink) fell into the same "structurally empty install" branch as a missing
+// root, so `clean --yes` reported a clean empty scan and exited 0 where the frozen Python
+// reference records ENOTDIR and exits 4. Reproduced by Codex against the closed E21-S03
+// implementation; pinned here so the escape cannot reopen.
+// ----------------------------------------------------------------------------------------
+
+#[cfg(unix)]
+#[test]
+fn a_regular_file_claude_projects_root_withholds_and_exits_four() {
+    // Unlike the mode-000 case above, a session tree cannot coexist under a `projects` that is
+    // itself a regular file - there is nothing left to assert survived. The assertion this test
+    // carries is the exit code alone: the run must be safety-blocked, not report a clean scan.
+    let home = TempHome::new("regular-file-projects-root");
+    let projects = home.path().join(".claude/projects");
+    std::fs::create_dir_all(projects.parent().unwrap()).unwrap();
+    std::fs::write(&projects, b"not a directory").unwrap();
+
+    let output = run(
+        &home,
+        &[
+            "clean",
+            "--yes",
+            "--allow-running",
+            "--days",
+            "1",
+            "--keep-latest",
+            "0",
+            "--tool",
+            "claude",
+        ],
+    );
+
+    assert_eq!(
+        output.status.code(),
+        Some(4),
+        "a non-directory provider root must exit 4 (SAFETY_BLOCK), not 0: stdout={} stderr={}",
+        stdout(&output),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_regular_file_claude_projects_root_is_reported_incomplete_with_a_real_count() {
+    let home = TempHome::new("regular-file-projects-inspect");
+    let projects = home.path().join(".claude/projects");
+    std::fs::create_dir_all(projects.parent().unwrap()).unwrap();
+    std::fs::write(&projects, b"not a directory").unwrap();
+
+    let output = run(
+        &home,
+        &["inspect", "--json", "--allow-running", "--tool", "claude"],
+    );
+
+    let doc: serde_json::Value =
+        serde_json::from_str(&stdout(&output)).expect("inspect emits JSON");
+    let claude = doc["scan_completeness"]
+        .as_array()
+        .expect("scan_completeness is an array")
+        .iter()
+        .find(|s| s["scope"] == "claude-code")
+        .expect("claude scope present")
+        .clone();
+    assert_eq!(claude["complete"], serde_json::json!(false));
+    assert_eq!(
+        claude["error_count"],
+        serde_json::json!(1),
+        "error_count must be the real number of unobserved paths"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_regular_file_claude_projects_root_withholds_dry_run_too() {
+    let home = TempHome::new("regular-file-projects-dry-run");
+    let projects = home.path().join(".claude/projects");
+    std::fs::create_dir_all(projects.parent().unwrap()).unwrap();
+    std::fs::write(&projects, b"not a directory").unwrap();
+
+    let output = run(
+        &home,
+        &[
+            "clean",
+            "--dry-run",
+            "--allow-running",
+            "--days",
+            "1",
+            "--keep-latest",
+            "0",
+            "--tool",
+            "claude",
+        ],
+    );
+
+    assert_eq!(
+        output.status.code(),
+        Some(4),
+        "dry-run must also withhold and exit 4 for an unobservable root: stdout={} stderr={}",
+        stdout(&output),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
 /// E20-S02/E20-S03 round-1 independent verifier review: `RuntimeEnvironment`/
 /// `FilesystemContextObserver` existed but had no production caller anywhere in this
 /// workspace - unit-tested in isolation, never proven to reach the real CLI binary's actual
