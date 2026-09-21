@@ -107,6 +107,36 @@
       "documentation_impact": [
         "docs/architecture/GUARDIAN_MODEL.md"
       ]
+    },
+    {
+      "id": "E14-S05",
+      "title": "Live provider-layout capability gate at the mutation boundary",
+      "status": "planned",
+      "outcome": "Close E14-S04's SI-004 residual, which four independent review rounds across two designs (ADR-0034, ADR-0035) found unclosable by reshaping AuthorityInputs alone: no data shape stops a caller from constructing a second, separate AuthorityInputs that omits or contradicts a real layout observation it already holds, because nothing binds a caller-supplied value to the facts it claims to summarize. This story moves the binding to where it can actually hold: cancellai-platform gains a real provider-root layout observer capability, and cancellai_safety::mutation_executor::execute/revalidate require and consume a live observation from it immediately before any mutation - mirroring how revalidate already re-checks a SealedPlan's preconditions fail-closed immediately before the point of no return (SI-013) rather than trusting what was true at plan-construction time. A caller can still construct as many unconstrained AuthorityInputs as it likes elsewhere; none of them can authorize a real mutation, because the one function that performs one no longer trusts caller-supplied layout data for that decision.",
+      "change_risk": "CR4",
+      "dependencies": [
+        "E14-S04",
+        "E03-S05"
+      ],
+      "acceptance_criteria": [
+        "A destructive mutation whose SealedPlan's authority was computed while a provider layout was recognized, but which has since drifted, is refused at execute()/revalidate() time by a fresh observation obtained then - not merely permitted because the plan's own stale data still says recognized.",
+        "No caller can reach a destructive authority level for a real mutation by constructing a separate AuthorityInputs/SealedPlan that omits or contradicts the layout observation cancellai-platform's own observer capability would produce for the same provider root at the same time - the exact counterexample E14-S04 rounds 3 and 4 demonstrated must not reproduce against execute() itself.",
+        "If the provider root cannot be observed (no filesystem access, an unprobed provider, an I/O error), the result fails closed to the same ceiling a drifted layout would, never to an unconstrained default."
+      ],
+      "safety_obligations": [
+        "SI-004",
+        "SI-013"
+      ],
+      "verification": [
+        "A plan sealed under a recognized layout, executed after the layout drifts, must be refused at execute() time (live-vs-stale regression).",
+        "An adversarial fixture reproducing E14-S04 rounds 3/4's own counterexample construction must fail to reach a destructive authority level against execute() specifically, not only against effective_authority() in isolation.",
+        "Observer I/O failure/absence fixtures must fail closed, never silently permissive."
+      ],
+      "documentation_impact": [
+        "docs/architecture/PLATFORM_MODEL.md",
+        "docs/architecture/GUARDIAN_MODEL.md",
+        "docs/architecture/DOMAIN_MODEL.md"
+      ]
     }
   ]
 }

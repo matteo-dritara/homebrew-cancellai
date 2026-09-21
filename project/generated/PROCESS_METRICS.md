@@ -125,9 +125,9 @@ independent samples, and the population estimate collapses to what one round alr
 
 | CR0 | CR1 | CR2 | CR3 | CR4 |
 | --- | --- | --- | --- | --- |
-| 14 | 38 | 50 | 30 | 35 |
+| 14 | 38 | 50 | 30 | 36 |
 
-65 of 167 stories are CR3 or CR4, the levels whose gates require
+66 of 168 stories are CR3 or CR4, the levels whose gates require
 independent verification. That share is what makes the reviewer-independence question above
 load-bearing rather than academic.
 
@@ -137,7 +137,7 @@ load-bearing rather than academic.
 
 ## Requirements shape
 
-- Acceptance criteria describing **unwanted behaviour**: **71 of 524** (14%).
+- Acceptance criteria describing **unwanted behaviour**: **72 of 527** (14%).
 - Epics whose requirements describe the feature and not the hazard:
   - `E00` - 0 of 29
   - `E01` - 0 of 13
