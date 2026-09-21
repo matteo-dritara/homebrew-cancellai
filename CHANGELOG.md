@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- v1.15.0's tagged release workflow failed `verify-rust` on `windows-latest`: `cargo test
+  --workspace` panicked in three `open_via_local_state_root_never_reaches_a_marker_bearing_
+  mimic_elsewhere_on_disk` tests (`cancellai-store`'s `lib.rs`, `ledger.rs`, `rollup.rs`) during
+  `std::fs::remove_dir_all`, with OS error 32 ("the process cannot access the file because it is
+  being used by another process"). Each test dropped its verification `Connection` before
+  cleanup, matching this module's own established Windows precedent, but never dropped the
+  `CurrentStateStore`/`EventLedger`/`AnalyticalMemory` handle it opened and left alive on the same
+  file - only macOS/Linux let an open file be unlinked out from under a live handle, so this never
+  failed locally or on the other two CI platforms.
+
 ## [1.15.0] - 2026-09-21
 
 ### Added
