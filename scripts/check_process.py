@@ -105,7 +105,11 @@ REVIEW_ROUND_EXCEPTIONS = {
     "ADR-0036, an owner-authorized structurally different design after round 4 declined a "
     "fifth patch on ADR-0035's field shape; round 5 itself found and the executor repaired a "
     "forgeable-identity-binding defect within that same design before a second, same-round "
-    "verification pass - see E14-S04-VERIFIER-REVIEW-ROUND5.md and ADR-0036.",
+    "verification pass - see E14-S04-VERIFIER-REVIEW-ROUND5.md and ADR-0036. That second pass "
+    "found a distinct TOCTOU defect (identity and markers read via two separate path-based "
+    "syscalls); the owner was consulted directly and authorized both the repair "
+    "(cancellai-sealedfs handle-bound metadata/listing) and one further, sixth review round "
+    "- see E14-S04-VERIFIER-REVIEW-ROUND5-PASS2.md.",
 }
 # Matches both an epic-scoped record (`E07-VERIFIER-REVIEW.md`) and a story-scoped one
 # (`E07-S07-VERIFIER-REVIEW.md`), counting both against the *epic's* ceiling (captured

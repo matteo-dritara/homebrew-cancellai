@@ -161,3 +161,40 @@ markers, closing the seam between the two facts entirely rather than trusting a 
 close it. A `compile_fail` doctest on `BoundLayoutObservation::observe` pins this the same way
 `TrustedTier`/`LayoutDriftFinding`'s own doctests already pin their non-forgeability elsewhere in
 this codebase.
+
+## Round 5, second self-correction: the two facts were still two syscalls
+
+A second independent-review pass on the fix above
+(`project/evidence/E14-S04-VERIFIER-REVIEW-ROUND5-PASS2.md`) found it still insufficient, for a
+narrower reason than either prior round: `SystemIdentityObserver.observe(root)`
+(`std::fs::symlink_metadata`) and the subsequent `std::fs::read_dir(root)` are two separate
+path-based syscalls against the same path string, not one atomic read of one object. A same-user
+concurrent actor can rename the real, drifted root away and put a recognized directory in its
+place between the two calls, so the resulting `BoundLayoutObservation` carries the *original*
+root's identity paired with the *replacement*'s markers - the identical class of defect the first
+self-correction closed at the public-API level, reappearing as a filesystem-level TOCTOU race.
+The same review also found the constructor did not refuse a final path component that is itself a
+symlink: identity observed the link, `read_dir` silently followed it to enumerate the target.
+
+Owner-authorized repair (this session, same conversation): `observe` now binds `root` exactly
+once via `cancellai_sealedfs::SealedRoot::bind_existing` (ADR-0017) - a handle-relative,
+`O_NOFOLLOW`-at-every-component walk that refuses a symlinked root outright and holds one open
+directory descriptor. Both the identity (`SealedRoot::metadata`, an `fstat` on the held
+descriptor) and the marker listing (`SealedRoot::list_child_names`, new: `fdopendir`/`readdir` on
+a *duplicate* of the same descriptor, added to `cancellai-sealedfs` for this repair) are read from
+that one bound object, so there is no path-based lookup left, after the initial bind, for a
+concurrent actor to redirect. `cancellai-sealedfs`'s own test suite reproduces the exact
+rename-after-bind interleaving and confirms both facts still describe the original object.
+
+Windows and any other non-Unix platform have no verified handle-bound implementation of either
+new `SealedRoot` method yet and fail closed with `SealError::Unsupported`, matching this crate's
+existing precedent for every other capability without a verified non-Unix implementation
+(module docs) - `BoundLayoutObservation::observe` therefore currently only succeeds on Unix. This
+is a real, disclosed narrowing from the pre-round-5 implementation (which used portable `std`
+calls and worked on every platform); it is accepted because nothing in production consumes this
+API yet (the pre-existing "no mutation-boundary call site consumes a permit" residual below), and
+a plausible-but-unverified Windows implementation of a CR4 safety primitive is a worse position
+than an honest refusal (SI-017, this crate's own stated reason for every other Unsupported case).
+A future story bringing this to Windows needs its own handle-bound `NtQueryDirectoryFile`-based
+implementation in `cancellai-sealedfs::windows_sealed`, mirroring `establish`'s existing Windows
+no-follow walk.

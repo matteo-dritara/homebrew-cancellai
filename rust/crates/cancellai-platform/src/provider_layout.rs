@@ -20,21 +20,79 @@
 //! is the only place this observation feeds into an authority decision, and it requires one by
 //! value, not an enum variant a caller could choose to omit.
 //!
-//! **Round 5's own independent review** (`project/evidence/E14-S04-VERIFIER-REVIEW-ROUND5.md`)
-//! found the first version of `observe` still forgeable: it took `identity_observer: &dyn
-//! IdentityObserver` as a public parameter, and [`crate::identity::SyntheticIdentityObserver`]
+//! **Round 5's own independent review, first pass** (`project/evidence/E14-S04-VERIFIER-REVIEW-
+//! ROUND5.md`) found the first version of `observe` still forgeable: it took `identity_observer:
+//! &dyn IdentityObserver` as a public parameter, and [`crate::identity::SyntheticIdentityObserver`]
 //! is itself public API (needed elsewhere for legitimate testing). A caller could observe a
 //! real, unrelated, favorably-shaped directory's markers while pairing them with a fabricated
-//! [`IdentityToken`] equal to some *other*, genuinely drifted root's real identity - the markers
-//! were real I/O, but the identity binding them to a specific root was, once again, a
-//! caller-supplied fact. `observe` no longer takes an observer parameter at all: identity is
-//! always read via [`crate::identity::SystemIdentityObserver`] internally, the same call `Self`
-//! reads the markers from, so there is no seam left for the two facts to be pulled from
-//! different, caller-chosen sources.
+//! [`IdentityToken`] equal to some *other*, genuinely drifted root's real identity.
+//!
+//! **Round 5's own independent review, second pass** (`project/evidence/E14-S04-VERIFIER-REVIEW-
+//! ROUND5-PASS2.md`) found the repair for that still insufficient: identity
+//! (`SystemIdentityObserver`, `symlink_metadata`) and markers (`std::fs::read_dir`) were two
+//! separate path-based syscalls against `root`, admitting the identical class of defect via a
+//! filesystem-level TOCTOU race instead of a public-API one - a same-user actor could swap the
+//! real, drifted directory at `root` for a recognized one between the two calls, or plant a
+//! symlink `read_dir` would silently follow while identity observed the link itself. "Read from
+//! the same call" was true of the source text, not of the syscalls it issued.
+//!
+//! `observe` now binds `root` exactly once, via [`cancellai_sealedfs::SealedRoot::bind_existing`]
+//! (ADR-0017): a handle-relative, `O_NOFOLLOW`-at-every-component walk that refuses a symlinked
+//! root outright rather than following it, and holds one open directory descriptor for the
+//! lifetime of the call. Both the identity (`SealedRoot::metadata`, `fstat` on the held
+//! descriptor) and the marker listing (`SealedRoot::list_child_names`, `fdopendir`/`readdir` on
+//! a duplicate of the same descriptor) are read from that one bound object - there is no path
+//! lookup left, at any point after the initial bind, for a concurrent actor to redirect. This is
+//! the same "retained handle, not a re-checked path" shape `cancellai-platform::mutation`'s own
+//! confirmed-delete path already relies on for its unlink race.
 
 use std::path::Path;
 
 use crate::identity::IdentityToken;
+
+#[cfg(unix)]
+fn identity_from_sealed_metadata(
+    meta: &std::fs::Metadata,
+) -> Result<IdentityToken, LayoutObservationError> {
+    use crate::fs_observer::modification_timestamp;
+    use crate::identity::FileKind;
+    use std::os::unix::fs::MetadataExt;
+
+    let kind = if meta.is_dir() {
+        FileKind::Directory
+    } else if meta.is_file() {
+        FileKind::File
+    } else {
+        FileKind::Other
+    };
+    match modification_timestamp(meta.modified()) {
+        Ok(modified) => Ok(IdentityToken::Unix {
+            device: meta.dev(),
+            inode: meta.ino(),
+            kind,
+            modified,
+            modified_nanos: meta.mtime_nsec() as u32,
+        }),
+        Err(reason) => Err(LayoutObservationError(format!(
+            "could not represent the bound root's modification time: {reason}"
+        ))),
+    }
+}
+
+#[cfg(not(unix))]
+fn identity_from_sealed_metadata(
+    _meta: &std::fs::Metadata,
+) -> Result<IdentityToken, LayoutObservationError> {
+    // Unreachable in practice: `SealedRoot::metadata` itself fails closed with
+    // `SealError::Unsupported` on every non-Unix platform today (no verified handle-bound
+    // implementation yet, mirroring this crate's own `IdentityObservation::Unsupported`
+    // precedent), so `observe` below never reaches this function on those platforms. Kept as a
+    // real, honest refusal rather than an `unreachable!()` in case that stops being true for one
+    // non-Unix platform before another.
+    Err(LayoutObservationError(
+        "no verified handle-bound identity conversion exists for this platform yet".to_string(),
+    ))
+}
 
 /// A directory listing or identity read failed. Never treated as an empty/clean layout by any
 /// caller of [`BoundLayoutObservation::observe`] - an unobservable root is missing evidence, not
@@ -73,55 +131,31 @@ impl BoundLayoutObservation {
     /// );
     /// ```
     pub fn observe(root: &Path) -> Result<Self, LayoutObservationError> {
-        use crate::identity::IdentityObserver;
+        // No `canonicalize()` here, deliberately: resolving symlinks in `root` itself before
+        // binding would silently follow exactly what `SealedRoot::bind_existing`'s own
+        // component-by-component `O_NOFOLLOW` walk exists to refuse. `root` must already be
+        // absolute and normalized (no `.`/`..`) - `bind_existing` reports `NotAbsolute`/
+        // `PathNotNormalized` clearly if it is not, rather than this function silently
+        // resolving it on the caller's behalf.
+        let sealed = cancellai_sealedfs::SealedRoot::bind_existing(root).map_err(|e| {
+            LayoutObservationError(format!("could not bind {}: {e}", root.display()))
+        })?;
 
-        let root_identity = match crate::identity::SystemIdentityObserver.observe(root) {
-            crate::identity::IdentityObservation::Identity(identity) => identity,
-            crate::identity::IdentityObservation::Absent => {
-                return Err(LayoutObservationError(format!(
-                    "{} does not exist; cannot bind a layout observation to a root that is not \
-                     there",
-                    root.display()
-                )));
-            }
-            crate::identity::IdentityObservation::Unreadable { reason } => {
-                return Err(LayoutObservationError(format!(
-                    "could not observe {}'s identity: {reason}",
-                    root.display()
-                )));
-            }
-            crate::identity::IdentityObservation::Unsupported { reason } => {
-                return Err(LayoutObservationError(format!(
-                    "{}'s identity evidence is not trusted for a safety decision: {reason}",
-                    root.display()
-                )));
-            }
-        };
+        let metadata = sealed.metadata().map_err(|e| {
+            LayoutObservationError(format!(
+                "could not read {}'s bound identity: {e}",
+                root.display()
+            ))
+        })?;
+        let root_identity = identity_from_sealed_metadata(&metadata)?;
 
-        let entries = std::fs::read_dir(root).map_err(|e| {
+        let children = sealed.list_child_names().map_err(|e| {
             LayoutObservationError(format!("could not list {}: {e}", root.display()))
         })?;
-        let mut markers = Vec::new();
-        for entry in entries {
-            let entry = entry.map_err(|e| {
-                LayoutObservationError(format!(
-                    "could not read a directory entry under {}: {e}",
-                    root.display()
-                ))
-            })?;
-            let file_type = entry.file_type().map_err(|e| {
-                LayoutObservationError(format!(
-                    "could not read the file type of {}: {e}",
-                    entry.path().display()
-                ))
-            })?;
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if file_type.is_dir() {
-                markers.push(format!("{name}/"));
-            } else {
-                markers.push(name);
-            }
-        }
+        let markers = children
+            .into_iter()
+            .map(|(name, is_dir)| if is_dir { format!("{name}/") } else { name })
+            .collect();
 
         Ok(Self {
             root_identity,
@@ -229,4 +263,24 @@ mod tests {
 
         assert_eq!(first.root_identity(), second.root_identity());
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn refuses_a_symlinked_root_rather_than_following_it() {
+        let dir = TempDir::new("symlinked-root");
+        let real = dir.0.join("real");
+        std::fs::create_dir_all(&real).unwrap();
+        let link = dir.0.join("link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        let err = BoundLayoutObservation::observe(&link)
+            .expect_err("a symlinked root must be refused, not silently followed");
+        assert!(!err.0.is_empty());
+    }
+
+    // `observe`'s actual immunity to a mid-call root-swap race (the exact defect E14-S04 round
+    // 5's second independent review found) is proven at the primitive it now depends on:
+    // `cancellai-sealedfs`'s own `metadata_and_list_child_names_survive_a_root_rename_after_
+    // binding` reproduces the interleaving with a real rename between binding and reading, since
+    // that crate holds the descriptor and this one does not expose a hook to interleave mid-call.
 }

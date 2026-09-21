@@ -229,7 +229,7 @@ mod unix_impl {
     use std::fs::File;
     use std::io::{self, Read, Write};
     use std::os::unix::ffi::OsStrExt;
-    use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+    use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
     use std::path::{Component, Path};
 
     /// A directory opened with `O_NOFOLLOW`, retained for the lifetime of every operation
@@ -836,6 +836,112 @@ mod unix_impl {
             }
             Ok(())
         }
+
+        /// The held descriptor's own metadata (`fstat`, via `std::fs::File::metadata`) - never
+        /// a fresh path-based lookup, so this always describes the exact object `self` was
+        /// bound to, even if the path that produced it has since been renamed or replaced.
+        /// E14-S04 round-5 second independent review's own finding: identity and a directory
+        /// listing obtained from two separate path-based calls (`symlink_metadata` then
+        /// `read_dir`) admit a swap between them; both must come from the same held object.
+        /// [`Self::list_child_names`] is this method's listing counterpart, for exactly that
+        /// reason.
+        pub fn metadata(&self) -> Result<std::fs::Metadata, SealError> {
+            self.dir.metadata().map_err(SealError::Io)
+        }
+
+        /// The direct children's bare names and whether each is a directory (per `d_type`,
+        /// falling back to a handle-relative, no-follow `fstatat` when the filesystem does not
+        /// report it), enumerated via a *duplicate* of the held descriptor - never a fresh
+        /// `opendir(path)` - so this cannot be redirected by a rename/symlink-swap of `self`'s
+        /// own original path any more than [`Self::metadata`] can. The duplicate (not `self.dir`
+        /// itself) is necessary because `fdopendir` takes ownership of the descriptor it is
+        /// given; `closedir` closing a fd `self.dir` still owns would be a double-close.
+        ///
+        /// **Residual, stated rather than implied**: a `readdir` failure partway through a
+        /// stream is not distinguished from reaching the end of it (both return a null entry;
+        /// distinguishing them needs a platform-specific `errno` read this crate does not yet
+        /// perform). A directory that becomes unreadable mid-enumeration is therefore reported
+        /// as complete rather than as an error - narrower than a full read failure, and not the
+        /// TOCTOU this method exists to close, but disclosed rather than silently accepted.
+        pub fn list_child_names(&self) -> Result<Vec<(String, bool)>, SealError> {
+            let duplicate = self.dir.try_clone().map_err(SealError::Io)?;
+            let dup_fd = duplicate.into_raw_fd();
+
+            // SAFETY: `dup_fd` was just obtained from `File::try_clone().into_raw_fd()`, so it
+            // is a valid, exclusively-owned, open directory descriptor that no other code holds
+            // a `File`/`RawFd` handle to. `fdopendir` takes ownership of it on success; on
+            // failure ownership was never transferred, so it is closed explicitly below via
+            // `File::from_raw_fd` (reconstructing and dropping a `File` runs its own `close`).
+            let dirp = unsafe { libc::fdopendir(dup_fd) };
+            if dirp.is_null() {
+                let err = io::Error::last_os_error();
+                // SAFETY: `dup_fd` is still exclusively owned here (ownership was never
+                // transferred to a null `fdopendir` result); reconstructing a `File` from it
+                // and letting it drop closes it exactly once.
+                drop(unsafe { File::from_raw_fd(dup_fd) });
+                return Err(SealError::Io(err));
+            }
+
+            struct DirGuard(*mut libc::DIR);
+            impl Drop for DirGuard {
+                fn drop(&mut self) {
+                    // SAFETY: `self.0` is a non-null `DIR*` obtained from a successful
+                    // `fdopendir` and not yet closed - `DirGuard` is the sole owner and this is
+                    // its only `closedir` call.
+                    unsafe {
+                        libc::closedir(self.0);
+                    }
+                }
+            }
+            let guard = DirGuard(dirp);
+            let dirfd = self.dir.as_raw_fd();
+
+            let mut entries = Vec::new();
+            loop {
+                // SAFETY: `guard.0` is the live `DIR*` this loop owns for its duration;
+                // `readdir` is safe to call repeatedly on it until it returns null.
+                let entry = unsafe { libc::readdir(guard.0) };
+                if entry.is_null() {
+                    break;
+                }
+                // SAFETY: `entry` was just returned non-null by `readdir` and is valid until the
+                // next `readdir`/`closedir` call on `guard.0`, neither of which happens before
+                // this read completes. `d_name` is a NUL-terminated array per POSIX.
+                let name_cstr = unsafe { std::ffi::CStr::from_ptr((*entry).d_name.as_ptr()) };
+                let name = name_cstr.to_string_lossy().into_owned();
+                if name == "." || name == ".." {
+                    continue;
+                }
+                // SAFETY: same `entry` validity as above; `d_type` is a plain byte field.
+                let d_type = unsafe { (*entry).d_type };
+                let is_dir = if d_type == libc::DT_DIR {
+                    true
+                } else if d_type == libc::DT_UNKNOWN {
+                    // SAFETY: `libc::stat` is a plain C aggregate with no niche/validity
+                    // invariant; `fstatat` overwrites it before anything reads it.
+                    let mut stat: libc::stat = unsafe { std::mem::zeroed() };
+                    // SAFETY: `dirfd` is `self.dir`'s own borrowed descriptor, live for this
+                    // call; `name_cstr` names a child this same `readdir` just reported, so the
+                    // lookup cannot resolve outside the bound directory. `AT_SYMLINK_NOFOLLOW`
+                    // keeps this a no-follow lookup, matching every other identity check in this
+                    // crate - a symlink is reported as itself, not its target's kind.
+                    let rc = unsafe {
+                        libc::fstatat(
+                            dirfd,
+                            name_cstr.as_ptr(),
+                            &mut stat,
+                            libc::AT_SYMLINK_NOFOLLOW,
+                        )
+                    };
+                    rc == 0 && (stat.st_mode & libc::S_IFMT) == libc::S_IFDIR
+                } else {
+                    false
+                };
+                entries.push((name, is_dir));
+            }
+
+            Ok(entries)
+        }
     }
 
     #[cfg(test)]
@@ -1252,6 +1358,79 @@ mod unix_impl {
                 "the pre-existing destination object must be untouched"
             );
         }
+
+        #[test]
+        fn list_child_names_reports_real_direct_children_and_kinds() {
+            let base = TempDir::new("list-child-names");
+            std::fs::create_dir_all(base.path("root/inner")).unwrap();
+            std::fs::write(base.path("root/config.json"), b"{}").unwrap();
+            let root = SealedRoot::establish(&base.path("root")).unwrap();
+
+            let mut entries = root
+                .list_child_names()
+                .expect("list a real, real directory");
+            entries.sort();
+            assert_eq!(
+                entries,
+                vec![
+                    ("config.json".to_string(), false),
+                    ("inner".to_string(), true),
+                ]
+            );
+        }
+
+        #[test]
+        fn list_child_names_excludes_dot_and_dotdot() {
+            let base = TempDir::new("list-child-names-no-dots");
+            let root = SealedRoot::establish(&base.path("root")).unwrap();
+            let entries = root.list_child_names().unwrap();
+            assert!(entries.iter().all(|(name, _)| name != "." && name != ".."));
+        }
+
+        #[test]
+        fn metadata_matches_a_real_fstat_of_the_same_object() {
+            use std::os::unix::fs::MetadataExt;
+
+            let base = TempDir::new("metadata");
+            let root = SealedRoot::establish(&base.path("root")).unwrap();
+            let via_sealed = root.metadata().expect("fstat the held descriptor");
+            let via_path = std::fs::metadata(base.path("root")).unwrap();
+            assert_eq!(via_sealed.dev(), via_path.dev());
+            assert_eq!(via_sealed.ino(), via_path.ino());
+            assert!(via_sealed.is_dir());
+        }
+
+        #[test]
+        fn metadata_and_list_child_names_survive_a_root_rename_after_binding() {
+            use std::os::unix::fs::MetadataExt;
+
+            // The exact property E14-S04 round 5's second independent review required: identity
+            // and a directory listing obtained after a root has been renamed away from its
+            // original path must still describe the object `establish` actually bound, not
+            // whatever a fresh path-based lookup would now find at the old (or a replacement)
+            // path - the TOCTOU a path-based `symlink_metadata` + `read_dir` pair cannot close.
+            let base = TempDir::new("rename-after-bind");
+            std::fs::create_dir_all(base.path("root")).unwrap();
+            std::fs::write(base.path("root/config.json"), b"{}").unwrap();
+            let root = SealedRoot::establish(&base.path("root")).unwrap();
+            let identity_before = root.metadata().unwrap();
+
+            let moved_away = base.path("root-moved-away");
+            std::fs::rename(base.path("root"), &moved_away).unwrap();
+            std::fs::create_dir_all(base.path("root")).unwrap();
+            std::fs::write(base.path("root/decoy.txt"), b"decoy").unwrap();
+
+            let identity_after = root.metadata().unwrap();
+            let entries = root.list_child_names().unwrap();
+
+            assert_eq!(identity_before.ino(), identity_after.ino());
+            assert_eq!(
+                entries,
+                vec![("config.json".to_string(), false)],
+                "the sealed root must still list the real, original object's contents, not the \
+                 replacement planted at its old path"
+            );
+        }
     }
 }
 
@@ -1318,6 +1497,14 @@ mod fallback_impl {
             _final_name: &str,
             _contents: &[u8],
         ) -> Result<(), SealError> {
+            match self._unreachable {}
+        }
+
+        pub fn metadata(&self) -> Result<std::fs::Metadata, SealError> {
+            match self._unreachable {}
+        }
+
+        pub fn list_child_names(&self) -> Result<Vec<(String, bool)>, SealError> {
             match self._unreachable {}
         }
     }

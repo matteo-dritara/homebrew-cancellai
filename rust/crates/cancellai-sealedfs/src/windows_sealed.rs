@@ -519,6 +519,27 @@ impl SealedRoot {
 
         rename_child(&self.dir, tmp_name, final_name)
     }
+
+    /// No verified handle-bound metadata/enumeration exists for this platform yet (E14-S04
+    /// round 5 second independent review's finding: identity and a directory listing must come
+    /// from the same held object, or a swap between two separate path-based calls can attach
+    /// one object's identity to a different, favorably-shaped object's contents). Fails closed
+    /// rather than falling back to `std::fs::metadata`/`read_dir`'s own path-based, swap-prone
+    /// lookups - the same choice this crate already makes for every other capability with no
+    /// verified Windows implementation (module docs).
+    pub fn metadata(&self) -> Result<std::fs::Metadata, SealError> {
+        Err(SealError::Unsupported(
+            "no verified handle-bound metadata read exists on Windows yet",
+        ))
+    }
+
+    /// See [`Self::metadata`]: no verified handle-bound directory enumeration exists for this
+    /// platform yet.
+    pub fn list_child_names(&self) -> Result<Vec<(String, bool)>, SealError> {
+        Err(SealError::Unsupported(
+            "no verified handle-bound directory listing exists on Windows yet",
+        ))
+    }
 }
 
 /// Renames `old_name` to `new_name`, both direct children of `dir` - relative to the held
