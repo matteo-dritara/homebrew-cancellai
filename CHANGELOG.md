@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The Rust engine's `clean`/`plan`/`inspect` treated a Claude `~/.claude/projects` that exists
+  but is not a directory (a regular file, a device node, etc.) as a structurally empty,
+  known-clean scope - the same branch used for an absent or symlinked root - and reported a
+  clean empty scan (`clean --yes` exited `0`) instead of withholding. The frozen Python
+  reference records the resulting `ENOTDIR` and exits `4`. Found by independent review
+  (`project/evidence/E21-S03-S07-INDEPENDENT-REVIEW-ROUND2.md`); repaired so this case is
+  reported as unobservable evidence and withholds destructive work like every other unreadable
+  scope root.
+
 ## [1.15.2] - 2026-09-21
 
 ### Fixed
