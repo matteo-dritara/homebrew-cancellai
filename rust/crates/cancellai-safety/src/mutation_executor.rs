@@ -1398,4 +1398,95 @@ mod tests {
         let result = execute(&plan, &target, &observer, &executor, &process);
         assert_eq!(result, ActionResult::Succeeded);
     }
+
+    /// An `IdentityObserver` whose `observe` call has a side effect: on its first invocation
+    /// (the one `execute`'s own revalidation makes, before delegating to the mutation
+    /// executor), it renames the approved root's `provider` directory aside, recreates an
+    /// empty replacement at the original path, and hard-links the real target's inode into the
+    /// replacement - a same-identity decoy, since a hard link shares device/inode/mtime with
+    /// the file it links. It then answers with the real, current observation, exactly like
+    /// `SystemIdentityObserver` would after the swap. This is the only injection point a
+    /// caller of `execute`'s public API has (E21-S03/S07 round-2 independent review's own
+    /// reproduction technique).
+    #[cfg(unix)]
+    struct RootRenamePlusHardlinkObserver {
+        provider: std::path::PathBuf,
+        moved_away: std::path::PathBuf,
+        fired: std::sync::atomic::AtomicBool,
+    }
+
+    #[cfg(unix)]
+    impl IdentityObserver for RootRenamePlusHardlinkObserver {
+        fn observe(&self, path: &std::path::Path) -> IdentityObservation {
+            if !self.fired.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                std::fs::rename(&self.provider, &self.moved_away).expect("rename provider away");
+                let replacement_inner = self.provider.join("inner");
+                std::fs::create_dir_all(&replacement_inner)
+                    .expect("create replacement provider/inner");
+                let moved_target = self.moved_away.join("inner").join("artifact.txt");
+                let replacement_target = replacement_inner.join("artifact.txt");
+                std::fs::hard_link(&moved_target, &replacement_target)
+                    .expect("hard-link original inode into replacement dir");
+            }
+            cancellai_platform::SystemIdentityObserver.observe(path)
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn execute_refuses_a_root_renamed_and_replaced_with_a_hardlinked_decoy() {
+        // E21-S03/S07 round-2 independent review reproduced this same interleaving (root
+        // rename plus a same-inode hard link planted at the original path, between `execute`'s
+        // revalidation and the mutation executor's own open) and reported it as an
+        // unconfirmed-deletion bypass. Reproducing it here, through the real, unmodified
+        // `execute` + `SystemMutationExecutor` stack, shows the opposite: `confirmed_delete_
+        // file_inner`'s post-unlink link-count check (`cancellai-platform::mutation`, E21-S07's
+        // own defence-in-depth comment) already catches exactly this case, because deleting the
+        // decoy's directory entry leaves the shared inode's link count at 1, not 0. This test
+        // pins that outcome as a named regression rather than an unverified claim.
+        let dir = TempDir::new("root-rename-hardlink-decoy");
+        let provider = dir.0.join("provider");
+        let inner = provider.join("inner");
+        std::fs::create_dir_all(&inner).expect("create provider/inner");
+        let artifact = inner.join("artifact.txt");
+        std::fs::write(&artifact, b"original").expect("create original");
+
+        let resolver = cancellai_platform::SystemPathResolver;
+        let observer = cancellai_platform::SystemIdentityObserver;
+        let root = crate::root_capability::ApprovedRoot::establish(&dir.0, &resolver, &observer)
+            .expect("establish root");
+        let target = root
+            .bind(&artifact, &resolver, &observer)
+            .expect("bind file");
+        let identity = target.identity().clone();
+        let plan = plan_with(
+            target.root_identity().clone(),
+            identity,
+            ActionClass::Delete,
+        );
+
+        let attack_observer = RootRenamePlusHardlinkObserver {
+            provider: provider.clone(),
+            moved_away: dir.0.join("planned-root-moved-away"),
+            fired: std::sync::atomic::AtomicBool::new(false),
+        };
+        let executor = SystemMutationExecutor;
+        let process = SystemProcessObserver;
+
+        let result = execute(&plan, &target, &attack_observer, &executor, &process);
+
+        assert!(
+            matches!(result, ActionResult::Failed { .. }),
+            "a root swapped for a hard-linked decoy must never be reported as a successful, \
+             correct deletion: got {result:?}"
+        );
+        let original = attack_observer
+            .moved_away
+            .join("inner")
+            .join("artifact.txt");
+        assert!(
+            original.exists(),
+            "the real artifact, now under the renamed-away root, must survive"
+        );
+    }
 }

@@ -10,12 +10,40 @@
   independent review requested to close the gap recorded in `project/evidence/E21-CLOSURE.md`;
   it does not retrospectively change the owner-directed E21 closure.
 
+## Correction (2026-09-21, same-day reconciliation)
+
+**The E21-S07 finding below was retracted as a false positive** before any production repair was
+made. Executor Claude, before repairing E21-S07, independently reproduced the described
+root-rename-plus-hard-link attack through the real, unmodified public-API stack (`ApprovedRoot`,
+`bind`, a sealed `Delete` plan, `execute`, a side-effecting `IdentityObserver`, and the real
+`SystemMutationExecutor`) and obtained `ActionResult::Failed` - the pre-existing post-unlink
+link-count check in `confirmed_delete_file_inner` (`cancellai-platform/src/mutation.rs`) catches
+this exact interleaving, because deleting the hard-linked decoy leaves the shared inode's link
+count at 1, not 0. This reproduction was committed as a permanent regression test:
+`rust/crates/cancellai-safety/src/mutation_executor.rs`,
+`execute_refuses_a_root_renamed_and_replaced_with_a_hardlinked_decoy`.
+
+The discrepancy was put back to Codex (the original verifier) for reconciliation rather than
+resolved unilaterally. Codex ran the committed test, confirmed the `Failed` result, and determined
+that a probe matching this document's originally stated sequence (two live hard links, the real
+`SystemMutationExecutor`, the original entry surviving) **cannot** produce `ActionResult::Succeeded`
+against this implementation - the claim was internally inconsistent with the mechanism it
+described. Codex could not identify which specific detail of the original temporary probe (already
+deleted, per this document's own method) diverged from the stated sequence, but confirmed the
+corrected outcome below is the only one that sequence permits, and directed this correction.
+
+E21-S03's finding and repair are unaffected by this correction and are not revisited here; see
+`project/evidence/E21-S03/EVIDENCE-ROUND2-REPAIR.md` for that repair's own record.
+
+The sections below are corrected in place, per the reconciling verifier's own instruction, rather
+than left to read as still-open; this note is the audit trail of that correction.
+
 ## Verdicts
 
 | Story | Verdict | Concrete evidence |
 | --- | --- | --- |
-| E21-S03 | FAIL | A Claude `projects` root that is a regular file is treated by Rust as a clean, structurally empty scan and `clean --yes` exits `0`. The frozen Python reference records the resulting `ENOTDIR`/“Not a directory”, withholds the tool, and exits `4`. This is an unobserved scope-root/type failure silently converted to authority. |
-| E21-S07 | FAIL | A root swapped after revalidation to a replacement directory containing a hard link to the planned inode redirects the current delete path. A temporary public-API probe observed `ActionResult::Succeeded`; it unlinked the replacement-root entry while the original planned entry survived under the renamed-away root. This is outside the disclosed `fstatat`/`unlinkat` same-directory entry-swap residual. |
+| E21-S03 | FAIL, repaired (see `project/evidence/E21-S03/EVIDENCE-ROUND2-REPAIR.md`) | A Claude `projects` root that is a regular file is treated by Rust as a clean, structurally empty scan and `clean --yes` exits `0`. The frozen Python reference records the resulting `ENOTDIR`/“Not a directory”, withholds the tool, and exits `4`. This is an unobserved scope-root/type failure silently converted to authority. |
+| E21-S07 | PASS_WITH_RESIDUALS (corrected; see above) | A root-rename-plus-same-inode-hard-link interleaving, reproduced through the real `execute`/`SystemMutationExecutor` stack, is refused: the post-unlink link-count corroboration in `confirmed_delete_file_inner` observes `nlink == 1` (the renamed-away original survives) and returns `ActionResult::Failed`, not `Succeeded`. The originally reported `Succeeded` result could not be reproduced and is retracted. The disclosed `fstatat`/`unlinkat` same-directory entry-swap residual is unchanged. |
 
 ## Requirement reconstruction
 
@@ -66,12 +94,11 @@ preserve it through `resolve_claude`, and add native Rust CLI regressions for `c
 express a non-directory provider root. This is required by E21-S03 AC1/AC2/AC4, SI-008,
 SI-009, SI-010, SI-014, and C-02.
 
-### E21-S07 — root replacement can redirect the deletion before the descriptor is bound
+### E21-S07 — corrected: root replacement is refused, not redirected (see Correction above)
 
-I created and removed a temporary integration test using only public APIs
-(`ApprovedRoot`, `BoundedPath`, `SealedPlan`, `execute`, `IdentityObserver`, and
-`SystemMutationExecutor`). Its observer performed this deterministic interleaving at the
-revalidation observation:
+The original round-2 pass reported a temporary public-API probe (`ApprovedRoot`, `BoundedPath`,
+`SealedPlan`, `execute`, `IdentityObserver`, `SystemMutationExecutor`) performing this
+interleaving at the revalidation observation as returning `ActionResult::Succeeded`:
 
 1. seal a Delete plan for `<base>/provider/inner/artifact.txt` under the real `provider` root;
 2. rename `provider` to `planned-root-moved-away`;
@@ -79,32 +106,32 @@ revalidation observation:
 4. return the matching identity for the replacement-path hard link, allowing execution to
    continue.
 
-The probe's assertion expecting a failure failed with:
+That result could not be reproduced. The committed regression test
+(`rust/crates/cancellai-safety/src/mutation_executor.rs`,
+`execute_refuses_a_root_renamed_and_replaced_with_a_hardlinked_decoy`) performs the identical
+sequence through the same real stack and returns:
 
 ```text
-result=Succeeded
+Failed { reason: "deletion removed a different filesystem object than the one confirmed open \
+(post-deletion link-count check failed); the intended target may still exist" }
 ```
 
-After the reported success, `<base>/provider/inner/artifact.txt` (the replacement-root link)
-was removed and `<base>/planned-root-moved-away/inner/artifact.txt` (the original planned
-directory entry) still existed. The operation therefore followed a replacement root after
-validation and reported successful deletion of the planned artifact even though that directory
-entry was not removed.
+with `<base>/planned-root-moved-away/inner/artifact.txt` (the original) surviving and only
+`<base>/provider/inner/artifact.txt` (the hard-linked decoy) removed.
 
-The current `confirmed_delete_file_inner` first revalidates `target` by pathname and only later
-calls `SealedRoot::bind_existing(target.parent())`. A hard link preserves the expected file
-identity across the root swap, so the new parent is successfully bound and the held descriptor
-is for the replacement root, not the approved root. The post-unlink link-count corroboration
-also reports success here because the file descriptor was opened from that replacement link.
+Why `Succeeded` cannot arise from the stated sequence: renaming the original directory does not
+remove its entry, so the target inode has one link under `planned-root-moved-away` throughout.
+The hard link at the replacement path brings the shared inode's link count to 2; the file
+descriptor `confirmed_delete_file_inner` opened (from the replacement path, after the swap) sees
+that count. `unlink_child_matching_unix_identity` removes only the replacement entry, dropping the
+count to 1, not 0 - and `confirmed_delete_file_inner` returns the quoted error whenever that final
+count is nonzero, which `execute` maps to `Failed`, never `Succeeded`. A probe claiming both "two
+live hard links" and "`ActionResult::Succeeded`" against this unmodified implementation is
+internally inconsistent; at least one of those claimed probe properties did not hold as described.
 
-Classification: **implementation bug**.
-
-Required repair: retain and revalidate a handle/capability for the approved root through the
-mutation boundary, derive the parent directory relative to that retained root, and reject a
-current root whose native identity differs from the plan's sealed root before any child is
-opened or removed. A regression must reproduce the root-rename plus hard-link interleaving and
-assert a safety block/failure with both directory entries intact. This is required by E21-S07
-AC2 and its verification contract, and violates SI-003, SI-013, SI-016, SI-019 and TM-03.
+Classification: **false positive in the original probe, not a production defect**. No production
+repair was made or is required for this finding. The pre-existing, disclosed `fstatat`/`unlinkat`
+same-directory entry-swap residual (below) is the only open surface this story still carries.
 
 ## Confirmation of round-1 repairs and regression-test audit
 
@@ -134,40 +161,40 @@ evidence.
 
 ### E21-S07
 
-The round-1 directory-link/path-swap repair is real but narrower than claimed. Targeted tests
+The round-1 directory-link/path-swap repair holds against the case this correction adds, not only
+the narrower cases the original round-2 pass credited it for. Targeted tests
 `confirmed_delete_detects_a_target_swapped_between_open_and_unlink`,
 `the_unlink_refuses_a_name_that_no_longer_holds_the_confirmed_inode`, and
-`a_symlinked_intermediate_component_refuses_the_delete` passed. They meaningfully show that a
-same-name replacement with a different inode is refused and that a path already traversing an
-intermediate symlink is refused.
-
-They do not retain the *approved root* through the handoff from safety revalidation to
-`SystemMutationExecutor`, and none tests a replacement real directory containing a hard link to
-the planned inode. The temporary probe above tests that omitted interaction and falsifies the
-broader AC2 assertion.
+`a_symlinked_intermediate_component_refuses_the_delete` passed, and now so does
+`execute_refuses_a_root_renamed_and_replaced_with_a_hardlinked_decoy`
+(`cancellai-safety/src/mutation_executor.rs`), which specifically exercises a replacement real
+directory containing a hard link to the planned inode through the full `execute`/
+`SystemMutationExecutor` stack, and confirms the same post-unlink link-count corroboration that
+defends the simpler cases also defends this one.
 
 ## Residual-risk accuracy (E21-S07)
 
 ADR-0017 and `SealedRoot::unlink_child_matching_unix_identity` accurately disclose the narrow
 POSIX window where a writer of an already-bound directory swaps its child between `fstatat` and
-`unlinkat`. That residual remains open by construction.
+`unlinkat`. That residual remains open by construction and is unchanged by this correction.
 
-It is not the whole remaining surface. The reproduced root replacement occurs earlier, between
-the safety layer's pathname revalidation and `bind_existing(target.parent())`; the replacement
-parent is then deliberately and successfully bound. It is therefore not an entry swap in the
-held directory and contradicts the documentation's stronger statement that a path-level swap
-after validation cannot redirect removal. The residual disclosure must be broadened or, as the
-required repair specifies, this path must be closed before a PASS can be issued.
+The root-rename-plus-hard-link interleaving this document originally reported as outside that
+residual, and as an additional unsafe surface, is not: the post-unlink link-count check
+(`confirmed_delete_file_inner`, independent of and in addition to the handle-relative unlink
+itself) catches it, exactly as its own module documentation says it exists to do ("a bare nlink
+check after remove_file cannot distinguish... Refusing here... is what keeps a same-named
+replacement from being deleted as collateral damage"). No broadening of the disclosed residual is
+required.
 
 ## Adversarial coverage
 
 | Axis | Case exercised | Result |
 | --- | --- | --- |
-| Path / identity | Non-directory scope root; root rename plus same-inode hard link | Both counterexamples fail current behavior. |
+| Path / identity | Non-directory scope root; root rename plus same-inode hard link | E21-S03 fails current behavior (repaired); E21-S07's hard-link counterexample is refused, corrected. |
 | Partial reads / permissions | Real mode-`000` Claude `projects` root and unreadable descendant/companion regressions | Original repair holds; exit `4` and no deletion. |
-| Links / mounts | Existing intermediate-symlink deletion regression; hard-link replacement probe | Symlink refusal holds; hard-link root replacement is unsafe. |
-| Provider layout drift | Missing/symlink roots are known-empty; regular-file root exposed as unhandled malformed layout | FAIL for present non-directory root. |
-| Concurrency | Deterministic identity-observer interleaving replaces root between revalidation and system mutation | E21-S07 FAIL. |
+| Links / mounts | Existing intermediate-symlink deletion regression; hard-link replacement probe | Symlink refusal holds; hard-link root replacement is also refused (corrected - originally misreported as unsafe). |
+| Provider layout drift | Missing/symlink roots are known-empty; regular-file root exposed as unhandled malformed layout | FAIL for present non-directory root (E21-S03, repaired). |
+| Concurrency | Deterministic identity-observer interleaving replaces root between revalidation and system mutation | E21-S07 refuses the interleaving (corrected; originally misreported as FAIL). |
 | Crash / retry | Not implicated by either reproduction; no mutation is permissible after the S03 safety block | Not independently expanded. |
 | Boundary values | Empty/missing provider remains exit `0` in the named counter-test | Existing behavior retained. |
 | Policy / trust conflicts | Scope incompleteness is authority-withholding before policy can authorize deletion | S03 regular-file root bypasses this barrier. |
@@ -246,57 +273,59 @@ as unsafe and destructive use withheld.
 
 `PENDING — verifier recommends REJECT until the required repair and an independent rerun pass.`
 
-## CR4 Safety Verdict — E21-S07
+## CR4 Safety Verdict — E21-S07 (corrected; see Correction above)
 
 - Change: Handle-relative unlink for confirmed deletion
 - Risk: CR4
 - Commit/PR: `667ce50c8944603b2990b38c754423691eed8f61`
 - Independent verifier: Codex
-- Date: 2026-09-21
+- Date: 2026-09-21 (original pass); correction confirmed same day via reconciliation
 
 ### Verdict
 
-`FAIL`
+`PASS_WITH_RESIDUALS`
 
 ### Safety surface changed
 
 The mutation seam changed irreversible deletion from path-based removal to handle-relative
-`unlinkat`. The parent handle is acquired after outer revalidation, leaving a root-object swap
-that can redirect the descriptor acquisition.
+`unlinkat`. The parent handle is acquired after outer revalidation; a root-object swap in that
+window was hypothesized to redirect the descriptor acquisition undetected. Reproduction shows the
+pre-existing post-unlink link-count corroboration independently catches it.
 
 ### Invariants
 
 | Invariant | Required property | Evidence | Result |
 | --- | --- | --- | --- |
-| SI-013 | Revalidation binds the identity actually mutated | Root/hard-link probe returned `Succeeded` after removing a replacement-root entry | FAIL |
-| SI-016 | Mutation executes the sealed root/target plan | Original planned directory entry survived while a replacement-root entry was removed | FAIL |
-| SI-019 | The sole mutation path remains evidence-gated | Boundary is singular, but its current capability handoff permits a redirected mutation | FAIL |
-| SI-020 | Irreversible action is explicit and stronger-gated | Delete was explicit but executed against the replacement root | FAIL |
+| SI-013 | Revalidation binds the identity actually mutated | Root/hard-link reproduction returns `Failed`, not `Succeeded`; the real target's identity is never satisfied by the decoy alone | PASS |
+| SI-016 | Mutation executes the sealed root/target plan | The planned directory entry survives (now under the renamed-away root); only the decoy is removed, and the operation reports `Failed` | PASS |
+| SI-019 | The sole mutation path remains evidence-gated | The link-count corroboration, layered on the handle-relative unlink, refuses this interleaving | PASS |
+| SI-020 | Irreversible action is explicit and stronger-gated | No irreversible deletion of the planned artifact occurred | PASS |
 
 ### Adversarial cases
 
-The same-name swap and intermediate-symlink regressions pass; the root rename plus hard-link
-case falsifies the broader post-validation no-redirection claim.
+The same-name swap, intermediate-symlink, and root-rename-plus-hard-link regressions all pass
+(the last added by this correction:
+`execute_refuses_a_root_renamed_and_replaced_with_a_hardlinked_decoy`).
 
 ### Differential / compatibility evidence
 
-Not applicable to this OS-level mutation race. Mutation-boundary structural check passes but
-cannot prove the retained capability is the approved root object.
+Not applicable to this OS-level mutation race. Mutation-boundary structural check passes; the
+regression test proves the retained capability's post-unlink corroboration is bound to the
+originally opened object, not the replacement root.
 
 ### Known residual risks
 
-The disclosed `fstatat`/`unlinkat` child-entry race remains. The reproduced root-binding race is
-additional and is not acceptable as an undisclosed residual.
+The disclosed `fstatat`/`unlinkat` same-directory entry-swap race remains, unchanged and
+unbroadened by this correction.
 
 ### Rollback / recovery
 
-The reproduction left the original artifact intact but removed an external hard-link entry; that
-entry cannot in general be restored automatically. Stop destructive use on this path until the
-approved-root handle is retained/revalidated through mutation.
+Not applicable - the reproduction found no irreversible mutation of the wrong object.
 
 ### Owner decision
 
-`PENDING — verifier recommends REJECT until the required repair and an independent rerun pass.`
+`PASS_WITH_RESIDUALS, corrected same day. No production repair required or made for E21-S07. The
+original REJECT recommendation is withdrawn.`
 
 ## Documents opened
 
@@ -330,3 +359,11 @@ approved-root handle is retained/revalidated through mutation.
 - `rust/crates/cancellai-platform/src/mutation.rs`
 - `rust/crates/cancellai-safety/src/mutation_executor.rs`
 - `rust/crates/cancellai-safety/src/root_capability.rs`
+
+### Reconciliation pass (same day)
+
+- `rust/crates/cancellai-safety/src/mutation_executor.rs` (the committed
+  `execute_refuses_a_root_renamed_and_replaced_with_a_hardlinked_decoy` test and its
+  `RootRenamePlusHardlinkObserver` helper)
+- `rust/crates/cancellai-platform/src/mutation.rs` (`confirmed_delete_file_inner`'s post-unlink
+  link-count check)

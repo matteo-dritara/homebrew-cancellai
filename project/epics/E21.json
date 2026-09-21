@@ -177,6 +177,9 @@
       "status": "done",
       "outcome": "Replace detection of the delete-path swap race with prevention, using the no-follow handle capability the workspace already reviewed and shipped for configuration writes.",
       "change_risk": "CR4",
+      "repair_history": [
+        "Round 2 (project/evidence/E21-S03-S07-INDEPENDENT-REVIEW-ROUND2.md, Codex, 2026-09-21, requested late against the E21-CLOSURE.md residual 'no independent confirmation of the round-1 repairs') initially reported a root-rename-plus-hard-link probe returning ActionResult::Succeeded and a FAIL verdict. Executor Claude reproduced the identical sequence through the real, unmodified stack before repairing anything and obtained Failed instead - the pre-existing post-unlink link-count check already refuses it. Put back to Codex for reconciliation; Codex ran the committed regression test (execute_refuses_a_root_renamed_and_replaced_with_a_hardlinked_decoy, cancellai-safety/src/mutation_executor.rs), confirmed Failed, and retracted the original FAIL as a false positive it could not reproduce. Corrected verdict: PASS_WITH_RESIDUALS, no production repair. Status stays done - this was a reconciled false positive, not a repaired defect."
+      ],
       "dependencies": [
         "E21-S01"
       ],
