@@ -6,7 +6,7 @@
 - Commit: recorded by the release workflow at the tag
 - Channel: stable
 - Date: 2026-09-21
-- Published: pending
+- Published: no - verify-rust (windows-latest) failed on cargo test --workspace: three open_via_local_state_root_never_reaches_a_marker_bearing_mimic_elsewhere_on_disk tests (lib.rs, ledger.rs, rollup.rs) panicked during tempdir cleanup with OS error 32 (file in use) because the opened CurrentStateStore/EventLedger/AnalyticalMemory handle was never dropped before remove_dir_all, unlike this module's own established Windows-cleanup precedent for the verify connection (run 35583606403); repaired by adding the missing drop() in all three tests
 
 ## Included work
 

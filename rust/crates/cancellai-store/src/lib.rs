@@ -1138,6 +1138,10 @@ mod tests {
             "the marker-bearing mimic must be completely untouched - open() never named its path"
         );
 
+        // Windows refuses to delete a directory containing a file with an open handle; `store`
+        // itself (not just `verify`) holds one on the real database this test opened, so it must
+        // close first too, matching this module's own established precedent (96f645e).
+        drop(store);
         drop(verify);
         std::fs::remove_dir_all(&base).expect("clean up test dir");
     }
