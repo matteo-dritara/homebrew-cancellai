@@ -895,6 +895,20 @@ mod unix_impl {
         /// `DT_UNKNOWN` `fstatat` fallback is held to the same standard: a failed lookup there is
         /// also a failed listing, never a silently-assumed "not a directory".
         pub fn list_child_names(&self) -> Result<Vec<(String, bool)>, SealError> {
+            self.list_child_names_with_hook(|_count, _dup_fd| {})
+        }
+
+        /// `after_entry` runs once per real (non-`.`/`..`) entry collected, immediately after
+        /// it is pushed and before the next `readdir` call, with the running count and the raw
+        /// duplicated descriptor `readdir` is reading from - solely so tests can deterministically
+        /// force the *next* `readdir` call to fail after a chosen number of real entries (e.g. one
+        /// matching a known signature), reproducing the exact mid-enumeration failure E14-S04
+        /// round 6/7 independent review required a regression for, without relying on real
+        /// scheduler timing. In production ([`Self::list_child_names`]) this hook is a no-op.
+        fn list_child_names_with_hook(
+            &self,
+            mut after_entry: impl FnMut(usize, RawFd),
+        ) -> Result<Vec<(String, bool)>, SealError> {
             let duplicate = self.dir.try_clone().map_err(SealError::Io)?;
             let dup_fd = duplicate.into_raw_fd();
 
@@ -993,6 +1007,7 @@ mod unix_impl {
                     false
                 };
                 entries.push((name, is_dir));
+                after_entry(entries.len(), dup_fd);
             }
 
             Ok(entries)
@@ -1443,16 +1458,13 @@ mod unix_impl {
         }
 
         #[test]
-        fn list_child_names_fails_rather_than_silently_succeeding_on_a_broken_descriptor() {
-            // Round-6 independent review's finding: an earlier version of this method treated
-            // every null `readdir` result as end-of-stream, so a real read failure - reachable
-            // whenever the underlying descriptor stops being valid mid-enumeration, e.g. a
-            // concurrent close of the same fd number by unrelated code in the same process, or
-            // (on some platforms) the directory itself being removed while open - returned a
-            // truncated-but-`Ok` listing instead of an error. `mod tests` is a descendant module
-            // of `unix_impl`, so it can reach `SealedRoot`'s private `dir` field directly to
-            // reproduce a broken descriptor deterministically, without a dedicated test-only
-            // hook on the production API.
+        fn list_child_names_fails_when_the_descriptor_is_already_broken_before_the_call() {
+            // A narrower, earlier failure point than the mid-enumeration one below: the
+            // descriptor is invalid before `list_child_names` ever calls `try_clone`. Kept
+            // alongside `..._reports_a_readdir_failure_after_a_real_entry_not_a_truncated_ok`
+            // (round-7 independent review's finding: this test alone does not reach `readdir`'s
+            // own errno handling, since `try_clone` itself already fails first) because both are
+            // real, distinct ways this method can be asked to read a broken directory.
             let base = TempDir::new("list-child-names-broken-fd");
             std::fs::create_dir_all(base.path("root")).unwrap();
             std::fs::write(base.path("root/marker"), b"x").unwrap();
@@ -1481,6 +1493,56 @@ mod unix_impl {
                 result.is_err(),
                 "a broken descriptor must be reported as a failure, never as a successful, \
                  possibly-truncated listing: got {result:?}"
+            );
+        }
+
+        #[test]
+        fn list_child_names_reports_a_readdir_failure_after_a_real_entry_not_a_truncated_ok() {
+            // The exact class round 6/7 independent review required a regression for: a
+            // directory whose enumeration starts successfully - `readdir` returns a real,
+            // recognized-signature-shaped entry - and then fails, rather than reaching genuine
+            // end-of-stream. The prior code could not distinguish that failure from EOF, so it
+            // returned `Ok(vec![the one real entry])`, exactly the shape a caller comparing
+            // against a known signature could mistake for a complete, matching layout.
+            //
+            // `list_child_names_with_hook`'s `after_entry` callback fires once per real entry,
+            // with the exact raw descriptor `readdir` is reading from, letting this test close
+            // that descriptor deterministically after the single entry this directory contains
+            // - forcing the *next* `readdir` call (which would otherwise return null for
+            // genuine end-of-stream) to instead fail with `EBADF`, a real, nonzero `errno`.
+            let base = TempDir::new("list-child-names-mid-stream-failure");
+            std::fs::create_dir_all(base.path("root")).unwrap();
+            // `readdir`'s real implementations fill an internal buffer from the kernel in
+            // batches, so closing the descriptor after only one or two entries is not
+            // guaranteed to force a *new* syscall before this small a directory's true
+            // end-of-stream is already known from the batch already read. A few hundred entries
+            // reliably exceeds one batch on every platform this workspace targets, so the
+            // descriptor closed partway through is guaranteed to be needed again before EOF.
+            for i in 0..500 {
+                std::fs::write(base.path(&format!("root/file-{i:04}")), b"").unwrap();
+            }
+            let root = SealedRoot::establish(&base.path("root")).unwrap();
+
+            let mut closed = false;
+            let result = root.list_child_names_with_hook(|_count, dup_fd| {
+                if !closed {
+                    closed = true;
+                    // SAFETY: `dup_fd` is the raw descriptor `list_child_names_with_hook` is
+                    // currently reading `readdir` entries from, handed to this hook for exactly
+                    // this purpose. Closing it here, between two `readdir` calls, deterministically
+                    // turns a later call into a real failure instead of relying on unrelated
+                    // concurrent activity to race a close against it.
+                    unsafe {
+                        libc::close(dup_fd);
+                    }
+                }
+            });
+
+            assert!(
+                result.is_err(),
+                "a real readdir failure after a genuine entry must be reported as an error, \
+                 never as a successful listing containing only the entries collected so far \
+                 (which a caller could mistake for a complete, matching layout): got {result:?}"
             );
         }
 

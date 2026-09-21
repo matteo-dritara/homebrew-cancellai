@@ -113,7 +113,10 @@ REVIEW_ROUND_EXCEPTIONS = {
     "repair sound but found list_child_names could not distinguish a real readdir() failure "
     "from end-of-directory, returning a truncated-but-Ok listing; repaired with POSIX errno "
     "discrimination and submitted for a seventh review round - see "
-    "E14-S04-VERIFIER-REVIEW-ROUND6.md.",
+    "E14-S04-VERIFIER-REVIEW-ROUND6.md. Round 7 confirmed that errno repair correct but found "
+    "its regression test never reached readdir() at all (it failed earlier, at try_clone); "
+    "repaired with a test-only hook matching this crate's own established pattern and "
+    "submitted for an eighth review round - see E14-S04-VERIFIER-REVIEW-ROUND7.md.",
 }
 # Matches both an epic-scoped record (`E07-VERIFIER-REVIEW.md`) and a story-scoped one
 # (`E07-S07-VERIFIER-REVIEW.md`), counting both against the *epic's* ceiling (captured

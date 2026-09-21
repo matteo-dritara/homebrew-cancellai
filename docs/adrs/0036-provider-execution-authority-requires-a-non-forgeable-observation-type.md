@@ -220,8 +220,34 @@ contract for telling a real failure apart from genuine end-of-stream, which `rea
 other way to report. A nonzero `errno` after a null result now returns `SealError::Io` rather than
 the entries collected so far. The `DT_UNKNOWN` fallback's `fstatat` failure is held to the same
 standard: a failed lookup now returns an error rather than silently defaulting to "not a
-directory". A deterministic regression test (`list_child_names_fails_rather_than_silently_
-succeeding_on_a_broken_descriptor`) reproduces a broken descriptor by closing the bound root's
-own fd directly from within the crate's own test module (a descendant module can reach
-`SealedRoot`'s private `dir` field) and confirms the method now fails rather than returning a
-partial, successful-looking result.
+directory". A deterministic regression test (`list_child_names_fails_when_the_descriptor_is_
+already_broken_before_the_call`) reproduces a broken descriptor by closing the bound root's own
+fd directly from within the crate's own test module (a descendant module can reach `SealedRoot`'s
+private `dir` field) and confirms the method now fails rather than returning a partial,
+successful-looking result.
+
+## Round 5, fourth self-correction: the regression test did not reach the code it claimed to prove
+
+A fourth independent-review pass (`project/evidence/E14-S04-VERIFIER-REVIEW-ROUND7.md`) confirmed
+the errno repair itself correct - "the errno and fallback changes themselves correctly turn the
+round-6 incomplete-enumeration counterexample into an error" - but found the one regression test
+added for it closed the descriptor *before* `list_child_names` ran at all, so it failed at the
+earlier `try_clone` step and never exercised `readdir`'s own null/errno handling or the
+`DT_UNKNOWN` fallback. The test would have passed unchanged even if the errno-checking logic
+itself were deleted.
+
+Owner-authorized repair (this session, same conversation): `list_child_names` is now built on a
+private `list_child_names_with_hook(&self, after_entry: impl FnMut(usize, RawFd))`, called with a
+no-op in production - the same test-only-hook shape this crate and `cancellai-platform::mutation`
+already use elsewhere (`establish_with_hook`'s `before_open`, `confirmed_delete_file_inner`'s
+`between_open_and_unlink`). The hook fires once per real entry collected, with the exact raw
+duplicated descriptor `readdir` is reading from, letting a test close that descriptor
+deterministically *between* two `readdir` calls - reproducing the exact "real entry, then a real
+failure, not end-of-stream" interleaving the finding named. A new test,
+`list_child_names_reports_a_readdir_failure_after_a_real_entry_not_a_truncated_ok`, populates a
+directory with enough entries (500) to guarantee `readdir`'s own internal buffering needs more
+than one underlying syscall before reaching genuine end-of-stream (a directory small enough to be
+served from a single buffered read, as an earlier attempt at this test used, cannot force a
+*second* syscall to observe the closed descriptor at all - `readdir` already knows the answer
+from the first one) and confirms the method now fails instead of returning the entries collected
+before the injected failure.
