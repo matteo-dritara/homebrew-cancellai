@@ -50,6 +50,7 @@ distinguished by the next round, which is why the ceiling matters.
 | E14 | 2 | independent | 2 | 1 | 1 | 50% |
 | E14 | 3 | independent | 1 | 1 | 1 | 100% |
 | E14 | 4 | independent | 1 | 1 | 1 | 100% |
+| E14 | 5 | independent | 1 | 1 | 1 | 100% |
 | E16 | 1 | independent | 6 | 0 | 0 | 0% |
 | E17 | 1 | independent | 6 | 0 | 0 | 0% |
 | E18 | 1 | independent | 3 | 2 | 2 | 67% |

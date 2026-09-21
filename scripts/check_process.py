@@ -101,7 +101,11 @@ REVIEW_ROUND_EXCEPTIONS = {
     "E14": "round 4 reviews E14-S04's ADR-0035 redesign (raw observation as the authority "
     "input) after round 3 found ADR-0034's mandatory-but-discardable ceiling field "
     "insufficient - the owner authorized this specific fourth attempt rather than accepting "
-    "round 3 as final; see E14-S04-VERIFIER-REVIEW-ROUND3.md and ADR-0035",
+    "round 3 as final; see E14-S04-VERIFIER-REVIEW-ROUND3.md and ADR-0035. Round 5 reviews "
+    "ADR-0036, an owner-authorized structurally different design after round 4 declined a "
+    "fifth patch on ADR-0035's field shape; round 5 itself found and the executor repaired a "
+    "forgeable-identity-binding defect within that same design before a second, same-round "
+    "verification pass - see E14-S04-VERIFIER-REVIEW-ROUND5.md and ADR-0036.",
 }
 # Matches both an epic-scoped record (`E07-VERIFIER-REVIEW.md`) and a story-scoped one
 # (`E07-S07-VERIFIER-REVIEW.md`), counting both against the *epic's* ceiling (captured

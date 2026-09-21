@@ -19,10 +19,22 @@
 //! could construct directly. `cancellai_safety::resolve_provider_execution_authority` (round 5)
 //! is the only place this observation feeds into an authority decision, and it requires one by
 //! value, not an enum variant a caller could choose to omit.
+//!
+//! **Round 5's own independent review** (`project/evidence/E14-S04-VERIFIER-REVIEW-ROUND5.md`)
+//! found the first version of `observe` still forgeable: it took `identity_observer: &dyn
+//! IdentityObserver` as a public parameter, and [`crate::identity::SyntheticIdentityObserver`]
+//! is itself public API (needed elsewhere for legitimate testing). A caller could observe a
+//! real, unrelated, favorably-shaped directory's markers while pairing them with a fabricated
+//! [`IdentityToken`] equal to some *other*, genuinely drifted root's real identity - the markers
+//! were real I/O, but the identity binding them to a specific root was, once again, a
+//! caller-supplied fact. `observe` no longer takes an observer parameter at all: identity is
+//! always read via [`crate::identity::SystemIdentityObserver`] internally, the same call `Self`
+//! reads the markers from, so there is no seam left for the two facts to be pulled from
+//! different, caller-chosen sources.
 
 use std::path::Path;
 
-use crate::identity::{IdentityObserver, IdentityToken};
+use crate::identity::IdentityToken;
 
 /// A directory listing or identity read failed. Never treated as an empty/clean layout by any
 /// caller of [`BoundLayoutObservation::observe`] - an unobservable root is missing evidence, not
@@ -44,15 +56,26 @@ pub struct BoundLayoutObservation {
 }
 
 impl BoundLayoutObservation {
-    /// The only constructor. `identity_observer` is a capability, not a shortcut: production
-    /// callers pass [`crate::SystemIdentityObserver`]; nothing here reads `root`'s identity by
-    /// any other path, so this cannot be satisfied with a fabricated [`IdentityToken`] the way a
-    /// plain struct literal could be.
-    pub fn observe(
-        root: &Path,
-        identity_observer: &dyn IdentityObserver,
-    ) -> Result<Self, LayoutObservationError> {
-        let root_identity = match identity_observer.observe(root) {
+    /// The only constructor, and it takes no observer parameter (round 5 independent review:
+    /// accepting one, even as a trait object, let a caller pair real markers from one path with
+    /// a fabricated identity for another - see the module doc). Identity and markers are always
+    /// read from the same real `root`, via [`crate::identity::SystemIdentityObserver`]
+    /// internally, so a caller has no seam to supply either fact independently.
+    ///
+    /// ```compile_fail
+    /// // An external crate cannot substitute an observer to bind a fabricated identity to
+    /// // real markers - there is no parameter for one.
+    /// use cancellai_platform::provider_layout::BoundLayoutObservation;
+    /// use std::path::Path;
+    /// let _ = BoundLayoutObservation::observe(
+    ///     Path::new("/tmp"),
+    ///     &cancellai_platform::SyntheticIdentityObserver::new(),
+    /// );
+    /// ```
+    pub fn observe(root: &Path) -> Result<Self, LayoutObservationError> {
+        use crate::identity::IdentityObserver;
+
+        let root_identity = match crate::identity::SystemIdentityObserver.observe(root) {
             crate::identity::IdentityObservation::Identity(identity) => identity,
             crate::identity::IdentityObservation::Absent => {
                 return Err(LayoutObservationError(format!(
@@ -126,7 +149,6 @@ impl BoundLayoutObservation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::identity::SystemIdentityObserver;
 
     struct TempDir(std::path::PathBuf);
 
@@ -157,7 +179,7 @@ mod tests {
         std::fs::create_dir_all(dir.0.join("sessions")).unwrap();
         std::fs::write(dir.0.join("config.json"), b"{}").unwrap();
 
-        let observation = BoundLayoutObservation::observe(&dir.0, &SystemIdentityObserver)
+        let observation = BoundLayoutObservation::observe(&dir.0)
             .expect("a real, existing directory must observe cleanly");
 
         let mut markers = observation.markers().to_vec();
@@ -172,7 +194,7 @@ mod tests {
     fn refuses_an_absent_root() {
         let dir = TempDir::new("absent-parent");
         let missing = dir.0.join("does-not-exist");
-        let err = BoundLayoutObservation::observe(&missing, &SystemIdentityObserver)
+        let err = BoundLayoutObservation::observe(&missing)
             .expect_err("an absent root must not observe as an empty, clean layout");
         assert!(!err.0.is_empty());
     }
@@ -190,7 +212,7 @@ mod tests {
             return;
         }
 
-        let result = BoundLayoutObservation::observe(&dir.0, &SystemIdentityObserver);
+        let result = BoundLayoutObservation::observe(&dir.0);
         std::fs::set_permissions(&dir.0, std::fs::Permissions::from_mode(0o755)).unwrap();
 
         let err = result.expect_err("an unreadable root must not observe as an empty layout");
@@ -202,8 +224,8 @@ mod tests {
         let dir = TempDir::new("stable-identity");
         std::fs::write(dir.0.join("config.json"), b"{}").unwrap();
 
-        let first = BoundLayoutObservation::observe(&dir.0, &SystemIdentityObserver).unwrap();
-        let second = BoundLayoutObservation::observe(&dir.0, &SystemIdentityObserver).unwrap();
+        let first = BoundLayoutObservation::observe(&dir.0).unwrap();
+        let second = BoundLayoutObservation::observe(&dir.0).unwrap();
 
         assert_eq!(first.root_identity(), second.root_identity());
     }

@@ -58,10 +58,13 @@ fact, because there is no field left to omit or contradict.
 
 **2. A real layout fact reaches authority only through a new, separate path that a caller cannot
 substitute a plain value for.** `cancellai_platform::provider_layout::BoundLayoutObservation` is
-a new type whose only constructor, `observe(root, identity_observer)`, performs real directory
-I/O against a real path and records the root's own `IdentityToken` alongside the marker names it
-actually found. There is no way to construct one from caller-asserted marker strings, in any
-crate. `cancellai_safety::authority::resolve_provider_execution_authority(base: AuthorityInputs,
+a new type whose only constructor, `observe(root)`, performs real directory I/O against a real
+path and records the root's own `IdentityToken` alongside the marker names it actually found -
+both read from the same call, internally, with no parameter through which a caller could supply
+either independently (see "Round 5 self-correction" below for why the first version's public
+observer parameter did not yet fully achieve this). There is no way to construct one from
+caller-asserted marker strings, in any crate. `cancellai_safety::authority::
+resolve_provider_execution_authority(base: AuthorityInputs,
 observation: &BoundLayoutObservation, known_signatures: &[LayoutSignature]) ->
 ProviderExecutionPermit` is the only function that can produce a `ProviderExecutionPermit` - an
 opaque type with no public constructor, no `From`/`Into` conversion from `EffectiveAuthority`,
@@ -136,3 +139,25 @@ and is not a new gap this ADR introduces.
 - A future orchestrator story wiring a live layout probe into the real mutation boundary, and a
   future story establishing a trusted provider-layout-manifest source, both remain open work this
   ADR does not close and does not claim to.
+
+## Round 5 self-correction (same-day independent review)
+
+The first committed version of `BoundLayoutObservation::observe` took a public
+`identity_observer: &dyn cancellai_platform::IdentityObserver` parameter, reasoning that a
+capability parameter (matching this codebase's own `IdentityObserver`/`MutationExecutor`
+pattern elsewhere) was itself a non-forgeable seam. Independent review
+(`project/evidence/E14-S04-VERIFIER-REVIEW-ROUND5.md`) found this insufficient:
+`cancellai_platform::SyntheticIdentityObserver` is itself legitimate public API (needed for
+testing elsewhere in this workspace), so an external caller could observe a real, favorably-
+shaped, *unrelated* directory's markers while pairing them - via a synthetic observer - with a
+fabricated `IdentityToken` equal to some *other*, genuinely drifted root's real identity. The
+markers were real I/O; the identity binding them to a specific root was, once again, a
+caller-supplied fact, just relocated one level down from where round 4 found it.
+
+The repair stays inside this ADR's design - it is not a sixth architecture. `observe` no longer
+takes an observer parameter at all: identity is now always read via
+`cancellai_platform::SystemIdentityObserver` internally, from the same call that reads the
+markers, closing the seam between the two facts entirely rather than trusting a parameter type to
+close it. A `compile_fail` doctest on `BoundLayoutObservation::observe` pins this the same way
+`TrustedTier`/`LayoutDriftFinding`'s own doctests already pin their non-forgeability elsewhere in
+this codebase.

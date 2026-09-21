@@ -889,11 +889,8 @@ mod tests {
     /// [`cancellai_platform::BoundLayoutObservation`], for the same reason no other crate can:
     /// its only constructor performs real directory I/O.
     fn observe(dir: &TempDir) -> cancellai_platform::BoundLayoutObservation {
-        cancellai_platform::BoundLayoutObservation::observe(
-            &dir.0,
-            &cancellai_platform::SystemIdentityObserver,
-        )
-        .expect("a real, existing temp dir must observe cleanly")
+        cancellai_platform::BoundLayoutObservation::observe(&dir.0)
+            .expect("a real, existing temp dir must observe cleanly")
     }
 
     #[test]
