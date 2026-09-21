@@ -8,11 +8,10 @@ Epics: **33** | Stories: **167**
 
 ## Story status
 
-- `blocked`: 2
+- `blocked`: 3
 - `cancelled`: 1
-- `done`: 156
+- `done`: 157
 - `planned`: 6
-- `ready_for_review`: 2
 
 ## Change risk distribution
 
@@ -28,5 +27,4 @@ Epics: **33** | Stories: **167**
 
 ## Awaiting independent review
 
-- **E14-S02** - Growth velocity and forecast (CR1)
-- **E14-S04** - Structural anomaly detection (CR4)
+- none
