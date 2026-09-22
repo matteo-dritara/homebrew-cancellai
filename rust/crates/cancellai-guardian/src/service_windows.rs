@@ -13,6 +13,16 @@
 //! which would make substring status parsing silently wrong on a non-English Windows install -
 //! `/XML` output uses fixed, non-localized element names and is used here instead, deliberately.
 
+// Only this module's own tests construct a `PathBuf` directly (`ServiceSpec::program` in a real
+// `spec()`/smoke-test fixture) - production code here never stores a local path at all (see the
+// module docs: unlike the file-backed macOS/Linux adapters, a scheduled task has no local config
+// file). A crate-wide `use` would be reported as unused specifically on a real Windows *library*
+// build, where this module compiles outside `cfg(test)` too (`target_os = "windows"` alone
+// satisfies `lib.rs`'s `cfg(any(test, target_os = "windows"))`) but `mod tests` does not - this
+// is exactly the "clippy only sees the platform it runs on" gap AGENTS.md warns about, caught by
+// real Windows CI rather than local `--target x86_64-pc-windows-gnu` clippy (unavailable in this
+// environment, no cross-compiler installed).
+#[cfg(test)]
 use std::path::PathBuf;
 
 use crate::service::{

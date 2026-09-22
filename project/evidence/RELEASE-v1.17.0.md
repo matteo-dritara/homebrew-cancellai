@@ -6,7 +6,7 @@
 - Commit: recorded by the release workflow at the tag
 - Channel: stable
 - Date: 2026-09-22
-- Published: pending
+- Published: no - verify-rust (windows-latest) failed on cargo clippy --workspace --all-targets --all-features -- -D warnings: unused import std::path::PathBuf in cancellai-guardian/src/service_windows.rs:16 (only used by that module's own #[cfg(test)] fixtures, which do not compile into the plain lib target on a real Windows build where the module is included via target_os = "windows" alone, not cfg(test) - a platform-specific lint gap this workspace's own docs warn about, not caught locally since no Windows cross-compiler clippy was run before tagging); verify also failed on pytest: tests/test_release.py::ReleaseOutcomeTests::test_every_committed_packet_records_an_outcome, v1.16.0 had no recorded outcome despite publishing successfully (run 35742363018)
 
 ## Included work
 

@@ -6,7 +6,7 @@
 - Commit: recorded by the release workflow at the tag
 - Channel: stable
 - Date: 2026-09-22
-- Published: pending
+- Published: yes
 
 ## Included work
 
