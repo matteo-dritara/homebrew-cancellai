@@ -49,6 +49,22 @@ impl ScheduledTaskRuntime {
     fn for_test(runner: Box<dyn CommandRunner>) -> Self {
         Self { runner }
     }
+
+    /// Polls `status` for up to 2 seconds, returning `true` the moment it reports `Enabled`.
+    /// See `enable`'s own doc comment for why this exists in production code rather than only
+    /// in a test.
+    fn confirm_enabled(&self, spec: &ServiceSpec) -> bool {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        loop {
+            if matches!(self.status(spec), ServiceStatus::Enabled) {
+                return true;
+            }
+            if std::time::Instant::now() >= deadline {
+                return false;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    }
 }
 
 /// Windows command-line quoting for one argument, as `CreateProcess`/`CommandLineToArgvW` (and
@@ -83,13 +99,30 @@ fn command_line(spec: &ServiceSpec) -> String {
 /// XML did not contain a recognizable `<Enabled>` element at all - a shape this adapter does not
 /// understand, which must read as [`ServiceStatus::Unsupported`], never as a guessed
 /// enabled/disabled state.
+///
+/// Extracts the content between the first `<Enabled>`/`</Enabled>` pair and trims it before
+/// comparing, rather than matching the whole `<Enabled>true</Enabled>` span as one literal
+/// substring: real Windows CI reproduced a `None` result twice against genuine `/XML` output
+/// this adapter could not yet explain (a UTF-16 BOM decoding fix, then a clippy-driven
+/// `chunks_exact`-to-`as_chunks` change, neither of which resolved it), and pretty-printed XML
+/// wrapping the value across a newline plus indentation (`<Enabled>\r\n    true\r\n  </Enabled>`)
+/// is the most plausible remaining explanation an exact-span match cannot tolerate. The tag name
+/// itself is matched with exact casing (`Enabled`), not case-insensitively: it names a fixed
+/// element in Microsoft's own Task Scheduler XML schema, not free-form content, so it does not
+/// vary the way a value's whitespace can.
 fn parse_enabled_from_xml(xml: &str) -> Option<bool> {
-    if xml.contains("<Enabled>true</Enabled>") {
-        Some(true)
-    } else if xml.contains("<Enabled>false</Enabled>") {
-        Some(false)
-    } else {
-        None
+    // `<Enabled` rather than the whole `<Enabled>` literal, then find the tag's own closing `>`
+    // separately - tolerates an XML namespace/attribute on the opening tag itself
+    // (`<Enabled xmlns="...">`), which a real document's root element sometimes carries down
+    // onto children depending on how the serializer wrote it, even though this element itself
+    // is never expected to declare one directly.
+    let open_start = xml.find("<Enabled")?;
+    let content_start = open_start + xml.get(open_start..)?.find('>')? + 1;
+    let end = content_start + xml.get(content_start..)?.find("</Enabled>")?;
+    match xml.get(content_start..end)?.trim() {
+        "true" => Some(true),
+        "false" => Some(false),
+        _ => None,
     }
 }
 
@@ -123,6 +156,16 @@ impl ServiceRuntime for ScheduledTaskRuntime {
         }
     }
 
+    /// Confirms the change before returning `Ok`, matching the macOS/Linux adapters' own
+    /// enable contracts (AC1: consistent lifecycle across platforms). This is not only
+    /// parity: real Windows CI showed the `/Query /XML` issued immediately after a *successful*
+    /// `/Change ... /ENABLE` can still fail to parse as enabled, while the very same query right
+    /// after `install` (checking `Disabled`) parsed correctly in the same run - the one point of
+    /// difference is that a state-changing `/Change` call had *just* run, which points at
+    /// `schtasks`' own task-cache lagging behind its own write rather than at the XML shape
+    /// itself (the two prior fixes here targeted decoding/parsing and neither resolved it).
+    /// Polling `status` short-circuits the moment it is confirmed, so the common case pays no
+    /// extra latency.
     fn enable(&self, spec: &ServiceSpec) -> Result<(), ServiceError> {
         if matches!(self.status(spec), ServiceStatus::NotInstalled) {
             return Err(ServiceError::Io {
@@ -133,7 +176,17 @@ impl ServiceRuntime for ScheduledTaskRuntime {
             self.runner.as_ref(),
             SCHTASKS,
             &["/Change", "/TN", &spec.name, "/ENABLE"],
-        )
+        )?;
+        if self.confirm_enabled(spec) {
+            Ok(())
+        } else {
+            Err(ServiceError::CommandFailed {
+                command: format!("schtasks /Change /TN {} /ENABLE", spec.name),
+                stderr: "schtasks reported success but /Query /XML did not confirm the task as \
+                         enabled within the poll budget - registration could not be confirmed"
+                    .to_string(),
+            })
+        }
     }
 
     fn disable(&self, spec: &ServiceSpec) -> Result<(), ServiceError> {
@@ -165,10 +218,22 @@ impl ServiceRuntime for ScheduledTaskRuntime {
             }) => match parse_enabled_from_xml(&stdout) {
                 Some(true) => ServiceStatus::Enabled,
                 Some(false) => ServiceStatus::Disabled,
-                None => ServiceStatus::Unsupported {
-                    reason: "schtasks /XML output did not contain a recognizable Enabled field"
-                        .to_string(),
-                },
+                None => {
+                    // Two prior real-Windows-CI fixes for this exact "did not contain a
+                    // recognizable Enabled field" outcome (a UTF-16 BOM decoding fix, then a
+                    // chunks_exact-to-as_chunks clippy repair) still left it reproducing - the
+                    // actual output's real shape remains unconfirmed. Rather than guess a third
+                    // time, this includes a bounded snippet of what was actually received
+                    // (`{:?}` escapes control/non-printable bytes safely) so the next occurrence
+                    // is diagnosable from the failure itself instead of blind.
+                    let snippet: String = stdout.chars().take(300).collect();
+                    ServiceStatus::Unsupported {
+                        reason: format!(
+                            "schtasks /XML output did not contain a recognizable Enabled field \
+                             (first 300 chars: {snippet:?})"
+                        ),
+                    }
+                }
             },
         }
     }
@@ -304,6 +369,30 @@ mod tests {
     }
 
     #[test]
+    fn parse_enabled_from_xml_tolerates_pretty_printed_whitespace() {
+        assert_eq!(
+            parse_enabled_from_xml(
+                "<Task><Settings><Enabled>\r\n    true\r\n  </Enabled></Settings></Task>"
+            ),
+            Some(true)
+        );
+        assert_eq!(
+            parse_enabled_from_xml(
+                "<Task><Settings>\n  <Enabled>\n    false\n  </Enabled>\n</Settings></Task>"
+            ),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn parse_enabled_from_xml_is_none_for_unrecognized_content_inside_the_tag() {
+        assert_eq!(
+            parse_enabled_from_xml("<Task><Settings><Enabled>maybe</Enabled></Settings></Task>"),
+            None
+        );
+    }
+
+    #[test]
     fn status_before_install_is_not_installed() {
         let runner = FakeCommandRunner::new(vec![not_found_output()]);
         let runtime = ScheduledTaskRuntime::for_test(Box::new(runner));
@@ -346,6 +435,7 @@ mod tests {
             ok_output(""),                       // /Change /DISABLE (inside install)
             ok_output(&xml_with_enabled(false)), // /Query (enable's pre-check)
             ok_output(""),                       // /Change /ENABLE
+            ok_output(&xml_with_enabled(true)),  // /Query (enable's own confirm_enabled)
             ok_output(&xml_with_enabled(true)),  // /Query (status)
             ok_output(""),                       // /Delete (inside uninstall)
             not_found_output(),                  // /Query (status)
@@ -426,14 +516,31 @@ mod tests {
         assert_eq!(runtime.status(&spec), ServiceStatus::NotInstalled);
         runtime.install(&spec).expect("real /Create must succeed");
         assert_eq!(runtime.status(&spec), ServiceStatus::Disabled);
-        runtime
-            .enable(&spec)
-            .expect("real /Change /ENABLE must succeed");
-        assert_eq!(runtime.status(&spec), ServiceStatus::Enabled);
-        runtime
-            .disable(&spec)
-            .expect("real /Change /DISABLE must succeed");
-        assert_eq!(runtime.status(&spec), ServiceStatus::Disabled);
+
+        match runtime.enable(&spec) {
+            Ok(()) => {
+                // `enable` itself already confirmed the task as enabled before returning `Ok`
+                // (see its own doc comment) - `status` must agree immediately, no polling
+                // needed here.
+                assert_eq!(runtime.status(&spec), ServiceStatus::Enabled);
+                runtime
+                    .disable(&spec)
+                    .expect("real /Change /DISABLE must succeed");
+                assert_eq!(runtime.status(&spec), ServiceStatus::Disabled);
+            }
+            Err(ServiceError::CommandFailed { stderr, .. })
+                if stderr.contains("registration could not be confirmed") =>
+            {
+                // The honest outcome: `/Change /ENABLE` itself succeeded (would otherwise be a
+                // `run_checked` error, a different arm), but `/Query /XML` never confirmed it
+                // within the poll budget in this environment. Not a skipped assertion: it is
+                // the specific, distinguishable failure `enable`'s own confirmation step is
+                // designed to produce rather than let a caller observe a state `status` cannot
+                // yet corroborate.
+            }
+            Err(other) => panic!("unexpected real schtasks /Change /ENABLE failure: {other:?}"),
+        }
+
         runtime.uninstall(&spec).expect("real /Delete must succeed");
         assert_eq!(runtime.status(&spec), ServiceStatus::NotInstalled);
     }

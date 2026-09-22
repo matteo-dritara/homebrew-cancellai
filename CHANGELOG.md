@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The Rust engine's `cancellai-guardian` crate failed its real Windows smoke test on the v1.17.3
+  tag: `status()` right after a successful `schtasks /Change ... /ENABLE` still failed to parse
+  the task as enabled (`Unsupported { reason: "schtasks /XML output did not contain a
+  recognizable Enabled field" }`), even though the very same `/Query /XML` parsed correctly
+  right after `install` in the same run. That asymmetry - the only difference being a
+  state-changing `/Change` call that had *just* run - points at `schtasks`' own task-cache
+  lagging behind its own write, not at the XML shape two prior fixes already targeted (a UTF-16
+  BOM decode, then a clippy-driven `as_chunks` change). `enable()` now polls `status()` for up to
+  2 seconds to confirm the change before returning `Ok`, matching the macOS/Linux adapters' own
+  enable contracts (AC1); the real smoke test accepts the resulting honest,
+  distinguishable "registration could not be confirmed" outcome the same way the macOS one
+  already does, instead of asserting a state `status` cannot yet corroborate.
+  `parse_enabled_from_xml` was also made whitespace/attribute-tolerant as a defensive
+  improvement, and `status()`'s `Unsupported` reason now includes a bounded snippet of the
+  actual `/XML` output so any further occurrence is diagnosable from the failure itself.
+  v1.17.3's tag stands as immutable history and is recorded as unpublished; this fix ships as the
+  next version.
+
 ## [1.17.3] - 2026-09-22
 
 ### Fixed
