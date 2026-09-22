@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.17.1] - 2026-09-22
+
+### Fixed
+
+- The Rust engine's `cancellai-guardian` crate failed real Windows CI on the v1.17.0 tag: `cargo
+  clippy --workspace --all-targets --all-features -- -D warnings` denied an unused `use
+  std::path::PathBuf` in `service_windows.rs`, used only by that module's own `#[cfg(test)]`
+  fixtures - on a real Windows build the module is included via `target_os = "windows"` alone
+  (`lib.rs`'s `cfg(any(test, target_os = "windows"))`), so the plain library target compiles it
+  with those fixtures absent and the import genuinely unused there, a platform-specific lint gap
+  this workspace's own tooling documentation already names and no local host could reproduce
+  without a Windows cross-compiler. Gated the import to `#[cfg(test)]` to match its real usage.
+  v1.17.0's tag stands as immutable history and is recorded as unpublished; this fix ships as the
+  next version.
+
 ## [1.17.0] - 2026-09-22
 
 ### Added
