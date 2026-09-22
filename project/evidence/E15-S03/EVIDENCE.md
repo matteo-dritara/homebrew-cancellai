@@ -1,20 +1,52 @@
 # Evidence Packet - E15-S03
 
-- Commit/PR: pending (this work item)
+- Commit/PR: pending (this work item) - round 1 finding repaired here
 - Executor: Claude
-- Independent verifier: pending (Codex, per-epic review once every E15 story is `ready_for_review`)
+- Independent verifier: Codex - round 1: `project/evidence/E15-VERIFIER-REVIEW.md`, `FAIL`; CR4
+  Safety Verdict `project/evidence/E15-S03/SAFETY_VERDICT.md`, `FAIL`; round 2 pending
 - Change Risk: CR4
 - Spec version/commit: `project/epics/E15.json`'s E15-S03 story contract
 
 ## Outcome
 
-PASS (executor self-assessment; independent verification pending - **CR4: this packet does not
-and cannot carry a Safety Verdict; that is the independent reviewer's output, gated at `done`,
-per `docs/development/AGENT_PROTOCOL.md`**). Implements `cancellai_guardian::remediation`: a
-bounded remediation planner that translates a pressure state plus already-classified candidate
-artifacts into an ordered plan, granting authority that is always the minimum of (a) the
-candidate's own already-computed Effective Policy ceiling and (b) Guardian's own pressure-derived
-intent ceiling - which never exceeds `AuthorityLevel::Quarantine` for any pressure state.
+PASS_PENDING_ROUND2 (executor self-assessment after repairing round 1's finding; independent
+re-verification pending - **CR4: this packet does not and cannot carry a Safety Verdict; that is
+the independent reviewer's output, gated at `done`, per `docs/development/AGENT_PROTOCOL.md`**).
+Implements `cancellai_guardian::remediation`: a bounded remediation planner that translates a
+pressure state plus already-classified candidate artifacts into an ordered plan, granting
+authority that is always the minimum of (a) the candidate's own already-computed Effective Policy
+ceiling and (b) Guardian's own pressure-derived intent ceiling - which never exceeds
+`AuthorityLevel::Quarantine` for any pressure state.
+
+## Round 1 independent review: FAIL, one finding, repaired here
+
+`project/evidence/E15-VERIFIER-REVIEW.md` and `project/evidence/E15-S03/SAFETY_VERDICT.md`
+(Codex, round 1) rejected the first committed version with one concrete, reproduced finding on
+both SI-027 and SI-028.
+
+- **F1 (AC1, SI-027, SI-028)** - `RemediationCandidate`'s three fields (`artifact_id`,
+  `reachable_authority`, `binding_constraints`) were `pub`, so any external crate could construct
+  `RemediationCandidate { reachable_authority: AuthorityLevel::Autopilot, .. }` directly, with no
+  relationship to any real `ClassifiedArtifact`/`effective_authority` computation at all. The
+  reviewer compiled an external integration probe doing exactly this and got a `Quarantine` plan
+  item back at RED pressure - `plan_remediation`'s own `min` logic was never wrong (the 4x5 matrix
+  against *trusted* input still held), but the input it trusted was forgeable, which defeats the
+  AC1/SI-028 claim just as surely as a wrong comparison would. This is the same failure class
+  `docs/architecture/GUARDIAN_MODEL.md`'s own history describes for provider-layout authority
+  (ADR-0034/ADR-0035/ADR-0036): a plain, publicly constructible value asserting an
+  authority-relevant fact is discardable/forgeable.
+  *Repair*: `RemediationCandidate`'s fields are now private, with `From<&ClassifiedArtifact>` as
+  the only constructor - the reviewer's exact probe (a bare struct literal from outside this
+  crate) no longer compiles, proven by a permanent `compile_fail` doctest on the type itself
+  (`cargo test --doc -p cancellai-guardian` confirms it fails to compile, as intended). *Disclosed,
+  not fully closed*: `cancellai_policy::ClassifiedArtifact` itself remains a plain, publicly
+  constructible struct - a caller could still fabricate one by constructing a full
+  `ClassifiedArtifact`/`AgentArtifact` rather than the three-field candidate the reviewer used.
+  This is a pre-existing, already-accepted trust boundary shared with `cancellai-cli`'s own
+  production pipeline, not a new, weaker one this crate introduced; fully sealing it would need
+  the same non-forgeable-primitive treatment ADR-0036 gave provider-layout observations, applied
+  workspace-wide to `cancellai-policy` - a larger decision out of this story's scope, recorded as
+  residual risk below, not silently narrowed away.
 
 ## Acceptance Criteria Evidence
 
@@ -135,7 +167,7 @@ docs/CLI.md is up to date.
 
 ## Method defects
 
-- none
+- **What happened**: this executor's own module documentation for `remediation.rs` cited `docs/architecture/GUARDIAN_MODEL.md`'s extensive history of the exact failure class this finding is (ADR-0034/ADR-0035/ADR-0036: a plain, publicly constructible value asserting an authority-relevant fact is discardable/forgeable) while writing `RemediationCandidate` - and still gave that new type `pub` fields with no constructor restriction, recognizing the pattern in prose without checking the new code against it. **Prevented by**: none exists as an automated check; the `adversarial-cases` skill's "second-path check" axis ("does any new code decide what is permitted, rather than what was asked for") is adjacent but does not explicitly ask "can this new public type carrying an authority-relevant field be constructed by a caller who never touched the real upstream computation at all." **Disposition**: accepted 2026-09-22 - repaired in this commit (private fields, `From<&ClassifiedArtifact>` only, `compile_fail` regression); propose the `adversarial-cases` skill add an explicit prompt under its safety-specific generators: "for any new public type carrying an `AuthorityLevel`/authority-relevant field, can it be constructed directly from outside the crate with no relationship to the real computation it claims to represent" - the same question this codebase's own ADR-0036 history already answers for provider-layout observations, generalized so a future story does not have to independently rediscover it.
 
 ## Residual risks
 
@@ -154,11 +186,21 @@ docs/CLI.md is up to date.
   that pre-order is preserved within ties) - `remediation.rs` does not accept an `AnomalySeverity`
   input directly, since neither AC nor the verification contract names it as a required input,
   and adding it now would be speculative scope beyond what this story specifies.
+- **`cancellai_policy::ClassifiedArtifact` remains publicly constructible** (round 1 finding F1's
+  disclosed remainder, above): `RemediationCandidate` can no longer be forged directly, but a
+  caller could still fabricate a full `ClassifiedArtifact`/`AgentArtifact` with an arbitrary
+  `reachable_authority` and convert it via `From`. This is an existing, `cancellai-cli`-shared
+  trust boundary this story did not introduce and cannot close alone; sealing it needs a
+  `cancellai-policy`-wide decision (the ADR-0036 treatment, applied to policy resolution rather
+  than provider-layout observation), tracked here as a backlog candidate for whichever future
+  story owns that boundary, not fixed silently in this one.
 - This is a CR4 story; per `docs/development/AGENT_PROTOCOL.md`, the executor cannot supply its
   own Safety Verdict, and review happens at epic scope once every E15 story reaches
   `ready_for_review`. Until that independent review, this packet's PASS is a self-assessment only.
 
 ## Verifier verdict
 
-(pending - independent review runs at epic scope once every E15 story is `ready_for_review`;
-CR4 additionally requires an independent Safety Verdict before this story can reach `done`)
+Round 1: `FAIL` (`project/evidence/E15-VERIFIER-REVIEW.md`,
+`project/evidence/E15-S03/SAFETY_VERDICT.md`) - repaired above. Round 2: pending - independent
+review runs at epic scope once every E15 story is `ready_for_review`; CR4 additionally requires
+an independent Safety Verdict recording a pass before this story can reach `done`.

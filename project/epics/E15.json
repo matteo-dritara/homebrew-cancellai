@@ -13,7 +13,7 @@
     {
       "id": "E15-S01",
       "title": "Cross-platform user-service runtime",
-      "status": "in_progress",
+      "status": "ready_for_review",
       "outcome": "Implement launchd/systemd-user/Windows task-or-service adapters with one Guardian engine.",
       "change_risk": "CR3",
       "dependencies": [
@@ -36,7 +36,7 @@
     {
       "id": "E15-S02",
       "title": "Notification abstraction",
-      "status": "blocked",
+      "status": "ready_for_review",
       "outcome": "Provide OS-appropriate notifications with terminal fallback and privacy-safe messages.",
       "change_risk": "CR1",
       "dependencies": [
@@ -57,7 +57,7 @@
     {
       "id": "E15-S03",
       "title": "Bounded remediation planner",
-      "status": "blocked",
+      "status": "ready_for_review",
       "outcome": "Translate pressure/anomaly signals into recommendations or pre-authorized quarantine/reclaim plans without authority escalation.",
       "change_risk": "CR4",
       "dependencies": [
@@ -83,7 +83,7 @@
     {
       "id": "E15-S04",
       "title": "Guardian kill-switch and audit",
-      "status": "blocked",
+      "status": "ready_for_review",
       "outcome": "Provide immediate local disable and complete ledger trace for every autonomous recommendation/action.",
       "change_risk": "CR3",
       "dependencies": [

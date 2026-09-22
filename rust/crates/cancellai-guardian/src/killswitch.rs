@@ -92,12 +92,17 @@ impl KillSwitch {
     }
 
     /// See the module docs' "Fail-safe reads" section: only a marker that is either absent
-    /// (never engaged) or reads exactly [`DISENGAGED_MARKER`] counts as disengaged. Present but
-    /// unreadable, present with unrecognized content, or any other I/O failure, all read as
+    /// (never engaged) or reads **byte-for-byte exactly** [`DISENGAGED_MARKER`] counts as
+    /// disengaged - not a trimmed/normalized comparison. Round-1 independent review found the
+    /// original implementation compared `content.trim()` instead, which let content this crate
+    /// never itself writes (a trailing newline, surrounding whitespace, any other modification)
+    /// still read as a confirmed disengage; `disengage()` never appends a newline or any other
+    /// byte beyond the marker itself, so an exact comparison rejects nothing legitimate. Present
+    /// but unreadable, present with any other content, or any other I/O failure, all read as
     /// engaged. Never mutates.
     pub fn is_engaged(&self) -> bool {
         match std::fs::read_to_string(&self.path) {
-            Ok(content) => content.trim() != DISENGAGED_MARKER,
+            Ok(content) => content != DISENGAGED_MARKER,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => false,
             Err(_) => true,
         }
@@ -187,6 +192,27 @@ mod tests {
         switch.engage().unwrap();
         switch.disengage().expect("disengage must succeed");
         assert!(!switch.is_engaged());
+    }
+
+    #[test]
+    fn a_marker_that_merely_trims_to_disengaged_still_reads_as_engaged() {
+        // Round-1 independent review: a trailing newline (content this crate's own disengage()
+        // never writes) must not be treated as an honest disengage just because it trims down to
+        // the right string - only a byte-for-byte exact match counts.
+        let dir = TempDir::new("newline-marker");
+        let marker = dir.0.join("killswitch");
+        std::fs::write(&marker, "disengaged\n").unwrap();
+        let switch = KillSwitch::at(marker);
+        assert!(switch.is_engaged());
+    }
+
+    #[test]
+    fn a_marker_with_leading_or_trailing_whitespace_still_reads_as_engaged() {
+        let dir = TempDir::new("whitespace-marker");
+        let marker = dir.0.join("killswitch");
+        std::fs::write(&marker, "  disengaged  ").unwrap();
+        let switch = KillSwitch::at(marker);
+        assert!(switch.is_engaged());
     }
 
     #[test]

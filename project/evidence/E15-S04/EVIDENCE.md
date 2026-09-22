@@ -1,18 +1,36 @@
 # Evidence Packet - E15-S04
 
-- Commit/PR: pending (this work item)
+- Commit/PR: pending (this work item) - round 1 finding repaired here
 - Executor: Claude
-- Independent verifier: pending (Codex, per-epic review once every E15 story is `ready_for_review`)
+- Independent verifier: Codex - round 1: `project/evidence/E15-VERIFIER-REVIEW.md`, `FAIL`; round 2 pending
 - Change Risk: CR3
 - Spec version/commit: `project/epics/E15.json`'s E15-S04 story contract
 
 ## Outcome
 
-PASS (executor self-assessment; independent verification pending). Implements
-`cancellai_guardian::killswitch` (an immediate local disable path) and `cancellai_guardian::audit`
-(linking every Guardian plan decision to detection evidence, policy decision, and a plan
-reference, via `cancellai_store::EventLedger`). This is E15's last story - once independent
-review passes for the whole epic, closing it cuts a release (ADR-0025).
+PASS_PENDING_ROUND2 (executor self-assessment after repairing round 1's finding; independent
+re-verification pending). Implements `cancellai_guardian::killswitch` (an immediate local disable
+path) and `cancellai_guardian::audit` (linking every Guardian plan decision to detection
+evidence, policy decision, and a plan reference, via `cancellai_store::EventLedger`). This is
+E15's last story - once independent review passes for the whole epic, closing it cuts a release
+(ADR-0025).
+
+## Round 1 independent review: FAIL, one finding, repaired here
+
+`project/evidence/E15-VERIFIER-REVIEW.md` (Codex, round 1) rejected the first committed version
+with one concrete, reproduced finding.
+
+- **F1 (AC1, C-03)** - `KillSwitch::is_engaged` compared `content.trim() != DISENGAGED_MARKER`
+  rather than an exact match, contradicting this module's own documented contract ("only a
+  marker... confirmed to read exactly `DISENGAGED_MARKER` counts as disengaged"). The reviewer
+  wrote `"disengaged\n"` to the marker file and found it read as disengaged, when only content
+  this crate's own `disengage()` genuinely writes should ever count - `disengage()` never appends
+  a trailing newline or any other byte, so trimming accepted content it should not have.
+  *Repair*: `is_engaged` now compares the raw content byte-for-byte
+  (`content != DISENGAGED_MARKER`, no `.trim()`); two permanent adversarial tests
+  (`a_marker_that_merely_trims_to_disengaged_still_reads_as_engaged`,
+  `a_marker_with_leading_or_trailing_whitespace_still_reads_as_engaged`) pin the reviewer's exact
+  reproduction and a related whitespace variant.
 
 ## Acceptance Criteria Evidence
 
@@ -130,4 +148,6 @@ docs/CLI.md is up to date.
 
 ## Verifier verdict
 
-(pending - independent review runs at epic scope, all four E15 stories now `ready_for_review`)
+Round 1: `FAIL` (`project/evidence/E15-VERIFIER-REVIEW.md`) - finding repaired above. Round 2:
+pending - independent review runs at epic scope, all four E15 stories back at
+`ready_for_review`.

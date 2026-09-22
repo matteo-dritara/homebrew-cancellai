@@ -45,15 +45,45 @@ fn pressure_authority_ceiling(pressure: PressureState) -> AuthorityLevel {
 /// (`cancellai_policy::retention`) - never a path, size, or any other field the normal CLI/TUI
 /// classification pipeline carries that this planner has no need for, matching this crate's
 /// other detection modules' "never a path or content" convention (`baseline`/`structural`).
+///
+/// **Fields are deliberately private, with `From<&ClassifiedArtifact>` as the only
+/// constructor.** Round-1 independent review found the original `pub` fields let any external
+/// crate fabricate `RemediationCandidate { reachable_authority: AuthorityLevel::Autopilot, .. }`
+/// directly, with no relationship to any real classification at all - `plan_remediation`'s
+/// entire AC1/SI-028 argument ("`min` cannot exceed either input") is only as strong as the
+/// trustworthiness of `reachable_authority` itself, and a bare public field asserted nothing
+/// about where that value came from. This mirrors the exact failure class
+/// `docs/architecture/GUARDIAN_MODEL.md`'s own history describes for provider-layout authority
+/// (ADR-0034/ADR-0035/ADR-0036: a plain, publicly constructible value asserting an
+/// authority-relevant fact is discardable/forgeable) - closing it here the same way: requiring a
+/// real `cancellai_policy::ClassifiedArtifact` (the shared engine's own output type, the same
+/// trust boundary `cancellai-cli` already operates under) rather than a bare `AuthorityLevel` a
+/// caller could assert unchecked. **Disclosed, not fully closed**: `ClassifiedArtifact` itself
+/// remains a plain, publicly constructible struct in `cancellai-policy` - fully sealing it the
+/// way ADR-0036 sealed provider-layout observations (a non-forgeable type bound to real I/O) is
+/// a larger, `cancellai-policy`-wide decision, out of this story's scope. This fix removes the
+/// *additional*, weaker forgery surface this crate's own boundary introduced; it does not (and
+/// cannot, from this crate alone) remove the pre-existing one shared with `cancellai-cli`.
+///
+/// This doctest is the regression proving construction from outside this crate still does not
+/// compile (the exact fabrication round-1 independent review demonstrated):
+///
+/// ```compile_fail
+/// # use cancellai_guardian::remediation::RemediationCandidate;
+/// # use cancellai_model::{ArtifactId, AuthorityLevel};
+/// // RemediationCandidate's fields are private: no struct-literal construction from outside
+/// // this crate - `From<&ClassifiedArtifact>` is the only way to produce a value of this type.
+/// let forged = RemediationCandidate {
+///     artifact_id: ArtifactId::new("fabricated"),
+///     reachable_authority: AuthorityLevel::Autopilot,
+///     binding_constraints: Vec::new(),
+/// };
+/// ```
 #[derive(Debug, Clone)]
 pub struct RemediationCandidate {
-    pub artifact_id: ArtifactId,
-    /// `ClassifiedArtifact::reachable_authority` (`cancellai_policy::retention`) - the same
-    /// Effective-Policy ceiling `cancellai-cli` computes for this artifact, unmodified.
-    pub reachable_authority: AuthorityLevel,
-    /// `ClassifiedArtifact::binding_constraints`, carried through unchanged so a caller can
-    /// explain why this candidate was capped where it was.
-    pub binding_constraints: Vec<&'static str>,
+    artifact_id: ArtifactId,
+    reachable_authority: AuthorityLevel,
+    binding_constraints: Vec<&'static str>,
 }
 
 impl From<&cancellai_policy::ClassifiedArtifact> for RemediationCandidate {

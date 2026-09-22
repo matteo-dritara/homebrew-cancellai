@@ -20,9 +20,22 @@ expressible purely from Cargo.toml:
 Test code is exempt: it routinely creates and tears down its own temporary directories, and
 that is not the mutation path this invariant is about. This codebase's own convention is one
 `#[cfg(test)] mod tests { ... }` block at the end of each file (visible throughout
-rust/crates/*/src/), so only the text before the first `#[cfg(test)]` in a file is scanned as
-production code. Integration test files under a crate's `tests/` directory are not scanned at
-all - `src/**/*.rs` never reaches them.
+rust/crates/*/src/), so only the text before that block is scanned as production code.
+Integration test files under a crate's `tests/` directory are not scanned at all -
+`src/**/*.rs` never reaches them.
+
+E15-S01 round-1 independent review found the boundary this previously used - the first bare
+`#[cfg(test)]` occurring anywhere in the file - false-negative on a real production
+`std::fs::remove_file` call: a `#[cfg(test)] fn for_test(...)` test-only constructor placed
+*inside* a production `impl` block (this codebase's own convention for injecting a fake
+`CommandRunner`/dependency in tests, used by three `cancellai-guardian` adapters) put a bare
+`#[cfg(test)]` earlier in the file than the real trailing test module, truncating "production
+text" before ever reaching the actual violation. The marker now requires the attribute to be
+immediately followed (skipping only further `#[...]` attributes on the same item, e.g. the
+`#[cfg(test)]#[cfg(unix)]` stacking `cancellai-safety/src/mutation_executor.rs`'s own test
+module uses) by a `mod` declaration - i.e., the real start of the trailing test module, under
+whatever name it uses (`mod tests`, `mod test_doubles`, ...) - never a bare test-only attribute
+on an item that is not itself a module.
 """
 
 from __future__ import annotations
@@ -46,7 +59,11 @@ CAPABILITY_RES = [
     re.compile(r"\bSystemMutationExecutor\b"),
     re.compile(r"\.mutate\("),
 ]
-TEST_MODULE_MARKER = "#[cfg(test)]"
+# The attribute that starts test-only code, followed only by further `#[...]` attributes on the
+# same item (never arbitrary text), followed by the `mod` declaration itself - see this module's
+# own docstring for why a bare `#[cfg(test)]` match (matching *any* test-only item, not only the
+# trailing test module) is not enough.
+TEST_MODULE_MARKER_RE = re.compile(r"#\[cfg\(test\)\](?:\s*#\[[^\]]*\])*\s*mod\s+\w+")
 
 
 class MutationBoundaryError(RuntimeError):
@@ -61,8 +78,8 @@ def source_files() -> list[Path]:
 
 def production_text(path: Path) -> str:
     text = path.read_text(encoding="utf-8")
-    marker = text.find(TEST_MODULE_MARKER)
-    return text if marker == -1 else text[:marker]
+    match = TEST_MODULE_MARKER_RE.search(text)
+    return text if match is None else text[: match.start()]
 
 
 def is_comment_line(text: str, match_start: int) -> bool:
