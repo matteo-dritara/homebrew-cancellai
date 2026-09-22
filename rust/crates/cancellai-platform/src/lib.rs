@@ -78,7 +78,10 @@ pub use path_resolver::{PathResolver, SyntheticPathResolver, SystemPathResolver}
 pub use process::{
     ProcessObservation, ProcessObserver, SyntheticProcessObserver, SystemProcessObserver,
 };
-pub use provider_layout::{BoundLayoutObservation, LayoutObservationError};
+pub use provider_layout::{
+    BoundLayoutObservation, LayoutObservationError, ProviderLayoutObserver,
+    SyntheticProviderLayoutObserver, SystemProviderLayoutObserver,
+};
 pub use snapshot::{Snapshot, build_snapshot};
 pub use wsl::{
     EnvironmentObserver, FilesystemContext, FilesystemContextObservation,

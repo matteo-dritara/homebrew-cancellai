@@ -82,6 +82,24 @@ does not yet require one - this round establishes the non-forgeable primitive, n
 wiring, matching E14-S01/S02/S03's own "primitive delivered, no orchestrator yet" precedent and
 ADR-0034/ADR-0035's identically-shaped disclosed residual before it.
 
+**E14-S05 (ADR-0037) closes residual (2), narrowly.** It does not wire `resolve_provider_
+execution_authority`/`ProviderExecutionPermit` into the mutation boundary - that still needs
+residual (1)'s trusted `known_signatures` source, without which every call would collapse to
+`AuthorityLevel::Observe` regardless of real drift, refusing every provider-governed mutation
+outright rather than testing anything about freshness. Instead, `SealedPlan` now records a
+`LayoutSignature` snapshot of the provider root at seal time (from a real, non-forgeable
+`cancellai_platform::provider_layout::ProviderLayoutObserver` observation, never a caller-
+supplied value), and `mutation_executor::execute` requires a *fresh* observation of the same
+root immediately before mutation - refusing on drift, on an unobservable root, or on a root
+whose identity itself changed since sealing, the same SI-013 "revalidate immediately before the
+point of no return" principle `revalidate` already applies to the target artifact's identity,
+now applied to the provider root for the first time. Residual (1) remains open and is the
+natural next step for letting this mechanism recognize "known good" layouts, not only "unchanged
+since seal." `docs/architecture/DOMAIN_MODEL.md`'s "SealedPlan" section and ADR-0037 carry the
+full account, including the disclosed consequence that this makes every destructive mutation
+refuse on any platform without a verified `BoundLayoutObservation` implementation - Windows
+included, since that primitive remains Unix-only (ADR-0036 round 5's own disclosed residual).
+
 ### Decision
 
 What would improve the situation?

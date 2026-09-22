@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- The Rust engine's mutation boundary (`cancellai_safety::mutation_executor::execute`) now
+  requires a live, freshly-observed provider-root layout immediately before every destructive
+  mutation, refusing if it has drifted (or become unobservable) since the plan was sealed
+  (SI-004, SI-013, ADR-0037). This closes a disclosed residual from the E14-S04/ADR-0036
+  provider-layout work: a plan's own layout data was never re-checked at the one moment that
+  matters. **Disclosed consequence:** the underlying observation capability is currently
+  Unix-only, so every destructive mutation - Delete included - is now refused on non-Unix
+  platforms, Windows included, until a verified Windows implementation lands.
+
 ### Fixed
 
 - The Rust engine's `clean`/`plan`/`inspect` treated a Claude `~/.claude/projects` that exists

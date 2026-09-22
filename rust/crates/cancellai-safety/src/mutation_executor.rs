@@ -40,11 +40,12 @@
 
 use cancellai_model::{ActionClass, RootFingerprint};
 use cancellai_platform::mutation::{MutationExecutor, MutationOperation};
+use cancellai_platform::provider_layout::ProviderLayoutObserver;
 use cancellai_platform::{FileKind, IdentityObserver, IdentityToken, ProcessObserver};
 
 use crate::authority::{minimum_authority_for, reversibility_allowed};
 use crate::root_capability::BoundedPath;
-use crate::sealed_plan::{RevalidationOutcome, SealedPlan, revalidate};
+use crate::sealed_plan::{RevalidationOutcome, SealedPlan, revalidate, revalidate_provider_layout};
 
 /// The contentless restore-metadata sidecar a quarantine move writes alongside the moved
 /// object (E12-S01, `docs/architecture/PERSISTENCE_MODEL.md`'s quarantine store rules) - never
@@ -104,6 +105,7 @@ pub fn execute(
     observer: &dyn IdentityObserver,
     executor: &dyn MutationExecutor,
     process: &dyn ProcessObserver,
+    layout_observer: &dyn ProviderLayoutObserver,
 ) -> ActionResult {
     if plan.root_identity() != target.root_identity() {
         return ActionResult::SafelyBlocked {
@@ -151,6 +153,18 @@ pub fn execute(
                     .to_string(),
             };
         }
+    }
+
+    // E14-S05, SI-004, SI-013: the provider root's own structural layout is revalidated
+    // immediately before mutation, the same way `revalidate` above already does for the
+    // target artifact's identity - a plan sealed while the layout was one shape must not
+    // execute merely because its own seal-time snapshot still says so, if a fresh observation
+    // taken right now shows it has drifted (or could not be observed at all).
+    let fresh_layout = layout_observer.observe(target.root_path());
+    if let RevalidationOutcome::StalePlan { reason } =
+        revalidate_provider_layout(plan, fresh_layout.as_ref())
+    {
+        return ActionResult::SafelyBlocked { reason };
     }
 
     let operation = match plan.action_class() {
@@ -284,10 +298,11 @@ pub fn execute_all(
     observer: &dyn IdentityObserver,
     executor: &dyn MutationExecutor,
     process: &dyn ProcessObserver,
+    layout_observer: &dyn ProviderLayoutObserver,
 ) -> Vec<ActionResult> {
     plans
         .iter()
-        .map(|(plan, target)| execute(plan, target, observer, executor, process))
+        .map(|(plan, target)| execute(plan, target, observer, executor, process, layout_observer))
         .collect()
 }
 
@@ -302,6 +317,11 @@ pub fn execute_all(
 /// [`execute`] directly. Test code continues to use [`execute`]/[`execute_all`] with
 /// [`cancellai_platform::mutation::SyntheticMutationExecutor`], never this function - a real
 /// filesystem mutation in a unit test would defeat the point of the synthetic seam.
+///
+/// `layout_observer` is hardcoded to [`cancellai_platform::SystemProviderLayoutObserver`] the
+/// same way the other three capabilities are (E14-S05): no production caller can substitute a
+/// synthetic provider-layout observation, the exact class of caller-suppliable fact ADR-0036's
+/// four review rounds already refused to trust anywhere else on this path.
 pub fn execute_with_system_capabilities(plan: &SealedPlan, target: &BoundedPath) -> ActionResult {
     execute(
         plan,
@@ -309,6 +329,7 @@ pub fn execute_with_system_capabilities(plan: &SealedPlan, target: &BoundedPath)
         &cancellai_platform::SystemIdentityObserver,
         &cancellai_platform::mutation::SystemMutationExecutor,
         &cancellai_platform::SystemProcessObserver,
+        &cancellai_platform::SystemProviderLayoutObserver,
     )
 }
 
@@ -379,6 +400,7 @@ mod tests {
             authority,
             reversibility,
             None,
+            Some(matching_layout()),
         )
     }
 
@@ -395,6 +417,7 @@ mod tests {
             AuthorityLevel::Govern,
             Reversibility::Irreversible,
             Some(process_guard),
+            Some(matching_layout()),
         )
     }
 
@@ -415,7 +438,34 @@ mod tests {
             None,
             destination_path,
             destination_root_identity,
+            Some(matching_layout()),
         )
+    }
+
+    /// A fixed, arbitrary provider-layout signature every non-layout-focused test in this
+    /// module seals its plan against and configures its synthetic layout observer to match
+    /// (E14-S05) - the layout check this story adds is not what these tests are about, so it
+    /// must pass uneventfully rather than becoming a second thing every one of them has to
+    /// reason about.
+    fn matching_layout() -> crate::provider_layout::LayoutSignature {
+        crate::provider_layout::LayoutSignature::new(["marker.txt".to_string()])
+    }
+
+    /// A synthetic layout observer configured so observing `target.root_path()` returns
+    /// `target.root_identity()` paired with `signature` - the fresh, matching observation
+    /// `revalidate_provider_layout` needs to let a plan sealed against the same `signature`
+    /// proceed.
+    fn layout_observer_for(
+        target: &BoundedPath,
+        signature: &crate::provider_layout::LayoutSignature,
+    ) -> cancellai_platform::SyntheticProviderLayoutObserver {
+        let mut synth = cancellai_platform::SyntheticProviderLayoutObserver::new();
+        synth.set_observed(
+            target.root_path(),
+            target.root_identity().clone(),
+            signature.markers().iter().cloned(),
+        );
+        synth
     }
 
     struct TempDir(PathBuf);
@@ -494,7 +544,14 @@ mod tests {
         let executor = SyntheticMutationExecutor::new();
         let process = SyntheticProcessObserver::complete(Vec::<String>::new());
 
-        let result = execute(&plan, &target, &observer, &executor, &process);
+        let result = execute(
+            &plan,
+            &target,
+            &observer,
+            &executor,
+            &process,
+            &layout_observer_for(&target, &matching_layout()),
+        );
         assert_eq!(result, ActionResult::Succeeded);
     }
 
@@ -523,7 +580,14 @@ mod tests {
         let executor = SyntheticMutationExecutor::new();
         let process = SyntheticProcessObserver::complete(Vec::<String>::new());
 
-        let result = execute(&plan, &target, &observer, &executor, &process);
+        let result = execute(
+            &plan,
+            &target,
+            &observer,
+            &executor,
+            &process,
+            &layout_observer_for(&target, &matching_layout()),
+        );
         assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
     }
 
@@ -551,13 +615,195 @@ mod tests {
             )),
         );
 
-        let result = execute(&plan, &target, &observer, &executor, &process);
+        let result = execute(
+            &plan,
+            &target,
+            &observer,
+            &executor,
+            &process,
+            &layout_observer_for(&target, &matching_layout()),
+        );
         assert_eq!(
             result,
             ActionResult::SafelyBlocked {
                 reason: "artifact no longer exists".to_string()
             }
         );
+    }
+
+    // --- E14-S05, SI-004, SI-013: live provider-layout revalidation at the mutation boundary -
+
+    #[cfg(unix)]
+    #[test]
+    fn execute_never_calls_mutate_on_a_provider_layout_that_drifted_since_seal() {
+        // Mirrors `execute_never_calls_mutate_on_a_stale_plan` above, for the new check: the
+        // plan's own identity/authority/reversibility are all fine, and the artifact identity
+        // has not changed - only the provider root's own layout has drifted since the plan was
+        // sealed. A synthetic executor configured to fail loudly catches a bug that mutates
+        // before checking, not merely one that mutates despite an ignored refusal.
+        let (_dir, target, identity) = real_bounded_file();
+        let plan = plan_with(
+            target.root_identity().clone(),
+            identity.clone(),
+            ActionClass::Delete,
+        );
+
+        let mut observer = SyntheticIdentityObserver::new();
+        observer.set(target.path(), IdentityObservation::Identity(identity));
+        let mut executor = SyntheticMutationExecutor::new();
+        let process = SyntheticProcessObserver::complete(Vec::<String>::new());
+        executor.set(
+            target.path(),
+            Err(MutationError(
+                "this must never be observed - mutate() should not have been called".into(),
+            )),
+        );
+
+        // `plan_with` sealed against `matching_layout()`; the fresh observation at execute
+        // time reports a completely different shape.
+        let drifted = crate::provider_layout::LayoutSignature::new([
+            "totally_different_shape.txt".to_string()
+        ]);
+        let result = execute(
+            &plan,
+            &target,
+            &observer,
+            &executor,
+            &process,
+            &layout_observer_for(&target, &drifted),
+        );
+        assert!(
+            matches!(result, ActionResult::SafelyBlocked { .. }),
+            "a provider root whose layout drifted since the plan was sealed must be refused, \
+             got {result:?}"
+        );
+        assert!(
+            target.path().exists(),
+            "the target must survive the refusal"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn execute_refuses_a_real_delete_when_the_provider_root_gained_a_marker_between_seal_and_execute()
+     {
+        // The real-filesystem counterpart of the synthetic drift test above: no doubles for
+        // identity/layout at all, just `SealedPlan::seal`/`execute_with_system_capabilities`'s
+        // own real observers, exercising the same live-vs-stale regression the story's
+        // verification contract names, end to end.
+        let dir = TempDir::new("real-layout-drift");
+        let provider_root = dir.0.join("provider");
+        std::fs::create_dir_all(&provider_root).expect("create provider root");
+        let artifact = provider_root.join("artifact.txt");
+        std::fs::write(&artifact, b"hello").expect("create artifact");
+
+        let resolver = cancellai_platform::SystemPathResolver;
+        let observer = cancellai_platform::SystemIdentityObserver;
+        let root =
+            crate::root_capability::ApprovedRoot::establish(&provider_root, &resolver, &observer)
+                .expect("establish provider root");
+        let target = root
+            .bind(&artifact, &resolver, &observer)
+            .expect("bind artifact");
+        let plan = SealedPlan::seal(
+            &root,
+            fingerprint(),
+            &target,
+            ActionClass::Delete,
+            AuthorityLevel::Govern,
+            Reversibility::Irreversible,
+            &cancellai_platform::SystemProviderLayoutObserver,
+        );
+
+        // A provider process writes a new file into its own root between plan-sealing and
+        // execution - real drift, not a fabricated fixture.
+        std::fs::write(provider_root.join("new-session.json"), b"{}").expect("plant new marker");
+
+        let result = execute(
+            &plan,
+            &target,
+            &cancellai_platform::SystemIdentityObserver,
+            &SystemMutationExecutor,
+            &SystemProcessObserver,
+            &cancellai_platform::SystemProviderLayoutObserver,
+        );
+        assert!(
+            matches!(result, ActionResult::SafelyBlocked { .. }),
+            "a provider root that gained a real marker since the plan was sealed must be \
+             refused, got {result:?}"
+        );
+        assert!(
+            artifact.exists(),
+            "the artifact must survive a refused delete"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn execute_refuses_a_real_delete_when_the_provider_root_itself_was_swapped() {
+        // The root-identity half of the same mechanism: the root directory's *name* and
+        // *path* stay the same, but the real object living there is a different one by the
+        // time execution runs - a rename-away-and-recreate, the same interleaving
+        // `RootRenamePlusHardlinkObserver` exercises for artifact identity, applied here to
+        // the root itself and caught by the fresh root-identity comparison inside
+        // `revalidate_provider_layout`, independent of whether the replacement's markers
+        // happen to look similar.
+        let dir = TempDir::new("real-root-swap");
+        let provider_root = dir.0.join("provider");
+        std::fs::create_dir_all(&provider_root).expect("create provider root");
+        let artifact = provider_root.join("artifact.txt");
+        std::fs::write(&artifact, b"hello").expect("create artifact");
+
+        let resolver = cancellai_platform::SystemPathResolver;
+        let observer = cancellai_platform::SystemIdentityObserver;
+        let root =
+            crate::root_capability::ApprovedRoot::establish(&provider_root, &resolver, &observer)
+                .expect("establish provider root");
+        let target = root
+            .bind(&artifact, &resolver, &observer)
+            .expect("bind artifact");
+        let plan = SealedPlan::seal(
+            &root,
+            fingerprint(),
+            &target,
+            ActionClass::Delete,
+            AuthorityLevel::Govern,
+            Reversibility::Irreversible,
+            &cancellai_platform::SystemProviderLayoutObserver,
+        );
+
+        // Swap the real root object: move it aside, recreate an empty one at the same path,
+        // then hard-link the *original* artifact's inode into the replacement at the same
+        // name - the same decoy technique `RootRenamePlusHardlinkObserver` uses below for
+        // artifact identity, applied here so the pre-existing artifact-identity `revalidate`
+        // check (unchanged by this story) sees an unchanged identity and proceeds, isolating
+        // the refusal to this story's own new root-identity/layout freshness check.
+        let moved_away = dir.0.join("provider-moved-away");
+        std::fs::rename(&provider_root, &moved_away).expect("move original root aside");
+        std::fs::create_dir_all(&provider_root).expect("recreate root at the same path");
+        let moved_artifact = moved_away.join("artifact.txt");
+        std::fs::hard_link(&moved_artifact, &artifact)
+            .expect("hard-link original inode into the replacement root");
+
+        let result = execute(
+            &plan,
+            &target,
+            &cancellai_platform::SystemIdentityObserver,
+            &SystemMutationExecutor,
+            &SystemProcessObserver,
+            &cancellai_platform::SystemProviderLayoutObserver,
+        );
+        assert!(
+            matches!(result, ActionResult::SafelyBlocked { .. }),
+            "a provider root swapped for a different real object at the same path must be \
+             refused, got {result:?}"
+        );
+        assert!(
+            artifact.exists(),
+            "the replacement artifact must survive a refused delete"
+        );
+
+        std::fs::remove_dir_all(&moved_away).ok();
     }
 
     #[cfg(unix)]
@@ -579,7 +825,14 @@ mod tests {
             Err(MutationError("No space left on device".into())),
         );
 
-        let result = execute(&plan, &target, &observer, &executor, &process);
+        let result = execute(
+            &plan,
+            &target,
+            &observer,
+            &executor,
+            &process,
+            &layout_observer_for(&target, &matching_layout()),
+        );
         assert_eq!(
             result,
             ActionResult::Failed {
@@ -610,13 +863,24 @@ mod tests {
             &destination,
             AuthorityLevel::Quarantine,
             Reversibility::Quarantinable,
+            &cancellai_platform::SystemProviderLayoutObserver,
         );
 
         let observer = cancellai_platform::SystemIdentityObserver;
         let executor = SystemMutationExecutor;
         let process = SystemProcessObserver;
 
-        let result = execute(&plan, &target, &observer, &executor, &process);
+        // A real observer of the same, unchanged real source root - the layout genuinely has
+        // not drifted between seal and execute here, matching `matching_layout()`'s role for
+        // the synthetic tests above but against real directory I/O instead.
+        let result = execute(
+            &plan,
+            &target,
+            &observer,
+            &executor,
+            &process,
+            &cancellai_platform::SystemProviderLayoutObserver,
+        );
         assert_eq!(result, ActionResult::Succeeded);
         assert!(!target.path().exists(), "the source must no longer exist");
         assert_eq!(
@@ -646,13 +910,21 @@ mod tests {
             &destination,
             AuthorityLevel::Quarantine,
             Reversibility::Quarantinable,
+            &cancellai_platform::SystemProviderLayoutObserver,
         );
 
         let observer = cancellai_platform::SystemIdentityObserver;
         let executor = SystemMutationExecutor;
         let process = SystemProcessObserver;
 
-        let result = execute(&plan, &target, &observer, &executor, &process);
+        let result = execute(
+            &plan,
+            &target,
+            &observer,
+            &executor,
+            &process,
+            &cancellai_platform::SystemProviderLayoutObserver,
+        );
         assert_eq!(result, ActionResult::Succeeded);
         assert!(
             !target.path().exists(),
@@ -685,6 +957,7 @@ mod tests {
             None,
             Some(PathBuf::from("/provider/somewhere/dest.txt")),
             Some(mismatched_destination_root),
+            Some(matching_layout()),
         );
 
         let mut observer = SyntheticIdentityObserver::new();
@@ -698,7 +971,14 @@ mod tests {
         );
         let process = SyntheticProcessObserver::complete(Vec::<String>::new());
 
-        let result = execute(&plan, &target, &observer, &executor, &process);
+        let result = execute(
+            &plan,
+            &target,
+            &observer,
+            &executor,
+            &process,
+            &layout_observer_for(&target, &matching_layout()),
+        );
         assert_eq!(
             result,
             ActionResult::SafelyBlocked {
@@ -726,6 +1006,7 @@ mod tests {
             None,
             Some(PathBuf::from("/provider/dest.txt")),
             Some(target.root_identity().clone()),
+            Some(matching_layout()),
         );
 
         let mut observer = SyntheticIdentityObserver::new();
@@ -739,7 +1020,14 @@ mod tests {
         );
         let process = SyntheticProcessObserver::complete(Vec::<String>::new());
 
-        let result = execute(&plan, &target, &observer, &executor, &process);
+        let result = execute(
+            &plan,
+            &target,
+            &observer,
+            &executor,
+            &process,
+            &layout_observer_for(&target, &matching_layout()),
+        );
         assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
         assert!(
             target.path().exists(),
@@ -765,6 +1053,7 @@ mod tests {
             None,
             Some(PathBuf::from("/provider/dest.txt")),
             Some(target.root_identity().clone()),
+            Some(matching_layout()),
         );
 
         let mut observer = SyntheticIdentityObserver::new();
@@ -787,7 +1076,14 @@ mod tests {
         );
         let process = SyntheticProcessObserver::complete(Vec::<String>::new());
 
-        let result = execute(&plan, &target, &observer, &executor, &process);
+        let result = execute(
+            &plan,
+            &target,
+            &observer,
+            &executor,
+            &process,
+            &layout_observer_for(&target, &matching_layout()),
+        );
         assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
         assert!(
             target.path().exists(),
@@ -813,13 +1109,21 @@ mod tests {
             &destination,
             AuthorityLevel::Quarantine,
             Reversibility::Archivable,
+            &cancellai_platform::SystemProviderLayoutObserver,
         );
 
         let observer = cancellai_platform::SystemIdentityObserver;
         let executor = SystemMutationExecutor;
         let process = SystemProcessObserver;
 
-        let result = execute(&plan, &target, &observer, &executor, &process);
+        let result = execute(
+            &plan,
+            &target,
+            &observer,
+            &executor,
+            &process,
+            &cancellai_platform::SystemProviderLayoutObserver,
+        );
         assert_eq!(result, ActionResult::Succeeded);
         assert!(!target.path().exists(), "the source must no longer exist");
         assert_eq!(
@@ -853,6 +1157,7 @@ mod tests {
             None,
             Some(PathBuf::from("/archive/somewhere/dest.txt")),
             Some(mismatched_destination_root),
+            Some(matching_layout()),
         );
 
         let mut observer = SyntheticIdentityObserver::new();
@@ -866,7 +1171,14 @@ mod tests {
         );
         let process = SyntheticProcessObserver::complete(Vec::<String>::new());
 
-        let result = execute(&plan, &target, &observer, &executor, &process);
+        let result = execute(
+            &plan,
+            &target,
+            &observer,
+            &executor,
+            &process,
+            &layout_observer_for(&target, &matching_layout()),
+        );
         assert_eq!(
             result,
             ActionResult::SafelyBlocked {
@@ -894,6 +1206,7 @@ mod tests {
             None,
             Some(PathBuf::from("/archive/dest.txt")),
             Some(target.root_identity().clone()),
+            Some(matching_layout()),
         );
 
         let mut observer = SyntheticIdentityObserver::new();
@@ -907,7 +1220,14 @@ mod tests {
         );
         let process = SyntheticProcessObserver::complete(Vec::<String>::new());
 
-        let result = execute(&plan, &target, &observer, &executor, &process);
+        let result = execute(
+            &plan,
+            &target,
+            &observer,
+            &executor,
+            &process,
+            &layout_observer_for(&target, &matching_layout()),
+        );
         assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
         assert!(
             target.path().exists(),
@@ -934,6 +1254,7 @@ mod tests {
             None,
             Some(PathBuf::from("/archive/dest.txt")),
             Some(target.root_identity().clone()),
+            Some(matching_layout()),
         );
 
         let mut observer = SyntheticIdentityObserver::new();
@@ -947,7 +1268,14 @@ mod tests {
         );
         let process = SyntheticProcessObserver::complete(Vec::<String>::new());
 
-        let result = execute(&plan, &target, &observer, &executor, &process);
+        let result = execute(
+            &plan,
+            &target,
+            &observer,
+            &executor,
+            &process,
+            &layout_observer_for(&target, &matching_layout()),
+        );
         assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
         assert!(target.path().exists());
     }
@@ -984,7 +1312,14 @@ mod tests {
         );
         let process = SyntheticProcessObserver::complete(Vec::<String>::new());
 
-        let result = execute(&plan, &target, &observer, &executor, &process);
+        let result = execute(
+            &plan,
+            &target,
+            &observer,
+            &executor,
+            &process,
+            &layout_observer_for(&target, &matching_layout()),
+        );
         assert_eq!(
             result,
             ActionResult::SafelyBlocked {
@@ -1014,7 +1349,14 @@ mod tests {
         let executor = SyntheticMutationExecutor::new();
         let process = SyntheticProcessObserver::complete(Vec::<String>::new());
 
-        let result = execute(&plan, &target, &observer, &executor, &process);
+        let result = execute(
+            &plan,
+            &target,
+            &observer,
+            &executor,
+            &process,
+            &layout_observer_for(&target, &matching_layout()),
+        );
         assert_eq!(
             result,
             ActionResult::SafelyBlocked {
@@ -1043,7 +1385,14 @@ mod tests {
             Err(MutationError("No space left on device".into())),
         );
 
-        let result = execute(&plan, &target, &observer, &executor, &process);
+        let result = execute(
+            &plan,
+            &target,
+            &observer,
+            &executor,
+            &process,
+            &layout_observer_for(&target, &matching_layout()),
+        );
         assert_eq!(
             result,
             ActionResult::Failed {
@@ -1070,6 +1419,7 @@ mod tests {
             None,
             Some(PathBuf::from("/quarantine/dest.txt")),
             Some(target.root_identity().clone()),
+            Some(matching_layout()),
         );
 
         let mut observer = SyntheticIdentityObserver::new();
@@ -1083,7 +1433,14 @@ mod tests {
         );
         let process = SyntheticProcessObserver::complete(Vec::<String>::new());
 
-        let result = execute(&plan, &target, &observer, &executor, &process);
+        let result = execute(
+            &plan,
+            &target,
+            &observer,
+            &executor,
+            &process,
+            &layout_observer_for(&target, &matching_layout()),
+        );
         assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
         assert!(
             target.path().exists(),
@@ -1106,7 +1463,14 @@ mod tests {
         let executor = SyntheticMutationExecutor::new();
         let process = SyntheticProcessObserver::complete(Vec::<String>::new());
 
-        let result = execute(&plan, &target, &observer, &executor, &process);
+        let result = execute(
+            &plan,
+            &target,
+            &observer,
+            &executor,
+            &process,
+            &layout_observer_for(&target, &matching_layout()),
+        );
         assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
     }
 
@@ -1136,7 +1500,14 @@ mod tests {
         let executor = SyntheticMutationExecutor::new();
         let process = SyntheticProcessObserver::complete(Vec::<String>::new());
 
-        let result = execute(&plan, &target, &observer, &executor, &process);
+        let result = execute(
+            &plan,
+            &target,
+            &observer,
+            &executor,
+            &process,
+            &layout_observer_for(&target, &matching_layout()),
+        );
         assert!(
             matches!(result, ActionResult::SafelyBlocked { .. }),
             "a directory must be refused, not deleted without the file-only identity confirmation"
@@ -1168,7 +1539,14 @@ mod tests {
         let executor = SyntheticMutationExecutor::new();
         let process = SyntheticProcessObserver::complete(Vec::<String>::new());
 
-        let result = execute(&plan, &target_under_root_b, &observer, &executor, &process);
+        let result = execute(
+            &plan,
+            &target_under_root_b,
+            &observer,
+            &executor,
+            &process,
+            &layout_observer_for(&target_under_root_b, &matching_layout()),
+        );
         assert!(
             matches!(result, ActionResult::SafelyBlocked { .. }),
             "a plan for one root must never execute against a target bound under a different root"
@@ -1194,7 +1572,14 @@ mod tests {
         let executor = SyntheticMutationExecutor::new();
         let process = SyntheticProcessObserver::complete(Vec::<String>::new());
 
-        let result = execute(&plan, &target, &observer, &executor, &process);
+        let result = execute(
+            &plan,
+            &target,
+            &observer,
+            &executor,
+            &process,
+            &layout_observer_for(&target, &matching_layout()),
+        );
         assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
         assert!(
             target.path().exists(),
@@ -1219,7 +1604,14 @@ mod tests {
         let executor = SyntheticMutationExecutor::new();
         let process = SyntheticProcessObserver::complete(Vec::<String>::new());
 
-        let result = execute(&plan, &target, &observer, &executor, &process);
+        let result = execute(
+            &plan,
+            &target,
+            &observer,
+            &executor,
+            &process,
+            &layout_observer_for(&target, &matching_layout()),
+        );
         assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
         assert!(target.path().exists());
     }
@@ -1262,8 +1654,20 @@ mod tests {
             Err(MutationError("No space left on device".into())),
         );
 
+        let mut layout_observer = cancellai_platform::SyntheticProviderLayoutObserver::new();
+        layout_observer.set_observed(
+            target_a.root_path(),
+            target_a.root_identity().clone(),
+            matching_layout().markers().iter().cloned(),
+        );
+        layout_observer.set_observed(
+            target_c.root_path(),
+            target_c.root_identity().clone(),
+            matching_layout().markers().iter().cloned(),
+        );
+
         let plans = vec![(plan_a, target_a), (plan_b, target_b), (plan_c, target_c)];
-        let results = execute_all(&plans, &observer, &executor, &process);
+        let results = execute_all(&plans, &observer, &executor, &process, &layout_observer);
 
         assert_eq!(
             results.len(),
@@ -1299,7 +1703,14 @@ mod tests {
         let executor = SystemMutationExecutor;
         let process = SystemProcessObserver;
 
-        let result = execute(&plan, &target, &observer, &executor, &process);
+        let result = execute(
+            &plan,
+            &target,
+            &observer,
+            &executor,
+            &process,
+            &layout_observer_for(&target, &matching_layout()),
+        );
         assert_eq!(result, ActionResult::Succeeded);
         assert!(!target.path().exists());
     }
@@ -1321,7 +1732,14 @@ mod tests {
         let executor = SyntheticMutationExecutor::new();
         let process = SyntheticProcessObserver::complete(vec!["claude".to_string()]);
 
-        let result = execute(&plan, &target, &observer, &executor, &process);
+        let result = execute(
+            &plan,
+            &target,
+            &observer,
+            &executor,
+            &process,
+            &layout_observer_for(&target, &matching_layout()),
+        );
         assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
         assert!(
             target.path().exists(),
@@ -1344,7 +1762,14 @@ mod tests {
         let executor = SyntheticMutationExecutor::new();
         let process = SyntheticProcessObserver::incomplete();
 
-        let result = execute(&plan, &target, &observer, &executor, &process);
+        let result = execute(
+            &plan,
+            &target,
+            &observer,
+            &executor,
+            &process,
+            &layout_observer_for(&target, &matching_layout()),
+        );
         assert!(
             matches!(result, ActionResult::SafelyBlocked { .. }),
             "an incomplete process probe must never be read as \"not running\""
@@ -1376,7 +1801,14 @@ mod tests {
         );
         let process = SyntheticProcessObserver::complete(vec!["claude".to_string()]);
 
-        let result = execute(&plan, &target, &observer, &executor, &process);
+        let result = execute(
+            &plan,
+            &target,
+            &observer,
+            &executor,
+            &process,
+            &layout_observer_for(&target, &matching_layout()),
+        );
         assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
     }
 
@@ -1395,7 +1827,14 @@ mod tests {
         let executor = SyntheticMutationExecutor::new();
         let process = SyntheticProcessObserver::complete(Vec::<String>::new());
 
-        let result = execute(&plan, &target, &observer, &executor, &process);
+        let result = execute(
+            &plan,
+            &target,
+            &observer,
+            &executor,
+            &process,
+            &layout_observer_for(&target, &matching_layout()),
+        );
         assert_eq!(result, ActionResult::Succeeded);
     }
 
@@ -1473,7 +1912,14 @@ mod tests {
         let executor = SystemMutationExecutor;
         let process = SystemProcessObserver;
 
-        let result = execute(&plan, &target, &attack_observer, &executor, &process);
+        let result = execute(
+            &plan,
+            &target,
+            &attack_observer,
+            &executor,
+            &process,
+            &layout_observer_for(&target, &matching_layout()),
+        );
 
         assert!(
             matches!(result, ActionResult::Failed { .. }),

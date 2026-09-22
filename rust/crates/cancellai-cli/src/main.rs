@@ -31,7 +31,7 @@ use cancellai_model::{
 };
 use cancellai_platform::{
     Clock, EnvironmentObserver, FilesystemContextObserver, SystemClock, SystemIdentityObserver,
-    SystemPathResolver, SystemProcessObserver,
+    SystemPathResolver, SystemProcessObserver, SystemProviderLayoutObserver,
 };
 use cancellai_policy::{
     ClassifiedArtifact, ProviderPlanningView, ProviderResolution, RetentionPolicy, ToolScope,
@@ -854,6 +854,7 @@ fn delete_one(
         AuthorityLevel::Govern,
         Reversibility::Irreversible,
         process_guard,
+        &SystemProviderLayoutObserver,
     );
     match execute_with_system_capabilities(&sealed, &bound) {
         cancellai_safety::ActionResult::Succeeded => {

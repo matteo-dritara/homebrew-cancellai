@@ -178,6 +178,105 @@ impl BoundLayoutObservation {
     pub fn markers(&self) -> &[String] {
         &self.markers
     }
+
+    /// Test-only, crate-private construction of an arbitrary observation - never exposed
+    /// outside this crate, so nothing beyond [`SyntheticProviderLayoutObserver`] (same crate)
+    /// can fabricate one; mirrors `cancellai_safety::trust_promotion::TrustedTier::for_tests`'s
+    /// identical `pub(crate)` shape for the same reason (module docs above).
+    pub(crate) fn for_tests(root_identity: IdentityToken, markers: Vec<String>) -> Self {
+        Self {
+            root_identity,
+            markers,
+        }
+    }
+}
+
+/// Capability seam for obtaining a [`BoundLayoutObservation`] (E14-S05, SI-004, SI-013's own
+/// "revalidate immediately before mutation" principle applied to the provider root, not only
+/// the target artifact) - mirrors [`crate::IdentityObserver`]/[`crate::ProcessObserver`]:
+/// production code is injected [`SystemProviderLayoutObserver`], the only implementation
+/// `cancellai_safety::mutation_executor::execute_with_system_capabilities` is allowed to use;
+/// tests use [`SyntheticProviderLayoutObserver`].
+pub trait ProviderLayoutObserver: Send + Sync {
+    fn observe(&self, root: &Path) -> Result<BoundLayoutObservation, LayoutObservationError>;
+}
+
+/// The real, OS-backed implementation - calls [`BoundLayoutObservation::observe`] and nothing
+/// else, so every non-forgeability property that constructor's own module docs establish holds
+/// unchanged through this seam.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct SystemProviderLayoutObserver;
+
+impl ProviderLayoutObserver for SystemProviderLayoutObserver {
+    fn observe(&self, root: &Path) -> Result<BoundLayoutObservation, LayoutObservationError> {
+        BoundLayoutObservation::observe(root)
+    }
+}
+
+/// Test double: a fixed, path-keyed table of canned results, configured via [`Self::set`] -
+/// the only way any crate outside this one can obtain a [`BoundLayoutObservation`] value at
+/// all, since [`BoundLayoutObservation::for_tests`] itself stays `pub(crate)`. A path with no
+/// configured response fails closed (`LayoutObservationError`), never a silent empty/clean
+/// layout - the same "unconfigured is not evidence of absence" posture
+/// [`crate::SyntheticIdentityObserver`] does not need (its own unset default,
+/// `IdentityObservation::Absent`, is itself a legitimate real-world outcome; an unconfigured
+/// layout observation has no such honest default).
+#[derive(Debug, Default)]
+pub struct SyntheticProviderLayoutObserver {
+    responses: std::collections::BTreeMap<
+        std::path::PathBuf,
+        Result<(IdentityToken, Vec<String>), String>,
+    >,
+}
+
+impl SyntheticProviderLayoutObserver {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Configure `path` to observe as a clean, real reading: `root_identity` paired with
+    /// `markers`, exactly what [`BoundLayoutObservation::observe`] would have produced for a
+    /// real directory with that identity and those children.
+    pub fn set_observed(
+        &mut self,
+        path: impl Into<std::path::PathBuf>,
+        root_identity: IdentityToken,
+        markers: impl IntoIterator<Item = impl Into<String>>,
+    ) -> &mut Self {
+        self.responses.insert(
+            path.into(),
+            Ok((root_identity, markers.into_iter().map(Into::into).collect())),
+        );
+        self
+    }
+
+    /// Configure `path` to fail observation (an absent root, a permission error, a platform
+    /// with no verified handle-bound implementation, ...) - the caller-facing shape
+    /// [`BoundLayoutObservation::observe`] itself would return.
+    pub fn set_unobservable(
+        &mut self,
+        path: impl Into<std::path::PathBuf>,
+        reason: impl Into<String>,
+    ) -> &mut Self {
+        self.responses.insert(path.into(), Err(reason.into()));
+        self
+    }
+}
+
+impl ProviderLayoutObserver for SyntheticProviderLayoutObserver {
+    fn observe(&self, root: &Path) -> Result<BoundLayoutObservation, LayoutObservationError> {
+        match self.responses.get(root) {
+            Some(Ok((identity, markers))) => Ok(BoundLayoutObservation::for_tests(
+                identity.clone(),
+                markers.clone(),
+            )),
+            Some(Err(reason)) => Err(LayoutObservationError(reason.clone())),
+            None => Err(LayoutObservationError(format!(
+                "no synthetic provider-layout observation configured for {}",
+                root.display()
+            ))),
+        }
+    }
 }
 
 #[cfg(test)]

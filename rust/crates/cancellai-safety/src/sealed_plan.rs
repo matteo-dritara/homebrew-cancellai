@@ -30,8 +30,10 @@
 use std::path::{Path, PathBuf};
 
 use cancellai_model::{ActionClass, AuthorityLevel, Reversibility, RootFingerprint};
-use cancellai_platform::{IdentityObservation, IdentityToken};
+use cancellai_platform::provider_layout::ProviderLayoutObserver;
+use cancellai_platform::{BoundLayoutObservation, IdentityObservation, IdentityToken};
 
+use crate::provider_layout::LayoutSignature;
 use crate::root_capability::{ApprovedRoot, BoundedPath, MoveDestination};
 
 /// An immutable, sealed mutating plan for exactly one target artifact.
@@ -68,6 +70,15 @@ pub struct SealedPlan {
     /// `mutation_executor::execute` can compare it against `root_identity` before ever
     /// attempting a move (SI-018).
     destination_root_identity: Option<IdentityToken>,
+    /// The provider root's structural layout, observed once when this plan was sealed
+    /// (E14-S05, SI-004, SI-013's own "revalidate immediately before mutation" principle
+    /// applied to the root's own layout, not only the target artifact's identity) - `None`
+    /// means no platform capability could observe it at seal time (the current, disclosed
+    /// Unix-only residual: `cancellai_platform::BoundLayoutObservation::observe` fails closed
+    /// with `Unsupported` on every other platform). `revalidate_provider_layout` compares a
+    /// fresh observation to this, and treats `None` the same as a drift: there is no baseline
+    /// to prove "unchanged" against, so nothing here ever grants an unconstrained default.
+    provider_layout: Option<LayoutSignature>,
 }
 
 impl SealedPlan {
@@ -80,6 +91,7 @@ impl SealedPlan {
         authority: AuthorityLevel,
         reversibility: Reversibility,
         process_guard: Option<&'static [&'static str]>,
+        provider_layout: Option<LayoutSignature>,
     ) -> Self {
         Self::new_with_destination(
             root,
@@ -91,6 +103,7 @@ impl SealedPlan {
             process_guard,
             None,
             None,
+            provider_layout,
         )
     }
 
@@ -105,6 +118,7 @@ impl SealedPlan {
         process_guard: Option<&'static [&'static str]>,
         destination_path: Option<PathBuf>,
         destination_root_identity: Option<IdentityToken>,
+        provider_layout: Option<LayoutSignature>,
     ) -> Self {
         Self {
             root,
@@ -116,12 +130,18 @@ impl SealedPlan {
             process_guard,
             destination_path,
             destination_root_identity,
+            provider_layout,
         }
     }
 
     /// Seal a plan for `target`, bound under `root` (E03-S03's capabilities - not raw
     /// paths). `root_identity`/`artifact_identity` are read from `root`/`target` themselves,
-    /// never accepted as independent caller-supplied values.
+    /// never accepted as independent caller-supplied values. `layout_observer` (E14-S05) is
+    /// used the same way: `root`'s provider layout is observed internally, from `root.path()`
+    /// itself, never accepted as a pre-built observation a caller could have paired with an
+    /// unrelated root (the exact class of defect ADR-0036's round 5 review found and closed
+    /// one layer down, in `BoundLayoutObservation::observe` itself - this constructor does not
+    /// reopen it one layer up).
     pub fn seal(
         root: &ApprovedRoot,
         root_fingerprint: RootFingerprint,
@@ -129,6 +149,7 @@ impl SealedPlan {
         action_class: ActionClass,
         authority: AuthorityLevel,
         reversibility: Reversibility,
+        layout_observer: &dyn ProviderLayoutObserver,
     ) -> Self {
         Self::seal_with_process_guard(
             root,
@@ -138,6 +159,7 @@ impl SealedPlan {
             authority,
             reversibility,
             None,
+            layout_observer,
         )
     }
 
@@ -157,6 +179,7 @@ impl SealedPlan {
         authority: AuthorityLevel,
         reversibility: Reversibility,
         process_guard: Option<&'static [&'static str]>,
+        layout_observer: &dyn ProviderLayoutObserver,
     ) -> Self {
         Self::new_with_process_guard(
             root_fingerprint,
@@ -166,6 +189,7 @@ impl SealedPlan {
             authority,
             reversibility,
             process_guard,
+            observe_provider_layout(root, layout_observer),
         )
     }
 
@@ -176,6 +200,7 @@ impl SealedPlan {
     /// [`MoveDestination`] (produced only by [`ApprovedRoot::prepare_destination`]),
     /// never accepted as bare caller-supplied values - the same principle [`Self::seal`]
     /// already applies to `root_identity`/`artifact_identity`.
+    #[allow(clippy::too_many_arguments)]
     pub fn seal_quarantine(
         root: &ApprovedRoot,
         root_fingerprint: RootFingerprint,
@@ -183,6 +208,7 @@ impl SealedPlan {
         destination: &MoveDestination,
         authority: AuthorityLevel,
         reversibility: Reversibility,
+        layout_observer: &dyn ProviderLayoutObserver,
     ) -> Self {
         Self::new_with_destination(
             root_fingerprint,
@@ -194,6 +220,7 @@ impl SealedPlan {
             None,
             Some(destination.path().to_path_buf()),
             Some(destination.root_identity().clone()),
+            observe_provider_layout(root, layout_observer),
         )
     }
 
@@ -203,6 +230,7 @@ impl SealedPlan {
     /// [`Self::seal_quarantine`]: same shape, same SI-018 boundary comparison at execution
     /// time, `destination` here names a location outside the quarantine store rather than
     /// inside it.
+    #[allow(clippy::too_many_arguments)]
     pub fn seal_restore(
         root: &ApprovedRoot,
         root_fingerprint: RootFingerprint,
@@ -210,6 +238,7 @@ impl SealedPlan {
         destination: &MoveDestination,
         authority: AuthorityLevel,
         reversibility: Reversibility,
+        layout_observer: &dyn ProviderLayoutObserver,
     ) -> Self {
         Self::new_with_destination(
             root_fingerprint,
@@ -221,12 +250,14 @@ impl SealedPlan {
             None,
             Some(destination.path().to_path_buf()),
             Some(destination.root_identity().clone()),
+            observe_provider_layout(root, layout_observer),
         )
     }
 
     /// Seal an archive plan for `target`, additionally recording `destination` (E12-S03) -
     /// same shape as [`Self::seal_quarantine`]: a second, cancellAI-controlled root (the
     /// archive store), the same SI-018 same-device comparison at execution time.
+    #[allow(clippy::too_many_arguments)]
     pub fn seal_archive(
         root: &ApprovedRoot,
         root_fingerprint: RootFingerprint,
@@ -234,6 +265,7 @@ impl SealedPlan {
         destination: &MoveDestination,
         authority: AuthorityLevel,
         reversibility: Reversibility,
+        layout_observer: &dyn ProviderLayoutObserver,
     ) -> Self {
         Self::new_with_destination(
             root_fingerprint,
@@ -245,6 +277,7 @@ impl SealedPlan {
             None,
             Some(destination.path().to_path_buf()),
             Some(destination.root_identity().clone()),
+            observe_provider_layout(root, layout_observer),
         )
     }
 
@@ -296,6 +329,29 @@ impl SealedPlan {
     pub fn destination_root_identity(&self) -> Option<&IdentityToken> {
         self.destination_root_identity.as_ref()
     }
+
+    /// The provider root's layout signature observed when this plan was sealed - `None` if no
+    /// platform capability could observe it then (E14-S05). [`revalidate_provider_layout`]
+    /// compares a fresh observation to this immediately before mutation.
+    pub fn provider_layout(&self) -> Option<&LayoutSignature> {
+        self.provider_layout.as_ref()
+    }
+}
+
+/// Observe `root`'s provider layout via `layout_observer`, normalized into the order-
+/// independent [`LayoutSignature`] shape `revalidate_provider_layout` later compares against -
+/// `None` on any observation failure (an absent/unreadable root, or, currently, any non-Unix
+/// platform: `cancellai_platform::BoundLayoutObservation::observe`'s own disclosed residual).
+/// Never a silent empty/clean signature: an unobservable root has no baseline, not an honest
+/// "no markers."
+fn observe_provider_layout(
+    root: &ApprovedRoot,
+    layout_observer: &dyn ProviderLayoutObserver,
+) -> Option<LayoutSignature> {
+    layout_observer
+        .observe(root.path())
+        .ok()
+        .map(|observed| LayoutSignature::new(observed.markers().iter().cloned()))
 }
 
 /// The result of checking a [`SealedPlan`]'s preconditions immediately before mutation.
@@ -345,6 +401,53 @@ pub fn revalidate(plan: &SealedPlan, current: &IdentityObservation) -> Revalidat
     }
 }
 
+/// Revalidate a plan's provider-layout precondition against a freshly observed layout fact
+/// (E14-S05, SI-004, SI-013) - [`revalidate`]'s own principle, applied to the provider root's
+/// structural layout instead of the target artifact's identity: a plan sealed while a layout
+/// was one shape is refused if a fresh observation, taken immediately before mutation, shows a
+/// different shape now - never permitted merely because the plan's own seal-time snapshot
+/// still says what it used to.
+///
+/// Fail-closed on every branch but one: `fresh` failing to observe at all (`Err`), the fresh
+/// root identity no longer matching what the plan was sealed against, the fresh signature
+/// differing from the plan's own recorded one, or the plan never having a recorded signature to
+/// compare against in the first place (`provider_layout() == None`, e.g. sealed on a platform
+/// with no verified layout-observation capability yet) - each is `StalePlan`. Only a fresh,
+/// successful observation whose root identity and normalized markers both match what was
+/// recorded at seal time is `Proceed`.
+pub fn revalidate_provider_layout(
+    plan: &SealedPlan,
+    fresh: Result<&BoundLayoutObservation, &cancellai_platform::LayoutObservationError>,
+) -> RevalidationOutcome {
+    let fresh = match fresh {
+        Err(reason) => {
+            return RevalidationOutcome::StalePlan {
+                reason: format!(
+                    "provider root layout could not be observed immediately before mutation: {reason:?}"
+                ),
+            };
+        }
+        Ok(observation) => observation,
+    };
+    if fresh.root_identity() != &plan.root_identity {
+        return RevalidationOutcome::StalePlan {
+            reason: "provider root identity changed since the plan was sealed".to_string(),
+        };
+    }
+    let fresh_signature = LayoutSignature::new(fresh.markers().iter().cloned());
+    match &plan.provider_layout {
+        Some(sealed_signature) if *sealed_signature == fresh_signature => {
+            RevalidationOutcome::Proceed
+        }
+        Some(_) => RevalidationOutcome::StalePlan {
+            reason: "provider root layout changed since the plan was sealed".to_string(),
+        },
+        None => RevalidationOutcome::StalePlan {
+            reason: "provider root layout was not observable when the plan was sealed".to_string(),
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -389,6 +492,7 @@ mod tests {
             ActionClass::Delete,
             AuthorityLevel::Govern,
             Reversibility::Irreversible,
+            None,
             None,
         )
     }
@@ -501,10 +605,15 @@ mod tests {
             ActionClass::Delete,
             AuthorityLevel::Govern,
             Reversibility::Irreversible,
+            &cancellai_platform::SystemProviderLayoutObserver,
         );
 
         assert_eq!(plan.root_identity(), root.identity());
         assert_eq!(plan.artifact_identity(), target.identity());
+        assert_eq!(
+            plan.provider_layout(),
+            Some(&LayoutSignature::new(["target.txt".to_string()]))
+        );
 
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -546,6 +655,7 @@ mod tests {
             &destination,
             AuthorityLevel::Quarantine,
             Reversibility::Quarantinable,
+            &cancellai_platform::SystemProviderLayoutObserver,
         );
 
         assert_eq!(plan.action_class(), ActionClass::Quarantine);
@@ -595,6 +705,7 @@ mod tests {
             &destination,
             AuthorityLevel::Quarantine,
             Reversibility::Quarantinable,
+            &cancellai_platform::SystemProviderLayoutObserver,
         );
 
         assert_eq!(plan.action_class(), ActionClass::Restore);
@@ -644,6 +755,7 @@ mod tests {
             &destination,
             AuthorityLevel::Quarantine,
             Reversibility::Archivable,
+            &cancellai_platform::SystemProviderLayoutObserver,
         );
 
         assert_eq!(plan.action_class(), ActionClass::Archive);
@@ -661,5 +773,111 @@ mod tests {
         let plan = plan_with(token(1));
         assert_eq!(plan.destination_path(), None);
         assert_eq!(plan.destination_root_identity(), None);
+    }
+
+    // --- E14-S05, SI-004, SI-013: `revalidate_provider_layout` -----------------------------
+
+    fn plan_with_layout(provider_layout: Option<LayoutSignature>) -> SealedPlan {
+        SealedPlan::new_with_process_guard(
+            fingerprint(),
+            root_token(),
+            token(1),
+            ActionClass::Delete,
+            AuthorityLevel::Govern,
+            Reversibility::Irreversible,
+            None,
+            provider_layout,
+        )
+    }
+
+    fn fresh_observation(
+        root_identity: IdentityToken,
+        markers: impl IntoIterator<Item = impl Into<String>>,
+    ) -> cancellai_platform::BoundLayoutObservation {
+        use cancellai_platform::ProviderLayoutObserver;
+        let path = std::path::PathBuf::from("/synthetic/provider-root");
+        let mut synth = cancellai_platform::SyntheticProviderLayoutObserver::new();
+        synth.set_observed(&path, root_identity, markers);
+        synth
+            .observe(&path)
+            .expect("configured synthetic observation")
+    }
+
+    #[test]
+    fn revalidate_provider_layout_proceeds_when_the_fresh_signature_still_matches() {
+        // Not vacuously fail-closed: prove the matching case is actually let through.
+        let plan = plan_with_layout(Some(LayoutSignature::new(["sessions/".to_string()])));
+        let fresh = fresh_observation(root_token(), ["sessions/".to_string()]);
+        assert_eq!(
+            revalidate_provider_layout(&plan, Ok(&fresh)),
+            RevalidationOutcome::Proceed
+        );
+    }
+
+    #[test]
+    fn revalidate_provider_layout_ignores_marker_order_and_duplicates() {
+        // LayoutSignature normalizes both - a real `read_dir` ordering difference between two
+        // observations of the identical, unchanged directory must never read as drift.
+        let plan = plan_with_layout(Some(LayoutSignature::new([
+            "a".to_string(),
+            "b".to_string(),
+        ])));
+        let fresh = fresh_observation(
+            root_token(),
+            ["b".to_string(), "a".to_string(), "a".to_string()],
+        );
+        assert_eq!(
+            revalidate_provider_layout(&plan, Ok(&fresh)),
+            RevalidationOutcome::Proceed
+        );
+    }
+
+    #[test]
+    fn revalidate_provider_layout_blocks_when_the_fresh_signature_has_drifted() {
+        let plan = plan_with_layout(Some(LayoutSignature::new(["sessions/".to_string()])));
+        let fresh = fresh_observation(root_token(), ["totally_different_shape/".to_string()]);
+        assert!(matches!(
+            revalidate_provider_layout(&plan, Ok(&fresh)),
+            RevalidationOutcome::StalePlan { .. }
+        ));
+    }
+
+    #[test]
+    fn revalidate_provider_layout_blocks_when_the_root_identity_itself_changed() {
+        let plan = plan_with_layout(Some(LayoutSignature::new(["sessions/".to_string()])));
+        let swapped_root = IdentityToken::Unix {
+            device: 1,
+            inode: 999,
+            kind: FileKind::Directory,
+            modified: FrozenClock::at(1_000).now(),
+            modified_nanos: 0,
+        };
+        let fresh = fresh_observation(swapped_root, ["sessions/".to_string()]);
+        assert!(matches!(
+            revalidate_provider_layout(&plan, Ok(&fresh)),
+            RevalidationOutcome::StalePlan { .. }
+        ));
+    }
+
+    #[test]
+    fn revalidate_provider_layout_blocks_when_the_plan_never_recorded_a_baseline() {
+        // Seal-time observation failure (e.g. a non-Unix platform) must never grant an
+        // unconstrained default (AC3) - there is no baseline to prove "unchanged" against.
+        let plan = plan_with_layout(None);
+        let fresh = fresh_observation(root_token(), ["sessions/".to_string()]);
+        assert!(matches!(
+            revalidate_provider_layout(&plan, Ok(&fresh)),
+            RevalidationOutcome::StalePlan { .. }
+        ));
+    }
+
+    #[test]
+    fn revalidate_provider_layout_blocks_when_the_fresh_observation_itself_fails() {
+        let plan = plan_with_layout(Some(LayoutSignature::new(["sessions/".to_string()])));
+        let error = cancellai_platform::LayoutObservationError("permission denied".to_string());
+        assert!(matches!(
+            revalidate_provider_layout(&plan, Err(&error)),
+            RevalidationOutcome::StalePlan { .. }
+        ));
     }
 }

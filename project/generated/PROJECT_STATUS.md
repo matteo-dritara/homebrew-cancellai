@@ -11,7 +11,8 @@ Epics: **33** | Stories: **168**
 - `blocked`: 2
 - `cancelled`: 1
 - `done`: 158
-- `planned`: 7
+- `planned`: 6
+- `ready_for_review`: 1
 
 ## Change risk distribution
 
@@ -27,4 +28,4 @@ Epics: **33** | Stories: **168**
 
 ## Awaiting independent review
 
-- none
+- **E14-S05** - Live provider-layout capability gate at the mutation boundary (CR4)

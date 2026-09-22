@@ -119,7 +119,7 @@
     {
       "id": "E14-S05",
       "title": "Live provider-layout capability gate at the mutation boundary",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Close E14-S04's SI-004 residual, which four independent review rounds across two designs (ADR-0034, ADR-0035) found unclosable by reshaping AuthorityInputs alone: no data shape stops a caller from constructing a second, separate AuthorityInputs that omits or contradicts a real layout observation it already holds, because nothing binds a caller-supplied value to the facts it claims to summarize. This story moves the binding to where it can actually hold: cancellai-platform gains a real provider-root layout observer capability, and cancellai_safety::mutation_executor::execute/revalidate require and consume a live observation from it immediately before any mutation - mirroring how revalidate already re-checks a SealedPlan's preconditions fail-closed immediately before the point of no return (SI-013) rather than trusting what was true at plan-construction time. A caller can still construct as many unconstrained AuthorityInputs as it likes elsewhere; none of them can authorize a real mutation, because the one function that performs one no longer trusts caller-supplied layout data for that decision.",
       "change_risk": "CR4",
       "dependencies": [

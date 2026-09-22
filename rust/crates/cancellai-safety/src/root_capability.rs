@@ -129,6 +129,7 @@ impl ApprovedRoot {
                     path: canonical,
                     identity,
                     root_identity: self.identity.clone(),
+                    root_path: self.path.clone(),
                 })
             }
             IdentityObservation::Absent => Err(BoundaryError::CandidateAbsent),
@@ -210,11 +211,17 @@ impl MoveDestination {
 /// could execute against a target bound under a completely different one.
 /// `SealedPlan::seal`/`mutation_executor::execute` (E03-S02/E03-S05) compare this field
 /// against the plan's own recorded root identity before ever considering a mutation.
+///
+/// `root_path` (E14-S05) additionally carries the root's own real path, so
+/// `mutation_executor::execute` can re-observe that root's provider layout immediately before
+/// mutation (SI-004, SI-013) without accepting a bare, caller-suppliable path for it - this
+/// path came from the same real [`ApprovedRoot`] `root_identity` did, at the same `bind` call.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BoundedPath {
     path: PathBuf,
     identity: IdentityToken,
     root_identity: IdentityToken,
+    root_path: PathBuf,
 }
 
 impl BoundedPath {
@@ -230,6 +237,11 @@ impl BoundedPath {
     /// identity - see the struct docs).
     pub fn root_identity(&self) -> &IdentityToken {
         &self.root_identity
+    }
+
+    /// The real path of the [`ApprovedRoot`] this path was bound under (E14-S05).
+    pub fn root_path(&self) -> &Path {
+        &self.root_path
     }
 }
 

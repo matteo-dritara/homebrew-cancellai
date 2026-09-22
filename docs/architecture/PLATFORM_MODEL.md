@@ -13,11 +13,34 @@ The platform layer owns the OS-specific implementation of:
 - logical and allocated-size observation;
 - atomic rename/move capability;
 - process/activity observation;
+- provider-root structural layout observation;
 - user service installation/runtime;
 - notifications;
 - permission/error translation.
 
 Domain and policy code consume capability results, not OS-specific syscalls.
+
+## Provider-root layout observation
+
+`cancellai_platform::provider_layout::ProviderLayoutObserver` (E14-S05, SI-004, SI-013,
+ADR-0037) is the injectable seam over `BoundLayoutObservation::observe` (E14-S04, ADR-0036) -
+mirroring `IdentityObserver`/`ProcessObserver`: `SystemProviderLayoutObserver` in production,
+`SyntheticProviderLayoutObserver` in tests. `cancellai_safety::mutation_executor::
+execute_with_system_capabilities` hardcodes the system implementation, the same closed-production-
+path guarantee the other injected capabilities already have - no caller can substitute a
+synthetic observation for a real mutation.
+
+`BoundLayoutObservation::observe` only succeeds on Unix today (ADR-0036's own disclosed
+residual: `cancellai-sealedfs::SealedRoot::metadata`/`list_child_names` fail closed with
+`Unsupported` everywhere else, no verified handle-bound implementation yet). E14-S05 wires a
+live observation into the mutation boundary as a required, fail-closed precondition
+(ADR-0037), so this residual now has a real, disclosed product consequence rather than a
+purely internal one: **every destructive mutation through `mutation_executor::execute` is
+refused on any platform without a verified implementation, Windows included**, even though a
+real, verified Windows Delete pipeline already shipped (E20-S01/E20-S05). A future story
+bringing `SealedRoot::metadata`/`list_child_names` to Windows (mirroring `establish`'s existing
+Windows no-follow walk in `cancellai-sealedfs::windows_sealed`) is required to restore Windows
+Delete to real, working status.
 
 ## Identity token
 

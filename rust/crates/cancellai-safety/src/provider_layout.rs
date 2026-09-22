@@ -34,7 +34,7 @@
 /// forbidden dependency direction; this crate's own module doc) and `structural.rs` may not
 /// depend on `cancellai-safety` (that module's own "holds no reference to cancellai-safety and
 /// never will").
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize)]
 pub struct LayoutSignature(Vec<String>);
 
 impl LayoutSignature {
