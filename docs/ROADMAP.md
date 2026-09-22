@@ -100,7 +100,7 @@ Prevent runaway agent storage with predictive intelligence and bounded autonomou
 **Epics**
 
 - **E14 - Predictive Guardian Intelligence** (`done`): Detect disk pressure, runaway growth, and structural anomalies using local evidence without acquiring authority.
-- **E15 - Guardian Runtime and Bounded Remediation** (`in_progress`): Run monitoring continuously using OS-native user services while keeping all actions within Effective Policy.
+- **E15 - Guardian Runtime and Bounded Remediation** (`done`): Run monitoring continuously using OS-native user services while keeping all actions within Effective Policy.
 
 ## P5 - Ecosystem
 
@@ -114,7 +114,7 @@ Scale provider coverage and ship verifiable, signed, multi-channel releases with
 
 **Epics**
 
-- **E16 - Provider Ecosystem and Federated Knowledge** (`blocked`): Scale provider coverage through manifests, native adapters, signed knowledge bundles, and explicit trust promotion.
+- **E16 - Provider Ecosystem and Federated Knowledge** (`ready_for_review`): Scale provider coverage through manifests, native adapters, signed knowledge bundles, and explicit trust promotion.
 - **E17 - Verifiable Supply Chain and Distribution** (`planned`): Automate canonical cross-platform builds, provenance, SBOM, signatures/attestations, and channel-aware installers.
 
 ## P6 - Network & Experience

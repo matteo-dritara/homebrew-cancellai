@@ -134,3 +134,70 @@ the artifact at action time; it may not let an outside caller assert a different
 Owner note: round 2 is owner-capped. E15-S03 is `blocked` by failed E15-S01 and also carries the
 authority-provenance defect recorded here as an accepted-to-record residual requiring an owner
 decision, not silently accepted as a CR4 pass.
+
+---
+
+# Round 3 Addendum - Safety Verdict - E15-S03
+
+- Change: bounded Guardian remediation planner, including owner-authorized confirmation of the
+  round-2 repair `a72570c`
+- Risk: CR4
+- Review target: `b9409e7..a72570c`
+- Independent verifier: Codex (GPT-5)
+- Date: 2026-09-22
+
+## Verdict
+
+`PASS_WITH_RESIDUALS`
+
+## Safety surface changed
+
+The planner, its authority-bearing input/output types, and the two downstream consumers of that
+output are now crate-internal. `cancellai-guardian` exposes no external API that can convert a
+caller-fabricated `ClassifiedArtifact` into a Guardian authority grant.
+
+## Invariants
+
+| Invariant | Required property | Independent evidence | Result |
+| --- | --- | --- | --- |
+| SI-027 | Pressure/anomaly severity does not create authority. | `remediation.rs` keeps the 4 x 5 pressure/authority matrix and computes `min(pressure_authority_ceiling, reachable_authority)`; RED remains capped at `Quarantine`. The external probe cannot import either `plan_remediation` or `RemediationCandidate`: offline `cargo check` fails E0603 at the import for both names. | PASS |
+| SI-028 | Guardian action is no stronger than Effective Policy computed by the shared engine at action time. | `RemediationCandidate`, `GuardianPlanItem`, and `plan_remediation` are each `pub(crate)`. `apply_kill_switch` and `record_guardian_decision`, which consume `GuardianPlanItem`, are also `pub(crate)`. No `pub use` or other external route reaches their conversion/planning flow. The external public `ClassifiedArtifact` remains forgeable, but it is no longer an input to a reachable Guardian API. | PASS |
+
+## Adversarial cases
+
+- A separate temporary Cargo crate depending on `cancellai-guardian` attempted
+  `use cancellai_guardian::remediation::{plan_remediation, RemediationCandidate};`.
+  Its offline compile failed at visibility/name import (E0603) for both items; it never reached
+  candidate or policy-artifact construction.
+- `cargo test --doc -p cancellai-guardian` passed with only the pre-existing
+  `structural::LayoutDriftFinding` compile-fail doctest. Rustdoc no longer emits a
+  `RemediationCandidate` doctest because that item is not public.
+- `cargo test -p cancellai-guardian remediation::tests:: --lib` passed all nine internal tests,
+  including `from_classified_artifact_carries_the_real_engine_authority_unmodified`. Rust child
+  modules retain the crate-local access required to test the real wiring.
+- `cargo test --workspace`, workspace clippy/check/fmt, `cargo deny check`, and
+  `scripts/check_mutation_boundary.py check` all passed. The mutation-boundary checker still
+  finds no Guardian mutation capability path.
+
+## Known residual risks
+
+- The planner is intentionally not wired to a live Guardian orchestrator, sealed plan, or
+  executor yet. That is the documented scope of this epic's primitive-only modules, rather than
+  a reachable CR4 grant path. A future story that widens this planner beyond `pub(crate)` must
+  first introduce a policy-owned, non-forgeable authority carrier; the public
+  `ClassifiedArtifact` must not be reused as sufficient provenance.
+- This visibility boundary means the current story delivers bounded internal planning capability,
+  not an external automation API. That is acceptable for the stated "no orchestrator wires this
+  yet" scope. No external caller can presently obtain a Guardian authority grant through this
+  module.
+
+## Rollback / recovery
+
+No autonomous mutation is exposed by this module. If a future integration needs public planner
+access, keep the planner crate-local until a reviewed policy-owned opaque authority carrier exists;
+do not restore the former public conversion surface.
+
+## Owner decision
+
+`ACCEPT` — the round-2 externally reachable provenance bypass is closed. This addendum is the
+independent CR4 Safety Verdict required for E15-S03 closure.

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.17.0] - 2026-09-22
+
 ### Added
 
 - Added the Guardian cross-platform user-service runtime (E15-S01, CR3,
@@ -38,7 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   own "cannot express an authority decision" argument. Not yet wired to a live orchestrator,
   matching this crate's own detection modules' precedent.
 - Added the Guardian bounded remediation planner (E15-S03, CR4, SI-027, SI-028,
-  `docs/architecture/GUARDIAN_MODEL.md` "Decision"/"Authority"):
+  `docs/architecture/GUARDIAN_MODEL.md` "Decision"/"Authority"): the currently crate-internal
   `cancellai_guardian::remediation::plan_remediation` never computes its own Effective Authority -
   each candidate's `reachable_authority` is `cancellai_policy::retention::ClassifiedArtifact`'s
   own field, the exact ceiling `cancellai_safety::authority::effective_authority` already derived
@@ -53,7 +55,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   structurally cannot produce, so this planner can never emit a `Delete`-eligible plan regardless
   of pressure, and an artifact already capped by an unknown/protected lifecycle state stays
   capped under `min` no matter how high pressure climbs. Verified by an exhaustive 4 (pressure) x
-  5 (`AuthorityLevel`) matrix. Not yet wired to sealing/execution - E15-S04's scope.
+  5 (`AuthorityLevel`) matrix. The planner and its authority-bearing conversion remain
+  crate-internal until policy supplies an opaque, non-forgeable authority carrier; external
+  callers therefore cannot mint a Guardian grant from a fabricated classification. It is not yet
+  wired to sealing/execution - E15-S04's scope.
 - Added the Guardian kill-switch and audit trail (E15-S04, CR3,
   `docs/architecture/GUARDIAN_MODEL.md` "Kill switch"/"Audit"): `cancellai_guardian::killswitch`
   is an immediate, local disable path - a marker file whose `engage`/`disengage` both *write* its

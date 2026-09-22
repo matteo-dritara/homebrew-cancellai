@@ -7,7 +7,7 @@
   "dependencies": [
     "E15"
   ],
-  "status": "blocked",
+  "status": "ready_for_review",
   "stories": [
     {
       "id": "E16-S01",
