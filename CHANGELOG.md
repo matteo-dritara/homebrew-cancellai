@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.17.2] - 2026-09-22
+
+### Fixed
+
+- The Rust engine's `cancellai-guardian` crate failed real cross-platform CI on the v1.17.1 tag
+  in three independent ways, none reproducible locally: `KillSwitch::is_engaged` (Windows)
+  trusted a bare `NotFound` read error as a confirmed-absent marker, but a path through a
+  non-directory component also reports `NotFound` there, misreading a failed `engage()` as
+  disengaged - it now also requires the marker's own parent to be confirmed a real directory
+  before trusting `NotFound` at all. `schtasks /Query ... /XML` output (Windows) does not decode
+  as UTF-8 - its own XML declares `encoding="UTF-16"` and `schtasks.exe` writes genuine UTF-16LE
+  bytes with a byte-order mark, which `String::from_utf8_lossy` silently mangled into unmatched
+  replacement characters - the shared command-output decoder now detects a UTF-16 BOM and
+  decodes accordingly. `systemctl --user enable --now` (Linux) can fail with "Unit file ... does
+  not exist" immediately after `install()` writes it, even with a reachable session bus and an
+  explicit `daemon-reload` - `enable()` now retries up to three times, reloading fresh before
+  each attempt, before reporting the failure honestly. v1.17.1's tag stands as immutable history
+  and is recorded as unpublished; this fix ships as the next version.
+
 ## [1.17.1] - 2026-09-22
 
 ### Fixed
