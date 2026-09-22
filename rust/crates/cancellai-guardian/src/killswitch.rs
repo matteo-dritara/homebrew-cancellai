@@ -91,20 +91,46 @@ impl KillSwitch {
         self.write(DISENGAGED_MARKER)
     }
 
-    /// See the module docs' "Fail-safe reads" section: only a marker that is either absent
-    /// (never engaged) or reads **byte-for-byte exactly** [`DISENGAGED_MARKER`] counts as
-    /// disengaged - not a trimmed/normalized comparison. Round-1 independent review found the
-    /// original implementation compared `content.trim()` instead, which let content this crate
-    /// never itself writes (a trailing newline, surrounding whitespace, any other modification)
-    /// still read as a confirmed disengage; `disengage()` never appends a newline or any other
-    /// byte beyond the marker itself, so an exact comparison rejects nothing legitimate. Present
-    /// but unreadable, present with any other content, or any other I/O failure, all read as
-    /// engaged. Never mutates.
+    /// See the module docs' "Fail-safe reads" section: only a marker that is either
+    /// *confirmed* absent (never engaged) or reads **byte-for-byte exactly**
+    /// [`DISENGAGED_MARKER`] counts as disengaged - not a trimmed/normalized comparison. Round-1
+    /// independent review found the original implementation compared `content.trim()` instead,
+    /// which let content this crate never itself writes (a trailing newline, surrounding
+    /// whitespace, any other modification) still read as a confirmed disengage; `disengage()`
+    /// never appends a newline or any other byte beyond the marker itself, so an exact
+    /// comparison rejects nothing legitimate.
+    ///
+    /// "Confirmed absent" is deliberately not just "the read failed with `NotFound`" - real
+    /// Windows CI found `std::io::ErrorKind::NotFound` is also what a path with a *non-directory*
+    /// component reports (e.g. `<a real file>\killswitch`, this module's own adversarial test),
+    /// which is not a confirmed absence of the marker, it is a broken path this crate's own
+    /// `engage()` already failed to write through. Trusting `NotFound` alone there would have
+    /// read a failed engage as disengaged - the opposite of fail-safe. [`Self::parent_is_a_real_directory`]
+    /// narrows `NotFound` to only the case where the marker's own parent directory genuinely
+    /// exists as a directory; any other outcome - present but unreadable, present with any other
+    /// content, `NotFound` with an unconfirmable or non-directory parent, or any other I/O
+    /// failure - reads as engaged. Never mutates.
     pub fn is_engaged(&self) -> bool {
         match std::fs::read_to_string(&self.path) {
             Ok(content) => content != DISENGAGED_MARKER,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => false,
+            Err(err)
+                if err.kind() == std::io::ErrorKind::NotFound
+                    && self.parent_is_a_real_directory() =>
+            {
+                false
+            }
             Err(_) => true,
+        }
+    }
+
+    /// Whether the marker's own parent path exists and is itself a real directory - the
+    /// narrowing check [`Self::is_engaged`] uses to distinguish a genuinely confirmed-absent
+    /// marker from a `NotFound` that actually means "this path cannot exist at all" (a missing
+    /// parent, or a non-directory component standing where a directory is required).
+    fn parent_is_a_real_directory(&self) -> bool {
+        match self.path.parent() {
+            Some(parent) => std::fs::metadata(parent).is_ok_and(|metadata| metadata.is_dir()),
+            None => false,
         }
     }
 }
@@ -265,11 +291,26 @@ mod tests {
         std::fs::write(&blocking_file, b"x").unwrap();
         let switch = KillSwitch::at(blocking_file.join("killswitch"));
         assert!(switch.engage().is_err());
-        // The marker itself was never written, but reading a path whose parent is not a
-        // directory is itself an unresolvable I/O error, not a confirmed "not found" - the
-        // module docs' fail-safe rule reads that as engaged, not disengaged. This is the
+        // The marker itself was never written. Real Windows CI found reading through a
+        // non-directory path component reports `std::io::ErrorKind::NotFound` there (not some
+        // other, more obviously "broken path" error kind as on Unix) - `parent_is_a_real_directory`
+        // is exactly what stops that `NotFound` from being trusted as a confirmed absence here:
+        // the parent (`blocking_file`) exists but is a file, not a directory, so this reads as
+        // engaged regardless of the specific error kind the platform reports. This is the
         // conservative direction, not a gap: a caller who cannot tell whether the switch is off
         // must never proceed as if it were.
+        assert!(switch.is_engaged());
+    }
+
+    #[test]
+    fn a_bare_relative_filename_with_no_real_directory_component_reads_as_engaged() {
+        // KillSwitch::at always receives a path under a real directory in production, but the
+        // fail-safe logic itself must not panic or misread a pathological input without one -
+        // `Path::parent()` for a single-component relative path returns `Some("")` (the empty
+        // path), which `parent_is_a_real_directory` correctly fails to confirm as a real
+        // directory (an empty path is not a valid one to stat), falling through to fail-safe
+        // engaged rather than a spurious disengaged.
+        let switch = KillSwitch::at(std::path::PathBuf::from("killswitch-marker-with-no-parent"));
         assert!(switch.is_engaged());
     }
 

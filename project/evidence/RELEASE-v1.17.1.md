@@ -6,7 +6,7 @@
 - Commit: recorded by the release workflow at the tag
 - Channel: stable
 - Date: 2026-09-22
-- Published: pending
+- Published: no - verify-rust failed on cargo test --workspace on both windows-latest and ubuntu-latest (macos-latest passed); clippy itself now passed on all three platforms, confirming the service_windows.rs unused-import fix worked. Three real, platform-specific defects found: (1) KillSwitch::is_engaged trusted a bare ErrorKind::NotFound as confirmed-absent, but real Windows CI showed a path through a non-directory component also reports NotFound there, misreading a failed engage() as disengaged - repaired by requiring the marker's parent to be confirmed a real directory before trusting NotFound; (2) schtasks /Query .../XML output did not decode as UTF-8 - its own XML declares encoding="UTF-16" and schtasks.exe writes genuine UTF-16LE bytes with a BOM, which String::from_utf8_lossy silently mangled into unmatched replacement characters - repaired by detecting a UTF-16 BOM and decoding accordingly in the shared command-output decoder; (3) real Linux CI showed a reachable systemd --user session bus does not guarantee `enable --now` sees a unit file this same process just wrote ("Unit file ... does not exist" even after an explicit daemon-reload) - repaired with a bounded retry (reload, then enable, up to 3 attempts) in enable() itself, and the real smoke test's fallback recognition extended to this specific, distinguishable outcome too (run 35743679810)
 
 ## Included work
 

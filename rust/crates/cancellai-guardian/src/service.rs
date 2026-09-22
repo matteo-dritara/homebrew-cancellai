@@ -148,8 +148,8 @@ impl CommandRunner for SystemCommandRunner {
         match std::process::Command::new(program).args(args).output() {
             Ok(output) => Ok(CommandOutput {
                 success: output.status.success(),
-                stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-                stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+                stdout: decode_command_output(&output.stdout),
+                stderr: decode_command_output(&output.stderr),
             }),
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
                 Err(ServiceError::CommandUnavailable {
@@ -160,6 +160,47 @@ impl CommandRunner for SystemCommandRunner {
                 message: err.to_string(),
             }),
         }
+    }
+}
+
+/// Decodes one command's raw output bytes to text, honouring a UTF-16 byte-order mark when
+/// present rather than assuming UTF-8 unconditionally.
+///
+/// Real Windows CI found `schtasks /Query ... /XML`'s output does not decode as UTF-8: the XML
+/// document itself declares `encoding="UTF-16"`, and `schtasks.exe` writes genuine UTF-16LE
+/// bytes (BOM included) to represent it, even when stdout is a redirected pipe rather than a
+/// console. Decoding that as UTF-8 via `String::from_utf8_lossy` does not error - lossy decoding
+/// never does - it silently replaces every two-byte UTF-16 code unit with one or more `U+FFFD`
+/// replacement characters, so `service_windows::parse_enabled_from_xml`'s substring search never
+/// matched anything and always read as `Unsupported`, exactly what real Windows CI reproduced.
+/// Every other real call site in this crate (`launchctl`, `systemctl`, the rest of `schtasks`'
+/// own non-XML output) is plain ASCII/UTF-8 with no BOM, so this never changes their decoding -
+/// the BOM check only ever activates for output that actually carries one.
+fn decode_command_output(bytes: &[u8]) -> String {
+    match bytes {
+        [0xFF, 0xFE, rest @ ..] => String::from_utf16_lossy(
+            &rest
+                .chunks_exact(2)
+                .map(|pair| {
+                    u16::from_le_bytes(
+                        pair.try_into()
+                            .expect("chunks_exact(2) always yields a 2-byte slice"),
+                    )
+                })
+                .collect::<Vec<u16>>(),
+        ),
+        [0xFE, 0xFF, rest @ ..] => String::from_utf16_lossy(
+            &rest
+                .chunks_exact(2)
+                .map(|pair| {
+                    u16::from_be_bytes(
+                        pair.try_into()
+                            .expect("chunks_exact(2) always yields a 2-byte slice"),
+                    )
+                })
+                .collect::<Vec<u16>>(),
+        ),
+        _ => String::from_utf8_lossy(bytes).into_owned(),
     }
 }
 
@@ -260,6 +301,38 @@ impl ServiceRuntime for UnsupportedRuntime {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn decode_command_output_reads_plain_utf8_unchanged() {
+        assert_eq!(decode_command_output(b"hello"), "hello");
+    }
+
+    #[test]
+    fn decode_command_output_decodes_a_real_utf16le_bom_prefixed_document() {
+        // The exact shape real Windows `schtasks /Query ... /XML` output takes: a UTF-16LE BOM
+        // followed by UTF-16LE code units - here, "<Enabled>true</Enabled>".
+        let text = "<Enabled>true</Enabled>";
+        let mut bytes = vec![0xFF, 0xFE];
+        for unit in text.encode_utf16() {
+            bytes.extend_from_slice(&unit.to_le_bytes());
+        }
+        assert_eq!(decode_command_output(&bytes), text);
+    }
+
+    #[test]
+    fn decode_command_output_decodes_a_utf16be_bom_prefixed_document() {
+        let text = "<Enabled>false</Enabled>";
+        let mut bytes = vec![0xFE, 0xFF];
+        for unit in text.encode_utf16() {
+            bytes.extend_from_slice(&unit.to_be_bytes());
+        }
+        assert_eq!(decode_command_output(&bytes), text);
+    }
+
+    #[test]
+    fn decode_command_output_handles_empty_input() {
+        assert_eq!(decode_command_output(&[]), "");
+    }
 
     #[test]
     fn command_unavailable_is_reported_for_a_missing_binary() {
