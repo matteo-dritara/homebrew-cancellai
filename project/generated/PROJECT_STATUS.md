@@ -11,8 +11,8 @@ Epics: **33** | Stories: **168**
 - `blocked`: 2
 - `cancelled`: 1
 - `done`: 159
-- `planned`: 3
-- `ready_for_review`: 3
+- `planned`: 2
+- `ready_for_review`: 4
 
 ## Change risk distribution
 
@@ -31,3 +31,4 @@ Epics: **33** | Stories: **168**
 - **E15-S01** - Cross-platform user-service runtime (CR3)
 - **E15-S02** - Notification abstraction (CR1)
 - **E15-S03** - Bounded remediation planner (CR4)
+- **E15-S04** - Guardian kill-switch and audit (CR3)

@@ -1665,7 +1665,7 @@ Run monitoring continuously using OS-native user services while keeping all acti
 
 ### E15-S04 - Guardian kill-switch and audit
 
-**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E15-S03 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E15-S03 | **Safety obligations:** none
 
 **Outcome.** Provide immediate local disable and complete ledger trace for every autonomous recommendation/action.
 

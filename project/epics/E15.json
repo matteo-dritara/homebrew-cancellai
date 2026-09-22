@@ -83,7 +83,7 @@
     {
       "id": "E15-S04",
       "title": "Guardian kill-switch and audit",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Provide immediate local disable and complete ledger trace for every autonomous recommendation/action.",
       "change_risk": "CR3",
       "dependencies": [

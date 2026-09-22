@@ -10,12 +10,16 @@
 //! `notification` (E15-S02) is a second: OS-appropriate notification delivery with a terminal
 //! fallback. `remediation` (E15-S03) is a third: the bounded remediation planner that turns
 //! pressure plus already-classified artifacts into a plan, never granting authority beyond what
-//! the shared policy engine already computed (SI-027, SI-028). None is wired to a live
-//! orchestrator yet, matching this crate's own detection modules' "primitive delivered, no
-//! orchestrator yet" precedent.
+//! the shared policy engine already computed (SI-027, SI-028). `killswitch`/`audit` (E15-S04) are
+//! a fourth and fifth: an immediate local disable path, and linking every plan decision to its
+//! detection evidence and policy resolution in `cancellai-store`'s own event ledger. None is
+//! wired to a live orchestrator yet, matching this crate's own detection modules' "primitive
+//! delivered, no orchestrator yet" precedent.
 
+pub mod audit;
 pub mod baseline;
 pub mod forecast;
+pub mod killswitch;
 pub mod notification;
 pub mod pressure;
 pub mod remediation;

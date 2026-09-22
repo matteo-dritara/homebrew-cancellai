@@ -318,6 +318,27 @@ delivered, no orchestrator yet" precedent.
 
 Guardian must have an immediate local disable path. Disabling automation never prevents manual read-only inspection or recovery. Any in-flight destructive action still follows safety executor transaction semantics rather than being killed mid-syscall unsafely.
 
+E15-S04 implements this as `cancellai_guardian::killswitch`: a local marker file, never the
+OS-service lifecycle `cancellai_guardian::service` provides - `ServiceRuntime::disable` shells
+out to `launchctl`/`systemctl`/`schtasks`, which can fail exactly when a user most needs the
+disable to work, while this module is one local file read/write with no external process.
+`KillSwitch::engage`/`disengage` both *write* the marker's content (`"engaged"`/`"disengaged"`)
+rather than creating/removing the file - `disengage` never calls `std::fs::remove_file`, since
+`scripts/check_mutation_boundary.py` (SI-019) refuses that call from any source file but
+`cancellai-platform/src/mutation.rs`, with no exemption for cancellAI's own local state; a
+content-based marker satisfies AC1 without needing that exemption at all.
+`KillSwitch::is_engaged` is fail-safe: only a marker confirmed absent, or confirmed to read
+exactly `"disengaged"`, counts as disengaged - present-but-unreadable, unrecognized content, or
+any other I/O failure all read as engaged (the same "ambiguity never escalates privilege"
+principle C-03 states generally). AC1 ("stops future autonomous mutations without corrupting
+current state") holds because [`apply_kill_switch`] is a pure, in-memory transform over an
+already-computed plan batch - no I/O, so nothing it does can leave a partial/interrupted write
+behind - and because it never touches execution: an in-flight destructive mutation still runs
+entirely inside `cancellai_safety::mutation_executor`'s own transactional/TOCTOU-safe sequence,
+a system this module has no path to interrupt even if it tried. Read-only inspection is
+preserved by construction too: an engaged switch still returns every plan item, only forcing
+each one's `action_class`/`granted_authority` down to `Observe` rather than withholding it.
+
 ## Audit
 
 Every Guardian remediation/recommendation records:
@@ -328,3 +349,19 @@ Every Guardian remediation/recommendation records:
 - authority result;
 - sealed plan ID if any;
 - execution result.
+
+E15-S04 implements this as `cancellai_guardian::audit::record_guardian_decision`, reusing
+`cancellai_store::EventLedger` (E13-S02) rather than a second, Guardian-owned ledger - the same
+"one shared engine" principle `docs/PRODUCT.md` states for Guardian generally, applied here to
+persistence. A `GuardianPlanItem` whose `action_class` reached `Quarantine` is recorded as
+`EventKind::PlanCreated`; one that stayed at `Observe` (insufficient policy authority,
+insufficient pressure, or the kill switch having forced it there) is recorded as
+`EventKind::ActionBlocked` - both are `EventKind::is_mutation()` kinds, so `EventLedger::append`
+itself refuses (fail-closed, nothing written) any call missing a plan reference or at least one
+piece of detection evidence (`docs/architecture/PERSISTENCE_MODEL.md`'s "Mutation events carry
+plan/evidence references"), the same enforcement every other mutation-class ledger writer in
+this workspace is already subject to - this function is not a second path around it. "Sealed
+plan ID if any" is deliberately `plan_id: String`, not yet a real
+`cancellai_safety::SealedPlan::plan_id`: this story's planner (E15-S03) does not seal plans, so
+the identifier recorded today names the planning round Guardian considered, honestly short of a
+real seal - a disclosed residual, not a claim this module does not back.

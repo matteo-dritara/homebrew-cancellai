@@ -54,6 +54,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of pressure, and an artifact already capped by an unknown/protected lifecycle state stays
   capped under `min` no matter how high pressure climbs. Verified by an exhaustive 4 (pressure) x
   5 (`AuthorityLevel`) matrix. Not yet wired to sealing/execution - E15-S04's scope.
+- Added the Guardian kill-switch and audit trail (E15-S04, CR3,
+  `docs/architecture/GUARDIAN_MODEL.md` "Kill switch"/"Audit"): `cancellai_guardian::killswitch`
+  is an immediate, local disable path - a marker file whose `engage`/`disengage` both *write* its
+  content (`"engaged"`/`"disengaged"`) rather than creating/removing it, so it never calls
+  `std::fs::remove_file` (`scripts/check_mutation_boundary.py`/SI-019 refuses that call outside
+  `cancellai-platform/src/mutation.rs`, with no exemption for cancellAI's own local state).
+  `is_engaged` is fail-safe: only a confirmed-absent marker, or one confirmed to read exactly
+  `"disengaged"`, counts as disengaged - any other outcome, including an I/O error, reads as
+  engaged. `apply_kill_switch` (AC1) is a pure, in-memory transform over an already-planned batch
+  that forces every item to `Observe` when engaged, without ever touching execution - an in-flight
+  mutation still runs entirely inside `cancellai_safety::mutation_executor`'s own transactional
+  sequence, unaffected by anything here. `cancellai_guardian::audit::record_guardian_decision`
+  (AC2) reuses `cancellai_store::EventLedger` (E13-S02) rather than a second ledger: a plan item
+  that reached `Quarantine` is recorded as `EventKind::PlanCreated`, one that stayed at `Observe`
+  as `EventKind::ActionBlocked` - both mutation-class kinds the ledger itself already refuses to
+  accept without a plan reference and at least one piece of detection evidence, so this function
+  cannot bypass that enforcement even if it tried.
 
 ## [1.16.0] - 2026-09-22
 
