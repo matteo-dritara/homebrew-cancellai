@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.17.3] - 2026-09-22
+
+### Fixed
+
+- The Rust engine's `cancellai-guardian` crate failed real CI on the v1.17.2 tag: `cargo clippy`
+  denied `chunks_exact` with a constant chunk size in `service.rs`'s `decode_command_output`
+  (added by the v1.17.1 fix), a lint real CI's newer clippy (0.1.98) enforces. Switched to
+  `slice::as_chunks::<2>()`, the idiom clippy itself suggests. v1.17.2's tag stands as immutable
+  history and is recorded as unpublished; this fix ships as the next version.
+
 ## [1.17.2] - 2026-09-22
 
 ### Fixed
