@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added the Guardian cross-platform user-service runtime (E15-S01, CR3,
+  `docs/architecture/GUARDIAN_MODEL.md` "Runtime"): `cancellai_guardian::service` gives one
+  engine (`GuardianService`) a consistent `install`/`uninstall`/`enable`/`disable`/`status`
+  lifecycle over three real OS mechanisms selected at compile time - a `launchd` user agent on
+  macOS, a `systemd --user` unit on Linux (falling back to an explicit `Unsupported` status,
+  never a silent guess, when no session bus is reachable), and a `schtasks.exe` user-scoped
+  scheduled task on Windows (parsed from its non-localized `/XML` output, not its
+  display-language-dependent text formats). Each adapter shells real commands through
+  `std::process::Command` behind a `CommandRunner` seam, never a shell string, so orchestration
+  and status parsing are unit-tested with a fake runner on every host while a real smoke test
+  additionally exercises the genuine mechanism on its own matching CI platform - the macOS one
+  ran for real against this machine's own `launchctl` as part of this story's own verification.
+  `cancellai-cli` does not depend on this crate, so a Guardian lifecycle failure cannot reach
+  manual CLI operation (AC2). `run` (what an installed definition actually invokes) remains the
+  E02-S01 skeleton; the detection/decision/authority loop is E15-S03/S04's scope.
+
 ## [1.16.0] - 2026-09-22
 
 ### Security

@@ -3,11 +3,23 @@
 //! (`SI-027`, `SI-028` - detection severity and Guardian never self-escalate authority).
 //!
 //! Split into a library and a thin binary (`main.rs`), matching `cancellai-tui`'s pattern: the
-//! modules here are pure detection logic with no runtime/service surface yet, so they are
-//! exercised directly by unit tests rather than through the (still unimplemented) compiled
-//! binary.
+//! detection modules (`pressure`/`forecast`/`baseline`/`structural`) are pure logic with no
+//! runtime/service surface, exercised directly by unit tests. `service` (E15-S01) is the first
+//! module with a real runtime surface: the cross-platform user-service lifecycle
+//! (`docs/architecture/GUARDIAN_MODEL.md` "Runtime") the compiled binary now exposes.
 
 pub mod baseline;
 pub mod forecast;
 pub mod pressure;
+pub mod service;
+// Each platform module is real production code only on its own `target_os`, but stays
+// unit-testable (via its own `FakeCommandRunner`) on every host by also compiling under `test` -
+// the same `#[cfg(any(test, target_os = "..."))]` split `cancellai_platform::wsl` already uses,
+// applied to a whole module instead of one function.
+#[cfg(any(test, target_os = "linux"))]
+mod service_linux;
+#[cfg(any(test, target_os = "macos"))]
+mod service_macos;
+#[cfg(any(test, target_os = "windows"))]
+mod service_windows;
 pub mod structural;

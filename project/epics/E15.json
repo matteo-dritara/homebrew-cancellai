@@ -8,12 +8,12 @@
     "E14",
     "E12"
   ],
-  "status": "planned",
+  "status": "in_progress",
   "stories": [
     {
       "id": "E15-S01",
       "title": "Cross-platform user-service runtime",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Implement launchd/systemd-user/Windows task-or-service adapters with one Guardian engine.",
       "change_risk": "CR3",
       "dependencies": [

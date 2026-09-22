@@ -1601,13 +1601,13 @@ Detect disk pressure, runaway growth, and structural anomalies using local evide
 
 ## E15 - Guardian Runtime and Bounded Remediation
 
-**Phase:** `P4` | **Status:** `planned` | **Epic dependencies:** E14, E12
+**Phase:** `P4` | **Status:** `in_progress` | **Epic dependencies:** E14, E12
 
 Run monitoring continuously using OS-native user services while keeping all actions within Effective Policy.
 
 ### E15-S01 - Cross-platform user-service runtime
 
-**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E14-S04, E20-S03 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E14-S04, E20-S03 | **Safety obligations:** none
 
 **Outcome.** Implement launchd/systemd-user/Windows task-or-service adapters with one Guardian engine.
 

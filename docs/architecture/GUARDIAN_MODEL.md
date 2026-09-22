@@ -226,6 +226,42 @@ Target user-service mechanisms:
 - Windows: user-scoped scheduled task/service design chosen through platform ADR.
 - WSL: separate environment behavior; do not silently install a Windows host service from the Linux guest.
 
+E15-S01 implements the three adapters behind one engine: `cancellai_guardian::service`. A single
+public type (`GuardianService`) selects its platform implementation at compile time
+(`service_macos`/`service_linux`/`service_windows`, cfg-gated by `target_os`), so a Linux binary
+carries no path that could reach the Windows scheduler at all - the WSL constraint above holds
+structurally rather than by a runtime check. Each adapter shells out to the real OS mechanism
+(`launchctl`, `systemctl --user`, `schtasks.exe`) through `std::process::Command`, never a shell
+string, and splits pure content/argument construction from that invocation behind a
+`CommandRunner` seam (mirroring `cancellai_platform::EnvironmentObserver`'s
+production/synthetic split) - the install/enable/status/uninstall orchestration is unit-tested
+with a fake runner on every host, while a real smoke test additionally exercises the genuine
+mechanism, gated to the one CI platform it is real on. AC1 ("enabled/disabled and status
+inspected consistently") holds by a shared `ServiceRuntime` trait all three adapters implement
+identically: `NotInstalled`/`Disabled`/`Enabled`, plus an `Unsupported { reason }` state that an
+unrecognized or unreachable mechanism reports explicitly rather than folding into either neighbor
+- malformed detection input must not read as calm, the same principle `pressure`/`baseline`
+already apply to NaN input, applied here to service state. AC2 ("service failure does not block
+manual CLI operation") holds structurally: `cancellai-cli` does not depend on `cancellai-guardian`
+at all, so no Guardian lifecycle failure can reach it; within the Guardian binary itself, every
+operation returns a `ServiceError` rather than panicking.
+
+The Linux adapter's "explicit fallback otherwise" is exercised for real, not only in theory: this
+workspace's own Linux CI runners carry no active `systemd --user` session bus, so `status`/
+`enable` there genuinely take the `Unsupported`/`CommandFailed` path on every run, detected by
+matching `systemctl`'s own "Failed to connect to bus" message rather than guessing from an exit
+code alone. The Windows adapter reads `schtasks /Query ... /XML` rather than the localized
+`/FO LIST`/`/FO CSV` text output specifically because `schtasks`' plain-text field names and
+values are OS-display-language-dependent and would silently misparse on a non-English Windows
+install; XML element names are not localized. Residual, disclosed rather than silently assumed:
+this adapter's own quoting for `/TR` (`service_windows::quote_if_needed`) is unit-tested against
+the cases this story anticipated (embedded spaces, embedded quotes) but is not a general Windows
+command-line encoder, and a genuinely exotic executable path is not exhaustively verified beyond
+those cases. `run` (the command every installed service definition actually invokes) remains the
+E02-S01 skeleton - the detection/decision/authority loop a live service would run is E15-S03/S04's
+scope, not this one's, matching this document's own "primitive delivered, no orchestrator yet"
+precedent for `pressure`/`forecast`/`baseline`/`structural`.
+
 ## Kill switch
 
 Guardian must have an immediate local disable path. Disabling automation never prevents manual read-only inspection or recovery. Any in-flight destructive action still follows safety executor transaction semantics rather than being killed mid-syscall unsafely.

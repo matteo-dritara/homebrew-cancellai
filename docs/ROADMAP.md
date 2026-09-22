@@ -100,7 +100,7 @@ Prevent runaway agent storage with predictive intelligence and bounded autonomou
 **Epics**
 
 - **E14 - Predictive Guardian Intelligence** (`done`): Detect disk pressure, runaway growth, and structural anomalies using local evidence without acquiring authority.
-- **E15 - Guardian Runtime and Bounded Remediation** (`planned`): Run monitoring continuously using OS-native user services while keeping all actions within Effective Policy.
+- **E15 - Guardian Runtime and Bounded Remediation** (`in_progress`): Run monitoring continuously using OS-native user services while keeping all actions within Effective Policy.
 
 ## P5 - Ecosystem
 

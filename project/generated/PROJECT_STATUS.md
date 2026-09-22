@@ -11,7 +11,8 @@ Epics: **33** | Stories: **168**
 - `blocked`: 2
 - `cancelled`: 1
 - `done`: 159
-- `planned`: 6
+- `planned`: 5
+- `ready_for_review`: 1
 
 ## Change risk distribution
 
@@ -27,4 +28,4 @@ Epics: **33** | Stories: **168**
 
 ## Awaiting independent review
 
-- none
+- **E15-S01** - Cross-platform user-service runtime (CR3)
