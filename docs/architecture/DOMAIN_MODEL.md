@@ -388,16 +388,19 @@ against `target.root_identity()` for whatever target is actually passed to it at
 time - not merely whatever was used at sealing time - closing the gap for good.
 
 E14-S05 (SI-004, SI-013, ADR-0037) extends the "provider identity/version/layout/capability
-snapshot" field above with the first *live* precondition on the provider root itself, not
-only the target artifact: `SealedPlan` now carries `provider_layout: Option<
-cancellai_safety::provider_layout::LayoutSignature>`, populated at seal time from a real
-`cancellai_platform::provider_layout::ProviderLayoutObserver` observation of the root
-(`None` records that no platform capability could observe it then). `mutation_executor::
-execute` calls a new `revalidate_provider_layout` (alongside `revalidate`) immediately before
-building the mutation operation: it re-observes the provider root fresh and refuses unless
-the root's identity *and* its normalized structural markers both still match what the plan
-recorded - an unobservable root, a changed root identity, a drifted marker set, or a plan
-with no seal-time baseline at all are each `StalePlan`, never a default pass. This closes
+snapshot" field above with the first *live* precondition on a provider root, not only the
+target artifact: `SealedPlan` now carries `provider_layout: Option<ProviderLayoutSnapshot>` - a
+`root_path`/`root_identity`/`LayoutSignature` triple, bound to whichever root each action class
+actually depends on (the source root for Delete/Quarantine/Archive, the destination root for
+Restore - round 2 independent review found the first version bound every action class to
+`target`'s own root, which is wrong for Restore) - populated at seal time from a real
+`cancellai_platform::provider_layout::ProviderLayoutObserver` observation (`None` records that
+no platform capability could observe it then). `mutation_executor::execute` calls a new
+`revalidate_provider_layout` (alongside `revalidate`) as the very last precondition, immediately
+before the real mutation call: it re-observes exactly the path the plan's own snapshot recorded
+and refuses unless the root's identity *and* its normalized structural markers both still match
+what was recorded - an unobservable root, a changed root identity, a drifted marker set, or a
+plan with no seal-time baseline at all are each `StalePlan`, never a default pass. This closes
 ADR-0036's second disclosed residual (no consumer required a live observation) with a
 freshness/TOCTOU check rather than a "known good" classification, which still has no trusted
 signature source (ADR-0036's first residual, unchanged). See ADR-0037 for the full account,

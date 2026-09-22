@@ -14,9 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mutation, refusing if it has drifted (or become unobservable) since the plan was sealed
   (SI-004, SI-013, ADR-0037). This closes a disclosed residual from the E14-S04/ADR-0036
   provider-layout work: a plan's own layout data was never re-checked at the one moment that
-  matters. **Disclosed consequence:** the underlying observation capability is currently
-  Unix-only, so every destructive mutation - Delete included - is now refused on non-Unix
-  platforms, Windows included, until a verified Windows implementation lands.
+  matters. Independent review round 2 found and repaired three defects in the first version
+  before it shipped: `execute`/`execute_all` were reachable from outside the crate with a
+  fabricated observation (now `pub(crate)`, production-only via `execute_with_system_
+  capabilities`); the fresh observation was not held through the mutation call itself (the
+  check now runs immediately before it, narrowing but not fully closing that window - a
+  disclosed residual); and `Restore` plans checked the quarantine store instead of the real
+  destination provider root (now bound explicitly per action class). **Disclosed consequence:**
+  the underlying observation capability is currently Unix-only, so every destructive mutation -
+  Delete included - is now refused on non-Unix platforms, Windows included, until a verified
+  Windows implementation lands.
 
 ### Fixed
 

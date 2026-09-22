@@ -56,7 +56,7 @@ pub use knowledge_bundle::{
     SUPPORTED_SCHEMA_VERSIONS, TrustedPublisher, VerifiedKnowledgeBundle, parse_bundle,
     verify_bundle,
 };
-pub use mutation_executor::{ActionResult, execute, execute_all, execute_with_system_capabilities};
+pub use mutation_executor::{ActionResult, execute_with_system_capabilities};
 pub use provider_layout::LayoutSignature;
 pub use remote_execution::{
     RemoteExecutionError, RemoteExecutionLog, RemoteExecutionRequest, TrustedRemoteController,

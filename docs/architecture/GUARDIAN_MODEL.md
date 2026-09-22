@@ -100,6 +100,15 @@ full account, including the disclosed consequence that this makes every destruct
 refuse on any platform without a verified `BoundLayoutObservation` implementation - Windows
 included, since that primitive remains Unix-only (ADR-0036 round 5's own disclosed residual).
 
+E14-S05's own independent review round 2 found and repaired three defects before this design
+could be trusted: a fully `pub` `execute`/`execute_all` let an external crate supply a
+fabricated observation directly (closed by making both `pub(crate)`); the fresh observation was
+not held through the actual mutation call, leaving a narrow, still-disclosed TOCTOU window
+(narrowed by moving the check to immediately before the mutation call, not fully closed); and
+`seal_restore` bound its snapshot to the quarantine store instead of the real destination
+provider root (closed by binding explicitly per action class). ADR-0037's own "Round 2" section
+has the full account.
+
 ### Decision
 
 What would improve the situation?

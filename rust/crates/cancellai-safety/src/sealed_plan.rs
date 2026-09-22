@@ -31,7 +31,7 @@ use std::path::{Path, PathBuf};
 
 use cancellai_model::{ActionClass, AuthorityLevel, Reversibility, RootFingerprint};
 use cancellai_platform::provider_layout::ProviderLayoutObserver;
-use cancellai_platform::{BoundLayoutObservation, IdentityObservation, IdentityToken};
+use cancellai_platform::{IdentityObservation, IdentityToken};
 
 use crate::provider_layout::LayoutSignature;
 use crate::root_capability::{ApprovedRoot, BoundedPath, MoveDestination};
@@ -70,15 +70,33 @@ pub struct SealedPlan {
     /// `mutation_executor::execute` can compare it against `root_identity` before ever
     /// attempting a move (SI-018).
     destination_root_identity: Option<IdentityToken>,
-    /// The provider root's structural layout, observed once when this plan was sealed
-    /// (E14-S05, SI-004, SI-013's own "revalidate immediately before mutation" principle
-    /// applied to the root's own layout, not only the target artifact's identity) - `None`
-    /// means no platform capability could observe it at seal time (the current, disclosed
-    /// Unix-only residual: `cancellai_platform::BoundLayoutObservation::observe` fails closed
-    /// with `Unsupported` on every other platform). `revalidate_provider_layout` compares a
-    /// fresh observation to this, and treats `None` the same as a drift: there is no baseline
+    /// A snapshot of the provider root's structural layout, observed once when this plan was
+    /// sealed (E14-S05, SI-004, SI-013's own "revalidate immediately before mutation"
+    /// principle applied to a root's own layout, not only the target artifact's identity) -
+    /// `None` means no platform capability could observe it at seal time (the current,
+    /// disclosed Unix-only residual: `cancellai_platform::BoundLayoutObservation::observe`
+    /// fails closed with `Unsupported` on every other platform). `revalidate_provider_layout`
+    /// re-observes exactly this snapshot's own `root_path` and compares against its recorded
+    /// `root_identity`/`signature`, treating `None` the same as a drift: there is no baseline
     /// to prove "unchanged" against, so nothing here ever grants an unconstrained default.
-    provider_layout: Option<LayoutSignature>,
+    ///
+    /// *Which* root this snapshot describes is not always `root_identity`/the source root
+    /// (E14-S05 round 2 independent review, finding F3): `Self::seal_restore`'s `root`
+    /// parameter is the quarantine store, not a provider root at all - for that action class
+    /// the snapshot instead describes `destination`'s own root, the real provider root the
+    /// move actually writes into, since that is the root SI-004 is actually about protecting.
+    provider_layout: Option<ProviderLayoutSnapshot>,
+}
+
+/// A snapshot of one specific root's observed structural layout, bound to the real path and
+/// identity it was read from (E14-S05 round 2) - not merely a bare [`LayoutSignature`], which
+/// on its own carries no record of *which* root it describes or where to re-observe it.
+/// [`revalidate_provider_layout`] is the only consumer.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub(crate) struct ProviderLayoutSnapshot {
+    pub(crate) root_path: PathBuf,
+    pub(crate) root_identity: IdentityToken,
+    pub(crate) signature: LayoutSignature,
 }
 
 impl SealedPlan {
@@ -91,7 +109,7 @@ impl SealedPlan {
         authority: AuthorityLevel,
         reversibility: Reversibility,
         process_guard: Option<&'static [&'static str]>,
-        provider_layout: Option<LayoutSignature>,
+        provider_layout: Option<ProviderLayoutSnapshot>,
     ) -> Self {
         Self::new_with_destination(
             root,
@@ -118,7 +136,7 @@ impl SealedPlan {
         process_guard: Option<&'static [&'static str]>,
         destination_path: Option<PathBuf>,
         destination_root_identity: Option<IdentityToken>,
-        provider_layout: Option<LayoutSignature>,
+        provider_layout: Option<ProviderLayoutSnapshot>,
     ) -> Self {
         Self {
             root,
@@ -189,7 +207,7 @@ impl SealedPlan {
             authority,
             reversibility,
             process_guard,
-            observe_provider_layout(root, layout_observer),
+            observe_provider_layout(root.path(), layout_observer),
         )
     }
 
@@ -220,7 +238,7 @@ impl SealedPlan {
             None,
             Some(destination.path().to_path_buf()),
             Some(destination.root_identity().clone()),
-            observe_provider_layout(root, layout_observer),
+            observe_provider_layout(root.path(), layout_observer),
         )
     }
 
@@ -230,6 +248,13 @@ impl SealedPlan {
     /// [`Self::seal_quarantine`]: same shape, same SI-018 boundary comparison at execution
     /// time, `destination` here names a location outside the quarantine store rather than
     /// inside it.
+    ///
+    /// The provider-layout snapshot (E14-S05 round 2 independent review, finding F3) is
+    /// observed against **`destination`'s own root**, not `root` - `root` here is the
+    /// quarantine store, which is not a provider root at all, so observing it would silently
+    /// protect nothing SI-004 actually cares about. `destination`'s root is the real provider
+    /// location this move writes into, so that is what a fresh observation must re-check
+    /// immediately before mutation.
     #[allow(clippy::too_many_arguments)]
     pub fn seal_restore(
         root: &ApprovedRoot,
@@ -250,7 +275,7 @@ impl SealedPlan {
             None,
             Some(destination.path().to_path_buf()),
             Some(destination.root_identity().clone()),
-            observe_provider_layout(root, layout_observer),
+            observe_provider_layout(destination.root_path(), layout_observer),
         )
     }
 
@@ -277,7 +302,7 @@ impl SealedPlan {
             None,
             Some(destination.path().to_path_buf()),
             Some(destination.root_identity().clone()),
-            observe_provider_layout(root, layout_observer),
+            observe_provider_layout(root.path(), layout_observer),
         )
     }
 
@@ -332,26 +357,41 @@ impl SealedPlan {
 
     /// The provider root's layout signature observed when this plan was sealed - `None` if no
     /// platform capability could observe it then (E14-S05). [`revalidate_provider_layout`]
-    /// compares a fresh observation to this immediately before mutation.
+    /// compares a fresh observation of the same root to this immediately before mutation.
     pub fn provider_layout(&self) -> Option<&LayoutSignature> {
-        self.provider_layout.as_ref()
+        self.provider_layout
+            .as_ref()
+            .map(|snapshot| &snapshot.signature)
+    }
+
+    /// The real path of the root [`Self::provider_layout`]'s snapshot describes - `None` under
+    /// the identical condition `provider_layout()` is `None`. Exposed for tests that need to
+    /// assert which root this plan actually bound its layout precondition to (E14-S05 round 2:
+    /// `Self::seal_restore` binds it to the destination's root, not `root`'s own).
+    pub fn provider_layout_root_path(&self) -> Option<&Path> {
+        self.provider_layout
+            .as_ref()
+            .map(|snapshot| snapshot.root_path.as_path())
     }
 }
 
-/// Observe `root`'s provider layout via `layout_observer`, normalized into the order-
-/// independent [`LayoutSignature`] shape `revalidate_provider_layout` later compares against -
-/// `None` on any observation failure (an absent/unreadable root, or, currently, any non-Unix
-/// platform: `cancellai_platform::BoundLayoutObservation::observe`'s own disclosed residual).
-/// Never a silent empty/clean signature: an unobservable root has no baseline, not an honest
-/// "no markers."
+/// Observe `path`'s provider-root layout via `layout_observer`, normalized into the order-
+/// independent [`LayoutSignature`] shape and bound together with the real path/identity it was
+/// read from, into a [`ProviderLayoutSnapshot`] `revalidate_provider_layout` later re-observes
+/// and compares against - `None` on any observation failure (an absent/unreadable root, or,
+/// currently, any non-Unix platform: `cancellai_platform::BoundLayoutObservation::observe`'s
+/// own disclosed residual). Never a silent empty/clean signature: an unobservable root has no
+/// baseline, not an honest "no markers."
 fn observe_provider_layout(
-    root: &ApprovedRoot,
+    path: &Path,
     layout_observer: &dyn ProviderLayoutObserver,
-) -> Option<LayoutSignature> {
-    layout_observer
-        .observe(root.path())
-        .ok()
-        .map(|observed| LayoutSignature::new(observed.markers().iter().cloned()))
+) -> Option<ProviderLayoutSnapshot> {
+    let observed = layout_observer.observe(path).ok()?;
+    Some(ProviderLayoutSnapshot {
+        root_path: path.to_path_buf(),
+        root_identity: observed.root_identity().clone(),
+        signature: LayoutSignature::new(observed.markers().iter().cloned()),
+    })
 }
 
 /// The result of checking a [`SealedPlan`]'s preconditions immediately before mutation.
@@ -408,18 +448,29 @@ pub fn revalidate(plan: &SealedPlan, current: &IdentityObservation) -> Revalidat
 /// different shape now - never permitted merely because the plan's own seal-time snapshot
 /// still says what it used to.
 ///
-/// Fail-closed on every branch but one: `fresh` failing to observe at all (`Err`), the fresh
-/// root identity no longer matching what the plan was sealed against, the fresh signature
-/// differing from the plan's own recorded one, or the plan never having a recorded signature to
-/// compare against in the first place (`provider_layout() == None`, e.g. sealed on a platform
-/// with no verified layout-observation capability yet) - each is `StalePlan`. Only a fresh,
-/// successful observation whose root identity and normalized markers both match what was
-/// recorded at seal time is `Proceed`.
+/// Takes `layout_observer` directly and re-observes exactly the path the plan's own snapshot
+/// recorded (`ProviderLayoutSnapshot::root_path`) - not a path the caller supplies separately
+/// (E14-S05 round 2 independent review, finding F3: a caller-supplied path could name the wrong
+/// root, as `mutation_executor::execute` previously did for every `Restore` plan by always
+/// re-observing `target`'s own bound root - the quarantine store - instead of the plan's actual
+/// destination provider root).
+///
+/// Fail-closed on every branch but one: the plan never recording a snapshot at seal time
+/// (`None`, e.g. sealed on a platform with no verified layout-observation capability yet), the
+/// fresh observation failing outright, the fresh root identity no longer matching what was
+/// recorded, or the fresh signature differing from the recorded one - each is `StalePlan`. Only
+/// a fresh, successful observation of the plan's own recorded root whose identity and
+/// normalized markers both still match is `Proceed`.
 pub fn revalidate_provider_layout(
     plan: &SealedPlan,
-    fresh: Result<&BoundLayoutObservation, &cancellai_platform::LayoutObservationError>,
+    layout_observer: &dyn ProviderLayoutObserver,
 ) -> RevalidationOutcome {
-    let fresh = match fresh {
+    let Some(baseline) = &plan.provider_layout else {
+        return RevalidationOutcome::StalePlan {
+            reason: "provider root layout was not observable when the plan was sealed".to_string(),
+        };
+    };
+    let fresh = match layout_observer.observe(&baseline.root_path) {
         Err(reason) => {
             return RevalidationOutcome::StalePlan {
                 reason: format!(
@@ -429,21 +480,16 @@ pub fn revalidate_provider_layout(
         }
         Ok(observation) => observation,
     };
-    if fresh.root_identity() != &plan.root_identity {
+    if fresh.root_identity() != &baseline.root_identity {
         return RevalidationOutcome::StalePlan {
             reason: "provider root identity changed since the plan was sealed".to_string(),
         };
     }
     let fresh_signature = LayoutSignature::new(fresh.markers().iter().cloned());
-    match &plan.provider_layout {
-        Some(sealed_signature) if *sealed_signature == fresh_signature => {
-            RevalidationOutcome::Proceed
-        }
-        Some(_) => RevalidationOutcome::StalePlan {
+    match fresh_signature == baseline.signature {
+        true => RevalidationOutcome::Proceed,
+        false => RevalidationOutcome::StalePlan {
             reason: "provider root layout changed since the plan was sealed".to_string(),
-        },
-        None => RevalidationOutcome::StalePlan {
-            reason: "provider root layout was not observable when the plan was sealed".to_string(),
         },
     }
 }
@@ -777,7 +823,23 @@ mod tests {
 
     // --- E14-S05, SI-004, SI-013: `revalidate_provider_layout` -----------------------------
 
-    fn plan_with_layout(provider_layout: Option<LayoutSignature>) -> SealedPlan {
+    fn synthetic_root_path() -> PathBuf {
+        PathBuf::from("/synthetic/provider-root")
+    }
+
+    fn snapshot(
+        root_path: &Path,
+        root_identity: IdentityToken,
+        markers: impl IntoIterator<Item = impl Into<String>>,
+    ) -> ProviderLayoutSnapshot {
+        ProviderLayoutSnapshot {
+            root_path: root_path.to_path_buf(),
+            root_identity,
+            signature: LayoutSignature::new(markers.into_iter().map(Into::into)),
+        }
+    }
+
+    fn plan_with_layout(provider_layout: Option<ProviderLayoutSnapshot>) -> SealedPlan {
         SealedPlan::new_with_process_guard(
             fingerprint(),
             root_token(),
@@ -790,26 +852,30 @@ mod tests {
         )
     }
 
-    fn fresh_observation(
+    /// A synthetic observer that returns `root_identity`/`markers` for `synthetic_root_path()`
+    /// specifically - the same path [`snapshot`] uses by default, so a plan built from
+    /// `plan_with_layout` and an observer built from this helper agree on *where* to look; only
+    /// the two functions' other arguments need to differ to exercise drift.
+    fn layout_observer_returning(
         root_identity: IdentityToken,
         markers: impl IntoIterator<Item = impl Into<String>>,
-    ) -> cancellai_platform::BoundLayoutObservation {
-        use cancellai_platform::ProviderLayoutObserver;
-        let path = std::path::PathBuf::from("/synthetic/provider-root");
+    ) -> cancellai_platform::SyntheticProviderLayoutObserver {
         let mut synth = cancellai_platform::SyntheticProviderLayoutObserver::new();
-        synth.set_observed(&path, root_identity, markers);
+        synth.set_observed(synthetic_root_path(), root_identity, markers);
         synth
-            .observe(&path)
-            .expect("configured synthetic observation")
     }
 
     #[test]
     fn revalidate_provider_layout_proceeds_when_the_fresh_signature_still_matches() {
         // Not vacuously fail-closed: prove the matching case is actually let through.
-        let plan = plan_with_layout(Some(LayoutSignature::new(["sessions/".to_string()])));
-        let fresh = fresh_observation(root_token(), ["sessions/".to_string()]);
+        let plan = plan_with_layout(Some(snapshot(
+            &synthetic_root_path(),
+            root_token(),
+            ["sessions/".to_string()],
+        )));
+        let observer = layout_observer_returning(root_token(), ["sessions/".to_string()]);
         assert_eq!(
-            revalidate_provider_layout(&plan, Ok(&fresh)),
+            revalidate_provider_layout(&plan, &observer),
             RevalidationOutcome::Proceed
         );
     }
@@ -818,33 +884,43 @@ mod tests {
     fn revalidate_provider_layout_ignores_marker_order_and_duplicates() {
         // LayoutSignature normalizes both - a real `read_dir` ordering difference between two
         // observations of the identical, unchanged directory must never read as drift.
-        let plan = plan_with_layout(Some(LayoutSignature::new([
-            "a".to_string(),
-            "b".to_string(),
-        ])));
-        let fresh = fresh_observation(
+        let plan = plan_with_layout(Some(snapshot(
+            &synthetic_root_path(),
+            root_token(),
+            ["a".to_string(), "b".to_string()],
+        )));
+        let observer = layout_observer_returning(
             root_token(),
             ["b".to_string(), "a".to_string(), "a".to_string()],
         );
         assert_eq!(
-            revalidate_provider_layout(&plan, Ok(&fresh)),
+            revalidate_provider_layout(&plan, &observer),
             RevalidationOutcome::Proceed
         );
     }
 
     #[test]
     fn revalidate_provider_layout_blocks_when_the_fresh_signature_has_drifted() {
-        let plan = plan_with_layout(Some(LayoutSignature::new(["sessions/".to_string()])));
-        let fresh = fresh_observation(root_token(), ["totally_different_shape/".to_string()]);
+        let plan = plan_with_layout(Some(snapshot(
+            &synthetic_root_path(),
+            root_token(),
+            ["sessions/".to_string()],
+        )));
+        let observer =
+            layout_observer_returning(root_token(), ["totally_different_shape/".to_string()]);
         assert!(matches!(
-            revalidate_provider_layout(&plan, Ok(&fresh)),
+            revalidate_provider_layout(&plan, &observer),
             RevalidationOutcome::StalePlan { .. }
         ));
     }
 
     #[test]
     fn revalidate_provider_layout_blocks_when_the_root_identity_itself_changed() {
-        let plan = plan_with_layout(Some(LayoutSignature::new(["sessions/".to_string()])));
+        let plan = plan_with_layout(Some(snapshot(
+            &synthetic_root_path(),
+            root_token(),
+            ["sessions/".to_string()],
+        )));
         let swapped_root = IdentityToken::Unix {
             device: 1,
             inode: 999,
@@ -852,9 +928,9 @@ mod tests {
             modified: FrozenClock::at(1_000).now(),
             modified_nanos: 0,
         };
-        let fresh = fresh_observation(swapped_root, ["sessions/".to_string()]);
+        let observer = layout_observer_returning(swapped_root, ["sessions/".to_string()]);
         assert!(matches!(
-            revalidate_provider_layout(&plan, Ok(&fresh)),
+            revalidate_provider_layout(&plan, &observer),
             RevalidationOutcome::StalePlan { .. }
         ));
     }
@@ -864,20 +940,92 @@ mod tests {
         // Seal-time observation failure (e.g. a non-Unix platform) must never grant an
         // unconstrained default (AC3) - there is no baseline to prove "unchanged" against.
         let plan = plan_with_layout(None);
-        let fresh = fresh_observation(root_token(), ["sessions/".to_string()]);
+        let observer = layout_observer_returning(root_token(), ["sessions/".to_string()]);
         assert!(matches!(
-            revalidate_provider_layout(&plan, Ok(&fresh)),
+            revalidate_provider_layout(&plan, &observer),
             RevalidationOutcome::StalePlan { .. }
         ));
     }
 
     #[test]
     fn revalidate_provider_layout_blocks_when_the_fresh_observation_itself_fails() {
-        let plan = plan_with_layout(Some(LayoutSignature::new(["sessions/".to_string()])));
-        let error = cancellai_platform::LayoutObservationError("permission denied".to_string());
+        let plan = plan_with_layout(Some(snapshot(
+            &synthetic_root_path(),
+            root_token(),
+            ["sessions/".to_string()],
+        )));
+        // No `set_observed` call for `synthetic_root_path()` - an unconfigured path fails
+        // closed by construction (`SyntheticProviderLayoutObserver`'s own module docs).
+        let observer = cancellai_platform::SyntheticProviderLayoutObserver::new();
         assert!(matches!(
-            revalidate_provider_layout(&plan, Err(&error)),
+            revalidate_provider_layout(&plan, &observer),
             RevalidationOutcome::StalePlan { .. }
         ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn seal_restore_binds_its_provider_layout_to_the_destination_root_not_the_quarantine_source() {
+        // E14-S05 round 2 independent review, finding F3: `seal_restore`'s `root` parameter is
+        // the quarantine store, not a provider root - observing it would silently protect
+        // nothing SI-004 actually cares about. The recorded snapshot must describe
+        // `destination`'s own root instead, since that is the real provider location the move
+        // writes into.
+        use cancellai_platform::{SystemIdentityObserver, SystemPathResolver};
+
+        let dir = std::env::temp_dir().join(format!(
+            "cancellai-sealed-plan-seal-restore-layout-test-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let quarantine_root_path = dir.join("quarantine");
+        std::fs::create_dir_all(&quarantine_root_path).expect("create quarantine root");
+        let provider_root_path = dir.join("provider");
+        std::fs::create_dir_all(&provider_root_path).expect("create provider root");
+        std::fs::write(provider_root_path.join("sessions.json"), b"{}")
+            .expect("seed the real provider root with a marker");
+        let file = quarantine_root_path.join("quarantined.txt");
+        std::fs::write(&file, b"hello").expect("create file");
+
+        let resolver = SystemPathResolver;
+        let observer = SystemIdentityObserver;
+        let quarantine_root = ApprovedRoot::establish(&quarantine_root_path, &resolver, &observer)
+            .expect("quarantine root");
+        let target = quarantine_root
+            .bind(&file, &resolver, &observer)
+            .expect("bind target");
+        let provider_root = ApprovedRoot::establish(&provider_root_path, &resolver, &observer)
+            .expect("provider root");
+        let destination = provider_root
+            .prepare_destination("artifact.txt", &observer)
+            .expect("prepare destination");
+
+        let plan = SealedPlan::seal_restore(
+            &quarantine_root,
+            fingerprint(),
+            &target,
+            &destination,
+            AuthorityLevel::Quarantine,
+            Reversibility::Quarantinable,
+            &cancellai_platform::SystemProviderLayoutObserver,
+        );
+
+        assert_eq!(
+            plan.provider_layout_root_path(),
+            Some(destination.root_path()),
+            "the recorded layout snapshot must describe the destination provider root"
+        );
+        assert_ne!(
+            plan.provider_layout_root_path(),
+            Some(quarantine_root.path()),
+            "the recorded layout snapshot must not describe the quarantine store"
+        );
+        assert_eq!(
+            plan.provider_layout(),
+            Some(&LayoutSignature::new(["sessions.json".to_string()])),
+            "the recorded signature must reflect the real provider root's own markers"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

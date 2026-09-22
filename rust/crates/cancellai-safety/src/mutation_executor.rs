@@ -99,7 +99,20 @@ pub enum ActionResult {
 /// identity immediately before mutation (SI-013 - the object could have changed *after* a
 /// successful `bind`/`seal`), and perform the mutation itself through the one allowed
 /// capability.
-pub fn execute(
+///
+/// `pub(crate)`, not `pub` (E14-S05 round 2 independent review, finding F1): every parameter
+/// here - `observer`, `executor`, `process`, and this story's own `layout_observer` - is an
+/// injectable capability, deliberately, so this crate's own tests can exercise this function's
+/// logic with synthetic doubles instead of real I/O. A fully `pub` `execute` let any external
+/// crate call it directly with a real `cancellai_platform::mutation::SystemMutationExecutor`
+/// (itself `pub`, since `execute_with_system_capabilities` needs to name it) paired with a
+/// fabricated `SyntheticProviderLayoutObserver`/`SyntheticIdentityObserver`, reaching a real,
+/// unconfirmed mutation `scripts/check_mutation_boundary.py` cannot see (that script only scans
+/// this repository's own sources, not an external Rust consumer of this crate as a library).
+/// [`execute_with_system_capabilities`] is the only production entry point this crate exposes
+/// publicly, and it hardcodes all four real capabilities - a caller can no longer choose any of
+/// them.
+pub(crate) fn execute(
     plan: &SealedPlan,
     target: &BoundedPath,
     observer: &dyn IdentityObserver,
@@ -153,18 +166,6 @@ pub fn execute(
                     .to_string(),
             };
         }
-    }
-
-    // E14-S05, SI-004, SI-013: the provider root's own structural layout is revalidated
-    // immediately before mutation, the same way `revalidate` above already does for the
-    // target artifact's identity - a plan sealed while the layout was one shape must not
-    // execute merely because its own seal-time snapshot still says so, if a fresh observation
-    // taken right now shows it has drifted (or could not be observed at all).
-    let fresh_layout = layout_observer.observe(target.root_path());
-    if let RevalidationOutcome::StalePlan { reason } =
-        revalidate_provider_layout(plan, fresh_layout.as_ref())
-    {
-        return ActionResult::SafelyBlocked { reason };
     }
 
     let operation = match plan.action_class() {
@@ -241,6 +242,22 @@ pub fn execute(
         }
     };
 
+    // E14-S05, SI-004, SI-013: the provider root's own structural layout is revalidated as the
+    // very last precondition, immediately before `executor.mutate` - the same TOCTOU-narrowing
+    // placement `revalidate` above already uses for the target artifact's identity, moved here
+    // (round 2 independent review, finding F2) rather than before `operation` is built, so
+    // nothing but the mutation call itself follows it. This narrows, but does not eliminate,
+    // the window between this read and the real OS mutation syscall: `layout_observer.observe`
+    // does not hold anything open through `executor.mutate` the way `cancellai-platform::
+    // mutation`'s own open-file-descriptor re-check does for a single file's identity
+    // (E21-S07) - closing that fully needs the same handle-retained shape applied to a whole
+    // directory's listing, which is future, separately-scoped work (see ADR-0037's residuals).
+    if let RevalidationOutcome::StalePlan { reason } =
+        revalidate_provider_layout(plan, layout_observer)
+    {
+        return ActionResult::SafelyBlocked { reason };
+    }
+
     match executor.mutate(target.path(), plan.artifact_identity(), operation) {
         Ok(()) => ActionResult::Succeeded,
         Err(e) => ActionResult::Failed { reason: e.0 },
@@ -292,8 +309,15 @@ fn delete_operation_for(identity: &IdentityToken) -> Option<MutationOperation> {
 /// never omitting a result - the input and output slices/vectors are always the same
 /// length. A caller that only inspected the *first* failure, or that used an early-return
 /// loop instead of this, could silently hide every action after it (AC3's "never hide
-/// skipped work").
-pub fn execute_all(
+/// skipped work"). `pub(crate)` for the identical reason [`execute`] is (see its own docs).
+/// No current production caller batches plans this way (`cancellai-cli` calls [`execute`]
+/// once per artifact via [`execute_with_system_capabilities`]) - this remains a delivered
+/// primitive for a future batch-processing orchestrator (Guardian's bounded remediation,
+/// E15) to adopt, the same "primitive now, wiring later" shape this codebase already uses
+/// elsewhere (ADR-0036's own residuals). `#[allow(dead_code)]` because that future caller
+/// does not exist yet; this crate's own tests are its only exerciser today.
+#[allow(dead_code)]
+pub(crate) fn execute_all(
     plans: &[(SealedPlan, BoundedPath)],
     observer: &dyn IdentityObserver,
     executor: &dyn MutationExecutor,
@@ -442,28 +466,47 @@ mod tests {
         )
     }
 
-    /// A fixed, arbitrary provider-layout signature every non-layout-focused test in this
+    /// The fixed, arbitrary path/identity/signature every non-layout-focused test in this
     /// module seals its plan against and configures its synthetic layout observer to match
     /// (E14-S05) - the layout check this story adds is not what these tests are about, so it
     /// must pass uneventfully rather than becoming a second thing every one of them has to
-    /// reason about.
-    fn matching_layout() -> crate::provider_layout::LayoutSignature {
-        crate::provider_layout::LayoutSignature::new(["marker.txt".to_string()])
+    /// reason about. Entirely synthetic and unrelated to whatever real root/target a given test
+    /// otherwise uses: `execute` (round 2) re-observes exactly the path the plan's own snapshot
+    /// recorded, not the target's bound root, so this default never needs to agree with either.
+    fn matching_layout_path() -> PathBuf {
+        PathBuf::from("/synthetic/matching-provider-root")
     }
 
-    /// A synthetic layout observer configured so observing `target.root_path()` returns
-    /// `target.root_identity()` paired with `signature` - the fresh, matching observation
-    /// `revalidate_provider_layout` needs to let a plan sealed against the same `signature`
-    /// proceed.
+    fn matching_layout_identity() -> IdentityToken {
+        IdentityToken::Unix {
+            device: 424_242,
+            inode: 424_242,
+            kind: FileKind::Directory,
+            modified: FrozenClock::at(1_000).now(),
+            modified_nanos: 0,
+        }
+    }
+
+    fn matching_layout() -> crate::sealed_plan::ProviderLayoutSnapshot {
+        crate::sealed_plan::ProviderLayoutSnapshot {
+            root_path: matching_layout_path(),
+            root_identity: matching_layout_identity(),
+            signature: crate::provider_layout::LayoutSignature::new(["marker.txt".to_string()]),
+        }
+    }
+
+    /// A synthetic layout observer configured so observing [`matching_layout_path`] returns
+    /// [`matching_layout_identity`] paired with `matching_layout`'s own markers - the fresh,
+    /// matching observation `revalidate_provider_layout` needs to let a plan sealed with
+    /// `Some(matching_layout())` proceed.
     fn layout_observer_for(
-        target: &BoundedPath,
-        signature: &crate::provider_layout::LayoutSignature,
+        signature: &crate::sealed_plan::ProviderLayoutSnapshot,
     ) -> cancellai_platform::SyntheticProviderLayoutObserver {
         let mut synth = cancellai_platform::SyntheticProviderLayoutObserver::new();
         synth.set_observed(
-            target.root_path(),
-            target.root_identity().clone(),
-            signature.markers().iter().cloned(),
+            &signature.root_path,
+            signature.root_identity.clone(),
+            signature.signature.markers().iter().cloned(),
         );
         synth
     }
@@ -550,7 +593,7 @@ mod tests {
             &observer,
             &executor,
             &process,
-            &layout_observer_for(&target, &matching_layout()),
+            &layout_observer_for(&matching_layout()),
         );
         assert_eq!(result, ActionResult::Succeeded);
     }
@@ -586,7 +629,7 @@ mod tests {
             &observer,
             &executor,
             &process,
-            &layout_observer_for(&target, &matching_layout()),
+            &layout_observer_for(&matching_layout()),
         );
         assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
     }
@@ -621,7 +664,7 @@ mod tests {
             &observer,
             &executor,
             &process,
-            &layout_observer_for(&target, &matching_layout()),
+            &layout_observer_for(&matching_layout()),
         );
         assert_eq!(
             result,
@@ -660,17 +703,21 @@ mod tests {
         );
 
         // `plan_with` sealed against `matching_layout()`; the fresh observation at execute
-        // time reports a completely different shape.
-        let drifted = crate::provider_layout::LayoutSignature::new([
-            "totally_different_shape.txt".to_string()
-        ]);
+        // time, of that exact same recorded path, reports a completely different shape.
+        let mut drifted_layout_observer =
+            cancellai_platform::SyntheticProviderLayoutObserver::new();
+        drifted_layout_observer.set_observed(
+            matching_layout_path(),
+            matching_layout_identity(),
+            ["totally_different_shape.txt".to_string()],
+        );
         let result = execute(
             &plan,
             &target,
             &observer,
             &executor,
             &process,
-            &layout_observer_for(&target, &drifted),
+            &drifted_layout_observer,
         );
         assert!(
             matches!(result, ActionResult::SafelyBlocked { .. }),
@@ -831,7 +878,7 @@ mod tests {
             &observer,
             &executor,
             &process,
-            &layout_observer_for(&target, &matching_layout()),
+            &layout_observer_for(&matching_layout()),
         );
         assert_eq!(
             result,
@@ -977,7 +1024,7 @@ mod tests {
             &observer,
             &executor,
             &process,
-            &layout_observer_for(&target, &matching_layout()),
+            &layout_observer_for(&matching_layout()),
         );
         assert_eq!(
             result,
@@ -1026,7 +1073,7 @@ mod tests {
             &observer,
             &executor,
             &process,
-            &layout_observer_for(&target, &matching_layout()),
+            &layout_observer_for(&matching_layout()),
         );
         assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
         assert!(
@@ -1082,7 +1129,7 @@ mod tests {
             &observer,
             &executor,
             &process,
-            &layout_observer_for(&target, &matching_layout()),
+            &layout_observer_for(&matching_layout()),
         );
         assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
         assert!(
@@ -1177,7 +1224,7 @@ mod tests {
             &observer,
             &executor,
             &process,
-            &layout_observer_for(&target, &matching_layout()),
+            &layout_observer_for(&matching_layout()),
         );
         assert_eq!(
             result,
@@ -1226,7 +1273,7 @@ mod tests {
             &observer,
             &executor,
             &process,
-            &layout_observer_for(&target, &matching_layout()),
+            &layout_observer_for(&matching_layout()),
         );
         assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
         assert!(
@@ -1274,7 +1321,7 @@ mod tests {
             &observer,
             &executor,
             &process,
-            &layout_observer_for(&target, &matching_layout()),
+            &layout_observer_for(&matching_layout()),
         );
         assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
         assert!(target.path().exists());
@@ -1318,7 +1365,7 @@ mod tests {
             &observer,
             &executor,
             &process,
-            &layout_observer_for(&target, &matching_layout()),
+            &layout_observer_for(&matching_layout()),
         );
         assert_eq!(
             result,
@@ -1355,7 +1402,7 @@ mod tests {
             &observer,
             &executor,
             &process,
-            &layout_observer_for(&target, &matching_layout()),
+            &layout_observer_for(&matching_layout()),
         );
         assert_eq!(
             result,
@@ -1391,7 +1438,7 @@ mod tests {
             &observer,
             &executor,
             &process,
-            &layout_observer_for(&target, &matching_layout()),
+            &layout_observer_for(&matching_layout()),
         );
         assert_eq!(
             result,
@@ -1439,7 +1486,7 @@ mod tests {
             &observer,
             &executor,
             &process,
-            &layout_observer_for(&target, &matching_layout()),
+            &layout_observer_for(&matching_layout()),
         );
         assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
         assert!(
@@ -1469,7 +1516,7 @@ mod tests {
             &observer,
             &executor,
             &process,
-            &layout_observer_for(&target, &matching_layout()),
+            &layout_observer_for(&matching_layout()),
         );
         assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
     }
@@ -1506,7 +1553,7 @@ mod tests {
             &observer,
             &executor,
             &process,
-            &layout_observer_for(&target, &matching_layout()),
+            &layout_observer_for(&matching_layout()),
         );
         assert!(
             matches!(result, ActionResult::SafelyBlocked { .. }),
@@ -1545,7 +1592,7 @@ mod tests {
             &observer,
             &executor,
             &process,
-            &layout_observer_for(&target_under_root_b, &matching_layout()),
+            &layout_observer_for(&matching_layout()),
         );
         assert!(
             matches!(result, ActionResult::SafelyBlocked { .. }),
@@ -1578,7 +1625,7 @@ mod tests {
             &observer,
             &executor,
             &process,
-            &layout_observer_for(&target, &matching_layout()),
+            &layout_observer_for(&matching_layout()),
         );
         assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
         assert!(
@@ -1610,7 +1657,7 @@ mod tests {
             &observer,
             &executor,
             &process,
-            &layout_observer_for(&target, &matching_layout()),
+            &layout_observer_for(&matching_layout()),
         );
         assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
         assert!(target.path().exists());
@@ -1654,17 +1701,10 @@ mod tests {
             Err(MutationError("No space left on device".into())),
         );
 
-        let mut layout_observer = cancellai_platform::SyntheticProviderLayoutObserver::new();
-        layout_observer.set_observed(
-            target_a.root_path(),
-            target_a.root_identity().clone(),
-            matching_layout().markers().iter().cloned(),
-        );
-        layout_observer.set_observed(
-            target_c.root_path(),
-            target_c.root_identity().clone(),
-            matching_layout().markers().iter().cloned(),
-        );
+        // Every plan here was built via `plan_with`, which seals against the same synthetic
+        // `matching_layout()` snapshot regardless of which real target it names - one shared
+        // observer configured for that one synthetic path covers all three.
+        let layout_observer = layout_observer_for(&matching_layout());
 
         let plans = vec![(plan_a, target_a), (plan_b, target_b), (plan_c, target_c)];
         let results = execute_all(&plans, &observer, &executor, &process, &layout_observer);
@@ -1709,7 +1749,7 @@ mod tests {
             &observer,
             &executor,
             &process,
-            &layout_observer_for(&target, &matching_layout()),
+            &layout_observer_for(&matching_layout()),
         );
         assert_eq!(result, ActionResult::Succeeded);
         assert!(!target.path().exists());
@@ -1738,7 +1778,7 @@ mod tests {
             &observer,
             &executor,
             &process,
-            &layout_observer_for(&target, &matching_layout()),
+            &layout_observer_for(&matching_layout()),
         );
         assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
         assert!(
@@ -1768,7 +1808,7 @@ mod tests {
             &observer,
             &executor,
             &process,
-            &layout_observer_for(&target, &matching_layout()),
+            &layout_observer_for(&matching_layout()),
         );
         assert!(
             matches!(result, ActionResult::SafelyBlocked { .. }),
@@ -1807,7 +1847,7 @@ mod tests {
             &observer,
             &executor,
             &process,
-            &layout_observer_for(&target, &matching_layout()),
+            &layout_observer_for(&matching_layout()),
         );
         assert!(matches!(result, ActionResult::SafelyBlocked { .. }));
     }
@@ -1833,7 +1873,7 @@ mod tests {
             &observer,
             &executor,
             &process,
-            &layout_observer_for(&target, &matching_layout()),
+            &layout_observer_for(&matching_layout()),
         );
         assert_eq!(result, ActionResult::Succeeded);
     }
@@ -1918,7 +1958,7 @@ mod tests {
             &attack_observer,
             &executor,
             &process,
-            &layout_observer_for(&target, &matching_layout()),
+            &layout_observer_for(&matching_layout()),
         );
 
         assert!(

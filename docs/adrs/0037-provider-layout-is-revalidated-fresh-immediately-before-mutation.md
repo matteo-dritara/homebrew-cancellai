@@ -34,37 +34,104 @@ apply to `artifact_identity` (SI-013), extended to the provider root's own struc
 for the first time. This is a live-vs-stale TOCTOU check, not a "known good" classification;
 it does not require `known_signatures` and does not touch ADR-0036's residual (1).
 
-`SealedPlan` gains a new field, `provider_layout: Option<LayoutSignature>`, populated inside
+`SealedPlan` gains a new field, `provider_layout: Option<ProviderLayoutSnapshot>` (a
+`root_path`/`root_identity`/`LayoutSignature` triple, round 2 - see below), populated inside
 every `seal*` constructor from a real `cancellai_platform::provider_layout::
-ProviderLayoutObserver` (`observe(root.path())`) supplied by the caller - never a
-caller-suppliable pre-built value, mirroring how `root_identity`/`artifact_identity` are
-already derived internally rather than accepted as bare fields (the exact defect ADR-0034
-through ADR-0036 spent four rounds closing one layer down). `None` records that no platform
-capability could observe it at seal time.
+ProviderLayoutObserver` supplied by the caller - never a caller-suppliable pre-built value,
+mirroring how `root_identity`/`artifact_identity` are already derived internally rather than
+accepted as bare fields (the exact defect ADR-0034 through ADR-0036 spent four rounds closing
+one layer down). `None` records that no platform capability could observe it at seal time.
 
 `cancellai_safety::sealed_plan::revalidate_provider_layout` (new, alongside the existing
-`revalidate`) compares a fresh observation, taken by `mutation_executor::execute` immediately
-before any mutation (after every existing check, right before the operation is built), to
-that seal-time snapshot:
+`revalidate`) takes the plan and a `layout_observer` directly, re-observes exactly the path
+the plan's own snapshot recorded, and compares the result to that snapshot:
 
+- the plan recorded `None` (no seal-time baseline) -> refuse, never an unconstrained default;
 - fresh observation `Err` (unobservable root) -> refuse;
-- fresh root identity differs from `plan.root_identity()` -> refuse (this also closes a
-  latent, unrelated gap: `execute` previously never re-observed the *root's* identity fresh
-  at all, only the target's - only the plan's own stale, seal-time root identity was ever
-  compared against `target`'s own stale, bind-time root identity);
+- fresh root identity differs from the snapshot's recorded identity -> refuse (this also
+  closes a latent, unrelated gap: `execute` previously never re-observed the *root's* identity
+  fresh at all, only the target's - only the plan's own stale, seal-time root identity was
+  ever compared against `target`'s own stale, bind-time root identity);
 - fresh markers, normalized into `LayoutSignature`, differ from the plan's recorded signature
   -> refuse;
-- plan recorded `None` (no seal-time baseline) -> refuse, never an unconstrained default;
 - otherwise -> proceed.
 
 `cancellai_platform::provider_layout::ProviderLayoutObserver` is a new capability seam
 (`SystemProviderLayoutObserver`/`SyntheticProviderLayoutObserver`, mirroring
 `IdentityObserver`/`ProcessObserver`). `execute_with_system_capabilities` hardcodes
-`SystemProviderLayoutObserver` - no production caller can substitute a synthetic observation,
-the same closed-production-path guarantee the other three injected capabilities already have.
-`BoundedPath` gains a `root_path` field (populated by `ApprovedRoot::bind` from the root it
-was already holding), so `execute` can locate what to re-observe without accepting a bare
-path from its caller.
+`SystemProviderLayoutObserver`. `MoveDestination` gains a `root_path` field (populated by
+`ApprovedRoot::prepare_destination` from the root it was already holding) so `seal_restore`
+can bind its snapshot to the real destination provider root rather than the quarantine store
+it moves out of (round 2, finding F3 below).
+
+## Round 2: independent review (Codex) found three real defects
+
+The first committed version of this design was reviewed independently and returned `FAIL`
+(`project/evidence/E14-S05-VERIFIER-REVIEW.md`), with three concrete, reproduced findings, all
+repaired in this same change.
+
+**F1 - a public synthetic observation bypassed the live layout gate entirely.**
+`mutation_executor::execute`/`execute_all` were `pub`, and `layout_observer` (like the
+pre-existing `observer`/`executor`/`process` parameters) was a plain, publicly injectable `&dyn
+ProviderLayoutObserver`. `scripts/check_mutation_boundary.py` only scans this repository's own
+sources for a direct `SystemMutationExecutor`/`.mutate(` reference; it cannot see, and was never
+meant to see, an external Rust crate that adds this crate as a library dependency and calls
+`execute` directly. The reviewer compiled exactly such a consumer: it called `SealedPlan::seal`
+and `execute` directly with a `SyntheticProviderLayoutObserver` configured to claim a
+contradictory layout, alongside the real `SystemIdentityObserver`/`SystemMutationExecutor`, and
+deleted a real file whose actual layout never matched. This is ADR-0034 through ADR-0036's exact
+class of defect, reopened one layer up - the fact could no longer be omitted or contradicted as
+a bare value, but the public synthetic *observer* supplied a fabricated
+`BoundLayoutObservation` on demand, and the function meant to be the sole real mutation path
+accepted it same as a real one.
+
+*Repair*: `execute` and `execute_all` are now `pub(crate)`, not `pub` - removed from this
+crate's public API (`lib.rs` no longer re-exports either). `execute_with_system_capabilities`
+remains the only production entry point this crate exposes at all, and it hardcodes all four
+capabilities; no caller, internal or external, can reach a real mutation with any of them
+substituted. This crate's own tests, which need every capability injectable, can still call
+`execute`/`execute_all` directly - `pub(crate)` is visible everywhere inside the crate,
+including its own `#[cfg(test)]` modules.
+
+**F2 - the fresh observation was not held through the mutation itself.** `execute` observed and
+compared the layout, then later called the separate `MutationExecutor::mutate` - nothing binds
+the two together, unlike `cancellai-platform::mutation`'s own confirmed-delete path, which holds
+an open file descriptor from its own re-check through the unlink syscall (E21-S07). The reviewer
+demonstrated this concretely: a `ProviderLayoutObserver` implementation that performs the real
+observation, then synchronously plants a new marker in the root before returning, causes
+`execute` to proceed and delete - the pre-mutation read saw a clean layout an instant before a
+real drift the mutation itself never re-checked.
+
+*Repair (partial, disclosed)*: the check now runs as the last statement in `execute`, immediately
+before `executor.mutate`, rather than before the operation is built - removing the (non-I/O,
+but non-zero) time `MutationOperation`/JSON-sidecar construction previously added to the window.
+This narrows, but does not close, the gap: `BoundLayoutObservation` does not retain an open
+descriptor the way `cancellai-platform::mutation`'s single-file confirmation does, so nothing
+prevents a change between this read and the OS mutation call itself. Closing this fully needs
+the identical handle-retained shape E21-S07 already gave single-file identity, applied instead
+to a whole directory's listing - a real architectural addition, scoped out of this round the
+same way E21-S07 itself was its own story after E03-S05's initial, narrower version. Recorded as
+a residual below, not silently accepted as closed.
+
+**F3 - `seal_restore` bound its snapshot to the quarantine store, not the provider root it
+writes into.** `seal_restore`'s own module doc already says its `root` parameter is "the
+quarantine store's own `ApprovedRoot`, not the original provider root" - but the first
+committed version still called `observe_provider_layout(root, ...)`, so every Restore plan's
+"provider layout" protection was actually watching the *quarantine store* (which nothing else
+concurrently writes to in normal operation) while the real destination provider root - the one
+SI-004 is actually about - was never observed at all. The reviewer reproduced this natively: a
+Restore sealed against an unchanged quarantine source, executed after the real destination
+provider root gained a new marker, succeeded.
+
+*Repair*: the provider-layout snapshot is no longer implicitly "whichever root `execute` finds
+attached to `target`" - it is bound explicitly, at seal time, to whichever root each action
+class actually depends on. `MoveDestination` gained its own `root_path`; `seal_restore` observes
+`destination.root_path()` instead of `root.path()`. `SealedPlan.provider_layout` now carries its
+own `root_path` alongside the identity/signature it was read from
+(`ProviderLayoutSnapshot`), and `revalidate_provider_layout` re-observes exactly that recorded
+path - never `target`'s own bound root, which is only correct for Delete/Quarantine/Archive (the
+provider root is their source) and was never correct for Restore (the provider root is its
+destination).
 
 ## Alternatives considered
 
@@ -127,6 +194,11 @@ story).
 - A real Windows implementation of `SealedRoot::metadata`/`list_child_names` (or an equivalent
   handle-bound NT-native observation) is required before Windows Delete regains real, working
   status - tracked as a residual, not silently deferred.
+- **Round 2's F2 remains a disclosed, narrowed-not-closed residual**: the fresh layout
+  observation is not held through the actual mutation syscall, so a real concurrent drift
+  landing in that specific window is not caught. Closing it needs a handle-retained provider-
+  layout read through `cancellai-platform::mutation` itself, mirroring E21-S07's single-file
+  identity confirmation - scoped as its own future story rather than attempted in this round.
 
 ## Safety and compatibility impact
 

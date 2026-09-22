@@ -28,7 +28,14 @@ mirroring `IdentityObserver`/`ProcessObserver`: `SystemProviderLayoutObserver` i
 `SyntheticProviderLayoutObserver` in tests. `cancellai_safety::mutation_executor::
 execute_with_system_capabilities` hardcodes the system implementation, the same closed-production-
 path guarantee the other injected capabilities already have - no caller can substitute a
-synthetic observation for a real mutation.
+synthetic observation for a real mutation. This guarantee needed a second layer (E14-S05 round 2
+independent review, finding F1): `mutation_executor::execute`/`execute_all` themselves are
+`pub(crate)`, not `pub` - a fully public `execute` let any external crate depending on
+`cancellai-safety` as a library call it directly with a fabricated `ProviderLayoutObserver`
+alongside the real, also-public `SystemMutationExecutor`, reaching a genuine, unconfirmed
+deletion that `scripts/check_mutation_boundary.py` (which only scans this repository's own
+sources) could not see. `execute_with_system_capabilities` is now the only production entry
+point this crate exposes at all.
 
 `BoundLayoutObservation::observe` only succeeds on Unix today (ADR-0036's own disclosed
 residual: `cancellai-sealedfs::SealedRoot::metadata`/`list_child_names` fail closed with

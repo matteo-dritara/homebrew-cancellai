@@ -165,6 +165,7 @@ impl ApprovedRoot {
             IdentityObservation::Absent => Ok(MoveDestination {
                 path: candidate,
                 root_identity: self.identity.clone(),
+                root_path: self.path.clone(),
             }),
             IdentityObservation::Identity(_) => Err(BoundaryError::DestinationAlreadyExists),
             IdentityObservation::Unreadable { reason } => {
@@ -189,6 +190,7 @@ impl ApprovedRoot {
 pub struct MoveDestination {
     path: PathBuf,
     root_identity: IdentityToken,
+    root_path: PathBuf,
 }
 
 impl MoveDestination {
@@ -198,6 +200,14 @@ impl MoveDestination {
 
     pub fn root_identity(&self) -> &IdentityToken {
         &self.root_identity
+    }
+
+    /// The real path of the [`ApprovedRoot`] this destination was prepared under (E14-S05
+    /// round 2: `SealedPlan::seal_restore` needs this to observe the destination's own
+    /// provider-root layout, since a restore's `root` parameter names the quarantine store,
+    /// not the provider root the move actually writes into).
+    pub fn root_path(&self) -> &Path {
+        &self.root_path
     }
 }
 
