@@ -1607,7 +1607,7 @@ Run monitoring continuously using OS-native user services while keeping all acti
 
 ### E15-S01 - Cross-platform user-service runtime
 
-**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E14-S04, E20-S03 | **Safety obligations:** none
+**Status:** `in_progress` | **Change Risk:** `CR3` | **Dependencies:** E14-S04, E20-S03 | **Safety obligations:** none
 
 **Outcome.** Implement launchd/systemd-user/Windows task-or-service adapters with one Guardian engine.
 
@@ -1627,7 +1627,7 @@ Run monitoring continuously using OS-native user services while keeping all acti
 
 ### E15-S02 - Notification abstraction
 
-**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E15-S01 | **Safety obligations:** none
+**Status:** `blocked` | **Change Risk:** `CR1` | **Dependencies:** E15-S01 | **Safety obligations:** none
 
 **Outcome.** Provide OS-appropriate notifications with terminal fallback and privacy-safe messages.
 
@@ -1646,7 +1646,7 @@ Run monitoring continuously using OS-native user services while keeping all acti
 
 ### E15-S03 - Bounded remediation planner
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E15-S01, E11-S04, E12-S01 | **Safety obligations:** SI-027, SI-028
+**Status:** `blocked` | **Change Risk:** `CR4` | **Dependencies:** E15-S01, E11-S04, E12-S01 | **Safety obligations:** SI-027, SI-028
 
 **Outcome.** Translate pressure/anomaly signals into recommendations or pre-authorized quarantine/reclaim plans without authority escalation.
 
@@ -1665,7 +1665,7 @@ Run monitoring continuously using OS-native user services while keeping all acti
 
 ### E15-S04 - Guardian kill-switch and audit
 
-**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E15-S03 | **Safety obligations:** none
+**Status:** `blocked` | **Change Risk:** `CR3` | **Dependencies:** E15-S03 | **Safety obligations:** none
 
 **Outcome.** Provide immediate local disable and complete ledger trace for every autonomous recommendation/action.
 

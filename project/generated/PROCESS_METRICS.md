@@ -54,6 +54,7 @@ distinguished by the next round, which is why the ceiling matters.
 | E14 | 6 | independent | 1 | 1 | 1 | 100% |
 | E14 | 7 | independent | 1 | 1 | 1 | 100% |
 | E14 | 8 | independent | 1 | 0 | 0 | 0% |
+| E15 | 1 | independent | 4 | 3 | 3 | 75% |
 | E16 | 1 | independent | 6 | 0 | 0 | 0% |
 | E17 | 1 | independent | 6 | 0 | 0 | 0% |
 | E18 | 1 | independent | 3 | 2 | 2 | 67% |
@@ -73,7 +74,7 @@ distinguished by the next round, which is why the ceiling matters.
 The gap between *every gate passed* and *the work is right*. Each rejected story below had
 already been declared `ready_for_review` by an executor who ran the full gate set green.
 
-- **Independent reviewer:** 47 of 102 round-1 verdicts were `FAIL` - **46%**.
+- **Independent reviewer:** 50 of 106 round-1 verdicts were `FAIL` - **47%**.
 - **Self-review (same agent as executor):** 3 of 12 round-1 verdicts were `FAIL` - **25%**.
 
 - **Round-1 records excluded as unreadable:** 2. Their verdicts are in neither denominator above, so both rates are computed over the subset of records that use a machine-readable verdict table.
@@ -107,7 +108,7 @@ independent samples, and the population estimate collapses to what one round alr
 
 ## Evidence-ledger integrity
 
-- **148 of 163** story packets past `ready_for_review` carry a row per acceptance criterion.
+- **144 of 159** story packets past `ready_for_review` carry a row per acceptance criterion.
 - Packets that do not:
   - E00-S01 (CR4): 0 rows for 3 criteria
   - E00-S02 (CR4): 0 rows for 3 criteria
@@ -151,7 +152,7 @@ load-bearing rather than academic.
 
 ## Documentation readership
 
-- Documents a committed review record has named: **28**. Never named: **20**.
+- Documents a committed review record has named: **29**. Never named: **19**.
 - Never named is not the same as never read, and an unread document may still be the right
   document. This is a list for the owner once a phase, not a purge, and accepted ADRs are
   undeletable regardless of what it says.
@@ -159,7 +160,6 @@ load-bearing rather than academic.
 <details><summary>Never named in a review record</summary>
 
 - `docs/DECISION_REGISTER.md`
-- `docs/PLATFORMS.md`
 - `docs/PROVIDERS.md`
 - `docs/RELEASING.md`
 - `docs/ROADMAP.md`
