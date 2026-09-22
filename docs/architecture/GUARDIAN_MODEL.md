@@ -121,6 +121,38 @@ What may cancellAI actually do?
 
 Only the Effective Authority permits actions. Pressure or anomaly severity never self-escalates authority.
 
+E15-S03 implements the Decision/Authority split above as `cancellai_guardian::remediation`
+(SI-027, SI-028). `plan_remediation(pressure, candidates)` never computes an Effective Authority
+of its own: each `RemediationCandidate::reachable_authority` is
+`cancellai_policy::retention::ClassifiedArtifact::reachable_authority` unmodified - the exact
+ceiling `cancellai_safety::authority::effective_authority` already derived for that artifact
+through the same pipeline `cancellai-cli` calls - and this module only ever narrows it further
+via `std::cmp::min` against `pressure_authority_ceiling(pressure)`, Guardian's own intent. `min`
+over two `AuthorityLevel` values cannot exceed either input, so AC1 ("Guardian action authority
+exactly equals or is below Effective Policy") and SI-028 hold by construction: there is no
+comparison this module performs that could get the direction wrong, because there is no second
+comparison at all. `pressure_authority_ceiling` never returns above `AuthorityLevel::Quarantine`
+for any pressure state, `Red` included - `Delete` needs `AuthorityLevel::Govern`, a ceiling this
+function structurally cannot produce - so AC2 ("RED pressure cannot bypass artifact ceiling or
+unknown-state protections") holds the same way: an artifact whose `reachable_authority` is
+already capped by `lifecycle_ceiling` (protected/unknown activity, protection, or integrity)
+stays capped there under `min` regardless of how high pressure climbs, since this module never
+re-derives or overrides that fact. The exhaustive verification matrix (4 pressure states x 5
+`AuthorityLevel` values a real `reachable_authority` can hold) proves `granted_authority` equals
+`min` of the two inputs in every cell, never more.
+
+The only two `ActionClass` values this planner ever emits are `Observe` (a recommendation with no
+granted capability) and `Quarantine` (a pre-authorized, reversible action) - `Delete` is
+structurally unreachable, matching "pre-authorized quarantine/reclaim plans," never deletion, in
+this story's own outcome text. Per SI-027 ("pressure ... influences urgency and recommendation
+ordering"), `plan_remediation`'s only pressure-driven effect beyond the authority ceiling is
+output ordering: actionable (`Quarantine`) candidates sort before observation-only ones, then by
+descending granted authority - urgency changes what is looked at first, never what is permitted.
+No caller wires this to a live detection/decision loop, sealing, or execution yet - producing a
+`SealedPlan`/executing it is out of this story's scope (`docs/architecture/GUARDIAN_MODEL.md`'s
+own "Audit" section names the sealed-plan/execution trail as E15-S04's), matching this document's
+"primitive delivered, no orchestrator yet" precedent.
+
 ## Pressure states
 
 The exact function is calibrated later, but the semantic states are:

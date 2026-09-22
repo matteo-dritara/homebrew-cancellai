@@ -1646,7 +1646,7 @@ Run monitoring continuously using OS-native user services while keeping all acti
 
 ### E15-S03 - Bounded remediation planner
 
-**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E15-S01, E11-S04, E12-S01 | **Safety obligations:** SI-027, SI-028
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E15-S01, E11-S04, E12-S01 | **Safety obligations:** SI-027, SI-028
 
 **Outcome.** Translate pressure/anomaly signals into recommendations or pre-authorized quarantine/reclaim plans without authority escalation.
 

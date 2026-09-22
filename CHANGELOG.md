@@ -37,6 +37,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   variant, and the module imports no `AuthorityLevel`/`ActionClass` type, matching `pressure`'s
   own "cannot express an authority decision" argument. Not yet wired to a live orchestrator,
   matching this crate's own detection modules' precedent.
+- Added the Guardian bounded remediation planner (E15-S03, CR4, SI-027, SI-028,
+  `docs/architecture/GUARDIAN_MODEL.md` "Decision"/"Authority"):
+  `cancellai_guardian::remediation::plan_remediation` never computes its own Effective Authority -
+  each candidate's `reachable_authority` is `cancellai_policy::retention::ClassifiedArtifact`'s
+  own field, the exact ceiling `cancellai_safety::authority::effective_authority` already derived
+  through the same pipeline `cancellai-cli` uses, narrowed further only via a plain
+  `std::cmp::min` against Guardian's own pressure-derived intent ceiling. AC1 ("Guardian action
+  authority exactly equals or is below Effective Policy") and SI-028 hold by construction: `min`
+  over two `AuthorityLevel` values cannot exceed either input, so there is no second,
+  independently-derived comparison this module could get wrong. AC2 ("RED pressure cannot bypass
+  artifact ceiling or unknown-state protections") holds the same way:
+  `pressure_authority_ceiling` never returns above `AuthorityLevel::Quarantine` for any pressure
+  state, `Red` included - `Delete` needs `AuthorityLevel::Govern`, a ceiling this function
+  structurally cannot produce, so this planner can never emit a `Delete`-eligible plan regardless
+  of pressure, and an artifact already capped by an unknown/protected lifecycle state stays
+  capped under `min` no matter how high pressure climbs. Verified by an exhaustive 4 (pressure) x
+  5 (`AuthorityLevel`) matrix. Not yet wired to sealing/execution - E15-S04's scope.
 
 ## [1.16.0] - 2026-09-22
 

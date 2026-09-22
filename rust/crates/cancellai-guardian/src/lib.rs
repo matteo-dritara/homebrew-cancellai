@@ -8,13 +8,17 @@
 //! module with a real runtime surface: the cross-platform user-service lifecycle
 //! (`docs/architecture/GUARDIAN_MODEL.md` "Runtime") the compiled binary now exposes.
 //! `notification` (E15-S02) is a second: OS-appropriate notification delivery with a terminal
-//! fallback. Neither is wired to a live orchestrator yet, matching this crate's own detection
-//! modules' "primitive delivered, no orchestrator yet" precedent.
+//! fallback. `remediation` (E15-S03) is a third: the bounded remediation planner that turns
+//! pressure plus already-classified artifacts into a plan, never granting authority beyond what
+//! the shared policy engine already computed (SI-027, SI-028). None is wired to a live
+//! orchestrator yet, matching this crate's own detection modules' "primitive delivered, no
+//! orchestrator yet" precedent.
 
 pub mod baseline;
 pub mod forecast;
 pub mod notification;
 pub mod pressure;
+pub mod remediation;
 pub mod service;
 // Each platform module is real production code only on its own `target_os`, but stays
 // unit-testable (via its own `FakeCommandRunner`) on every host by also compiling under `test` -

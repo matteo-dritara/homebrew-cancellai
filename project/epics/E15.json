@@ -57,7 +57,7 @@
     {
       "id": "E15-S03",
       "title": "Bounded remediation planner",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Translate pressure/anomaly signals into recommendations or pre-authorized quarantine/reclaim plans without authority escalation.",
       "change_risk": "CR4",
       "dependencies": [
