@@ -1627,7 +1627,7 @@ Run monitoring continuously using OS-native user services while keeping all acti
 
 ### E15-S02 - Notification abstraction
 
-**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E15-S01 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E15-S01 | **Safety obligations:** none
 
 **Outcome.** Provide OS-appropriate notifications with terminal fallback and privacy-safe messages.
 

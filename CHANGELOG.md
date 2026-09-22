@@ -24,6 +24,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `cancellai-cli` does not depend on this crate, so a Guardian lifecycle failure cannot reach
   manual CLI operation (AC2). `run` (what an installed definition actually invokes) remains the
   E02-S01 skeleton; the detection/decision/authority loop is E15-S03/S04's scope.
+- Added the Guardian notification abstraction (E15-S02, CR1,
+  `docs/architecture/GUARDIAN_MODEL.md`): `cancellai_guardian::notification` delivers
+  OS-appropriate notifications (`osascript` on macOS, `notify-send` on Linux, `msg.exe` on
+  Windows) with a terminal fallback on any failure. AC1 ("notifications never include sensitive
+  transcript/source content") holds by construction: `NotificationKind` carries no `String`/
+  `PathBuf` field at all - every variant's payload is a closed enum (`PressureState`,
+  `AnomalySeverity`) or a plain count, and `render` is a fixed template per variant, so there is
+  no field or path through which caller-supplied text could reach a notification. AC2
+  ("notification unavailability does not trigger stronger remediation") holds structurally too:
+  `notify` returns a two-value `NotificationOutcome` (`Delivered`/`Fallback`) with no error
+  variant, and the module imports no `AuthorityLevel`/`ActionClass` type, matching `pressure`'s
+  own "cannot express an authority decision" argument. Not yet wired to a live orchestrator,
+  matching this crate's own detection modules' precedent.
 
 ## [1.16.0] - 2026-09-22
 

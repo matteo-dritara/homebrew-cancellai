@@ -7,9 +7,13 @@
 //! runtime/service surface, exercised directly by unit tests. `service` (E15-S01) is the first
 //! module with a real runtime surface: the cross-platform user-service lifecycle
 //! (`docs/architecture/GUARDIAN_MODEL.md` "Runtime") the compiled binary now exposes.
+//! `notification` (E15-S02) is a second: OS-appropriate notification delivery with a terminal
+//! fallback. Neither is wired to a live orchestrator yet, matching this crate's own detection
+//! modules' "primitive delivered, no orchestrator yet" precedent.
 
 pub mod baseline;
 pub mod forecast;
+pub mod notification;
 pub mod pressure;
 pub mod service;
 // Each platform module is real production code only on its own `target_os`, but stays

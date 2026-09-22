@@ -28,7 +28,7 @@ cancellAI grows through a deliberate value ladder:
 
 1. **SEE + RECLAIM** - inventory and safe cleanup.
 2. **UNDERSTAND** - explain artifacts, projects, providers, risk, and reclaimability.
-3. **PREVENT** - budgets, velocity, pressure, anomaly detection, Guardian.
+3. **PREVENT** - budgets, velocity, pressure, anomaly detection, Guardian, privacy-safe notifications.
 4. **GOVERN** - policy, pinning, quarantine, archive, restore, bounded autonomy.
 5. **FULL LIFECYCLE** - lifecycle control across local and eventually remote agent environments.
 

@@ -262,6 +262,26 @@ E02-S01 skeleton - the detection/decision/authority loop a live service would ru
 scope, not this one's, matching this document's own "primitive delivered, no orchestrator yet"
 precedent for `pressure`/`forecast`/`baseline`/`structural`.
 
+## Notifications
+
+E15-S02 implements OS-appropriate notification delivery with a terminal fallback:
+`cancellai_guardian::notification`. `NotificationKind` is a closed enum - every variant's payload
+is itself a closed enum (`PressureState`, `AnomalySeverity`) or a plain count, never a `String` or
+`PathBuf` - so AC1 ("notifications never include sensitive transcript/source content") holds by
+construction: there is no field a caller could populate with a path or transcript excerpt, and
+`render` (the only place text is produced) is a fixed template per variant that cannot append
+caller-supplied text. `Notifier::notify` returns a two-value `NotificationOutcome`
+(`Delivered`/`Fallback`) with no error variant, and the module imports no
+`AuthorityLevel`/`ActionClass` type - AC2 ("notification unavailability does not trigger stronger
+remediation") holds the same way `pressure`'s own SI-027 argument does: the type this module hands
+back cannot express "try something stronger," and a failed OS-native delivery (`osascript` on
+macOS, `notify-send` on Linux, `msg.exe` on Windows) falls back to the terminal and stops there.
+Windows uses `msg.exe` specifically because it ships on every targeted edition with no extra
+module - a disclosed trade-off (a blocking modal, not a dismissible toast) favoring zero new
+dependencies over polish, matching this document's Windows-adapter reasoning above. No caller
+wires this to a live detection/decision loop yet, matching this document's own "primitive
+delivered, no orchestrator yet" precedent.
+
 ## Kill switch
 
 Guardian must have an immediate local disable path. Disabling automation never prevents manual read-only inspection or recovery. Any in-flight destructive action still follows safety executor transaction semantics rather than being killed mid-syscall unsafely.
