@@ -6,7 +6,7 @@
 - Commit: recorded by the release workflow at the tag
 - Channel: stable
 - Date: 2026-09-22
-- Published: pending
+- Published: no - verify-rust clippy failed on all three platforms (macos-latest, ubuntu-latest, windows-latest) with error: using chunks_exact with a constant chunk size, in service.rs decode_command_output (added in the v1.17.1 fix). Real CI ran clippy 0.1.98 (rustc 1.98.0), which added the chunks_exact_to_as_chunks lint; this local session had clippy 0.1.94, which did not have it yet - a real toolchain-version gap, not a platform gap. Repaired by switching to slice::as_chunks::<2>() as clippy suggested, and updated the local rustup stable toolchain to 1.98.1 (one patch ahead of CI) to close this gap for future changes too (run 35745283751)
 
 ## Included work
 

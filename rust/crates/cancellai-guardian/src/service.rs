@@ -180,24 +180,18 @@ fn decode_command_output(bytes: &[u8]) -> String {
     match bytes {
         [0xFF, 0xFE, rest @ ..] => String::from_utf16_lossy(
             &rest
-                .chunks_exact(2)
-                .map(|pair| {
-                    u16::from_le_bytes(
-                        pair.try_into()
-                            .expect("chunks_exact(2) always yields a 2-byte slice"),
-                    )
-                })
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|pair| u16::from_le_bytes(*pair))
                 .collect::<Vec<u16>>(),
         ),
         [0xFE, 0xFF, rest @ ..] => String::from_utf16_lossy(
             &rest
-                .chunks_exact(2)
-                .map(|pair| {
-                    u16::from_be_bytes(
-                        pair.try_into()
-                            .expect("chunks_exact(2) always yields a 2-byte slice"),
-                    )
-                })
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|pair| u16::from_be_bytes(*pair))
                 .collect::<Vec<u16>>(),
         ),
         _ => String::from_utf8_lossy(bytes).into_owned(),
