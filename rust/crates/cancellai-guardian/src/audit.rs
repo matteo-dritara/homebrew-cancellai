@@ -35,7 +35,13 @@ use crate::remediation::GuardianPlanItem;
 /// reference (`plan_id`) - see the module docs for why `plan_id` is not yet a real sealed plan
 /// ID. `recorded_at` is caller-supplied seconds-since-epoch, matching `EventLedger`'s own
 /// "production code never calls `SystemTime::now()` directly" convention.
-pub fn record_guardian_decision(
+///
+/// `pub(crate)`, matching `GuardianPlanItem`'s own visibility (`remediation.rs`'s module docs).
+/// `#[allow(dead_code)]` because no production orchestrator wires this yet (this crate's own
+/// "primitive delivered, no orchestrator yet" pattern) - exercised directly by this module's own
+/// tests.
+#[allow(dead_code)]
+pub(crate) fn record_guardian_decision(
     ledger: &mut EventLedger,
     item: &GuardianPlanItem,
     plan_id: String,

@@ -22,6 +22,29 @@
 //! state (`cancellai_safety::authority::lifecycle_ceiling`, folded into `reachable_authority`
 //! before this module ever sees it) stays capped there under `min`, no matter how high pressure
 //! climbs - this module never re-derives or overrides that computation.
+//!
+//! **This module's entire public surface is `pub(crate)` - unreachable from outside
+//! `cancellai-guardian` (round-2 independent review, closing what round-1's private-field repair
+//! left open).** Round 1 found `RemediationCandidate`'s `pub` fields let an external crate
+//! fabricate one directly (`reachable_authority: AuthorityLevel::Autopilot`, no real
+//! classification behind it) and repaired it by making the fields private with
+//! `From<&ClassifiedArtifact>` as the sole constructor. Round 2 found that repair incomplete:
+//! `cancellai_policy::ClassifiedArtifact` is itself a plain, publicly constructible struct with
+//! public authority-relevant fields (a pre-existing trust boundary `cancellai-cli`'s own
+//! production pipeline already relies on, not one this crate introduced) - so an external crate
+//! could still fabricate a full `ClassifiedArtifact`/`AgentArtifact` and reach the identical
+//! result through `From`. Genuinely closing that needs the same non-forgeable-primitive
+//! treatment ADR-0036 gave provider-layout observations (a type whose only constructor is bound
+//! to real I/O this module deliberately performs none of, matching `pressure`/`baseline`/
+//! `forecast`'s own "pure, dependency-free" shape) - applied to policy resolution generally, a
+//! `cancellai-policy`-wide decision no single Guardian story can make alone. Until that exists,
+//! the type-correct, honest answer is not to expose a forgeable capability at all: nothing
+//! outside this crate can name [`RemediationCandidate`], [`GuardianPlanItem`], or
+//! [`plan_remediation`], so there is no externally reachable Guardian action to misuse -
+//! SI-027/SI-028 hold vacuously rather than by a boundary this crate cannot fully guarantee.
+//! Widening this back to `pub` is exactly the kind of change that needs the
+//! `cancellai-policy`-wide non-forgeable-authority design above to exist first, not a smaller
+//! patch to this module alone.
 
 use cancellai_model::{ActionClass, ArtifactId, AuthorityLevel};
 
@@ -33,6 +56,10 @@ use crate::pressure::PressureState;
 /// state, `Red` included: `Quarantine`/`Restore` are this codebase's actions at that authority
 /// floor (`cancellai_safety::authority::minimum_authority_for`), and `Delete` needs
 /// [`AuthorityLevel::Govern`] - a ceiling this function never returns.
+///
+/// `#[allow(dead_code)]` because its only caller, [`plan_remediation`], is itself
+/// `#[allow(dead_code)]` for the same reason - see that function's own doc comment.
+#[allow(dead_code)]
 fn pressure_authority_ceiling(pressure: PressureState) -> AuthorityLevel {
     match pressure {
         PressureState::Green => AuthorityLevel::Observe,
@@ -46,41 +73,15 @@ fn pressure_authority_ceiling(pressure: PressureState) -> AuthorityLevel {
 /// classification pipeline carries that this planner has no need for, matching this crate's
 /// other detection modules' "never a path or content" convention (`baseline`/`structural`).
 ///
-/// **Fields are deliberately private, with `From<&ClassifiedArtifact>` as the only
-/// constructor.** Round-1 independent review found the original `pub` fields let any external
-/// crate fabricate `RemediationCandidate { reachable_authority: AuthorityLevel::Autopilot, .. }`
-/// directly, with no relationship to any real classification at all - `plan_remediation`'s
-/// entire AC1/SI-028 argument ("`min` cannot exceed either input") is only as strong as the
-/// trustworthiness of `reachable_authority` itself, and a bare public field asserted nothing
-/// about where that value came from. This mirrors the exact failure class
-/// `docs/architecture/GUARDIAN_MODEL.md`'s own history describes for provider-layout authority
-/// (ADR-0034/ADR-0035/ADR-0036: a plain, publicly constructible value asserting an
-/// authority-relevant fact is discardable/forgeable) - closing it here the same way: requiring a
-/// real `cancellai_policy::ClassifiedArtifact` (the shared engine's own output type, the same
-/// trust boundary `cancellai-cli` already operates under) rather than a bare `AuthorityLevel` a
-/// caller could assert unchecked. **Disclosed, not fully closed**: `ClassifiedArtifact` itself
-/// remains a plain, publicly constructible struct in `cancellai-policy` - fully sealing it the
-/// way ADR-0036 sealed provider-layout observations (a non-forgeable type bound to real I/O) is
-/// a larger, `cancellai-policy`-wide decision, out of this story's scope. This fix removes the
-/// *additional*, weaker forgery surface this crate's own boundary introduced; it does not (and
-/// cannot, from this crate alone) remove the pre-existing one shared with `cancellai-cli`.
-///
-/// This doctest is the regression proving construction from outside this crate still does not
-/// compile (the exact fabrication round-1 independent review demonstrated):
-///
-/// ```compile_fail
-/// # use cancellai_guardian::remediation::RemediationCandidate;
-/// # use cancellai_model::{ArtifactId, AuthorityLevel};
-/// // RemediationCandidate's fields are private: no struct-literal construction from outside
-/// // this crate - `From<&ClassifiedArtifact>` is the only way to produce a value of this type.
-/// let forged = RemediationCandidate {
-///     artifact_id: ArtifactId::new("fabricated"),
-///     reachable_authority: AuthorityLevel::Autopilot,
-///     binding_constraints: Vec::new(),
-/// };
-/// ```
+/// `pub(crate)`, not `pub` - see the module docs for why: fields being merely private was round
+/// 1's repair, found incomplete by round 2 because the `From` source type itself is forgeable
+/// from outside this crate. Restricting the whole type to crate-internal visibility closes that
+/// regardless of `ClassifiedArtifact`'s own construction guarantees. `#[allow(dead_code)]`
+/// because no production orchestrator wires this yet (this crate's own "primitive delivered, no
+/// orchestrator yet" pattern) - exercised directly by this module's own tests.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
-pub struct RemediationCandidate {
+pub(crate) struct RemediationCandidate {
     artifact_id: ArtifactId,
     reachable_authority: AuthorityLevel,
     binding_constraints: Vec<&'static str>,
@@ -98,19 +99,20 @@ impl From<&cancellai_policy::ClassifiedArtifact> for RemediationCandidate {
 
 /// One Guardian plan entry: what Guardian would recommend, or is pre-authorized to do, for one
 /// candidate - at the authority this call actually granted it, never bare
-/// `reachable_authority` when pressure capped it lower.
+/// `reachable_authority` when pressure capped it lower. `pub(crate)` for the same reason as
+/// [`RemediationCandidate`] - see the module docs.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GuardianPlanItem {
-    pub artifact_id: ArtifactId,
+pub(crate) struct GuardianPlanItem {
+    pub(crate) artifact_id: ArtifactId,
     /// [`ActionClass::Quarantine`] when `granted_authority` reaches the real minimum that action
     /// needs; [`ActionClass::Observe`] otherwise - a recommendation only, never a plan. This
     /// planner never produces [`ActionClass::Delete`], [`ActionClass::Archive`], or
     /// [`ActionClass::Restore`] - see the module docs for why `Delete` in particular is
     /// structurally unreachable.
-    pub action_class: ActionClass,
-    pub granted_authority: AuthorityLevel,
-    pub pressure_state: PressureState,
-    pub binding_constraints: Vec<&'static str>,
+    pub(crate) action_class: ActionClass,
+    pub(crate) granted_authority: AuthorityLevel,
+    pub(crate) pressure_state: PressureState,
+    pub(crate) binding_constraints: Vec<&'static str>,
 }
 
 /// Turn pressure plus already-classified candidates into an ordered plan (SI-027: pressure
@@ -119,8 +121,12 @@ pub struct GuardianPlanItem {
 /// `granted_authority` - the most-actionable, highest-confidence candidates first. The sort is
 /// stable, so candidates tied on both keys keep their relative input order - a caller supplying
 /// its own priority pre-order (e.g. by anomaly severity, `cancellai_guardian::baseline`) is not
-/// silently reshuffled beyond what authority grouping requires.
-pub fn plan_remediation(
+/// silently reshuffled beyond what authority grouping requires. `pub(crate)` for the same reason
+/// as [`RemediationCandidate`] - see the module docs. `#[allow(dead_code)]` because no
+/// production orchestrator wires this yet (this crate's own "primitive delivered, no
+/// orchestrator yet" pattern) - exercised directly by this module's own tests.
+#[allow(dead_code)]
+pub(crate) fn plan_remediation(
     pressure: PressureState,
     candidates: &[RemediationCandidate],
 ) -> Vec<GuardianPlanItem> {

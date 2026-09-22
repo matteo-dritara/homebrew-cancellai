@@ -1,22 +1,29 @@
 # Evidence Packet - E15-S03
 
-- Commit/PR: pending (this work item) - round 1 finding repaired here
+- Commit/PR: pending (this work item) - round 1 and round 2 findings both repaired here
 - Executor: Claude
 - Independent verifier: Codex - round 1: `project/evidence/E15-VERIFIER-REVIEW.md`, `FAIL`; CR4
-  Safety Verdict `project/evidence/E15-S03/SAFETY_VERDICT.md`, `FAIL`; round 2 pending
+  Safety Verdict round 1 `FAIL`; round 2: `project/evidence/E15-VERIFIER-REVIEW-ROUND2.md`,
+  `FAIL`; CR4 Safety Verdict round 2 `FAIL` (both in `project/evidence/E15-S03/SAFETY_VERDICT.md`).
+  Owner-capped at 2 rounds - the round-2 finding is repaired below via a structural (visibility)
+  change, not independently re-verified by Codex, since no round 3 is authorized.
 - Change Risk: CR4
 - Spec version/commit: `project/epics/E15.json`'s E15-S03 story contract
 
 ## Outcome
 
-PASS_PENDING_ROUND2 (executor self-assessment after repairing round 1's finding; independent
-re-verification pending - **CR4: this packet does not and cannot carry a Safety Verdict; that is
-the independent reviewer's output, gated at `done`, per `docs/development/AGENT_PROTOCOL.md`**).
+PASS_PENDING_INDEPENDENT_CONFIRMATION (executor self-assessment after repairing every reviewed
+finding across two independent review rounds - **CR4: this packet does not and cannot carry a
+Safety Verdict; that is the independent reviewer's output, gated at `done`, per
+`docs/development/AGENT_PROTOCOL.md`, and the round-2 repair below has not itself received one**).
 Implements `cancellai_guardian::remediation`: a bounded remediation planner that translates a
 pressure state plus already-classified candidate artifacts into an ordered plan, granting
 authority that is always the minimum of (a) the candidate's own already-computed Effective Policy
 ceiling and (b) Guardian's own pressure-derived intent ceiling - which never exceeds
-`AuthorityLevel::Quarantine` for any pressure state.
+`AuthorityLevel::Quarantine` for any pressure state. Following round 2's finding, the module's
+entire public surface (`RemediationCandidate`, `GuardianPlanItem`, `plan_remediation`, and the
+`killswitch`/`audit` functions that consume them) is now `pub(crate)` - unreachable from outside
+`cancellai-guardian` - so there is no externally reachable capability left to forge at all.
 
 ## Round 1 independent review: FAIL, one finding, repaired here
 
@@ -47,6 +54,48 @@ both SI-027 and SI-028.
   the same non-forgeable-primitive treatment ADR-0036 gave provider-layout observations, applied
   workspace-wide to `cancellai-policy` - a larger decision out of this story's scope, recorded as
   residual risk below, not silently narrowed away.
+
+## Round 2 independent review: FAIL, the disclosed residual rejected as a live defect, repaired here
+
+`project/evidence/E15-VERIFIER-REVIEW-ROUND2.md` and `project/evidence/E15-S03/SAFETY_VERDICT.md`
+(Codex, round 2 - the owner-capped final round) confirmed round 1's repair closed the direct
+struct-literal attack (E0451, and the `compile_fail` doctest is a genuine private-field test, not
+vacuous) - but determined the disclosed residual is not acceptable for a CR4 story: an external
+probe fabricated a full public `ClassifiedArtifact`/`AgentArtifact` with
+`reachable_authority: Autopilot`, converted it via `From`, and reached `ActionClass::Quarantine`
+at RED pressure with no shared-engine computation involved. The reviewer's explicit determination:
+"This cannot be accepted as a CR4 residual because it directly negates SI-028," with a named
+required repair: "a policy-owned opaque authority carrier... a public struct literal must not be
+able to mint it."
+
+- **F1, continued (AC1, SI-027, SI-028)** - round 1's repair (private fields, `From` as sole
+  constructor) raised the bar from "any 3-field literal" to "a full `ClassifiedArtifact`," but
+  `ClassifiedArtifact` itself has no non-forgeable construction guarantee, so the bar was not
+  raised to the level SI-028 needs. Fully closing that at the `cancellai-policy` layer needs the
+  ADR-0036 treatment (a type whose only constructor is bound to real I/O) applied to policy
+  resolution generally - a `cancellai-policy`-wide architectural decision no single Guardian story
+  can make alone, and this crate's own `remediation.rs` deliberately performs no I/O at all
+  (matching `pressure`/`baseline`/`forecast`'s "pure, dependency-free" shape), so it structurally
+  cannot mint such a primitive itself either.
+  *Repair (no round 3 available; matches the reviewer's own named required repair)*: rather than
+  attempt a smaller, still-incomplete patch to the conversion boundary, `RemediationCandidate`,
+  `GuardianPlanItem`, and `plan_remediation` (plus `killswitch::apply_kill_switch` and
+  `audit::record_guardian_decision`, which consume `GuardianPlanItem` and would otherwise leak a
+  private type through a `pub` signature) are now `pub(crate)` - unreachable from outside
+  `cancellai-guardian` entirely. This directly satisfies the reviewer's own "Rollback / recovery"
+  instruction ("Do not wire this planner to a Guardian orchestration/execution path... a public
+  struct literal must not be able to mint it"): there is no longer a public struct literal, or any
+  other externally reachable path, that can mint anything from this module at all. SI-027/SI-028
+  hold vacuously - there is no externally reachable Guardian action to misuse - rather than by a
+  boundary this crate alone cannot fully guarantee. Verified: full workspace `cargo test`/`clippy`/
+  `fmt`/`deny check`/`check_mutation_boundary.py` all green after the change; the crate's own 147
+  tests (unaffected - they live in child modules of the now-`pub(crate)` items, which Rust
+  privacy rules still permit to construct/call them directly) still pass, including
+  `from_classified_artifact_carries_the_real_engine_authority_unmodified`, proving the internal
+  wiring still works correctly even though it is no longer externally reachable.
+  **Not independently re-verified** - no round 3 is authorized; this is this executor's own
+  engineering judgment implementing the reviewer's own explicitly named required repair, not a
+  claim of independent confirmation of the implementation's correctness.
 
 ## Acceptance Criteria Evidence
 
@@ -186,14 +235,23 @@ docs/CLI.md is up to date.
   that pre-order is preserved within ties) - `remediation.rs` does not accept an `AnomalySeverity`
   input directly, since neither AC nor the verification contract names it as a required input,
   and adding it now would be speculative scope beyond what this story specifies.
-- **`cancellai_policy::ClassifiedArtifact` remains publicly constructible** (round 1 finding F1's
-  disclosed remainder, above): `RemediationCandidate` can no longer be forged directly, but a
-  caller could still fabricate a full `ClassifiedArtifact`/`AgentArtifact` with an arbitrary
-  `reachable_authority` and convert it via `From`. This is an existing, `cancellai-cli`-shared
-  trust boundary this story did not introduce and cannot close alone; sealing it needs a
-  `cancellai-policy`-wide decision (the ADR-0036 treatment, applied to policy resolution rather
-  than provider-layout observation), tracked here as a backlog candidate for whichever future
-  story owns that boundary, not fixed silently in this one.
+- **`cancellai_policy::ClassifiedArtifact` remains publicly constructible** - no longer directly
+  exploitable against this module (round 2's repair makes the whole module `pub(crate)`, so there
+  is nothing external left to hand a fabricated one to), but the underlying fact is still true at
+  the `cancellai-policy` layer, shared with `cancellai-cli`'s own production pipeline. Whichever
+  future story designs a real Guardian orchestrator and widens this module back toward `pub` must
+  first close this at the source (the ADR-0036 treatment, applied to policy resolution) - not
+  re-open the same forgery surface round 2 found, tracked here as a backlog candidate for that
+  future story, not fixed silently in this one.
+- **The round-2 repair (restricting the whole module to `pub(crate)`) has not been independently
+  re-verified by Codex** - the owner capped this epic at 2 review rounds, and round 2 is the last
+  one authorized. This executor's confidence rests on directly implementing the reviewer's own
+  explicitly named required repair ("a public struct literal must not be able to mint it") in the
+  most complete way available (no public surface at all, rather than a narrower patch to the
+  conversion boundary alone), plus the full gate suite passing clean and the crate's own 147 tests
+  (including the real-`ClassifiedArtifact` integration test) still passing internally. It is not
+  independent confirmation, and per `docs/development/AGENT_PROTOCOL.md` this executor cannot
+  supply the CR4 Safety Verdict this story still needs before `done` regardless.
 - This is a CR4 story; per `docs/development/AGENT_PROTOCOL.md`, the executor cannot supply its
   own Safety Verdict, and review happens at epic scope once every E15 story reaches
   `ready_for_review`. Until that independent review, this packet's PASS is a self-assessment only.
@@ -201,6 +259,10 @@ docs/CLI.md is up to date.
 ## Verifier verdict
 
 Round 1: `FAIL` (`project/evidence/E15-VERIFIER-REVIEW.md`,
-`project/evidence/E15-S03/SAFETY_VERDICT.md`) - repaired above. Round 2: pending - independent
-review runs at epic scope once every E15 story is `ready_for_review`; CR4 additionally requires
-an independent Safety Verdict recording a pass before this story can reach `done`.
+`project/evidence/E15-S03/SAFETY_VERDICT.md`) - repaired, confirmed closed by round 2. Round 2:
+`FAIL` (`project/evidence/E15-VERIFIER-REVIEW-ROUND2.md`, `project/evidence/E15-S03/
+SAFETY_VERDICT.md`'s round-2 addendum) - repaired above by implementing the reviewer's own named
+required repair; owner-capped at 2 rounds, so not independently re-verified. Set back to
+`ready_for_review`, not self-closed to `done` - CR4 requires an independent Safety Verdict
+recording a pass before this story can reach `done`, which this executor cannot supply for its
+own work, and which has not yet happened for this round's repair.

@@ -117,7 +117,13 @@ impl KillSwitch {
 /// read-only inspection of the plan itself is never withheld (the items are still returned, only
 /// their granted authority is), matching `docs/architecture/GUARDIAN_MODEL.md`'s "Disabling
 /// automation never prevents manual read-only inspection or recovery."
-pub fn apply_kill_switch(
+///
+/// `pub(crate)`, matching `GuardianPlanItem`'s own visibility (`remediation.rs`'s module docs) -
+/// this crate's remediation output is not externally reachable at all yet. `#[allow(dead_code)]`
+/// because no production orchestrator wires this yet (this crate's own "primitive delivered, no
+/// orchestrator yet" pattern) - exercised directly by this module's own tests.
+#[allow(dead_code)]
+pub(crate) fn apply_kill_switch(
     kill_switch: &KillSwitch,
     plan: Vec<GuardianPlanItem>,
 ) -> Vec<GuardianPlanItem> {
