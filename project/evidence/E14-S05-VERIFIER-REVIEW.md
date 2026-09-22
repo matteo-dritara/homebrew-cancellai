@@ -188,3 +188,204 @@ semantics for Restore.
 Owner action required: return E14-S05 to the executor for a structurally revised design and new
 adversarial regressions. The verifier does not set story status or accept residual risk on the
 owner's behalf.
+
+---
+
+# E14-S05 Independent Verifier Review — Round 2
+
+Review-Scope: story
+Round: 2
+Review-Target: `414a9fcaed79fafea624507c4b440b6141b1e059`
+Verifier: Codex
+Date: 2026-09-22
+
+This is an independent repair review of round 1's F1/F2/F3 findings. I read the round-1
+record, executor packet, ADR-0037's round-2 account, the story/ACs, SI-004/SI-013, relevant
+architecture and threat documentation, and re-diffed `c7f12bf..414a9fc`; executor claims were
+not accepted as evidence by themselves.
+
+## Per-story verdict
+
+| Story | Verdict | Concrete evidence |
+| --- | --- | --- |
+| E14-S05 | PASS_WITH_RESIDUALS | The external F1 consumer now fails specifically with Rust `E0603` because `execute` is `pub(crate)`; a fresh-system-wrapper synthetic-seal attempt is safely blocked; and a native Restore destination-layout drift is safely blocked while retaining the quarantine source. F2's read-to-syscall window remains, but is visibly narrowed to the last pre-mutation statement and is an acceptable disclosed residual at this stage. |
+
+## Round-1 finding re-verification
+
+### F1 — Closed: the public synthetic-observer path is inaccessible
+
+I created a standalone external crate with path dependencies on `cancellai-safety` and
+`cancellai-platform`, importing `cancellai_safety::mutation_executor::execute` and assembling
+the same category of inputs as the round-1 consumer: `SyntheticProviderLayoutObserver`, system
+identity/mutation capabilities, and a sealed plan. `cargo check --offline` failed with exactly:
+
+```text
+error[E0603]: function `execute` is private
+ --> src/main.rs:10:42
+  |
+10 | use cancellai_safety::mutation_executor::execute;
+  |                                          ^^^^^^^ private function
+note: the function is defined as `pub(crate)` in mutation_executor.rs:115
+```
+
+This is a visibility failure at the intended boundary, not a dependency, network, or unrelated
+build error. `lib.rs` also no longer re-exports `execute` or `execute_all`.
+
+I then checked the remaining public production path rather than stopping at that compile error.
+`execute_with_system_capabilities` accepts only `&SealedPlan` and `&BoundedPath`, and hardcodes
+`SystemIdentityObserver`, `SystemMutationExecutor`, `SystemProcessObserver`, and
+`SystemProviderLayoutObserver`. `BoundedPath` has no public constructor; `ApprovedRoot::bind`
+derives it from real path/identity observations. A public caller can still seal a plan with a
+synthetic layout observer, but cannot substitute it at execution: in a second external native
+run, I sealed a Delete plan with a synthetic signature intentionally contradicting the real root
+then called `execute_with_system_capabilities`. The wrapper returned `SafelyBlocked` and retained
+the artifact. Thus that public seal-time test seam does not reproduce the real mutation bypass.
+
+Existing legitimate production use remains intact: `cancellai-cli` calls the public wrapper once
+per artifact; the crate's own tests still reach the injectable executor internally through
+`pub(crate)` visibility. `execute_all` has no production caller, so restricting it does not
+break an extant consumer.
+
+### F2 — Residual accepted: last-precondition placement narrows, but cannot close, the race
+
+The provider-layout revalidation now occurs after every action-specific operation is assembled
+and immediately before `executor.mutate`; source inspection confirms no operation-building,
+filesystem, or caller-controlled work follows it. There remains a real interval between the
+completed observation and the mutation capability's syscall. I confirmed this from the actual
+call sequence; the code correctly does not claim otherwise.
+
+This is not a full SI-013 closure. It is, however, the same narrower immediate-revalidation
+posture this repository accepted for single-file identity before the separately scoped E21-S07
+handle-relative/descriptor-retaining closure. A whole-provider-root layout binding must retain a
+directory observation through the platform mutation primitive; that is a material platform and
+API design change, rather than a safe small extension to this repair. The residual is explicit
+in ADR-0037, the executor evidence, CHANGELOG, and the affected architecture documents. I judge
+shipping the deliberately narrowed residual acceptable as `PASS_WITH_RESIDUALS`, not a hidden or
+blocking claim of full atomicity.
+
+### F3 — Closed: Restore observes and revalidates the real destination provider root
+
+`MoveDestination::root_path()` is populated from the already-established destination
+`ApprovedRoot`. `seal_restore` observes that path, whereas `seal`, `seal_with_process_guard`,
+`seal_quarantine`, and `seal_archive` continue to observe their own source `root.path()`.
+`ProviderLayoutSnapshot` keeps the selected root path, identity, and normalized signature;
+`revalidate_provider_layout` re-observes that stored path rather than deriving a root from the
+execution target.
+
+I reproduced the round-1 case externally using only real system capabilities: I created a
+quarantine root holding an artifact, a distinct provider destination root with an initial marker,
+sealed a Restore plan, added a new marker to the real destination root, then called
+`execute_with_system_capabilities`. It returned `SafelyBlocked`; the quarantined artifact
+remained and no destination artifact was written. The plan's exposed recorded layout-root path
+equalled the established provider destination path (including the platform's canonical path),
+not the quarantine root. This independently confirms the execution behavior, not merely the new
+unit assertion.
+
+## Fresh AC and safety-obligation assessment
+
+| Requirement | Result | Independent evidence |
+| --- | --- | --- |
+| AC1 | PASS_WITH_RESIDUALS | Real Delete drift before execution and my real Restore-destination drift are refused by fresh system observation. The unbound observation-to-syscall window remains explicitly residual (F2). |
+| AC2 | PASS | External direct `execute` call fails with E0603; the only public execution wrapper hardcodes system capabilities. An externally synthetic-sealed but system-executed contradictory plan was blocked without mutation. |
+| AC3 | PASS | A missing seal-time snapshot and a fresh observation error each return `StalePlan`; no unobservable-layout branch reaches `mutate`. The same check now applies to Restore's real destination root. |
+| SI-004 | PASS_WITH_RESIDUALS | Drifted/deleted/replaced roots and layout signatures are refused through the public mutation path. The known-signature trust-source residual from ADR-0036 is unchanged, and F2 is the narrow temporal residual. |
+| SI-013 | PASS_WITH_RESIDUALS | Target identity plus the action-appropriate provider-root identity/layout are freshly revalidated immediately before mutation. The layout observation is not retained through the syscall (F2). |
+
+## Additional review observations
+
+- `ProviderLayoutSnapshot` is crate-private with crate-private fields; external callers cannot
+  construct or alter a stored path, root identity, or signature. The plan remains immutable.
+- The changed action-class mapping is coherent: Delete/Quarantine/Archive mutate against their
+  source provider root, while Restore mutates into its destination provider root. The existing
+  same-device destination guard remains before the layout check and mutation.
+- A documentation precision note, not a runtime bypass: because public seal constructors accept
+  `&dyn ProviderLayoutObserver`, an external caller can use the public synthetic observer at
+  seal time. Statements that describe the stored seal-time snapshot alone as invariably from a
+  real/non-forgeable observer should be read with the essential execution qualification: only
+  the public mutation path's *fresh* observer is hardcoded system-backed. The external
+  contradictory-plan run above confirms the actual safety property holds.
+- I found no new malformed-input, link/path, retry, process, boundary, or platform-specific
+  mutation path introduced by the repair. Windows/non-Unix runtime was not available locally;
+  source/cross-target lint confirms the intended fail-closed refusal remains.
+
+## Gate results
+
+| Command | Result |
+| --- | --- |
+| External F1 compile probe: `cargo check --offline` | PASS — expected `E0603` privacy error for `execute`, after dependencies compiled successfully. |
+| External F1 wrapper probe: `cargo run --offline --quiet` | PASS — fabricated seal-time layout was safely blocked by the public system wrapper; artifact retained. |
+| External F3 Restore-drift probe: `cargo run --offline --quiet` | PASS — destination layout drift safely blocked; source retained and destination absent. |
+| `cd rust && cargo fmt --check` | PASS |
+| `cd rust && cargo clippy --workspace --all-targets --all-features -- -D warnings` | PASS |
+| `cd rust && cargo check --workspace --all-targets` | PASS |
+| `cd rust && cargo test --workspace` | PASS — full workspace and doctests. |
+| `cd rust && cargo deny check` | PASS — advisories, bans, licenses, and sources passed; existing unmatched-license/duplicate warnings only. |
+| Cross-target clippy, Windows and Linux (`cancellai-platform`, `cancellai-safety`) | PASS |
+| `python3 scripts/project_os.py check` | PASS |
+| `python3 scripts/check_mutation_boundary.py check` | PASS — 96 Rust sources scanned. |
+| `python3 scripts/check_docs.py check` | PASS |
+| `python3 scripts/check_evidence.py check` | PASS — 15 recorded pre-convention warnings only. |
+| `gh run list --branch main --limit 5` | UNKNOWN — this environment could not connect to `api.github.com`; CI is not treated as green. |
+
+## CR4 Safety Verdict — E14-S05
+
+- Change: live provider-layout freshness check at the sole mutation boundary, including
+  per-action provider-root binding for Restore.
+- Risk: CR4
+- Commit/PR: `414a9fcaed79fafea624507c4b440b6141b1e059`
+- Independent verifier: Codex
+- Date: 2026-09-22
+
+## Verdict
+
+`PASS_WITH_RESIDUALS`
+
+## Safety surface changed
+
+The public mutation entry point now requires a fresh, system-backed provider-layout observation
+for the root the action actually mutates against. Injectable internal execution seams are no
+longer callable by an external Rust consumer.
+
+## Invariants
+
+| Invariant | Required property | Evidence | Result |
+| --- | --- | --- | --- |
+| SI-004 | A fabricated, unknown, or drifted provider layout cannot preserve destructive capability for a real mutation. | Expected E0603 external direct-executor failure; system-wrapper fabricated-seal block; native Restore-destination drift block; fail-closed absent/error paths. | PASS_WITH_RESIDUALS |
+| SI-013 | Relevant target and provider-root identity/preconditions are freshly checked immediately before mutation. | Actual last-precondition placement; root/marker comparisons; native Restore drift reproduction. Layout observation is not retained through the syscall. | PASS_WITH_RESIDUALS |
+
+## Adversarial cases
+
+- External fabricated-observer consumer cannot call `execute` because it is crate-private.
+- External synthetic seal-time contradiction cannot evade the wrapper's fresh system observation.
+- Restore into a provider root drifted after sealing is refused without moving the quarantine
+  source.
+- Source-root action constructors retain their own source-root observation mapping.
+
+## Differential / compatibility evidence
+
+No Python differential applies. Windows/non-Unix provider-layout observation remains
+unsupported and therefore refuses destructive execution fail-closed; Windows runtime testing was
+not available here, while the requested Windows cross-target lint passed.
+
+## Known residual risks
+
+- **F2:** a concurrent provider-layout change between the final layout observation and the OS
+  mutation syscall is not caught. Full closure needs a handle-retained directory-layout
+  capability through the platform mutation operation.
+- **Windows/non-Unix:** destructive execution remains refused until a verified handle-bound
+  provider-layout observation is implemented.
+- **ADR-0036 residual (1):** there is still no trusted known-layout-signature source; this story
+  verifies live-vs-seal freshness, not known-good classification.
+- CI status is unknown from this environment because GitHub API connectivity failed.
+
+## Rollback / recovery
+
+Reverting `414a9fc` restores the rejected round-1 implementation and is not a safety-preserving
+rollback. The safe recovery for the remaining F2 residual is to withhold the action when a
+provider root cannot be reliably observed, which the current implementation already does; a
+future handle-retained design should receive its own CR4 story and review.
+
+## Owner decision
+
+`ACCEPT_WITH_RECORDED_RESIDUALS` is the verifier recommendation; owner acceptance remains
+required. This verifier does not change the story status or make that owner decision.
