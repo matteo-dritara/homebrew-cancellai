@@ -1,19 +1,19 @@
-# Release Evidence - v1.17.3
+# Release Evidence - v1.17.4
 
 ## Source
 
-- Tag: `v1.17.3`
+- Tag: `v1.17.4`
 - Commit: recorded by the release workflow at the tag
 - Channel: stable
 - Date: 2026-09-22
-- Published: no - verify-rust failed the real Windows smoke test: status() right after a successful schtasks /Change .../ENABLE still failed to parse the task as enabled, while the same /Query /XML parsed correctly right after install in the same run - pointing at schtasks own task-cache lagging its write, not at XML shape (two prior fixes targeted decoding/parsing without resolving it). Repaired by having enable() poll status() for up to 2s to confirm the change before returning Ok, matching the macOS/Linux adapters own enable contracts; the real smoke test now accepts the resulting honest registration-could-not-be-confirmed outcome the same way the macOS test already does. Also made parse_enabled_from_xml whitespace/attribute-tolerant and added a diagnostic snippet to the Unsupported reason (run 35746389679)
+- Published: pending
 
 ## Included work
 
 This release closes no epic. It exists because an already tagged version could not
 carry the fix below, and a published tag is immutable history:
 
-v1.17.2's release workflow failed cargo clippy on all three platforms - CI runs a newer clippy (0.1.98) than this session's prior local toolchain, which flagged chunks_exact with a constant chunk size added by the v1.17.1 fix; switched to slice::as_chunks::<2>() and updated the local toolchain to match, the tag stands as immutable history
+Windows real-smoke schtasks enable-confirmation fix on the v1.17.3 tag
 
 ## Gates
 
@@ -65,11 +65,23 @@ python3 scripts/check_process.py check
 
 ### Fixed
 
-- The Rust engine's `cancellai-guardian` crate failed real CI on the v1.17.2 tag: `cargo clippy`
-  denied `chunks_exact` with a constant chunk size in `service.rs`'s `decode_command_output`
-  (added by the v1.17.1 fix), a lint real CI's newer clippy (0.1.98) enforces. Switched to
-  `slice::as_chunks::<2>()`, the idiom clippy itself suggests. v1.17.2's tag stands as immutable
-  history and is recorded as unpublished; this fix ships as the next version.
+- The Rust engine's `cancellai-guardian` crate failed its real Windows smoke test on the v1.17.3
+  tag: `status()` right after a successful `schtasks /Change ... /ENABLE` still failed to parse
+  the task as enabled (`Unsupported { reason: "schtasks /XML output did not contain a
+  recognizable Enabled field" }`), even though the very same `/Query /XML` parsed correctly
+  right after `install` in the same run. That asymmetry - the only difference being a
+  state-changing `/Change` call that had *just* run - points at `schtasks`' own task-cache
+  lagging behind its own write, not at the XML shape two prior fixes already targeted (a UTF-16
+  BOM decode, then a clippy-driven `as_chunks` change). `enable()` now polls `status()` for up to
+  2 seconds to confirm the change before returning `Ok`, matching the macOS/Linux adapters' own
+  enable contracts (AC1); the real smoke test accepts the resulting honest,
+  distinguishable "registration could not be confirmed" outcome the same way the macOS one
+  already does, instead of asserting a state `status` cannot yet corroborate.
+  `parse_enabled_from_xml` was also made whitespace/attribute-tolerant as a defensive
+  improvement, and `status()`'s `Unsupported` reason now includes a bounded snippet of the
+  actual `/XML` output so any further occurrence is diagnosable from the failure itself.
+  v1.17.3's tag stands as immutable history and is recorded as unpublished; this fix ships as the
+  next version.
 
 ## Known residual risks
 

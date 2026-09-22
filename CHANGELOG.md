@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.17.4] - 2026-09-22
+
 ### Fixed
 
 - The Rust engine's `cancellai-guardian` crate failed its real Windows smoke test on the v1.17.3
