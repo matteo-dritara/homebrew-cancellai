@@ -1,15 +1,16 @@
 # Evidence Packet - E14-S05
 
-- Commit/PR: `c7f12bf` (round 1) + round 2 repair commit on `main`
+- Commit/PR: `c7f12bf` (round 1) + `414a9fc` (round 2 repair)
 - Executor: Claude
 - Independent verifier: Codex - round 1: `project/evidence/E14-S05-VERIFIER-REVIEW.md`, `FAIL`
-  (F1/F2/F3 below); round 2: pending
+  (F1/F2/F3 below); round 2 (same file, appended): `PASS_WITH_RESIDUALS`, CR4 Safety Verdict
+  recorded, commit `4fe019e`
 - Change Risk: CR4
 - Spec version/commit: `project/epics/E14.json` (E14-S05), ADR-0037
 
 ## Outcome
 
-PASS (round 2, pending independent re-review)
+PASS_WITH_RESIDUALS - independent round 2 verdict, `project/evidence/E14-S05-VERIFIER-REVIEW.md`
 
 ## Round 1 independent review: FAIL, three findings, all repaired here
 
@@ -151,4 +152,11 @@ positioned immediately before the mutation call itself rather than before operat
 
 ## Verifier verdict
 
-(pending independent round 2 review)
+`PASS_WITH_RESIDUALS` - Codex, round 2, `project/evidence/E14-S05-VERIFIER-REVIEW.md` (commit
+`4fe019e`). Independently reproduced F1 (external `execute` call fails `E0603`; a system-wrapper
+fabricated-seal attempt is safely blocked) and F3 closed (native Restore-destination-drift
+reproduction refused, quarantine source retained). F2 confirmed narrowed-not-closed and accepted
+as a disclosed residual, on the same precedent this repository already applies to single-file
+identity before E21-S07. CR4 Safety Verdict recorded in the same file: SI-004/SI-013 both
+`PASS_WITH_RESIDUALS`. Verifier recommendation: `ACCEPT_WITH_RECORDED_RESIDUALS`; owner
+acceptance obtained via this session's explicit direction to close the story on this verdict.

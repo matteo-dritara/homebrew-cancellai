@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-09-22
+
 ### Security
 
 - The Rust engine's mutation boundary (`cancellai_safety::mutation_executor::execute`) now
