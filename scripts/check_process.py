@@ -144,7 +144,8 @@ REVIEW_ROUND_EXCEPTIONS = {
     "owner's two-review limit per story. Round 5 reviews E06-S13 alone: it failed rounds 3 and 4 and, "
     "as a CR4 story, cannot close without an independent verdict; the owner authorized exactly "
     "this one extra round on 2026-09-23. E06-S08 (CR1) instead closes on "
-    "project/evidence/E06-S08/CEILING_DECISION.md",
+    "project/evidence/E06-S08/CEILING_DECISION.md. Round 6 is the first independent pass over "
+    "E06-S04, the canonical switch, whose gate stories closed in rounds 3-5",
 }
 # Matches both an epic-scoped record (`E07-VERIFIER-REVIEW.md`) and a story-scoped one
 # (`E07-S07-VERIFIER-REVIEW.md`), counting both against the *epic's* ceiling (captured
