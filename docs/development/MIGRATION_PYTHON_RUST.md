@@ -128,6 +128,14 @@ release factory" remains E17 scope; this story does not build packaging/installe
 
 Rust becomes stable only after G1 Functional, G2 Safety, G3 Compatibility, and G4 Operability gates are green and owner accepts the migration Safety Verdict.
 
+**Mechanism (E06-S04, owner decision 2026-09-24).** The Homebrew formula switches from the Python
+script to the Rust release binary: `packaging/cancellai.rb.template` installs the platform's signed
+archive as `cancellai` and `cancellai.py` as `cancellai-legacy`. It stays outside `Formula/` until
+the cutover release - the tap reads `main`, so a formula committed there ships at once - and
+`scripts/release.py finalize` adopts it for that release. `tests.yml` installs it for real from a
+throwaway tap on every change. `cancellai-legacy` is removed from the formula after 2.1.0; the
+Python source stays in the release tags.
+
 ## What not to preserve
 
 The migration does not preserve accidental implementation constraints:

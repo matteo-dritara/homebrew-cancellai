@@ -102,15 +102,18 @@ class TheCommittedControlPlane(unittest.TestCase):
     def test_every_blocked_item_is_explained(self) -> None:
         project_os.validate(self.MODEL)  # raises if any block is unexplained
 
-    def test_the_cutover_story_records_a_real_argument(self) -> None:
-        # E17-S07 carried the same record until it was implemented (E17-S07, PD-026).
-        stories = {s["id"]: s for s in self.MODEL.stories}
-        for story_id in ("E06-S04",):
-            recorded = stories[story_id].get("blocked_by")
-            self.assertIsNotNone(recorded, f"{story_id} is the case this story exists for")
+    def test_every_blocked_story_records_a_real_argument(self) -> None:
+        # E06-S04 was the case this story exists for, and E17-S07 before it; both carried the
+        # record until what held them closed (E06-S04 on 2026-09-24). The property is not about
+        # one id: every story blocked now must say by what, with a document that exists.
+        for story in self.MODEL.stories:
+            if story["status"] != "blocked":
+                continue
+            recorded = story.get("blocked_by")
+            self.assertIsNotNone(recorded, story["id"])
             assert recorded is not None
-            self.assertEqual(recorded["argument"], "docs/development/RELEASE_GATES.md")
-            self.assertTrue(recorded["summary"].strip())
+            self.assertTrue((project_os.ROOT / recorded["argument"]).exists(), story["id"])
+            self.assertTrue(recorded["summary"].strip(), story["id"])
 
     def test_no_recorded_blocker_waits_on_something_already_closed(self) -> None:
         closed = {e["id"] for e in self.MODEL.epics if e["status"] in project_os.CLOSED_EPIC_STATUS}

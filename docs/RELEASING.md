@@ -42,6 +42,16 @@ python3 scripts/release.py finalize --version X.Y.Z
 git commit -am "chore(release): point formula at the vX.Y.Z tarball" && git push
 ```
 
+### The cutover release (E06-S04)
+
+The first release after the owner's migration Safety Verdict is `2.0.0`. `prepare` moves the Rust
+workspace version with the source version (the engine used to report `0.1.0`), and the release
+workflow refuses a tag that disagrees with either. `finalize` finds no engine resources in the live
+formula and adopts `packaging/cancellai.rb.template`, pointing its source URL and its three engine
+resources (`aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`) at the tag,
+with the digests the release published beside each archive. Every later `finalize` rewrites
+those same resources.
+
 ### When a release fails
 
 A tag is immutable history here, so a failed release is not undone - it is recorded, and the fix

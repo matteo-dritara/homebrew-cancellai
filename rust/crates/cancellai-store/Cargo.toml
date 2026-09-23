@@ -11,7 +11,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-cancellai-model = { path = "../cancellai-model", version = "0.1.0" }
+cancellai-model = { path = "../cancellai-model", version = "1.21.0" }
 rusqlite = { version = "0.40.2", default-features = false, features = ["bundled"] }
 # E06-S07: derives the containment history's line format and the owner trust file's schema.
 # Outer ring (ADR-0019); already in the workspace lockfile through serde_json and every other

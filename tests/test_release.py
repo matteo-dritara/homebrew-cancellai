@@ -218,3 +218,38 @@ class ReleaseOutcomeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class EngineCutoverTests(unittest.TestCase):
+    """E06-S04: the Rust engine's version moves with the release, and the formula's engine
+    resources are rewritten to the release's own archives."""
+
+    def test_the_engine_version_agrees_with_the_source(self) -> None:
+        versions = release.current_versions()
+        self.assertEqual(versions.engine, versions.source)
+
+    def test_the_cutover_template_carries_one_engine_resource_per_target(self) -> None:
+        text = release.read(release.CUTOVER_FORMULA)
+        digests = {target: f"{index:064x}" for index, target in enumerate(release.ENGINE_TARGETS, 1)}
+        pointed = release.point_engine_resources(text, "2.0.0", digests)
+        for target, digest in digests.items():
+            self.assertIn(f"/releases/download/v2.0.0/cancellai-cli-2.0.0-{target}.tar.gz", pointed)
+            self.assertIn(f'sha256 "{digest}"', pointed)
+        self.assertNotIn("v0.0.0/cancellai-cli", pointed)
+
+    def test_a_formula_missing_an_engine_target_is_refused(self) -> None:
+        text = release.read(release.CUTOVER_FORMULA)
+        broken = text.replace("x86_64-unknown-linux-gnu", "riscv64-unknown-linux-gnu")
+        with self.assertRaises(release.ReleaseError):
+            release.point_engine_resources(broken, "2.0.0", dict.fromkeys(release.ENGINE_TARGETS, "0" * 64))
+
+    def test_the_live_formula_has_no_engine_yet(self) -> None:
+        # The tap reads `main`: until the cutover release is finalized, the live formula must not
+        # install the Rust engine as `cancellai`.
+        self.assertIsNone(release.FORMULA_ENGINE_RE.search(release.read(release.FORMULA)))
+
+    def test_internal_path_dependencies_require_the_workspace_version(self) -> None:
+        engine = release.current_versions().engine
+        for manifest in (release.RUST / "crates").glob("*/Cargo.toml"):
+            for match in release.RUST_PATH_DEP_RE.finditer(release.read(manifest)):
+                self.assertIn(f'version = "{engine}"', match.group(0), manifest)

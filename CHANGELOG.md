@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`cancellai` is now the Rust engine** (E06-S04, the canonical switch). The Homebrew formula
+  installs the signed release binary for the platform as `cancellai`; the frozen Python reference
+  stays installed as `cancellai-legacy` until and including 2.1.0, as the immediate rollback.
+  Intentional differences from the Python CLI, each disclosed in `docs/CLI_RUST.md`:
+  - new commands: `inspect`, `plan`, `update --check`, `containment`, `desktop-api`;
+  - removed: `--aggressive`, `status --paths`/`--coverage`/`--top`, `--codex-backend` - refused
+    as usage errors; the Codex native delete backend is not used;
+  - `--json` prints the documented `JSON_CONTRACTS.md` documents, not the Python shapes;
+  - `clean` never rewrites Claude's `history.jsonl` (it says so), never deletes a file with more
+    than one hard link, and obeys signed incident containment and the release channel;
+  - Windows is supported natively.
+- The Rust engine now reports the release version it ships in (it reported `0.1.0` through
+  1.21.0).
+
 ### Added
 
 - `cancellai-cli containment install|list|lift` (E06-S07, ADR-0039): signed incident containment

@@ -27,7 +27,7 @@ workspace = true
 [dependencies]
 ratatui = "0.30"
 crossterm = "0.29"
-cancellai-policy = { path = "../cancellai-policy", version = "0.1.0" }
+cancellai-policy = { path = "../cancellai-policy", version = "1.21.0" }
 
 # Test-only: building an `AtlasSummary` fixture in ui.rs's own render tests needs to name
 # `cancellai_model::ArtifactId` directly (`cancellai-policy` uses it internally but does not
@@ -35,4 +35,4 @@ cancellai-policy = { path = "../cancellai-policy", version = "0.1.0" }
 # access" is a production-dependency claim and cancellai-model has no filesystem/provider access
 # of its own anyway (docs/architecture/TARGET.md: "pure domain types and invariants").
 [dev-dependencies]
-cancellai-model = { path = "../cancellai-model", version = "0.1.0" }
+cancellai-model = { path = "../cancellai-model", version = "1.21.0" }

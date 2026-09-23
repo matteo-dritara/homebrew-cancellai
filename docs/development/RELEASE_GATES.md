@@ -343,6 +343,24 @@ this prose:
 | G1 | `clean --json` prints plain text when it plans nothing (found by E06-S09's kill harness) | E06-S11 |
 | G3 | `clean` deletes nothing on Windows: the safety executor still refuses every Windows identity, although E20-S05 built the handle-relative primitive (found by the kill harness's first Windows run). G3 is not ready as recorded above | E06-S13 |
 
+
+**Update 2026-09-24: every gate reads ready against evidence.** E06-S06..S13 are done, each closed
+on an independent verdict the owner accepted (E06-S08 on its recorded ceiling decision):
+
+- **G1 Functional** - disclosed divergences only (`docs/CLI_RUST.md`); `clean --json` always
+  prints a document (E06-S11); `--verbose`/`--keep-claude-history` accepted (E06-S10).
+- **G2 Safety** - the E21 repairs are independently confirmed (E06-S06), and the two gaps that pass
+  found are closed (E06-S12). Accepted residuals: the Unix leaf-name race and the late-link window.
+- **G3 Compatibility** - `clean` deletes on Windows through the identity-confirmed handle path, with
+  the deletion, containment and kill-harness suites green on Windows CI (E06-S13).
+- **G4 Operability** - containment and the release channel are live on the mutation path under
+  ADR-0039 (E06-S07); the performance self-budget gates Linux CI (E06-S08); a real process kill at
+  every mutation point leaves a safe, finishable state on all three platforms (E06-S09).
+
+The switch itself is E06-S04: the Rust engine becomes `cancellai` in the Homebrew formula at the
+`2.0.0` release, with `cancellai-legacy` as the rollback through 2.1.0. It needs its own
+independent CR4 pass and the owner's migration Safety Verdict.
+
 ## Epic closure
 
 Closing an epic is what triggers a release (ADR-0014, PD-021). An epic may close when:

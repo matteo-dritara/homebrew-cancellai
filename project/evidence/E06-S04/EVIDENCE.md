@@ -1,112 +1,47 @@
 # Evidence Packet - E06-S04
 
-- Commit/PR: pending (this work item)
+- Commit/PR: the E06-S04 commits on `main`
 - Executor: Claude
-- Independent verifier: Codex (pending, epic-scoped review of E06)
+- Independent verifier: pending
 - Change Risk: CR4
-- Spec version/commit: `docs/development/RELEASE_GATES.md` (new "Rust cutover gate status"
-  section), `CHANGELOG.md`
+- Spec version/commit: `project/epics/E06.json` at this commit; ADR-0039; owner decisions 2026-09-24 (Rust = `cancellai`, Python = `cancellai-legacy` through 2.1.0)
 
 ## Outcome
 
-PARTIAL - by design. See below for why this is the correct executor outcome for a CR4 gate
-story, not an incomplete implementation.
-
-## Scope
-
-E06-S04's outcome is "promote Rust to stable only after functional, safety, compatibility, and
-operability gates pass" - a **gate**, not a feature. Its acceptance criteria are:
-
-1. "Owner-visible migration Safety Verdict is accepted."
-2. "Python remains tagged/archiveable as reference for at least one transition window."
-3. "Release notes state any intentional contract change."
-
-AC1 is structurally not something an executor can satisfy. `docs/development/AGENT_PROTOCOL.md`
-is explicit: "an executor's work is finished at `ready_for_review`... it does not set
-`verification`/`done` for its own change, and it does not write its own Safety Verdict."
-`docs/development/ENGINEERING_SYSTEM.md`'s "Ownership and transparency" section names the
-Safety Verdict for CR4 as one of the artifacts "no agent is allowed to silently redefine... to
-make implementation easier." Marking AC1 satisfied myself, or engineering the evidence to make
-cutover look ready when the actual gate status does not support it, would be exactly that.
-
-What an executor *can* do for a gate story - and what this change does - is produce the
-concrete, evidence-backed checklist the owner and independent verifier need to make that
-decision, and state plainly what it currently shows: **not ready**.
-`docs/development/RELEASE_GATES.md`'s new "Rust cutover gate status (E06-S04)" section
-enumerates G1 Functional, G2 Safety, G3 Compatibility, and G4 Operability against the real,
-disclosed state of E06-S01/S02/S03's work (their own evidence packets are the source for every
-claim in it - nothing new is asserted here that those packets do not already back). The
-conclusion is explicit: cutover is not recommended at this time.
-
-AC2 ("Python remains tagged/archiveable... for at least one transition window") is already
-true and unaffected by this change - `cancellai.py` has not been touched, remains the shipping
-Homebrew artifact, and nothing in E06-S01/S02/S03 modified or removed it. AC3 ("release notes
-state any intentional contract change") does not apply yet - no cutover is being proposed, so
-there is no contract change for release notes to state.
+PASS (pending the independent pass and the owner's migration Safety Verdict)
 
 ## Acceptance Criteria Evidence
 
 | AC | Evidence | Result |
 | --- | --- | --- |
-| AC1 - Owner-visible migration Safety Verdict is accepted | Not satisfied - not an executor decision. The gate checklist this change produces is the input the owner/verifier need to reach one. | NOT MET (by design - owner/verifier action required) |
-| AC2 - Python remains tagged/archiveable as reference for at least one transition window | `cancellai.py`, `pyproject.toml`, `Formula/cancellai.rb` are unmodified by E06-S01 through this change; the existing Homebrew release process (`docs/RELEASING.md` "Current Python v1 release process") continues to tag/release it exactly as before. | PASS |
-| AC3 - Release notes state any intentional contract change | Not applicable - no cutover/contract change is being made or proposed by this change. | N/A (no action required until a cutover is actually proposed) |
+| AC1 - owner-visible migration Safety Verdict accepted | To be written by the independent verifier and accepted by the owner in `project/evidence/E06-S04/SAFETY_VERDICT.md`; the executor does not write it. | PENDING |
+| AC2 - Python stays tagged/archivable for at least one transition window | The cutover formula installs `cancellai.py` as `cancellai-legacy` (owner decision: through 2.1.0); every release tag carries the Python source. | PASS |
+| AC3 - release notes state every intentional contract change | `CHANGELOG.md` Unreleased "Changed" lists the switch and each divergence; `docs/CLI_RUST.md` carries the detail. | PASS |
+| AC4 - cutover checklist blockers closed or accepted, or a perimeter decided by ADR | ADR-0039 decided the perimeter; E06-S06..S13 closed every open item; `docs/development/RELEASE_GATES.md` "Update 2026-09-24" records each gate against its evidence. | PASS |
 
-## Safety Evidence
+## What the switch changes, and how it is verified
 
-Not applicable in the usual sense - this story makes no code change to the mutation boundary,
-authority lattice, or any safety-relevant path. SI-019 (named in this story's safety
-obligations) is unaffected: `execute_with_system_capabilities` (added at E06-S01) is the
-existing, already-scanned single entry point; `scripts/check_mutation_boundary.py check` still
-passes unchanged.
+| Change | Evidence |
+| --- | --- |
+| The Rust engine reported `0.1.0` in every release through 1.21.0 | `release.py` moves `rust/Cargo.toml`, internal path-dependency requirements and lockfile members with the source version (`set_engine_version`); `check` reports drift; `release.yml` refuses a tag that disagrees with the engine version; the workspace is 1.21.0 now. Tests: `EngineCutoverTests`. |
+| The formula installs the Rust binary as `cancellai` | `packaging/cancellai.rb.template`: per-platform engine resources plus `cancellai.py` as `cancellai-legacy`. `finalize` adopts it only while the live formula has no engine resources; `point_engine_resources` refuses any other set of targets. `brew style` and `brew audit --strict` pass locally on the rendered formula. |
+| A broken install must not reach users | `tests.yml` renders the cutover formula against the latest published release, taps it and runs `brew install`, `cancellai version` and `cancellai-legacy --version` on every change. |
+| The switch must not ship before the verdict | The live `Formula/cancellai.rb` has no engine resources (`test_the_live_formula_has_no_engine_yet`); the template is adopted only by `finalize` of the cutover release. |
 
-## Verification Commands
+## Verification (native reproduction per platform, E21-S02 partial-scan fixtures)
 
-```text
-python3 scripts/check_docs.py check
-python3 scripts/project_os.py check
-python3 scripts/check_process.py check
-python3 scripts/release.py check
-python3 scripts/check_mutation_boundary.py check
-```
-
-All green (the last three unaffected by this change; re-run for completeness since this is the
-last story before epic-scoped review).
-
-## Compatibility
-
-Not applicable - no code changed.
-
-## Performance / operability
-
-Not applicable - no code changed. The G4 gap analysis in `RELEASE_GATES.md`'s new section
-*is* the operability finding this story produces: no packaged installer, no CLI-command
-performance budget, no crash/recovery testing exists yet for the Rust command surface.
-
-## Documentation updated
-
-- `docs/development/RELEASE_GATES.md` (declared documentation impact) - new "Rust cutover gate
-  status (E06-S04)" section: a living checklist, not a one-time snapshot - later work updates
-  it in place as gaps close, rather than this story being rewritten.
-- `CHANGELOG.md` (declared documentation impact) - a short, explicit "not ready, Python remains
-  canonical" note, so the file does not read by omission as though cutover happened given how
-  much E06 activity precedes it in the same Unreleased section.
+`rust_python_parity.py check` runs the partial-scan fixtures (`codex-partial-tree`,
+`claude-partial-project`, `claude-partial-tree`, `codex-unreadable-rollout`) in both root-origin
+scenarios on every change, on the stable-channel build; Linux and macOS in CI, Windows through the
+stable-channel CLI suite (E06-S13).
 
 ## Residual risks
 
-- The gate checklist is executor self-assessment of executor-produced work (E06-S01/S02/S03)
-  - exactly the "verifier does not treat executor tests as proof" concern
-  `AGENT_PROTOCOL.md` names. It is a starting point for independent review, not a substitute
-  for it.
-- Every gap the checklist names (see `RELEASE_GATES.md`) is real, disclosed backlog work: full
-  Python CLI flag parity, companion-directory deletion, Codex-side incomplete-scan detection,
-  confirmed tier-1 CI green (not merely structured to be OS-agnostic), a CLI performance
-  budget, and Epic E17's packaged release factory. None of these are silently deferred - they
-  are named explicitly so a future story picks them up deliberately.
+- The formula covers Homebrew on macOS (arm64, Intel) and Linux x86_64; Linux arm64 users have no
+  engine archive (none is built) and would fail at install.
+- The first real adoption of the template happens at the 2.0.0 `finalize`; CI proves the rendered
+  formula installs, not the adoption commit itself.
 
 ## Verifier verdict
 
-PENDING - epic E06 review runs once every story in E06 is `ready_for_review` (this is the
-fourth and last). Per `docs/development/AGENT_PROTOCOL.md`, the verifier populates the CR4
-Safety Verdict this story's own AC1 requires; this packet is not that verdict and does not
-claim to be.
+pending

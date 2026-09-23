@@ -81,6 +81,12 @@ jobs:
             echo "tag $GITHUB_REF_NAME does not match VERSION $source_version" >&2
             exit 1
           fi
+          # E06-S04: the Rust engine ships as `cancellai`, so its own version must match too.
+          engine_version="$(sed -n 's/^version = "\(.*\)"$/\1/p' rust/Cargo.toml)"
+          if [ "$tag" != "$engine_version" ]; then
+            echo "tag $GITHUB_REF_NAME does not match the Rust engine version $engine_version" >&2
+            exit 1
+          fi
       - name: the release evidence packet must exist
         run: test -f "project/evidence/RELEASE-${GITHUB_REF_NAME}.md"
 

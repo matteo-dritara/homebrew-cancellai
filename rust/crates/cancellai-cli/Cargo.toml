@@ -16,17 +16,17 @@ workspace = true
 kill-points = []
 
 [dependencies]
-cancellai-model = { path = "../cancellai-model", version = "0.1.0" }
-cancellai-safety = { path = "../cancellai-safety", version = "0.1.0" }
-cancellai-inventory = { path = "../cancellai-inventory", version = "0.1.0" }
-cancellai-policy = { path = "../cancellai-policy", version = "0.1.0" }
-cancellai-provider-api = { path = "../cancellai-provider-api", version = "0.1.0" }
-cancellai-provider-claude = { path = "../cancellai-provider-claude", version = "0.1.0" }
-cancellai-provider-codex = { path = "../cancellai-provider-codex", version = "0.1.0" }
-cancellai-store = { path = "../cancellai-store", version = "0.1.0" }
-cancellai-platform = { path = "../cancellai-platform", version = "0.1.0" }
-cancellai-sealedfs = { path = "../cancellai-sealedfs", version = "0.1.0" }
-cancellai-desktop-api = { path = "../cancellai-desktop-api", version = "0.1.0" }
+cancellai-model = { path = "../cancellai-model", version = "1.21.0" }
+cancellai-safety = { path = "../cancellai-safety", version = "1.21.0" }
+cancellai-inventory = { path = "../cancellai-inventory", version = "1.21.0" }
+cancellai-policy = { path = "../cancellai-policy", version = "1.21.0" }
+cancellai-provider-api = { path = "../cancellai-provider-api", version = "1.21.0" }
+cancellai-provider-claude = { path = "../cancellai-provider-claude", version = "1.21.0" }
+cancellai-provider-codex = { path = "../cancellai-provider-codex", version = "1.21.0" }
+cancellai-store = { path = "../cancellai-store", version = "1.21.0" }
+cancellai-platform = { path = "../cancellai-platform", version = "1.21.0" }
+cancellai-sealedfs = { path = "../cancellai-sealedfs", version = "1.21.0" }
+cancellai-desktop-api = { path = "../cancellai-desktop-api", version = "1.21.0" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 clap = { workspace = true }
@@ -38,4 +38,4 @@ clap = { workspace = true }
 ed25519-dalek = { version = "3.0.0", default-features = false, features = ["fast", "zeroize"] }
 sha2 = { version = "0.11.0", default-features = false }
 # E19-S02: the view-model parity test builds the dashboard view from this binary's own API.
-cancellai-desktop = { path = "../cancellai-desktop", version = "0.1.0" }
+cancellai-desktop = { path = "../cancellai-desktop", version = "1.21.0" }

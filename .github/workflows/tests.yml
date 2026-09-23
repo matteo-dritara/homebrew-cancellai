@@ -83,3 +83,23 @@ jobs:
       - run: brew tap matteo-dritara/cancellai "$GITHUB_WORKSPACE"
       - run: brew audit --strict matteo-dritara/cancellai/cancellai
       - run: brew style matteo-dritara/cancellai/cancellai
+      # E06-S04: the cutover formula (the Rust engine as `cancellai`, Python as `cancellai-legacy`)
+      # lives outside Formula/ until the release that adopts it. Install it for real from a
+      # throwaway tap, pointed at the latest published release's own archives, so a broken
+      # install is found here rather than by users after that release.
+      - name: the cutover formula installs and runs
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^  url ".*\/v\(.*\)\.tar\.gz"$/\1/p' Formula/cancellai.rb)"
+          tap="$RUNNER_TEMP/cutover-tap"
+          mkdir -p "$tap/Formula"
+          python3 scripts/release.py render-cutover --version "$version" > "$tap/Formula/cancellai.rb"
+          git -C "$tap" init -q
+          git -C "$tap" add -A
+          git -C "$tap" -c user.name=ci -c user.email=ci@example.invalid commit -qm cutover
+          brew tap cancellai-ci/cutover "$tap"
+          brew style cancellai-ci/cutover/cancellai
+          brew audit --strict cancellai-ci/cutover/cancellai
+          HOMEBREW_NO_INSTALL_FROM_API=1 brew install cancellai-ci/cutover/cancellai
+          "$(brew --prefix)/bin/cancellai" version
+          "$(brew --prefix)/bin/cancellai-legacy" --version

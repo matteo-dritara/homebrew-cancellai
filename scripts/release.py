@@ -36,6 +36,13 @@ CANCELLAI = ROOT / "cancellai.py"
 PYPROJECT = ROOT / "pyproject.toml"
 CHANGELOG = ROOT / "CHANGELOG.md"
 FORMULA = ROOT / "Formula" / "cancellai.rb"
+RUST = ROOT / "rust"
+RUST_WORKSPACE = RUST / "Cargo.toml"
+RUST_LOCK = RUST / "Cargo.lock"
+# E06-S04: the formula that makes the Rust engine `cancellai`. Kept outside Formula/ until the
+# release that carries the cutover, because the tap reads `main` and a formula committed there
+# ships to users immediately. `finalize` adopts it when the live formula has no engine resources.
+CUTOVER_FORMULA = ROOT / "packaging" / "cancellai.rb.template"
 EVIDENCE = ROOT / "project" / "evidence"
 PROJECT = ROOT / "project"
 
@@ -47,6 +54,19 @@ VERSION_RE = re.compile(r'^VERSION = "([^"]+)"$', re.MULTILINE)
 PYPROJECT_VERSION_RE = re.compile(r'^version = "([^"]+)"$', re.MULTILINE)
 FORMULA_URL_RE = re.compile(r'^  url "https://github\.com/[^/]+/[^/]+/archive/refs/tags/v([^"]+)\.tar\.gz"$', re.MULTILINE)
 FORMULA_SHA_RE = re.compile(r'^  sha256 "([0-9a-f]{64})"$', re.MULTILINE)
+# E06-S04: the formula installs the Rust engine from the release's own archives, one resource per
+# supported Homebrew platform, each followed by its checksum line.
+ENGINE_TARGETS = ("aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu")
+ENGINE_ASSET = "https://github.com/{repo}/releases/download/v{version}/cancellai-cli-{version}-{target}.tar.gz"
+FORMULA_ENGINE_RE = re.compile(
+    r'(?P<indent> +)url "https://github\.com/[^/]+/[^/]+/releases/download/v[^/]+/cancellai-cli-[^-]+-(?P<target>[a-z0-9_-]+)\.tar\.gz"\n'
+    r'(?P=indent)sha256 "[0-9a-f]{64}"'
+)
+# E06-S04: the Rust engine's own version. Until the cutover it was never bumped and every release
+# binary reported `cancellai-cli 0.1.0` whatever the tag; it now moves with the source version.
+RUST_WORKSPACE_VERSION_RE = re.compile(r'^version = "([^"]+)"$', re.MULTILINE)
+RUST_PATH_DEP_RE = re.compile(r'(cancellai-[a-z-]+ = \{ path = "[^"]+", version = ")[^"]+(")')
+RUST_LOCK_MEMBER_RE = re.compile(r'(name = "cancellai-[a-z-]+"\nversion = ")[^"]+(")')
 UNRELEASED_RE = re.compile(r"^## \[Unreleased\]\s*$", re.MULTILINE)
 # The declared epic line a release packet's "Included work" section carries, and the only thing
 # that counts as a release covering an epic. Reading every `E\d\d` in the prose credited an epic
@@ -78,6 +98,7 @@ class Versions:
     source: str
     packaging: str
     formula: str
+    engine: str
 
 
 def read(path: Path) -> str:
@@ -96,7 +117,21 @@ def current_versions() -> Versions:
         source=_single(VERSION_RE, read(CANCELLAI), "VERSION in cancellai.py"),
         packaging=_single(PYPROJECT_VERSION_RE, read(PYPROJECT), "version in pyproject.toml"),
         formula=_single(FORMULA_URL_RE, read(FORMULA), "tag in the Homebrew formula url"),
+        engine=_single(RUST_WORKSPACE_VERSION_RE, read(RUST_WORKSPACE), "workspace version in rust/Cargo.toml"),
     )
+
+
+def set_engine_version(version: str) -> None:
+    """Moves the Rust workspace version, every internal path dependency's version requirement, and
+    the workspace members' lockfile entries to `version` together, so the engine reports the
+    release it ships in and Cargo still resolves its own crates."""
+    RUST_WORKSPACE.write_text(RUST_WORKSPACE_VERSION_RE.sub(f'version = "{version}"', read(RUST_WORKSPACE), count=1), encoding="utf-8")
+    for manifest in sorted((RUST / "crates").glob("*/Cargo.toml")):
+        text = read(manifest)
+        updated = RUST_PATH_DEP_RE.sub(lambda m: f"{m.group(1)}{version}{m.group(2)}", text)
+        if updated != text:
+            manifest.write_text(updated, encoding="utf-8")
+    RUST_LOCK.write_text(RUST_LOCK_MEMBER_RE.sub(lambda m: f"{m.group(1)}{version}{m.group(2)}", read(RUST_LOCK)), encoding="utf-8")
 
 
 def parse(version: str) -> tuple[int, int, int]:
@@ -187,6 +222,8 @@ def check() -> list[str]:
     versions = current_versions()
     if versions.source != versions.packaging:
         problems.append(f"cancellai.py VERSION {versions.source} != pyproject version {versions.packaging}")
+    if versions.engine != versions.source:
+        problems.append(f"the Rust engine's version {versions.engine} != source version {versions.source}")
     if versions.formula != versions.source:
         # Between `prepare` and `finalize` the formula legitimately lags by exactly one
         # release: the archive checksum cannot exist until the tag does. Anything else -
@@ -369,6 +406,7 @@ def prepare(version: str, epic_id: str | None = None, reason: str | None = None)
 
     CANCELLAI.write_text(VERSION_RE.sub(f'VERSION = "{version}"', read(CANCELLAI), count=1), encoding="utf-8")
     PYPROJECT.write_text(PYPROJECT_VERSION_RE.sub(f'version = "{version}"', read(PYPROJECT), count=1), encoding="utf-8")
+    set_engine_version(version)
 
     text = read(CHANGELOG)
     start = UNRELEASED_RE.search(text)
@@ -382,7 +420,7 @@ def prepare(version: str, epic_id: str | None = None, reason: str | None = None)
     path.write_text(render_evidence(version, epic_id, body, reason), encoding="utf-8")
 
     print(f"prepared v{version} for {epic_id if epic_id else 'a fix that no epic closure carries'}")
-    print(f"  cancellai.py, pyproject.toml -> {version}")
+    print(f"  cancellai.py, pyproject.toml, rust workspace -> {version}")
     print(f"  CHANGELOG.md  -> cut [{version}] - {today}")
     print(f"  {path.relative_to(ROOT)} -> written")
     print()
@@ -404,7 +442,50 @@ def archive_sha256(version: str) -> str:
     return digest.hexdigest()
 
 
-def finalize(version: str, sha256: str | None = None) -> None:
+def engine_sha256s(version: str) -> dict[str, str]:
+    """Each engine archive's digest, from the `.sha256` file the release workflow published beside
+    it (E17-S03 computed it on the build runner). Downloaded, not recomputed from a second
+    download: the formula must name the bytes the release manifest describes."""
+    digests = {}
+    for target in ENGINE_TARGETS:
+        url = ENGINE_ASSET.format(repo=REPO, version=version, target=target) + ".sha256"
+        try:
+            with urllib.request.urlopen(url, timeout=60) as response:  # noqa: S310 - fixed https host
+                line = response.read(4096).decode("utf-8", errors="replace").strip()
+        except OSError as exc:
+            raise ReleaseError(f"could not download {url}: {exc}. Did the release publish?") from exc
+        digest = line.split()[0] if line else ""
+        if not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise ReleaseError(f"{url} does not hold a SHA-256 digest: {line!r}")
+        digests[target] = digest
+    return digests
+
+
+def point_engine_resources(text: str, version: str, digests: dict[str, str]) -> str:
+    """Rewrites every engine resource in the formula to `version`'s archive and digest. Refuses a
+    formula whose engine resources are not exactly the supported targets, once each."""
+    found = [match.group("target") for match in FORMULA_ENGINE_RE.finditer(text)]
+    if sorted(found) != sorted(ENGINE_TARGETS):
+        raise ReleaseError(f"the formula's engine resources are {found}, expected one each of {list(ENGINE_TARGETS)}")
+
+    def replace(match: re.Match[str]) -> str:
+        indent, target = match.group("indent"), match.group("target")
+        url = ENGINE_ASSET.format(repo=REPO, version=version, target=target)
+        return f'{indent}url "{url}"\n{indent}sha256 "{digests[target]}"'
+
+    return FORMULA_ENGINE_RE.sub(replace, text)
+
+
+def render_cutover_formula(version: str) -> str:
+    """The cutover formula pointed at an already published `version` - for CI to install it before
+    the release that adopts it exists (E06-S04)."""
+    text = read(CUTOVER_FORMULA)
+    text = FORMULA_URL_RE.sub(f'  url "https://github.com/{REPO}/archive/refs/tags/v{version}.tar.gz"', text, count=1)
+    text = FORMULA_SHA_RE.sub(f'  sha256 "{archive_sha256(version)}"', text, count=1)
+    return point_engine_resources(text, version, engine_sha256s(version))
+
+
+def finalize(version: str, sha256: str | None = None, engine_digests: dict[str, str] | None = None) -> None:
     versions = current_versions()
     if versions.source != version:
         raise ReleaseError(f"cancellai.py says {versions.source}, not {version}; run `prepare` first")
@@ -416,8 +497,14 @@ def finalize(version: str, sha256: str | None = None) -> None:
         raise ReleaseError(f"not a SHA-256 digest: {checksum!r}")
 
     text = read(FORMULA)
+    if not FORMULA_ENGINE_RE.search(text):
+        if not CUTOVER_FORMULA.exists():
+            raise ReleaseError("the formula has no engine resources and there is no cutover template to adopt")
+        text = read(CUTOVER_FORMULA)
+        print(f"adopting {CUTOVER_FORMULA.relative_to(ROOT)}: the Rust engine becomes `cancellai` (E06-S04)")
     text = FORMULA_URL_RE.sub(f'  url "https://github.com/{REPO}/archive/refs/tags/v{version}.tar.gz"', text, count=1)
     text = FORMULA_SHA_RE.sub(f'  sha256 "{checksum}"', text, count=1)
+    text = point_engine_resources(text, version, engine_sha256s(version) if engine_digests is None else engine_digests)
     FORMULA.write_text(text, encoding="utf-8")
 
     problems = check()
@@ -479,6 +566,8 @@ def build_parser() -> argparse.ArgumentParser:
     finalize_cmd = sub.add_parser("finalize", help="Point the Homebrew formula at the pushed tag.")
     finalize_cmd.add_argument("--version", required=True)
     finalize_cmd.add_argument("--sha256", help="skip the download and use this digest")
+    render_cmd = sub.add_parser("render-cutover", help="print the cutover formula pointed at a published version")
+    render_cmd.add_argument("--version", required=True)
     outcome_cmd = sub.add_parser("outcome", help="Record whether a cut version's release actually published.")
     outcome_cmd.add_argument("--version", required=True)
     outcome_cmd.add_argument("--state", required=True, choices=list(PUBLISHED_STATES))
@@ -496,6 +585,8 @@ def main(argv: list[str] | None = None) -> int:
             finalize(args.version, args.sha256)
         elif command == "outcome":
             record_outcome(args.version, args.state, args.reason)
+        elif command == "render-cutover":
+            print(render_cutover_formula(args.version), end="")
         else:
             problems = check()
             if problems:
