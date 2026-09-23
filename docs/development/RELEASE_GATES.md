@@ -341,6 +341,7 @@ this prose:
 | G4 | Crash/recovery under a real process kill at every mutation point | E06-S09 |
 | G1 | `clean --keep-claude-history` and `--verbose`; the other G1 gaps stay disclosed divergences | E06-S10 |
 | G1 | `clean --json` prints plain text when it plans nothing (found by E06-S09's kill harness) | E06-S11 |
+| G3 | `clean` deletes nothing on Windows: the safety executor still refuses every Windows identity, although E20-S05 built the handle-relative primitive (found by the kill harness's first Windows run). G3 is not ready as recorded above | E06-S13 |
 
 ## Epic closure
 

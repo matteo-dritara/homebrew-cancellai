@@ -268,11 +268,40 @@
       ]
     },
     {
+      "id": "E06-S13",
+      "title": "clean deletes on Windows through the identity-confirmed handle path",
+      "status": "planned",
+      "outcome": "E06-S09's kill harness, on its first Windows run, showed that `cancellai-cli clean` deletes nothing on Windows: every planned deletion is safely skipped with \"identity-confirmed deletion is only implemented for plain files, not this target's kind\". E20-S05 implemented Windows identity observation and a handle-relative `confirmed_delete_file` in `cancellai-platform`, and closed with an independent PASS, but `cancellai-safety::mutation_executor::delete_operation_for` still maps every `IdentityToken::Windows` to no operation - the second, independent backstop written before the Windows primitive existed, never revisited. The engine is therefore fail-closed on Windows, which is safe, while the cutover checklist reads G3 as ready, which is not true of the one mutating command. This story lets the executor select the delete operation for a Windows identity it can confirm is a regular file, and nothing else.",
+      "change_risk": "CR4",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "When the planned target's Windows identity is a regular, non-reparse file that the platform confirms at deletion time, the safety executor shall select the identity-confirmed delete operation and clean shall remove it.",
+        "If a Windows target is a directory, a reparse point, a hard-linked file the identity cannot distinguish, or of any unconfirmed kind, then the executor shall refuse it as it does today.",
+        "If the target is swapped between planning and deletion, then the deletion shall not reach the substitute, on Windows as on Unix.",
+        "The kill harness and the CLI deletion tests shall run on Windows as well as Unix."
+      ],
+      "safety_obligations": [
+        "SI-013",
+        "SI-017",
+        "SI-019"
+      ],
+      "verification": [
+        "Native Windows CI runs the CLI deletion tests and the full kill harness.",
+        "Adversarial tests on Windows cover a directory, a reparse point and a target swap between plan and delete.",
+        "An independent CR4 verifier reviews the executor change against E20-S05's primitive."
+      ],
+      "documentation_impact": [
+        "docs/development/RELEASE_GATES.md",
+        "docs/CLI_RUST.md",
+        "CHANGELOG.md"
+      ]
+    },
+    {
       "id": "E06-S04",
       "title": "Canonical engine switch",
       "status": "blocked",
       "blocked_by": {
-        "summary": "The cutover perimeter is decided by ADR-0039 (local containment ledger; network channel moved to E33). What holds this story is the work that perimeter requires, each now carried by its own story: G2's independent confirmation of the E21 repairs (E06-S06, whose first pass failed on two new scan-completeness gaps now carried by E06-S12), G4's live containment and channel authority (E06-S07), the performance self-budget (E06-S08), crash/recovery under a real kill (E06-S09), the two clean flags G1 closes before cutover (E06-S10), and clean --json printing a document on a run that plans nothing (E06-S11, found by the kill harness). When they are done, closing this still needs the checklist reading ready against real evidence, an independent CR4 verifier pass, and the owner's own Safety Verdict.",
+        "summary": "The cutover perimeter is decided by ADR-0039 (local containment ledger; network channel moved to E33). What holds this story is the work that perimeter requires, each now carried by its own story: G2's independent confirmation of the E21 repairs (E06-S06, whose first pass failed on two new scan-completeness gaps now carried by E06-S12), G4's live containment and channel authority (E06-S07), the performance self-budget (E06-S08), crash/recovery under a real kill (E06-S09), the two clean flags G1 closes before cutover (E06-S10), and clean --json printing a document on a run that plans nothing (E06-S11, found by the kill harness). When they are done, closing this still needs the checklist reading ready against real evidence, an independent CR4 verifier pass, and the owner's own Safety Verdict. G3 is also not ready as recorded: on Windows the safety executor still refuses every deletion (E06-S13, found by the kill harness's first Windows run).",
         "waiting_on": [
           "E06-S06",
           "E06-S07",
@@ -280,7 +309,8 @@
           "E06-S09",
           "E06-S10",
           "E06-S11",
-          "E06-S12"
+          "E06-S12",
+          "E06-S13"
         ],
         "argument": "docs/development/RELEASE_GATES.md",
         "recorded": "2026-09-23"
@@ -297,7 +327,8 @@
         "E06-S09",
         "E06-S10",
         "E06-S11",
-        "E06-S12"
+        "E06-S12",
+        "E06-S13"
       ],
       "acceptance_criteria": [
         "Owner-visible migration Safety Verdict is accepted.",

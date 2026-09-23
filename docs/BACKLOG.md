@@ -947,9 +947,34 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 - `docs/development/RELEASE_GATES.md`
 - `docs/security/SAFETY_INVARIANTS.md`
 
+### E06-S13 - clean deletes on Windows through the identity-confirmed handle path
+
+**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-013, SI-017, SI-019
+
+**Outcome.** E06-S09's kill harness, on its first Windows run, showed that `cancellai-cli clean` deletes nothing on Windows: every planned deletion is safely skipped with "identity-confirmed deletion is only implemented for plain files, not this target's kind". E20-S05 implemented Windows identity observation and a handle-relative `confirmed_delete_file` in `cancellai-platform`, and closed with an independent PASS, but `cancellai-safety::mutation_executor::delete_operation_for` still maps every `IdentityToken::Windows` to no operation - the second, independent backstop written before the Windows primitive existed, never revisited. The engine is therefore fail-closed on Windows, which is safe, while the cutover checklist reads G3 as ready, which is not true of the one mutating command. This story lets the executor select the delete operation for a Windows identity it can confirm is a regular file, and nothing else.
+
+**Acceptance criteria**
+
+- When the planned target's Windows identity is a regular, non-reparse file that the platform confirms at deletion time, the safety executor shall select the identity-confirmed delete operation and clean shall remove it.
+- If a Windows target is a directory, a reparse point, a hard-linked file the identity cannot distinguish, or of any unconfirmed kind, then the executor shall refuse it as it does today.
+- If the target is swapped between planning and deletion, then the deletion shall not reach the substitute, on Windows as on Unix.
+- The kill harness and the CLI deletion tests shall run on Windows as well as Unix.
+
+**Verification**
+
+- Native Windows CI runs the CLI deletion tests and the full kill harness.
+- Adversarial tests on Windows cover a directory, a reparse point and a target swap between plan and delete.
+- An independent CR4 verifier reviews the executor change against E20-S05's primitive.
+
+**Documentation impact**
+
+- `docs/development/RELEASE_GATES.md`
+- `docs/CLI_RUST.md`
+- `CHANGELOG.md`
+
 ### E06-S04 - Canonical engine switch
 
-**Status:** `blocked` | **Change Risk:** `CR4` | **Dependencies:** E06-S03, E21, E22-S01, E06-S06, E06-S07, E06-S08, E06-S09, E06-S10, E06-S11, E06-S12 | **Safety obligations:** SI-019
+**Status:** `blocked` | **Change Risk:** `CR4` | **Dependencies:** E06-S03, E21, E22-S01, E06-S06, E06-S07, E06-S08, E06-S09, E06-S10, E06-S11, E06-S12, E06-S13 | **Safety obligations:** SI-019
 
 **Outcome.** Promote Rust to stable only after functional, safety, compatibility, and operability gates pass.
 

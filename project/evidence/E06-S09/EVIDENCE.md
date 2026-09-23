@@ -47,7 +47,7 @@ python3 scripts/check_mutation_boundary.py check                                
   but no new kind of point; the mutation primitive has no multi-step operation to interrupt.
 - **Companion payload directories are not deleted by the Rust engine at all**, so no kill can split
   a session from its payload. That is a pre-existing divergence, not something this harness proves safe.
-- **Windows and Linux are unproven until the first CI run of `kill-harness`.**
+- **The deletion cases run on Unix only.** The first Windows CI run showed `clean` deletes nothing there (E06-S13); on Windows the harness runs its planted-defect and unreached-point tests, and the deletion cases return with E06-S13.
 
 ## Verifier verdict
 
