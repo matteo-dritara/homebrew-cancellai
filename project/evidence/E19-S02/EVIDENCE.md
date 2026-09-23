@@ -85,6 +85,14 @@ manual smoke: cancellai-desktop --requests 3 on this machine             -> 200 
 Manual smoke with the real `cancellai-cli`: `--no-open --url-file` served a 200 page; the token
 appeared 0 times in stdout and stderr; the URL file was `-rw-------`.
 
+## Round-2 repairs (independent review FAIL, `project/evidence/E19-VERIFIER-REVIEW-ROUND2.md`)
+
+| Finding | Repair | Evidence |
+| --- | --- | --- |
+| F1: on Windows the launcher and URL file inherited their directory's ACL, so a broad directory exposed the token | `create_private` replaces the new (still empty) file's DACL with one protected rule granting the current user's SID full control, reads it back, and refuses unless exactly that SID remains - before any secret is written. Unix keeps `0600` | `windows_private_files_grant_only_the_current_user_even_under_a_broad_directory` (Windows only: the directory is first granted to Everyone, then both files' ACLs are read back as SIDs); clippy clean for `x86_64-pc-windows-gnu`. **Not executable on the executor's macOS machine; Windows CI runs it** |
+| F2: a write or sync failure after creating the launcher (or URL file) left a token-bearing file | `write_private_with` arms a guard right after creation that empties the file on any failure or panic, and is disarmed only after write and sync succeed; both the launcher and the URL file go through it | `a_failed_launcher_write_or_sync_leaves_no_token_on_disk` (failure before any byte, mid-URL, after the URL, at sync), `a_failed_url_file_write_or_sync_leaves_no_url_on_disk`; disarming the guard fails both |
+
 ## Verifier verdict
 
-Round 1: FAIL (repaired above). Round 2 pending - independent reviewer.
+Round 1: FAIL. Round 2: FAIL. Both repaired above. Round 2 was the second independent review of
+this story, the owner's limit; see `CEILING_DECISION.md` for how the story was closed.

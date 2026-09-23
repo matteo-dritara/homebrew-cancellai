@@ -50,6 +50,11 @@ dependency is `cancellai-desktop-api`.
   loaded (emptied, not deleted: deletion belongs to the one mutation seam, SI-019); with
   `--no-open`, `--url-file <path>` writes it to a new owner-only file instead. Standard output
   names only the port (E19 round 1).
+- "Owner-only" is enforced, not assumed from the directory (E19 round 2): mode `0600` on Unix;
+  on Windows the file's DACL is replaced by a single protected rule for the current user's SID
+  (through PowerShell `Set-Acl`, since `unsafe` FFI is not available to this crate) and read back
+  before any secret is written, refusing if it names anyone else. A write or sync that fails
+  part way leaves the file empty, never holding part of the URL.
 - The page contains no script and one `GET` form that changes only the query. It shows the
   engine's per-provider `status` summary, root origin and eligibility, and the plan preview
   counted exactly as the CLI's `plan` summary counts it, plus the CLI's incomplete-scan and
