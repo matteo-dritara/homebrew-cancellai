@@ -157,18 +157,20 @@ mod windows_acl {
     use std::path::Path;
     use std::process::Command;
 
+    // .NET APIs rather than the `Set-Acl`/`Get-Acl` cmdlets: the cmdlets live in a module that
+    // Windows PowerShell cannot load when it inherits a PowerShell 7 `PSModulePath` (seen on the
+    // CI runner), whereas `DirectoryInfo` is always there. Rules are read back as SIDs directly.
     const SCRIPT: &str = "$ErrorActionPreference = 'Stop'; \
-        $p = $env:CANCELLAI_PRIVATE_PATH; \
+        $d = New-Object System.IO.DirectoryInfo($env:CANCELLAI_PRIVATE_PATH); \
         $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User; \
         $acl = New-Object System.Security.AccessControl.DirectorySecurity; \
         $acl.SetAccessRuleProtection($true, $false); \
         $inherit = [System.Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'; \
         $none = [System.Security.AccessControl.PropagationFlags]::None; \
         $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($sid, 'FullControl', $inherit, $none, 'Allow'))); \
-        Set-Acl -LiteralPath $p -AclObject $acl; \
-        $rules = @((Get-Acl -LiteralPath $p).Access); \
-        $ids = @($rules | ForEach-Object { $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value }); \
-        if ($ids.Count -ne 1 -or $ids[0] -ne $sid.Value -or $rules[0].AccessControlType -ne 'Allow') { exit 3 }; \
+        $d.SetAccessControl($acl); \
+        $rules = @($d.GetAccessControl().GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])); \
+        if ($rules.Count -ne 1 -or $rules[0].IdentityReference.Value -ne $sid.Value -or $rules[0].AccessControlType -ne 'Allow') { exit 3 }; \
         exit 0";
 
     pub(super) fn restrict_to_current_user(path: &Path) -> io::Result<()> {
@@ -177,6 +179,7 @@ mod windows_acl {
         let status = Command::new("powershell.exe")
             .args(["-NoProfile", "-NonInteractive", "-Command", SCRIPT])
             .env("CANCELLAI_PRIVATE_PATH", path)
+            .env_remove("PSModulePath")
             .status()?;
         if status.success() {
             Ok(())
@@ -522,10 +525,14 @@ mod tests {
                 "-NoProfile",
                 "-NonInteractive",
                 "-Command",
-                "@((Get-Acl -LiteralPath $env:P).Access) | ForEach-Object { \
-                 $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value }",
+                "$p = $env:P; \
+                 if ([System.IO.Directory]::Exists($p)) { $i = New-Object System.IO.DirectoryInfo($p) } \
+                 else { $i = New-Object System.IO.FileInfo($p) }; \
+                 @($i.GetAccessControl().GetAccessRules($true, $true, \
+                 [System.Security.Principal.SecurityIdentifier])) | ForEach-Object { $_.IdentityReference.Value }",
             ])
             .env("P", path)
+            .env_remove("PSModulePath")
             .output()
             .expect("powershell");
         String::from_utf8_lossy(&output.stdout)
@@ -554,6 +561,7 @@ mod tests {
                 "-Command",
                 "[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value",
             ])
+            .env_remove("PSModulePath")
             .output()
             .expect("powershell");
         let me = String::from_utf8_lossy(&me.stdout).trim().to_string();

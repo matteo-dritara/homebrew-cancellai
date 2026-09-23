@@ -66,11 +66,19 @@ fn start(
 /// Sends raw lines, returns every response line until the server closes the connection.
 fn exchange(descriptor: &Descriptor, lines: &[&str]) -> Vec<String> {
     let mut stream = TcpStream::connect(&descriptor.address).unwrap();
-    for line in lines {
-        stream.write_all(line.as_bytes()).unwrap();
-        stream.write_all(b"\n").unwrap();
+    for (index, line) in lines.iter().enumerate() {
+        let sent = stream
+            .write_all(line.as_bytes())
+            .and_then(|()| stream.write_all(b"\n"));
+        match sent {
+            Ok(()) => {}
+            // The server closes after a refusal, so a later line can meet a closed socket
+            // (BrokenPipe / reset). That is the behaviour under test, not a failure.
+            Err(_) if index > 0 => break,
+            Err(error) => panic!("could not send the first line: {error}"),
+        }
     }
-    stream.flush().unwrap();
+    let _ = stream.flush();
     // A server that closes with unsent request bytes still unread may reset the connection;
     // keep whatever arrived before that rather than treating the reset as a test failure.
     let _ = stream.shutdown(std::net::Shutdown::Write);
