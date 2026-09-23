@@ -96,3 +96,39 @@ Brief-Checksum: 255d8f22ed2d1d30165dd673fdbc2d6d045646d1ee799f5a416669efb31c62ea
 3. Rerun the complete Rust and Python gates, including a successful `cargo deny check`, and independently review the repairs.
 
 The first two round-2 repairs are confirmed, but E17-S07 does not pass this round. No story status closure is authorized by this verdict.
+
+## Round 4 - 2026-09-23
+
+Verifier: Codex
+Brief-Checksum: 255d8f22ed2d1d30165dd673fdbc2d6d045646d1ee799f5a416669efb31c62ea
+
+### Invariants
+
+| Invariant | Required property | Evidence | Result |
+| --- | --- | --- | --- |
+| SI-022 | Only verified ingestion creates immutable incident evidence; release identity is derived internally. | Private `KnowledgeProvenance` and `IncidentEvidence` fields; compile-fail doctests cover construction and mutation. `ReleaseProvenance` remains internally derived. | PASS |
+| SI-029 | Refusals, replay, rollback and capacity pressure cannot remove or weaken recorded containment; bounded state does not let redundant notices exhaust capacity. | At-capacity refusal is atomic and leaves the refused sequence available; existing records stay. However `same_containment` compares scope vectors order-sensitively although matching treats them as sets, allowing permutations/duplicate list values to consume capacity. | FAIL |
+| SI-030 | Incident containment can only reduce channel-constrained authority. | `effective_authority_under_containment` adds only the matched Observe/Recommend ceiling before the common minimum calculation; no authority elevation counterexample found. | PASS |
+
+### Adversarial cases
+
+- The round-3 evidence sealing and cumulative bound changes are present. `cargo test -p cancellai-safety` passes 200 unit tests and seven doctests, including the compile-fail API guards.
+- Capacity boundary logic uses `active.len().saturating_add(fresh.len()) > max_records`; equality fits, overflow refuses before sequence insertion, and the publisher bound likewise refuses before state mutation. Tests confirm a refused sequence can be retried with a smaller notice.
+- Exact same-order/same-value re-issues deduplicate. But `Option<Vec<_>>` equality in `same_containment` differs for reordered or duplicated list elements, while `applies_to` uses membership semantics. A signed re-issue with the same versions/actions/platforms in a different order therefore consumes a slot without changing any authority binding. Required repair: normalize the three scope lists as sets before comparison/storage and test permutations plus duplicate members at capacity.
+- Deduplication also ignores severity, invariant references, affected releases and knowledge provenance. A re-issue with the same containment but new affected-release/invariant evidence is returned by `ingest` but not retained by `active()`. Required repair: preserve newly verified evidence through a bounded monotonic merge, or distinguish bounded audit evidence from containment identity; add a regression asserting the added references remain inspectable.
+- Publisher sequence tracking is keyed by publisher ID. A same-ID key rotation retains the previous sequence; adding a distinct publisher at capacity refuses rather than evicting tracking state. Previously tracked publishers can still submit updates.
+- `effective_authority_under_containment` adds channel and containment ceilings to the same minimum-based computation. Empty, unmatched, Recommend and Observe cases preserve the expected bounds; no counterexample found.
+
+### Gates
+
+- Rust: `cargo fmt --check`, workspace Clippy, and workspace check PASS; `cargo deny check` PASS (with existing duplicate crate and unmatched allowance warnings). `cargo test --workspace` FAILS at five desktop API integration tests because this sandbox denies local socket creation (`Operation not permitted`). The focused safety package passes all 200 unit tests and seven doctests.
+- Python: pytest 689 passed / 637 subtests passed; Ruff check/format, mypy, and the full AGENTS.md Python gate list PASS. Ruff and mypy were run from the repository venv because the active interpreter lacks their modules.
+- `gh run list --branch main --limit 5`: UNKNOWN; API connection unavailable.
+
+### Owner decision
+
+`PENDING`
+
+Owner note: This verifier round found unresolved issues and does not accept the CR4 change. This was the owner-authorized final E17 review round; no round 5 is authorized.
+
+FAIL
