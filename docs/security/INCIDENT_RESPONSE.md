@@ -125,7 +125,14 @@ Rungs 1 and 3 of the hierarchy above are implemented as data, not as a control c
   severity, provider, versions, action classes, platforms, ceiling, Safety Invariant ids, affected
   releases, knowledge provenance (publisher, sequence, issue time, payload digest) and the
   running build's release provenance (version, channel). The release provenance is read from
-  compile-time metadata inside the safety crate; no caller can supply it. Every string is checked against a
+  compile-time metadata inside the safety crate; no caller can supply it. Evidence records have
+  private fields and no public constructor, so only verified ingestion creates one and nothing
+  can edit one afterwards.
+- **Bounded.** The ledger holds at most `MAX_ACTIVE_RECORDS` (4096) containment records and
+  tracks at most `MAX_TRACKED_PUBLISHERS` (256) publishers. A notice that would exceed either is
+  refused whole (`LedgerFull`) and every existing containment stays; a re-issue identical in
+  incident, scope and ceiling to one already held takes no capacity. Capacity is never made by
+  evicting or weakening a containment. Every string is checked against a
   bounded identifier alphabet on the way in, so no provider payload content can reach the record.
 
 Not yet in place: a shipped distribution channel for containment bundles and a caller on the live

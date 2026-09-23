@@ -125,6 +125,11 @@ REVIEW_ROUND_EXCEPTIONS = {
     "failed E16-S08 and the owner, having capped review at two rounds per story, accepted a "
     "repair to round 3's exact required repair with each of its counterexamples pinned as a "
     "regression test in place of a fourth round - see project/evidence/E16-S08/CEILING_DECISION.md",
+    # E17: rounds 1-3 plus E17-S08's standalone story-scoped review. Rounds 2 and 3 are the two
+    # independent reviews of E17-S07 the owner allowed per story; both failed it.
+    "E17": "4 records once E17-S08's standalone story review is counted; rounds 2 and 3 are the "
+    "owner's two-review limit for E17-S07, both FAIL - see E17-VERIFIER-REVIEW-ROUND3.md and "
+    "project/evidence/E17-S07/EVIDENCE.md for what happened after the limit",
 }
 # Matches both an epic-scoped record (`E07-VERIFIER-REVIEW.md`) and a story-scoped one
 # (`E07-S07-VERIFIER-REVIEW.md`), counting both against the *epic's* ceiling (captured

@@ -54,3 +54,45 @@ Do not close E17-S07 or rely on this mechanism for cutover until the two require
 `REJECT`
 
 Owner note: Verifier recommendation is rejection pending the exact repairs above; owner acceptance remains required for CR4 closure.
+
+## Independent review - round 3
+
+Verdict: FAIL
+Verifier: Codex
+Brief-Checksum: 255d8f22ed2d1d30165dd673fdbc2d6d045646d1ee799f5a416669efb31c62ea
+
+### Safety surface and invariants
+
+| Invariant | Evidence | Result |
+| --- | --- | --- |
+| SI-022 | Release provenance is now derived inside `ContainmentLedger` from compile-time package/channel metadata; `ingest` and `refresh` accept no caller-supplied provenance. But exported `KnowledgeProvenance` has public fields and `IncidentEvidence` has public fields, so any dependent crate can construct a purported incident record with invented knowledge provenance or alter a cloned record before serializing/reporting it. | FAIL |
+| SI-029 | Re-issued records append, and `binding_for` computes the lowest ceiling over all matching records. Narrower scope, looser ceiling, omission, expiry, replay and rollback do not remove an existing record. However, repeated fresh sequences can append 64 records per notice without any lifetime bound; a trusted but compromised publisher can exhaust memory and make offline inspection unavailable. | FAIL |
+| SI-030 | `effective_authority_under_containment` adds only the minimum of channel and containment constraints; its result cannot exceed the local channel-constrained kernel result. | PASS |
+
+### Adversarial evidence
+
+- The round-2 scope/ceiling repair holds by inspection of append-only `active.extend` and minimum matching ceiling in `binding_for`; existing tests cover narrower same-publisher reissue across version/action/platform and a second publisher's attempted ceiling relaxation.
+- Release provenance repair holds: the caller-supplied parameter is removed from both entry points, fields are private, no public constructor/deserializer exists, and `of_this_build` reads `CARGO_PKG_VERSION` plus `BuildChannel::from_compiled_env`.
+- Evidence remains forgeable as a public value: downstream code may construct `KnowledgeProvenance { publisher_id, sequence, issued_at, content_digest }` directly and `IncidentEvidence` directly because all fields are public. Required repair: make provenance/evidence fields private (or expose immutable read accessors), keep construction confined to the verified ingestion path, and ensure any exported evidence representation cannot be mistaken for a ledger-verified record after caller editing. Add compile-fail/API regression coverage.
+- Resource bound reproduction: `validate_notice` admits up to `MAX_ENTRIES` (64) per signed notice, but `ingest` appends every successful notice to `active` and has no total record/byte cap. A publisher can sign monotonically increasing sequences with 64 fresh incident IDs on each notice indefinitely. Required repair: place a bounded resource limit on retained records and publisher sequence state; at capacity refuse the new notice atomically and preserve every existing containment (never evict/relax records remotely). Add boundary and repeated-ingestion tests demonstrating refusal preserves authority and inspection availability.
+- Duplicate IDs within one notice remain rejected. Across notices and publisher key rotation, records are append-only; sequence tracking per publisher can reset on key change but does not remove prior records. Large sequence gaps do not weaken monotonicity.
+- No refusal path mutates the ledger before signature, replay, and notice validation; remote refusal/offline paths do not call `lift_locally`. That method remains the sole explicit local removal path.
+
+### Gate summary
+
+- `cargo fmt --check`: PASS
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings`: PASS
+- `cargo check --workspace --all-targets`: PASS
+- `cargo test --workspace`: PASS (workspace tests and doctests; one scheduled heavy benchmark ignored by its test annotation)
+- `cargo deny check`: NOT COMPLETED. Initial run could not acquire `/Users/matteo.peo/.cargo/advisory-dbs/db.lock` on the read-only Cargo home. Retry using a writable temporary Cargo home did not finish because it attempted an advisory database refresh; stopped after waiting. No pass is claimed.
+- Python test suite: PASS, 688 passed and 633 subtests passed (`python3 -m pytest tests -v`).
+- Python tooling and gates: PASS using pinned local Ruff 0.16.5 and mypy 2.3.1 binaries, followed by the complete AGENTS.md Python gate list; final result `gate sensitivity OK: 11 mutants, 11 killed`.
+- `gh run list --branch main --limit 5`: UNKNOWN; GitHub API connection unavailable.
+
+### Required repairs
+
+1. Seal caller construction/mutation of `KnowledgeProvenance` and `IncidentEvidence`; only successfully verified ingestion may create ledger-verifiable evidence, and callers must not be able to serialize forged or edited values as authentic incident evidence.
+2. Bound cumulative retained containment records and per-publisher sequence tracking. At capacity reject atomically and retain all existing records; never solve resource pressure by remotely evicting or weakening containment.
+3. Rerun the complete Rust and Python gates, including a successful `cargo deny check`, and independently review the repairs.
+
+The first two round-2 repairs are confirmed, but E17-S07 does not pass this round. No story status closure is authorized by this verdict.

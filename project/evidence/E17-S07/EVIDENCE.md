@@ -94,6 +94,22 @@ python3 -m pytest tests -q                                                -> all
 Gates after repair: `cargo test --workspace` 1108 passed; clippy `-D warnings` clean;
 `cancellai-safety` coverage 98.74% (floor 97.78%); pre-commit all hooks passed.
 
+## Round-3 repairs (independent review FAIL, `project/evidence/E17-VERIFIER-REVIEW-ROUND3.md`)
+
+Round 3 confirmed both round-2 repairs and found two further defects. Each is repaired to the
+round's required repair:
+
+| Finding | Repair | Evidence |
+| --- | --- | --- |
+| `KnowledgeProvenance` and `IncidentEvidence` had public fields: callers could construct or edit records presented as incident evidence | Fields private, read-only accessors, construction only inside `ContainmentLedger::ingest` | three `compile_fail` doctests (construct provenance, construct evidence by struct update, edit a field); `evidence_is_readable_through_accessors_only` |
+| Repeated valid notices grew retained state without bound (offline availability) | `MAX_ACTIVE_RECORDS` 4096 and `MAX_TRACKED_PUBLISHERS` 256; a notice that would exceed either is refused whole with `LedgerFull`, nothing evicted or weakened, the refused sequence not consumed; identical re-issues take no capacity | `at_capacity_a_notice_is_refused_whole_and_every_containment_is_kept`, `repeating_the_same_containment_consumes_no_capacity`, `the_publisher_bound_refuses_a_new_publisher_but_not_a_known_one`, `the_default_ledger_uses_the_published_bounds`; the capacity, publisher-bound and dedupe branches were each disabled in turn and caught (2, 1, 1 failing tests) |
+| `cargo deny check` not completed by the verifier (advisory database unreachable from its sandbox) | Run here | `advisories ok, bans ok, licenses ok, sources ok` |
+
+Gates after repair: `cargo test --workspace` 1160 passed; clippy `-D warnings` clean; `cargo deny
+check` ok; `cancellai-safety` coverage 98.86%.
+
 ## Verifier verdict
 
-Round 2: FAIL (repaired above). Round 3 pending - independent reviewer; CR4 Safety Verdict required.
+Round 2: FAIL. Round 3: FAIL. Both repaired above. These were the two independent reviews the
+owner allowed for this story; the Safety Verdict's latest line is round 3's FAIL, so the story
+cannot close without a further independent verdict, which only the owner can authorize.

@@ -135,6 +135,9 @@ pub enum ContainmentError {
     Replayed,
     /// The verified payload is not a well-formed containment notice.
     MalformedNotice(String),
+    /// Recording the notice would exceed [`MAX_ACTIVE_RECORDS`] or [`MAX_TRACKED_PUBLISHERS`].
+    /// Nothing was recorded and nothing was removed.
+    LedgerFull,
 }
 
 impl fmt::Display for ContainmentError {
@@ -146,6 +149,9 @@ impl fmt::Display for ContainmentError {
                 f.write_str("containment update is not newer than the last one from this publisher")
             }
             Self::MalformedNotice(reason) => write!(f, "malformed containment notice: {reason}"),
+            Self::LedgerFull => f.write_str(
+                "containment ledger is at capacity; the update was refused and every existing containment kept",
+            ),
         }
     }
 }
@@ -204,30 +210,139 @@ impl ReleaseProvenance {
     }
 }
 
-/// Where a containment came from.
+/// Where a containment came from. Read-only outside this module: only verified ingestion
+/// creates one (E17 round 3).
+///
+/// ```compile_fail
+/// let forged = cancellai_safety::KnowledgeProvenance {
+///     publisher_id: "acme".to_string(),
+///     sequence: 1,
+///     issued_at: 0,
+///     content_digest: String::new(),
+/// };
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct KnowledgeProvenance {
-    pub publisher_id: String,
-    pub sequence: u64,
-    pub issued_at: u64,
-    pub content_digest: String,
+    publisher_id: String,
+    sequence: u64,
+    issued_at: u64,
+    content_digest: String,
+}
+
+impl KnowledgeProvenance {
+    pub fn publisher_id(&self) -> &str {
+        &self.publisher_id
+    }
+
+    pub fn sequence(&self) -> u64 {
+        self.sequence
+    }
+
+    pub fn issued_at(&self) -> u64 {
+        self.issued_at
+    }
+
+    pub fn content_digest(&self) -> &str {
+        &self.content_digest
+    }
 }
 
 /// The incident record for one containment. Identifiers only - see the module doc.
+///
+/// Its fields are private and it has no public constructor: the only `IncidentEvidence` that
+/// exists is one [`ContainmentLedger::ingest`] built from a verified notice, and no caller can
+/// edit one afterwards (E17 round 3). Constructing one is a compile error:
+///
+/// ```compile_fail
+/// fn forge(real: &cancellai_safety::IncidentEvidence) -> cancellai_safety::IncidentEvidence {
+///     cancellai_safety::IncidentEvidence { incident_id: "INC-0".to_string(), ..real.clone() }
+/// }
+/// ```
+///
+/// and so is editing one:
+///
+/// ```compile_fail
+/// fn edit(mut record: cancellai_safety::IncidentEvidence) {
+///     record.provider_id = "someone-else".to_string();
+/// }
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct IncidentEvidence {
-    pub incident_id: String,
-    pub severity: IncidentSeverity,
-    pub provider_id: String,
-    pub provider_versions: Option<Vec<String>>,
-    pub action_classes: Option<Vec<ActionClass>>,
-    pub platforms: Option<Vec<IncidentPlatform>>,
-    pub ceiling: ContainmentCeiling,
-    pub invariants: Vec<String>,
-    pub affected_releases: Vec<String>,
-    pub knowledge: KnowledgeProvenance,
-    pub release: ReleaseProvenance,
+    incident_id: String,
+    severity: IncidentSeverity,
+    provider_id: String,
+    provider_versions: Option<Vec<String>>,
+    action_classes: Option<Vec<ActionClass>>,
+    platforms: Option<Vec<IncidentPlatform>>,
+    ceiling: ContainmentCeiling,
+    invariants: Vec<String>,
+    affected_releases: Vec<String>,
+    knowledge: KnowledgeProvenance,
+    release: ReleaseProvenance,
 }
+
+impl IncidentEvidence {
+    pub fn incident_id(&self) -> &str {
+        &self.incident_id
+    }
+
+    pub fn severity(&self) -> IncidentSeverity {
+        self.severity
+    }
+
+    pub fn provider_id(&self) -> &str {
+        &self.provider_id
+    }
+
+    pub fn provider_versions(&self) -> Option<&[String]> {
+        self.provider_versions.as_deref()
+    }
+
+    pub fn action_classes(&self) -> Option<&[ActionClass]> {
+        self.action_classes.as_deref()
+    }
+
+    pub fn platforms(&self) -> Option<&[IncidentPlatform]> {
+        self.platforms.as_deref()
+    }
+
+    pub fn ceiling(&self) -> ContainmentCeiling {
+        self.ceiling
+    }
+
+    pub fn invariants(&self) -> &[String] {
+        &self.invariants
+    }
+
+    pub fn affected_releases(&self) -> &[String] {
+        &self.affected_releases
+    }
+
+    pub fn knowledge(&self) -> &KnowledgeProvenance {
+        &self.knowledge
+    }
+
+    pub fn release(&self) -> &ReleaseProvenance {
+        &self.release
+    }
+
+    /// Whether `other` imposes exactly the same containment (same incident, scope and ceiling),
+    /// whatever notice carried it. Such a record adds nothing to the ledger.
+    fn same_containment(&self, other: &Self) -> bool {
+        self.incident_id == other.incident_id
+            && self.provider_id == other.provider_id
+            && self.provider_versions == other.provider_versions
+            && self.action_classes == other.action_classes
+            && self.platforms == other.platforms
+            && self.ceiling == other.ceiling
+    }
+}
+
+/// The most containment records a ledger retains, and the most publishers whose sequence it
+/// tracks. At either bound a new notice is refused whole, and every existing record stays: the
+/// network may never make room by evicting or weakening a containment (E17 round 3).
+pub const MAX_ACTIVE_RECORDS: usize = 4096;
+pub const MAX_TRACKED_PUBLISHERS: usize = 256;
 
 /// What an authority decision is about, for the purpose of matching containments.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -259,6 +374,8 @@ pub struct ContainmentLedger {
     active: Vec<IncidentEvidence>,
     last_sequence: BTreeMap<String, u64>,
     release: ReleaseProvenance,
+    max_records: usize,
+    max_publishers: usize,
 }
 
 impl Default for ContainmentLedger {
@@ -277,6 +394,8 @@ impl ContainmentLedger {
             active: Vec::new(),
             last_sequence: BTreeMap::new(),
             release,
+            max_records: MAX_ACTIVE_RECORDS,
+            max_publishers: MAX_TRACKED_PUBLISHERS,
         }
     }
 
@@ -345,9 +464,28 @@ impl ContainmentLedger {
                 release: self.release.clone(),
             })
             .collect();
+        // A record identical in incident, scope and ceiling to one already held adds nothing;
+        // only genuinely new containment consumes capacity.
+        let mut fresh: Vec<IncidentEvidence> = Vec::new();
+        for record in &evidence {
+            let known = self
+                .active
+                .iter()
+                .chain(fresh.iter())
+                .any(|held| held.same_containment(record));
+            if !known {
+                fresh.push(record.clone());
+            }
+        }
+        let new_publisher = !self.last_sequence.contains_key(&verified.publisher_id);
+        if self.active.len().saturating_add(fresh.len()) > self.max_records
+            || (new_publisher && self.last_sequence.len() >= self.max_publishers)
+        {
+            return Err(ContainmentError::LedgerFull);
+        }
         self.last_sequence
             .insert(verified.publisher_id, verified.sequence);
-        self.active.extend(evidence.iter().cloned());
+        self.active.extend(fresh);
         Ok(evidence)
     }
 
@@ -953,6 +1091,141 @@ mod tests {
             .expect("lax applies beside it");
         let binding = ledger.binding_for(&target("codex", ActionClass::Delete));
         assert_eq!(binding.map(|b| b.ceiling), Some(AuthorityLevel::Observe));
+    }
+
+    fn small_ledger(max_records: usize, max_publishers: usize) -> ContainmentLedger {
+        ContainmentLedger {
+            max_records,
+            max_publishers,
+            ..ContainmentLedger::empty()
+        }
+    }
+
+    #[test]
+    fn the_default_ledger_uses_the_published_bounds() {
+        let ledger = ContainmentLedger::empty();
+        assert_eq!(ledger.max_records, MAX_ACTIVE_RECORDS);
+        assert_eq!(ledger.max_publishers, MAX_TRACKED_PUBLISHERS);
+    }
+
+    #[test]
+    fn at_capacity_a_notice_is_refused_whole_and_every_containment_is_kept() {
+        let mut ledger = small_ledger(3, 8);
+        contained(
+            &mut ledger,
+            &notice(vec![
+                entry("INC-1", "codex", "observe"),
+                entry("INC-2", "claude", "recommend"),
+            ]),
+            1,
+        );
+        let before: Vec<IncidentEvidence> = ledger.active().cloned().collect();
+        let overflow = notice(vec![
+            entry("INC-3", "codex", "recommend"),
+            entry("INC-4", "claude", "observe"),
+        ]);
+        assert_eq!(
+            ledger.ingest(
+                &bundle(1, "acme", 2, None, &overflow),
+                &policy(1, "acme"),
+                NOW
+            ),
+            Err(ContainmentError::LedgerFull)
+        );
+        assert_eq!(before, ledger.active().cloned().collect::<Vec<_>>());
+        assert_eq!(
+            ledger
+                .binding_for(&target("codex", ActionClass::Delete))
+                .map(|b| b.ceiling),
+            Some(AuthorityLevel::Observe),
+            "refusal must not weaken what is already contained"
+        );
+        // The refused sequence was not consumed: a smaller notice at the same sequence fits.
+        contained(
+            &mut ledger,
+            &notice(vec![entry("INC-3", "codex", "recommend")]),
+            2,
+        );
+        assert_eq!(ledger.active().count(), 3);
+        assert!(ContainmentError::LedgerFull.to_string().contains("kept"));
+    }
+
+    #[test]
+    fn repeating_the_same_containment_consumes_no_capacity() {
+        let mut ledger = small_ledger(2, 8);
+        let same = notice(vec![entry("INC-1", "codex", "observe")]);
+        for sequence in 1..=50 {
+            contained(&mut ledger, &same, sequence);
+        }
+        assert_eq!(ledger.active().count(), 1);
+        // A narrower re-issue is a different containment and is recorded beside it.
+        let mut narrow = entry("INC-1", "codex", "observe");
+        narrow["provider_versions"] = serde_json::json!(["2.0.0"]);
+        contained(&mut ledger, &notice(vec![narrow]), 51);
+        assert_eq!(ledger.active().count(), 2);
+    }
+
+    #[test]
+    fn the_publisher_bound_refuses_a_new_publisher_but_not_a_known_one() {
+        let policy = LocalTrustPolicy::new(vec![
+            TrustedPublisher {
+                publisher_id: "acme".to_string(),
+                public_key: key(1).verifying_key().to_bytes(),
+                tier: TrustedTier::for_tests(ProviderTrust::BuiltinVerified),
+            },
+            TrustedPublisher {
+                publisher_id: "backup".to_string(),
+                public_key: key(2).verifying_key().to_bytes(),
+                tier: TrustedTier::for_tests(ProviderTrust::BuiltinVerified),
+            },
+        ]);
+        let mut ledger = small_ledger(16, 1);
+        let first = notice(vec![entry("INC-1", "codex", "observe")]);
+        ledger
+            .ingest(&bundle(1, "acme", 1, None, &first), &policy, NOW)
+            .expect("first publisher fits");
+        let second = notice(vec![entry("INC-2", "claude", "observe")]);
+        assert_eq!(
+            ledger.ingest(&bundle(2, "backup", 1, None, &second), &policy, NOW),
+            Err(ContainmentError::LedgerFull)
+        );
+        ledger
+            .ingest(&bundle(1, "acme", 2, None, &second), &policy, NOW)
+            .expect("a known publisher still fits");
+        assert_eq!(ledger.active().count(), 2);
+    }
+
+    #[test]
+    fn evidence_is_readable_through_accessors_only() {
+        let mut ledger = ContainmentLedger::empty();
+        let payload = notice(vec![entry("INC-1", "codex", "recommend")]);
+        let evidence = ledger
+            .ingest(
+                &bundle(1, "acme", 7, None, &payload),
+                &policy(1, "acme"),
+                NOW,
+            )
+            .expect("applies");
+        let record = evidence.first().expect("one record");
+        assert_eq!(record.incident_id(), "INC-1");
+        assert_eq!(record.severity(), IncidentSeverity::S0);
+        assert_eq!(record.provider_id(), "codex");
+        assert_eq!(record.provider_versions(), None);
+        assert_eq!(record.action_classes(), None);
+        assert_eq!(record.platforms(), None);
+        assert_eq!(record.ceiling(), ContainmentCeiling::Recommend);
+        assert_eq!(record.invariants(), ["SI-022".to_string()]);
+        assert_eq!(record.affected_releases(), ["1.17.4".to_string()]);
+        assert_eq!(record.knowledge().publisher_id(), "acme");
+        assert_eq!(record.knowledge().sequence(), 7);
+        assert_eq!(record.knowledge().issued_at(), NOW - 10);
+        assert_eq!(record.knowledge().content_digest(), hex_digest(&payload));
+        assert_eq!(record.release(), &ReleaseProvenance::of_this_build());
+        assert_eq!(record.release().version(), env!("CARGO_PKG_VERSION"));
+        assert_eq!(
+            record.release().channel(),
+            BuildChannel::from_compiled_env().level()
+        );
     }
 
     #[test]

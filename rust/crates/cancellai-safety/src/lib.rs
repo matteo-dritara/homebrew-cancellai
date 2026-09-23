@@ -58,7 +58,8 @@ pub use build_channel::BuildChannel;
 pub use incident::{
     ContainmentBinding, ContainmentCeiling, ContainmentEntry, ContainmentError, ContainmentLedger,
     ContainmentNotice, ContainmentTarget, IncidentEvidence, IncidentPlatform, IncidentSeverity,
-    KnowledgeProvenance, KnowledgeUnavailable, RefreshOutcome, ReleaseProvenance, parse_notice,
+    KnowledgeProvenance, KnowledgeUnavailable, MAX_ACTIVE_RECORDS, MAX_TRACKED_PUBLISHERS,
+    RefreshOutcome, ReleaseProvenance, parse_notice,
 };
 pub use knowledge_bundle::{
     KnowledgeBundle, KnowledgeBundleError, KnowledgeStore, LocalTrustPolicy,

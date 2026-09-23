@@ -62,6 +62,7 @@ distinguished by the next round, which is why the ceiling matters.
 | E16 | 3 | independent | 1 | 1 | 1 | 100% |
 | E17 | 1 | independent | 6 | 0 | 0 | 0% |
 | E17 | 2 | independent | 1 | 1 | 1 | 100% |
+| E17 | 3 | independent | 1 | 1 | 1 | 100% |
 | E18 | 1 | independent | 3 | 2 | 2 | 67% |
 | E18 | 2 | independent | 2 | 2 | 2 | 100% |
 | E18 | 3 | independent | 2 | 0 | 0 | 0% |
