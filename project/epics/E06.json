@@ -144,7 +144,7 @@
     {
       "id": "E06-S08",
       "title": "The Rust CLI stays within a performance self-budget measured against the reference",
-      "status": "ready_for_review",
+      "status": "in_progress",
       "outcome": "G4 names a performance self-budget for the CLI's own command paths as unaddressed. E21-S05 retargeted the benchmark onto the shipped resolution path and E21-S06 bounded rollout reads, but nothing compares the command a user runs against the engine it replaces. The owner chose the criterion: on a large synthetic corpus, the Rust CLI is no slower than the frozen Python reference for status, inspect, plan and a dry clean, and never exceeds a fixed resident-memory ceiling. Measured in CI on Linux; reported on macOS and Windows.",
       "change_risk": "CR1",
       "dependencies": [],
@@ -192,7 +192,7 @@
     {
       "id": "E06-S10",
       "title": "clean accepts --keep-claude-history and --verbose as the reference does",
-      "status": "ready_for_review",
+      "status": "verification",
       "outcome": "G1 lists disclosed functional gaps. The owner chose to close the two clean flags before cutover, because a script that passes them to the canonical engine would otherwise break, and to accept the rest (--aggressive, status --paths/--coverage/--top) as disclosed divergences stated in the release notes. In the reference, --keep-claude-history does not protect an artifact: it turns off the rewrite of history.jsonl that drops lines tied to deleted Claude sessions. The Rust engine never rewrites history.jsonl - that rewrite is a second kind of mutation the one safety boundary does not have, the same reason E22-S05 declined the Codex native backend - so Rust already behaves as if the flag were always given. Accepting the flag is therefore exact, and the absent trim stays a disclosed divergence rather than being added here as a side effect. --verbose only reports more.",
       "change_risk": "CR3",
       "dependencies": [],
@@ -271,7 +271,7 @@
     {
       "id": "E06-S13",
       "title": "clean deletes on Windows through the identity-confirmed handle path",
-      "status": "ready_for_review",
+      "status": "in_progress",
       "outcome": "E06-S09's kill harness, on its first Windows run, showed that `cancellai-cli clean` deletes nothing on Windows: every planned deletion is safely skipped with \"identity-confirmed deletion is only implemented for plain files, not this target's kind\". E20-S05 implemented Windows identity observation and a handle-relative `confirmed_delete_file` in `cancellai-platform`, and closed with an independent PASS, but `cancellai-safety::mutation_executor::delete_operation_for` still maps every `IdentityToken::Windows` to no operation - the second, independent backstop written before the Windows primitive existed, never revisited. The engine is therefore fail-closed on Windows, which is safe, while the cutover checklist reads G3 as ready, which is not true of the one mutating command. This story lets the executor select the delete operation for a Windows identity it can confirm is a regular file, and nothing else.",
       "change_risk": "CR4",
       "dependencies": [],

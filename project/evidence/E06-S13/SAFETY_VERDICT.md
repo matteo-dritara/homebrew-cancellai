@@ -47,3 +47,47 @@ PENDING
 Do not accept this story or infer hard-link safety from the green CI jobs until the explicit AC is met.
 
 FAIL
+
+## Round 4
+
+Verifier: Codex
+Brief-Checksum: 867c06801cf21e247190f5d88a7dbc7ea2ee9d08e699dcc6f61881702d181121
+
+- Reviewed commit: `a6d9d316209fa6ad7afe95fcb8661b4957058ea6`.
+- Scope: E06-S13 only, answering the round-3 F-03 hard-link repair and its effects.
+
+### Invariants
+
+| Invariant | Independent evidence | Result |
+| --- | --- | --- |
+| SI-013 | The first open handle rejects an initial multi-link file, but a link added after that check reaches Unix `unlinkat`; the post-unlink check returns an error only after one name is removed. On Windows, the final handle's link count is observed but not checked. | FAIL |
+| SI-017 | Windows volume/file-index and reparse classification remain native and kind-bounded. `WindowsFileFacts.number_of_links` is now carried, but `windows_sealed.rs::unlink_child_matching_windows_identity` omits it at disposition time. | FAIL |
+| SI-019 | The production call remains through `cancellai-safety::mutation_executor` and `cancellai-platform::mutation`; no alternate CLI mutation path was found. The sole boundary still admits the late multi-link deletion. | FAIL |
+
+### Adversarial cases
+
+- A separately constructed stable-release CLI fixture with two initial names returned exit 3 and kept both names byte-identical on macOS. This confirms only the initial check.
+- A temporary Unix platform test inserted a hard link via `confirmed_delete_file_inner`'s callback after its first-handle check. The operation returned `Err`, but the test failed at `refusal must preserve the planned name`; the planned path had already been unlinked. The test was removed and `git diff` showed no product-source change.
+- The Windows final `NtCreateFile` child handle is the one sent to `SetFileInformationByHandle(FileDispositionInfo)`. Its `WindowsFileFacts` are checked for reparse and volume/index, not `number_of_links`; a late second link has identical compared identity. Native Windows execution of this new fixture is **NOT RUN** on the macOS host.
+- Directory, reparse, unknown-kind, and same-object root-decoy guards were traced. The original Unix zero-link postcondition is present after revert `835ec0f`; do not weaken it as `eb0638f` did. The ordinary and initial hard-link CLI tests pass, but neither exercises a link appearing after the first check.
+
+### Gates
+
+| Gate | Result |
+| --- | --- |
+| Rust fmt, workspace Clippy, Windows-target Clippy, workspace tests | PASS |
+| Stable-channel CLI suite with kill-points | PASS |
+| Latest-main Windows quality, kill-harness and stable CLI at `a6d9d316…` | PASS; `gh run view 35896648462` |
+| Previous `b554eab…` Windows quality, kill-harness and stable CLI | PASS |
+| Native Windows late-link counterexample | NOT RUN: no local Windows host |
+| Temporary deterministic Unix late-link counterexample | FAIL as expected: planned name removed despite reported error; test removed |
+
+### Required repair
+
+Check multi-link state at the final Unix held-parent check and on the exact Windows child handle used for disposition. Add deterministic late-link tests on both platforms and assert that both names survive refusal. Keep the Unix post-unlink zero-link check and E21 root-decoy test. If AC2 cannot be guaranteed across the final check and mutation, escalate the remaining race to the owner explicitly.
+
+### Owner decision
+
+PENDING
+
+FAIL
