@@ -54,9 +54,13 @@ RSS_CEILING_BYTES = 64 * 1024 * 1024
 TOLERANCE_RATIO = 1.10
 TOLERANCE_SECONDS = 0.05
 OLD_MTIME = 946_684_800  # 2000-01-01, far past any retention cutoff
+REFERENCE_BACKEND = ["--codex-backend", "filesystem"]
 
 # (name, Rust argv, reference argv). The reference has no `inspect` or `plan`: its
 # `status --json` is the full machine-readable inventory and `clean --dry-run --json` is its plan.
+# Every reference invocation also gets REFERENCE_BACKEND: with `auto`, the reference withholds
+# Codex work wherever no `codex` binary is installed (a CI runner), so the two engines would be
+# timed on different plans. The Rust engine always deletes at the filesystem level.
 COMMANDS: tuple[tuple[str, list[str], list[str]], ...] = (
     ("status", ["status"], ["status"]),
     ("inspect", ["inspect", "--json"], ["status", "--json"]),
@@ -135,7 +139,17 @@ def prove_corpus_is_live(rust_bin: Path, env: dict[str, str], expected: int) -> 
     """Both engines must propose exactly `expected` deletions, or the timings mean nothing."""
     errors = []
     _t, _r, rust_out = run_once([str(rust_bin), "plan", "--json", "--allow-running", "--keep-latest", str(KEEP_LATEST)], env)
-    ref_argv = [sys.executable, str(REFERENCE), "clean", "--dry-run", "--json", "--allow-running", "--keep-latest", str(KEEP_LATEST)]
+    ref_argv = [
+        sys.executable,
+        str(REFERENCE),
+        "clean",
+        "--dry-run",
+        "--json",
+        "--allow-running",
+        "--keep-latest",
+        str(KEEP_LATEST),
+        *REFERENCE_BACKEND,
+    ]
     _t, _r, ref_out = run_once(ref_argv, env)
     try:
         rust_count = delete_count_rust(rust_out)
@@ -165,7 +179,7 @@ def measure(rust_bin: Path, sessions: int, runs: int) -> tuple[list[Measurement]
         for name, rust_args, ref_args in COMMANDS:
             retention = ["--keep-latest", str(KEEP_LATEST)]
             rust_argv = [str(rust_bin), *rust_args, *retention]
-            ref_argv = [sys.executable, str(REFERENCE), *ref_args, *retention]
+            ref_argv = [sys.executable, str(REFERENCE), *ref_args, *retention, *REFERENCE_BACKEND]
             rust_times, ref_times = [], []
             rust_rss: list[int] = []
             ref_rss: list[int] = []
