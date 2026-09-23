@@ -115,6 +115,14 @@ descendant).
 
 Permission/I/O/disappearance failures are represented as explicit evidence/diagnostics and are not collapsed silently into zero size or empty state when that could affect safety.
 
+A failure to read an artifact's *content* counts as much as a failure to list its directory. A
+Codex rollout whose lineage cannot be read is not a rollout with no parent: it changes which
+sessions are independent safety units, so the read error is a completeness reason and the scope
+is `Partial` (E06-S12, after E06-S06's independent pass found the Rust engine reporting that scope
+complete). Recording is bounded as well as visible: every adapter writes each failure straight
+into the scope's `ReasonLog`, which retains at most `MAX_RETAINED_REASONS` and counts the rest
+exactly, rather than buffering them first (E06-S12).
+
 ## Concurrency and identity
 
 ### SI-011 Shared provider metadata is not rewritten under unsafe concurrency

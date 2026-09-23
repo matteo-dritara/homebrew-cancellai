@@ -83,8 +83,15 @@ const MAX_PARENT_SCAN_BYTES: usize = 512 * 1024;
 /// `a_reader_is_never_consumed_beyond_the_budget` drives it with a byte-counting reader over a
 /// synthetic 64 MiB input and asserts on bytes actually consumed - a direct proof, not a memory
 /// proxy.
-pub fn read_codex_parent_session_id(path: &Path) -> Option<String> {
-    let file = fs::File::open(path).ok()?;
+///
+/// E06-S12: a rollout that cannot be opened or read is **not** "no parent", and this now returns
+/// the error instead of `None`. E06-S06's independent pass reproduced the cost of conflating the
+/// two: an unreadable stale rollout left the scope complete with zero errors and was planned for
+/// deletion, where the reference records the failure and withholds the tool ("Unreadable lineage
+/// is not 'no parent': it changes which sessions are treated as independent safety units").
+/// Successfully read content with no recognizable parent is still `Ok(None)`.
+pub fn read_codex_parent_session_id(path: &Path) -> io::Result<Option<String>> {
+    let file = fs::File::open(path)?;
     read_parent_from(io::BufReader::new(file))
 }
 
@@ -92,7 +99,7 @@ pub fn read_codex_parent_session_id(path: &Path) -> Option<String> {
 /// whole-file implementation (`line.len() + 1` on the newline-stripped, lossily-decoded line), so
 /// this story changes where the bytes come from and nothing about which record is selected - the
 /// differential gate treats any change there as a divergence.
-pub(crate) fn read_parent_from(mut reader: impl io::BufRead) -> Option<String> {
+pub(crate) fn read_parent_from(mut reader: impl io::BufRead) -> io::Result<Option<String>> {
     // Two counters, deliberately. `read_total` is the number of bytes actually pulled out of the
     // reader and is what [`MAX_PARENT_SCAN_BYTES`] bounds - E21 round-1 independent review found
     // the previous `remaining + 1` budget allowed 524,289 bytes against a documented 512 KiB
@@ -114,10 +121,10 @@ pub(crate) fn read_parent_from(mut reader: impl io::BufRead) -> Option<String> {
         // `take` so a single pathological line without a newline cannot pull the file in
         // through the back door - the exact failure mode this story exists to remove.
         let mut bounded = io::Read::take(&mut reader, remaining as u64);
-        let read = match io::BufRead::read_until(&mut bounded, b'\n', &mut raw) {
-            Ok(0) => break,
-            Ok(n) => n,
-            Err(_) => break,
+        // A read error is propagated, never mistaken for end of file (E06-S12).
+        let read = match io::BufRead::read_until(&mut bounded, b'\n', &mut raw)? {
+            0 => break,
+            n => n,
         };
         read_total += read;
         // The budget cut this record short: a truncated record is not a record. Stopping without
@@ -144,21 +151,23 @@ pub(crate) fn read_parent_from(mut reader: impl io::BufRead) -> Option<String> {
         if value.get("type").and_then(|v| v.as_str()) != Some("session_meta") {
             continue;
         }
-        let payload = value.get("payload")?;
+        let Some(payload) = value.get("payload") else {
+            return Ok(None);
+        };
         if !payload.is_object() {
-            return None;
+            return Ok(None);
         }
         let meta = payload
             .get("meta")
             .filter(|candidate| candidate.is_object())
             .unwrap_or(payload);
-        return match meta.get("parent_thread_id") {
+        return Ok(match meta.get("parent_thread_id") {
             None | Some(serde_json::Value::Null) => None,
             Some(serde_json::Value::String(text)) => extract_uuid(text),
             Some(other) => extract_uuid(&other.to_string()),
-        };
+        });
     }
-    None
+    Ok(None)
 }
 
 /// Everything one `discover_codex_sessions` call observed: the rollouts it found, and how
@@ -312,10 +321,20 @@ fn walk_rollouts(
                     continue;
                 }
             };
+            // The reference's `read_codex_parent_session_id(p, scan)`: a rollout whose lineage
+            // cannot be read is still listed, with no parent, and the failure makes the scope
+            // incomplete - which withholds every destructive action in it (E06-S12).
+            let parent_session_id = match read_codex_parent_session_id(&path) {
+                Ok(parent) => parent,
+                Err(error) => {
+                    log.record(reason_for(&path, &error));
+                    None
+                }
+            };
             out.push(CodexSession {
                 category,
                 session_id,
-                parent_session_id: read_codex_parent_session_id(&path),
+                parent_session_id,
                 size_bytes: metadata.len(),
                 path,
             });
@@ -496,7 +515,7 @@ mod tests {
         let tree = TempTree::new("no-session-meta");
         let path = tree.0.join("rollout.jsonl");
         fs::write(&path, "{\"type\": \"turn\"}\n").unwrap();
-        assert_eq!(read_codex_parent_session_id(&path), None);
+        assert_eq!(read_codex_parent_session_id(&path).unwrap(), None);
     }
 
     // ----------------------------------------------------------------------------------
@@ -560,6 +579,68 @@ mod tests {
                 panic!("an unreadable session directory must make the scope Partial, got {other:?}")
             }
         }
+    }
+
+    /// E06-S12 (E06-S06 round-1 finding F-01): a rollout whose entry metadata is readable but
+    /// whose content is not is listed with no parent - and makes the scope Partial, where it used
+    /// to leave it complete with zero errors and be planned for deletion.
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_rollout_is_listed_but_makes_the_scope_partial() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let tree = TempTree::new("unreadable-rollout");
+        let locked = write_rollout(
+            &tree.0,
+            "sessions/2026/05/01/rollout-88888888-8888-4888-8888-888888888883.jsonl",
+            "88888888-8888-4888-8888-888888888883",
+            Some("99999999-9999-4999-8999-999999999999"),
+        );
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+        if fs::File::open(&locked).is_ok() {
+            fs::set_permissions(&locked, fs::Permissions::from_mode(0o644)).unwrap();
+            eprintln!("skipped: this process can read a 0o000 file (running as root?)");
+            return;
+        }
+
+        let result = discover_codex_sessions(&tree.0);
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o644)).unwrap();
+
+        assert_eq!(result.sessions.len(), 1, "the rollout is still listed");
+        assert_eq!(
+            result.sessions[0].parent_session_id, None,
+            "unreadable lineage yields no parent"
+        );
+        match result.observation.completeness() {
+            ScopeCompleteness::Partial { reasons } => {
+                assert!(
+                    matches!(&reasons[0], CompletenessReason::PermissionDenied { path } if *path == locked),
+                    "expected a permission reason naming the rollout, got {reasons:?}"
+                );
+            }
+            other => panic!("an unreadable rollout must make the scope Partial, got {other:?}"),
+        }
+    }
+
+    /// E06-S12: a read that fails part way is an error, never end of file - the parser used to
+    /// `break` on it and report "no parent".
+    #[test]
+    fn a_read_error_is_propagated_not_read_as_end_of_file() {
+        struct FailingReader;
+        impl io::Read for FailingReader {
+            fn read(&mut self, _buf: &mut [u8]) -> io::Result<usize> {
+                Err(io::Error::other("injected read failure"))
+            }
+        }
+        let reader = io::BufReader::new(FailingReader);
+        assert!(read_parent_from(reader).is_err());
+    }
+
+    #[test]
+    fn content_with_no_parent_is_still_a_valid_no_parent_result() {
+        let meta = "{\"type\":\"session_meta\",\"payload\":{\"meta\":{\"id\":\"x\"}}}\n";
+        let reader = io::BufReader::new(io::Cursor::new(meta.as_bytes()));
+        assert_eq!(read_parent_from(reader).unwrap(), None);
     }
 
     #[test]
@@ -676,7 +757,7 @@ mod tests {
         };
 
         assert_eq!(
-            read_parent_from(reader).as_deref(),
+            read_parent_from(reader).unwrap().as_deref(),
             Some("33333333-3333-4333-8333-333333333333")
         );
         // The parent is on line 1, so the bound that actually binds here is the record count,
@@ -703,7 +784,7 @@ mod tests {
             consumed: std::rc::Rc::clone(&consumed),
         };
 
-        assert_eq!(read_parent_from(reader), None);
+        assert_eq!(read_parent_from(reader).unwrap(), None);
         assert!(
             consumed.get() <= MAX_PARENT_SCAN_BYTES,
             "consumed {} bytes from a single {}-byte line; the documented maximum is {} and \
@@ -721,7 +802,9 @@ mod tests {
         // differential gate would (rightly) call this a divergence rather than a fix.
         let with_crlf = "{\"type\":\"other\"}\r\n{\"type\":\"session_meta\",\"payload\":{\"meta\":{\"parent_thread_id\":\"44444444-4444-4444-8444-444444444444\"}}}\r\n";
         assert_eq!(
-            read_parent_from(io::BufReader::new(io::Cursor::new(with_crlf.as_bytes()))).as_deref(),
+            read_parent_from(io::BufReader::new(io::Cursor::new(with_crlf.as_bytes())))
+                .unwrap()
+                .as_deref(),
             Some("44444444-4444-4444-8444-444444444444")
         );
 
@@ -732,7 +815,7 @@ mod tests {
         }
         late.push_str(r#"{"type":"session_meta","payload":{"meta":{"parent_thread_id":"55555555-5555-4555-8555-555555555555"}}}"#);
         assert_eq!(
-            read_parent_from(io::BufReader::new(io::Cursor::new(late.as_bytes()))),
+            read_parent_from(io::BufReader::new(io::Cursor::new(late.as_bytes()))).unwrap(),
             None
         );
 
@@ -744,7 +827,9 @@ mod tests {
             br#"{"type":"session_meta","payload":{"meta":{"parent_thread_id":"66666666-6666-4666-8666-666666666666"}}}"#,
         );
         assert_eq!(
-            read_parent_from(io::BufReader::new(io::Cursor::new(bytes))).as_deref(),
+            read_parent_from(io::BufReader::new(io::Cursor::new(bytes)))
+                .unwrap()
+                .as_deref(),
             Some("66666666-6666-4666-8666-666666666666")
         );
     }

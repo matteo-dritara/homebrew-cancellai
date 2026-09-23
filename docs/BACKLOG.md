@@ -925,7 +925,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S12 - Codex lineage I/O errors and Claude companion error retention fail closed
 
-**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-008, SI-009, SI-010, SI-019
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-008, SI-009, SI-010, SI-019
 
 **Outcome.** E06-S06's independent pass (round 1, FAIL) found that an unreadable Codex rollout can be planned for deletion while its scope reports complete, because lineage open/read errors become None without a completeness reason. Claude companion traversal also accumulates unbounded failure reasons before applying ReasonLog retention. Repair both E21-S03 authority gaps and independently verify that failures remain visible, bounded and non-destructive.
 

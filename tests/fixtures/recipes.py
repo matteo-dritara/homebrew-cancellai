@@ -219,6 +219,44 @@ def build_codex_partial_tree(root: Path) -> None:
     locked_day.chmod(0o000)
 
 
+def build_codex_unreadable_rollout(root: Path) -> None:
+    """Two readable rollouts, plus a third whose own content cannot be read.
+
+    E06-S06's independent pass found the case codex-partial-tree does not cover: the rollout's
+    directory lists and its metadata reads, but opening the file fails. cancellai.py records that
+    in read_codex_parent_session_id ("unreadable lineage is not 'no parent'") and withholds the
+    tool; the Rust engine reported the scope complete and planned a deletion (E06-S12).
+
+    The caller must restore permissions (chmod 0o755) under `root` before removing the tree.
+    """
+    _codex_markers(root)
+    _codex_rollout(root, "88888888-8888-4888-8888-888888888891", "2026-05-01", age_days=120)
+    _codex_rollout(root, "88888888-8888-4888-8888-888888888892", "2026-05-01", age_days=120)
+    locked = _codex_rollout(root, "88888888-8888-4888-8888-888888888893", "2026-05-01", age_days=120)
+    locked.chmod(0o000)
+
+
+def build_claude_many_companion_failures(root: Path) -> None:
+    """Two ordinary sessions, plus a third whose companion payload holds 70 unlistable directories.
+
+    More failures than the Rust engine's reason log retains (64). The scope must still read
+    incomplete and withhold the tool, and the Rust walker must not buffer the failures without
+    bound on the way (E06-S06 round-1 finding F-02, E06-S12).
+
+    The caller must restore permissions (chmod 0o755) under `root` before removing the tree.
+    """
+    _claude_markers(root)
+    _claude_session(root, "synthetic-project-m", "55555555-5555-4555-8555-555555555591", age_days=120)
+    _claude_session(root, "synthetic-project-m", "55555555-5555-4555-8555-555555555592", age_days=120)
+    _session, payload = _claude_session_with_payload(root, "synthetic-project-m", "55555555-5555-4555-8555-555555555593", age_days=120)
+    for index in range(70):
+        locked = payload / f"part-{index:03d}"
+        locked.mkdir(parents=True)
+        _age(locked, 120)
+        locked.chmod(0o000)
+    _age(payload, 120)
+
+
 def build_claude_partial_project(root: Path) -> None:
     """Two readable sessions in one project, plus a second project directory that cannot be listed.
 
@@ -291,6 +329,8 @@ FIXTURES: dict[str, Callable[[Path], None]] = {
     "claude-partial-tree": build_claude_partial_tree,
     "claude-partial-project": build_claude_partial_project,
     "codex-partial-tree": build_codex_partial_tree,
+    "codex-unreadable-rollout": build_codex_unreadable_rollout,
+    "claude-many-companion-failures": build_claude_many_companion_failures,
     "codex-symlink-escape": build_codex_symlink_escape,
     "claude-symlink-protected-name": build_claude_symlink_protected_name,
     "codex-layout-drift": build_codex_layout_drift,

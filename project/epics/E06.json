@@ -241,7 +241,7 @@
     {
       "id": "E06-S12",
       "title": "Codex lineage I/O errors and Claude companion error retention fail closed",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "E06-S06's independent pass (round 1, FAIL) found that an unreadable Codex rollout can be planned for deletion while its scope reports complete, because lineage open/read errors become None without a completeness reason. Claude companion traversal also accumulates unbounded failure reasons before applying ReasonLog retention. Repair both E21-S03 authority gaps and independently verify that failures remain visible, bounded and non-destructive.",
       "change_risk": "CR4",
       "dependencies": [],

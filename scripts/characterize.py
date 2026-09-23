@@ -105,6 +105,19 @@ CLASSIFICATIONS: dict[str, tuple[str, str]] = {
         "fixture at all, which is why the differential gate could not observe the target engine "
         "deleting here (docs/audits/2026-09-03-CODE_REVIEW.md, CR-TE-01/CR-TE-03).",
     ),
+    "codex-unreadable-rollout": (
+        "NORMATIVE",
+        "A rollout whose content cannot be opened is recorded by read_codex_parent_session_id's "
+        "OSError branch - unreadable lineage is not 'no parent' - and withholds the whole tool. "
+        "Added by E06-S12 after E06-S06's independent pass found the Rust engine planning a "
+        "deletion here with the scope reported complete.",
+    ),
+    "claude-many-companion-failures": (
+        "NORMATIVE",
+        "Seventy unlistable directories in one companion payload are each recorded and withhold "
+        "the whole tool. Added by E06-S12: more failures than the Rust reason log retains, so the "
+        "gate pins that retention is bounded without losing the incomplete verdict.",
+    ),
     "claude-partial-project": (
         "NORMATIVE",
         "An unreadable *project* directory is recorded by discover_claude_sessions' own "

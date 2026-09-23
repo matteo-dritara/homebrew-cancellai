@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `cancellai-cli` no longer treats a Codex rollout it cannot read as a session with no parent:
+  the failure now makes the Codex scan incomplete, which withholds every deletion for the tool,
+  as the reference does (E06-S12). Before, the scan reported complete and the rollout could be
+  planned for deletion.
+- A Claude session companion directory with many unreadable entries no longer buffers every
+  failure in memory before the scan's bounded reason log applies (E06-S12).
+
 ### Added
 
 - `cancellai-cli clean` accepts `--verbose`, which lists each performed action, and

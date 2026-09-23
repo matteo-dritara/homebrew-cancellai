@@ -1,0 +1,118 @@
+{
+  "fixture_id": "claude-many-companion-failures",
+  "tool": "claude",
+  "classification": "NORMATIVE",
+  "classification_rationale": "Seventy unlistable directories in one companion payload are each recorded and withhold the whole tool. Added by E06-S12: more failures than the Rust reason log retains, so the gate pins that retention is bounded without losing the incomplete verdict.",
+  "days": 30,
+  "keep_latest": 0,
+  "aggressive": true,
+  "plan_summary": {
+    "days": 30,
+    "keep_latest": 0,
+    "estimated_bytes": 0,
+    "actions": 0,
+    "by_tool": {},
+    "by_category": {},
+    "claude_history_lines": 0,
+    "notes": [
+      "Refusing destructive work on claude: the scan was incomplete, so absence of evidence cannot mean absence of data (50 unreadable path(s), e.g. <PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-006: Permission denied; <PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-039: Permission denied; <PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-001: Permission denied). Run `status` to see the full list.",
+      "Withheld 2 candidate(s) for: claude."
+    ],
+    "withheld_tools": [
+      "claude"
+    ],
+    "scan": {
+      "complete": false,
+      "incomplete_scopes": [
+        "claude"
+      ],
+      "unreadable": [
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-006: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-039: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-001: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-037: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-008: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-030: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-064: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-063: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-055: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-052: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-031: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-036: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-009: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-000: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-007: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-038: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-053: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-054: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-062: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-065: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-047: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-040: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-049: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-025: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-022: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-014: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-013: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-048: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-041: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-046: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-012: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-015: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-023: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-024: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-060: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-058: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-067: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-051: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-069: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-056: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-002: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-005: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-033: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-034: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-068: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-057: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-050: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-059: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-066: Permission denied",
+        "<PROVIDER_ROOT>/projects/synthetic-project-m/55555555-5555-4555-8555-555555555593/part-061: Permission denied"
+      ]
+    },
+    "roots": {
+      "claude": {
+        "origin": "default",
+        "confidence": "default",
+        "markers": [
+          "keybindings.json",
+          "projects",
+          "settings.json"
+        ],
+        "destructive_allowed": true
+      },
+      "codex": {
+        "origin": "default",
+        "confidence": "default",
+        "markers": [],
+        "destructive_allowed": true
+      }
+    }
+  },
+  "coverage": {
+    "selective": {
+      "entries": 1,
+      "bytes": 68,
+      "names": [
+        "projects"
+      ]
+    },
+    "protected": {
+      "entries": 2,
+      "bytes": 4,
+      "names": [
+        "keybindings.json",
+        "settings.json"
+      ]
+    }
+  }
+}

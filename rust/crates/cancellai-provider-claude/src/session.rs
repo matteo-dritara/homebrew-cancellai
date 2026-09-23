@@ -261,27 +261,24 @@ pub fn discover_claude_sessions(claude_home: &Path) -> SessionDiscoveryResult {
                 Err(error) => log.record(reason_for(&companion, &error)),
                 Ok(companion_meta) => {
                     if companion_meta.is_dir() && !companion_meta.file_type().is_symlink() {
-                        let walk = walk_companion_payload(&companion);
+                        let walk = walk_companion_payload(&companion, &mut log);
                         size += walk.size_bytes;
                         modified = match (modified, walk.latest_modified) {
                             (Some(a), Some(b)) => Some(if a > b { a } else { b }),
                             (Some(a), None) => Some(a),
                             (None, b) => b,
                         };
-                        if !walk.reasons.is_empty() {
+                        if walk.degraded {
                             // Two channels, two questions: `degraded_companions` says *which
                             // artifact's* evidence is degraded (per-artifact confidence); the
                             // reason log says the *scope* was not fully observed (withholding).
                             // E06-S02 only ever had the first, which is why the scope verdict
                             // had to be reconstructed from it downstream.
+                            // Each nested failure keeps its own path and cause, recorded by the
+                            // walk straight into the scope's bounded log. Collapsing them into
+                            // one generic "could not be fully listed" was an SI-010 finding in
+                            // E21 round-1 review: the operator could not tell which path to fix.
                             degraded_companions.push(companion.clone());
-                            // Each nested failure keeps its own path and cause. Collapsing them
-                            // into one generic "could not be fully listed" was an SI-010 finding
-                            // in E21 round-1 review: the operator could not tell which path to
-                            // fix.
-                            for reason in walk.reasons {
-                                log.record(reason);
-                            }
                         }
                         companion_payload = Some(companion);
                     }
@@ -307,31 +304,38 @@ pub fn discover_claude_sessions(claude_home: &Path) -> SessionDiscoveryResult {
     }
 }
 
-/// What one companion payload walk observed. `reasons` replaces the previous `fully_read: bool`:
-/// a boolean told the caller *that* something failed and nothing about *what*, so the caller
-/// emitted one generic reason for the whole directory and every nested path/cause was lost
-/// (SI-010, E21 round-1 independent review).
+/// What one companion payload walk observed. Each failure's path and cause goes into the
+/// scope's [`ReasonLog`] as it happens (SI-010, E21 round-1 independent review); `degraded` only
+/// says whether there was any, for per-artifact attribution.
+///
+/// E06-S12: the walk used to collect its failures into its own `Vec` and hand them over at the
+/// end, so a companion with an unbounded number of unreadable entries grew an unbounded vector
+/// before the log's retention bound ever applied (E06-S06 round-1 finding F-02).
 struct CompanionWalk {
     size_bytes: u64,
     latest_modified: Option<SystemTime>,
-    reasons: Vec<CompletenessReason>,
+    degraded: bool,
 }
 
 /// Recursively sums size and finds the latest modification time under `root`, never following
 /// symlinks, recording every path it could not observe rather than reducing them to a flag
 /// (`cancellai.py`'s `directory_size`/`latest_mtime` record each failure into its own `Scan`).
 /// A partial total is still returned rather than discarded - the caller reports it as partial.
-fn walk_companion_payload(root: &Path) -> CompanionWalk {
+fn walk_companion_payload(root: &Path, log: &mut ReasonLog) -> CompanionWalk {
     let mut size_bytes = 0u64;
     let mut latest: Option<SystemTime> = None;
-    let mut reasons = Vec::new();
+    let mut degraded = false;
+    let mut record = |reason: CompletenessReason| {
+        degraded = true;
+        log.record(reason);
+    };
     let mut stack = vec![root.to_path_buf()];
 
     while let Some(dir) = stack.pop() {
         let entries = match fs::read_dir(&dir) {
             Ok(entries) => entries,
             Err(error) => {
-                reasons.push(reason_for(&dir, &error));
+                record(reason_for(&dir, &error));
                 continue;
             }
         };
@@ -339,7 +343,7 @@ fn walk_companion_payload(root: &Path) -> CompanionWalk {
             let entry = match entry {
                 Ok(entry) => entry,
                 Err(error) => {
-                    reasons.push(reason_for(&dir, &error));
+                    record(reason_for(&dir, &error));
                     continue;
                 }
             };
@@ -347,7 +351,7 @@ fn walk_companion_payload(root: &Path) -> CompanionWalk {
             let file_type = match entry.file_type() {
                 Ok(file_type) => file_type,
                 Err(error) => {
-                    reasons.push(reason_for(&path, &error));
+                    record(reason_for(&path, &error));
                     continue;
                 }
             };
@@ -364,7 +368,7 @@ fn walk_companion_payload(root: &Path) -> CompanionWalk {
             let metadata = match entry.metadata() {
                 Ok(metadata) => metadata,
                 Err(error) => {
-                    reasons.push(reason_for(&path, &error));
+                    record(reason_for(&path, &error));
                     continue;
                 }
             };
@@ -376,7 +380,7 @@ fn walk_companion_payload(root: &Path) -> CompanionWalk {
                         _ => modified,
                     });
                 }
-                Err(error) => reasons.push(CompletenessReason::Io {
+                Err(error) => record(CompletenessReason::Io {
                     path,
                     message: format!("modification time unavailable: {error}"),
                 }),
@@ -387,7 +391,7 @@ fn walk_companion_payload(root: &Path) -> CompanionWalk {
     CompanionWalk {
         size_bytes,
         latest_modified: latest,
-        reasons,
+        degraded,
     }
 }
 
@@ -469,6 +473,50 @@ mod tests {
         assert_eq!(result.sessions.len(), 1);
         assert_eq!(result.sessions[0].size_bytes, 5 + 10);
         assert!(result.sessions[0].companion_payload.is_some());
+    }
+
+    /// E06-S12 (E06-S06 round-1 finding F-02): more companion failures than the log retains.
+    /// Retention stays bounded, the total stays exact, and the scope is Partial.
+    #[cfg(unix)]
+    #[test]
+    fn more_companion_failures_than_retained_stay_bounded_exact_and_partial() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let failures = cancellai_inventory::MAX_RETAINED_REASONS + 6;
+        let tree = TempTree::new("many-companion-failures");
+        let project = tree.0.join("projects/synthetic-project-m");
+        let session_id = "55555555-5555-4555-8555-555555555559";
+        fs::create_dir_all(&project).unwrap();
+        fs::write(project.join(format!("{session_id}.jsonl")), "{}").unwrap();
+        let companion = project.join(session_id);
+        let mut locked = Vec::new();
+        for index in 0..failures {
+            let dir = companion.join(format!("part-{index:03}"));
+            fs::create_dir_all(&dir).unwrap();
+            fs::set_permissions(&dir, fs::Permissions::from_mode(0o000)).unwrap();
+            locked.push(dir);
+        }
+        if !can_deny_reads(&locked[0]) {
+            for dir in &locked {
+                fs::set_permissions(dir, fs::Permissions::from_mode(0o755)).unwrap();
+            }
+            eprintln!("skipped: this process can read a 0o000 directory (running as root?)");
+            return;
+        }
+
+        let result = discover_claude_sessions(&tree.0);
+        for dir in &locked {
+            fs::set_permissions(dir, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+
+        assert_eq!(result.degraded_companions, vec![companion]);
+        assert_eq!(result.observation.unobserved_count() as usize, failures);
+        match result.observation.completeness() {
+            ScopeCompleteness::Partial { reasons } => {
+                assert_eq!(reasons.len(), cancellai_inventory::MAX_RETAINED_REASONS);
+            }
+            other => panic!("companion failures must make the scope Partial, got {other:?}"),
+        }
     }
 
     #[cfg(unix)]

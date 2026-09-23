@@ -94,3 +94,13 @@ No alternate production deletion path was found: the mutation-boundary checker p
 - Native Linux and Windows behavior was not exercised in this session.
 
 FAIL
+
+## Owner disposition - E21-S07 leaf-name race (2026-09-23)
+
+`ACCEPTED` as a residual, recorded by the executor at the owner's direction. On macOS and Linux
+there is no unlink-by-descriptor, so a process running as the same user can always swap the leaf
+between `fstatat` and `unlinkat`; a rename-verify-unlink sequence narrows the window but cannot
+close it, and adds unsafe code and a new intermediate state. Whoever can win the race already has
+the permissions to delete that file directly, so the race grants no capability the attacker lacks.
+Windows deletes by handle and is not affected. This disposition covers only the residual; the
+round-1 `FAIL` stands until E06-S12's repairs are independently rechecked.
