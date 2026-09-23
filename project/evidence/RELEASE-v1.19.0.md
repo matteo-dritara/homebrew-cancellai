@@ -6,7 +6,7 @@
 - Commit: recorded by the release workflow at the tag
 - Channel: stable
 - Date: 2026-09-23
-- Published: pending
+- Published: no - verify-rust (windows-latest) failed: an_unsupported_version_is_refused_with_the_supported_list lost the server's refusal to a connection reset (run 35850978612); repaired by graceful connection close in the desktop API server
 
 ## Included work
 

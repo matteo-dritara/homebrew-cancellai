@@ -14,7 +14,8 @@
 | --- | --- | --- | --- |
 | Round 1 | Codex (independent) | FAIL | The tokenised URL was printed on stdout |
 | Round 2 | Codex (independent) | FAIL | F1: token files not owner-only on Windows; F2: a failed write left a token-bearing file |
-| Self-review | Claude, forked context | FAIL | F1's class still open: inherited ACL entries on macOS (reproduced), create-then-restrict race on Windows (reasoned); the Windows test had never run; this record was missing |
+| Self-review 1 | Claude, forked context | FAIL | F1's class still open: inherited ACL entries on macOS (reproduced), create-then-restrict race on Windows (reasoned); the Windows test had never run; this record was missing |
+| Self-review 2 | Claude, forked context | FAIL | The directory was restricted by path, so a swapped link redirected the permission change (reproduced, same user); a test helper was flaky on Windows |
 
 Every finding has been repaired, each with a test that fails when the repair is removed (see
 `EVIDENCE.md`). The last repair replaced the approach rather than patching it: files carrying the
@@ -26,14 +27,14 @@ Round 2 was this story's second independent review, the owner's limit. E19-S02 i
 observes and renders; it cannot reach a mutation. The protocol lets a self-review close a CR1
 story, so the story closes on:
 
-1. the repairs above, each pinned by a regression test and mutation-checked;
-2. a second self-review of the private-directory redesign
-   (`project/evidence/E19-SELF-REVIEW-ROUND2.md`), in a forked context, which must pass;
-3. the Windows leg of `rust.yml` passing on the pushed closing commit **before** the release tag
-   is pushed - so the Windows-only tests (`windows_private_directories_and_files_grant_only_the_
-   current_user_under_a_broad_parent`) have run somewhere before anything is released.
+1. the repairs above, each pinned by a regression test and mutation-checked; the last one removes
+   every permission change, so what remains is read-only checking and refusal;
+2. a third self-review of the read-only design (`project/evidence/E19-SELF-REVIEW-ROUND3.md`),
+   in a forked context, which must pass;
+3. the Windows leg of `rust.yml` passing on **two** runs of the pushed commit before any release
+   tag is pushed (self-review 2 found a single green run was not enough: the leg was flaky).
 
-If (2) or (3) fails, the story does not close.
+If (2) or (3) fails, the story does not close. Self-review 2 failed condition (2) as first written; the conditions above replace it.
 
 ## What this decision does and does not claim
 

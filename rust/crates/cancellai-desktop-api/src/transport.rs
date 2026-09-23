@@ -72,8 +72,35 @@ impl Server {
         stream.set_read_timeout(Some(IDLE_TIMEOUT))?;
         stream.set_write_timeout(Some(IDLE_TIMEOUT))?;
         let mut reader = BufReader::new(stream.try_clone()?);
-        let mut writer = BufWriter::new(stream);
-        serve_connection(&mut reader, &mut writer, &self.token, engine)
+        let mut writer = BufWriter::new(stream.try_clone()?);
+        let served = serve_connection(&mut reader, &mut writer, &self.token, engine);
+        drop(writer);
+        close_gracefully(&stream);
+        served
+    }
+}
+
+/// How long, and how much, a closing connection's unread input is drained.
+const DRAIN_TIMEOUT: Duration = Duration::from_millis(250);
+const DRAIN_LIMIT: usize = 64 * 1024;
+
+/// Ends a connection so the client can still read the last response. Closing a socket that has
+/// unread input makes the operating system reset it, and on Windows the reset discards response
+/// bytes the client has not read yet - a refusal sent to a client that pipelined a second request
+/// would vanish (E19 self-review 2, seen on Windows CI). So: finish sending, then read and discard
+/// what the client already sent, bounded in time and size, before closing.
+fn close_gracefully(stream: &TcpStream) {
+    use std::io::Read;
+    let _ = stream.shutdown(std::net::Shutdown::Write);
+    let _ = stream.set_read_timeout(Some(DRAIN_TIMEOUT));
+    let mut sink = [0u8; 4096];
+    let mut drained = 0usize;
+    let mut reader = stream;
+    while drained < DRAIN_LIMIT {
+        match reader.read(&mut sink) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => drained = drained.saturating_add(n),
+        }
     }
 }
 

@@ -46,18 +46,20 @@ dependency is `cancellai-desktop-api`.
 - The token is the dashboard's only credential, so the tokenised URL is never printed and never
   passed as a process argument, where other local users could read it in a process list (E19
   round 1). It leaves the process only as a file inside a **private directory**: a fresh
-  `cancellai-desktop-<random>` directory under `$XDG_RUNTIME_DIR` or the temporary directory,
-  made owner-only while it is still empty - mode `0700` read back on Unix, inherited ACL entries
-  stripped and confirmed absent on macOS (`chmod -N`, `ls -le`), a protected current-user-only
-  DACL set and read back on Windows (PowerShell `Set-Acl`/`Get-Acl`, since `unsafe` FFI is not
-  available to this crate). Only then is a file created inside it, so no other user can open the
-  file at any point and it inherits nothing but the owner's access. Restricting a file after
-  creating it was tried first and failed review twice: a handle opened in the gap survives the
-  restriction on Windows, and a `0600` file keeps inherited ACL entries on macOS (E19 round 2 and
-  its self-review). By default the directory holds a launcher page, handed to the browser opener
-  by path and overwritten without the URL once the dashboard has loaded (emptied, not deleted:
-  deletion belongs to the one mutation seam, SI-019); with `--no-open` it holds `url.txt`, and
-  only that file's path is printed. A write or sync that fails part way leaves the file empty.
+  `cancellai-desktop-<random>` directory created with `mkdir` (mode `0700` on Unix) under
+  `$XDG_RUNTIME_DIR` or the temporary directory. No permission is ever changed after creation.
+  Instead the base must already be one where no other account can replace entries - on Unix owned
+  by the user and not group/other-writable, or sticky like `/tmp`; on macOS without any ACL entry;
+  on Windows not a reparse point and granting only the user, `SYSTEM` and `Administrators` - and
+  the new directory is confirmed to be a real, private directory before any file is created in
+  it. An unsafe base is refused, not repaired. The design got here by elimination: restricting a
+  file after creating it left a window another user could open it in, a `0600` file kept inherited
+  ACL entries on macOS, and restricting the directory by path let a swapped link redirect the
+  permission change onto another directory (E19 round 2 and self-reviews 1-2). By default the
+  directory holds a launcher page, handed to the browser opener by path and overwritten without
+  the URL once the dashboard has loaded (emptied, not deleted: deletion belongs to the one mutation
+  seam, SI-019); with `--no-open` it holds `url.txt`, and only that file's path is printed. A write
+  or sync that fails part way leaves the file empty.
 - The page contains no script and one `GET` form that changes only the query. It shows the
   engine's per-provider `status` summary, root origin and eligibility, and the plan preview
   counted exactly as the CLI's `plan` summary counts it, plus the CLI's incomplete-scan and
@@ -111,10 +113,13 @@ Would need `unsafe` FFI into Cocoa, Win32 and a Linux status-notifier protocol. 
   the browser's history on the local machine.
 - An exit by signal skips the launcher's overwrite, leaving the URL of a server that no longer
   runs in the user's own private directory; the token authorizes nothing once the process is gone.
-- On Windows, a parent directory that grants another user `WRITE_DAC` on inherited children
-  would let that user re-open the private directory in the moment before its DACL is replaced.
-  Closing that needs a security descriptor supplied at creation, which needs FFI this crate may
-  not use; the per-user temporary directory does not grant it.
+- A process running as the **same user** can replace the private directory between its check and
+  the file's creation. It could equally read the token from the user's own files or memory, so
+  this is outside the dashboard's threat model: the private directory protects against other
+  accounts, which cannot rename entries in an accepted base. Nothing the dashboard does to a
+  swapped path changes any permission.
+- A base that is shared (for example `TEMP=C:\Temp` on Windows) is refused; the user points
+  `TMPDIR`/`TEMP` at a private directory instead.
 
 ### Neutral / follow-up
 

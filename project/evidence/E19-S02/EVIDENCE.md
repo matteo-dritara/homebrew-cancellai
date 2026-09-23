@@ -48,7 +48,8 @@ manual smoke: cancellai-desktop --requests 3 on this machine             -> 200 
   deployed client is affected); `cancellai-cli` computes it with the function its own human
   `status` output now uses.
 - Browser opening: `open` (macOS), `rundll32 url.dll,FileProtocolHandler` (Windows), `xdg-open`
-  (Linux); failure to open prints the URL.
+  (Linux), given the launcher file's path; failure to open suggests `--no-open` and never prints
+  the URL.
 
 ## Performance / operability
 
@@ -74,8 +75,8 @@ manual smoke: cancellai-desktop --requests 3 on this machine             -> 200 
 - The tokenised URL is kept in the local browser history. The private directory and its (emptied)
   launcher are not removed; the temporary directory's own cleanup removes them. An exit by signal
   skips the emptying, leaving a dead server's URL in the user's own private directory.
-- On Windows, a parent granting another user `WRITE_DAC` on inherited children leaves a moment
-  before the private directory's DACL is replaced; closing it needs FFI (ADR-0038).
+- A same-user process can swap the private directory between check and use; it could read the
+  token anyway (ADR-0038). A shared base is refused rather than used.
 - Not packaged: users build `cancellai-desktop` from source until a release story adds it.
 
 ## Round-1 repair (independent review FAIL, `project/evidence/E19-VERIFIER-REVIEW.md`)
@@ -107,7 +108,16 @@ was replaced rather than patched:
 | SR-F3 Windows test never executed | The E19 closing commit is pushed and `rust.yml`'s Windows leg is read before the release tag is pushed | recorded in `CEILING_DECISION.md` |
 | SR-F4 missing ceiling record | Written | `CEILING_DECISION.md` |
 
+## Self-review 2 repairs (`project/evidence/E19-SELF-REVIEW-ROUND2.md`)
+
+| Finding | Repair | Evidence |
+| --- | --- | --- |
+| SR2-F1: the private directory was restricted by path; a swapped link redirected `chmod -N` / `SetAccessControl` onto another directory and the files into it | No permission is changed after creation any more. The base must already be private (Unix: owned and not group/other-writable, or sticky; macOS: no ACL entry; Windows: no reparse point, only user/SYSTEM/Administrators), the directory is born `0700` there, and both are only read-checked; an unsafe base is refused | `a_base_other_users_can_write_is_refused_unless_sticky`, `macos_a_base_with_access_entries_is_refused_and_left_unchanged` (the base's ACL listing is identical before and after), `windows_private_directories_hold_only_private_rules_and_broad_bases_are_refused`; disabling the base check or the macOS ACL check each fails a test |
+| SR2-F2: the Windows leg was flaky - a reset discarded the refusal the server had sent | The API server now ends a connection gracefully: after the last response it shuts down its write side and drains (bounded: 250 ms, 64 KiB) what the client already sent, so no reset discards the response | `tests/unauthorized_clients.rs` pipelines a request behind every refusal; Windows CI run repeatedly before any tag (recorded in `CEILING_DECISION.md`) |
+| SR2-F3: stale statements | ADR-0038, the Windows module comment and this packet corrected | this commit |
+
 ## Verifier verdict
 
 Independent round 1: FAIL. Independent round 2: FAIL (the owner's limit for this story).
-Self-review: FAIL. All repaired above; see `CEILING_DECISION.md` for how the story closes.
+Self-review 1: FAIL. Self-review 2: FAIL. All repaired above; see `CEILING_DECISION.md` for how
+the story closes.

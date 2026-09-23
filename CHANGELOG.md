@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The desktop API server now ends a connection gracefully, so a client that sent a second request
+  before reading a refusal still receives the refusal; on Windows the reset used to discard it,
+  which failed the v1.19.0 release workflow (run 35850978612).
+- `cancellai-desktop` no longer changes any file or directory permission: it writes its URL only
+  into a new directory inside a base that is already private (or sticky), and refuses a shared
+  base instead of trying to restrict a directory by path.
+
 ## [1.19.0] - 2026-09-23
 
 ### Added

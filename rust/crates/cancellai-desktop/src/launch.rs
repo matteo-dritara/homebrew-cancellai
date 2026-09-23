@@ -3,13 +3,12 @@
 //! The path token is the dashboard's only credential, so it is never written to standard output
 //! or standard error, and never passed as a process argument, where other local users can read it
 //! in a process listing (E19 round 1). It leaves this process only as a file inside a
-//! [`PrivateDir`]: a directory this process creates fresh and makes private while it is still
-//! empty, before any file exists in it. That ordering is the point. Restricting a file after
-//! creating it leaves a window in which another user can open it and keep the handle (E19 round 2
-//! and its self-review, on Windows), and a file's own mode does not override access entries it
-//! inherited from a shared directory (reproduced on macOS). A file that is created inside an
-//! already-private directory has neither problem: nobody else can look it up, and there is nothing
-//! for it to inherit but the owner's own access.
+//! [`PrivateDir`]: a directory created fresh inside a base that is already private (or sticky),
+//! so it is born private and is only ever checked, never re-permissioned. Restricting a file after
+//! creating it left a window in which another user could open it (E19 round 2 and its
+//! self-review); a `0600` file kept inherited ACL entries on macOS; and restricting the directory
+//! by path let a swapped link redirect the permission change onto someone else's directory
+//! (self-review 2). Refusing an unsafe base instead of repairing it avoids all three.
 //!
 //! Two files are written there:
 //!
@@ -62,9 +61,14 @@ pub struct PrivateDir {
 }
 
 impl PrivateDir {
-    /// Creates `cancellai-desktop-<random>` under `base` and restricts it to the current user
-    /// before returning. Refuses - leaving at most an empty directory behind - if the restriction
-    /// cannot be applied and confirmed.
+    /// Creates `cancellai-desktop-<random>` under `base` and confirms it is private before
+    /// returning; refuses otherwise, leaving at most an empty directory behind.
+    ///
+    /// Nothing here changes a permission. An earlier design created the directory and then
+    /// restricted it by path; a same-user swap redirected that restriction onto another
+    /// directory, rewriting its ACL (E19 self-review 2). Instead the base must already be one no
+    /// other account can rename entries in, and the new directory is born private there, so it
+    /// is only ever checked - never modified - after creation.
     pub fn create(base: &Path) -> io::Result<Self> {
         let path = base.join(format!("cancellai-desktop-{}", nonce()?));
         #[cfg(unix)]
@@ -77,7 +81,7 @@ impl PrivateDir {
         #[cfg(not(unix))]
         let builder = std::fs::DirBuilder::new();
         builder.create(&path)?;
-        restrict_directory(&path)?;
+        verify_private(base, &path)?;
         Ok(Self { path })
     }
 
@@ -86,36 +90,64 @@ impl PrivateDir {
     }
 }
 
-/// Unix: mode `0700`, confirmed by reading it back (a umask or an odd filesystem must not
-/// quietly widen it). macOS additionally drops any access-control entries the directory
-/// inherited from its parent - they are evaluated before the mode bits, so `0700` alone does not
-/// make it private - and confirms none remain.
+fn refuse(why: &str) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::PermissionDenied,
+        format!("refusing to write the dashboard URL: {why}"),
+    )
+}
+
+/// Unix: the new directory must be a real directory (not a link), mode `0700`, owned by the same
+/// user as the process (read from the directory the process just made). The base must be a real
+/// directory that either this user owns and nobody else may write, or is sticky (like `/tmp`),
+/// where other users cannot rename or remove this user's entries. On macOS neither may carry an
+/// access-control entry, since those are evaluated before the mode bits and can grant others the
+/// right to rename or read. Linux default ACLs are masked by the `0700`/`0600` creation modes.
 #[cfg(unix)]
-fn restrict_directory(path: &Path) -> io::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))?;
-    #[cfg(target_os = "macos")]
-    macos_acl::strip_and_confirm(path)?;
-    let mode = std::fs::metadata(path)?.permissions().mode();
-    if mode & 0o077 != 0 {
-        return Err(io::Error::new(
-            io::ErrorKind::PermissionDenied,
-            "could not make the dashboard's directory private",
+fn verify_private(base: &Path, dir: &Path) -> io::Result<()> {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    let made = std::fs::symlink_metadata(dir)?;
+    if !made.file_type().is_dir() || made.permissions().mode() & 0o077 != 0 {
+        return Err(refuse("the new directory is not a private directory"));
+    }
+    let me = made.uid();
+    let base_real = std::fs::canonicalize(base)?;
+    let base_meta = std::fs::symlink_metadata(&base_real)?;
+    let mode = base_meta.permissions().mode();
+    let owned_and_closed = base_meta.uid() == me && mode & 0o022 == 0;
+    let sticky = mode & 0o1000 != 0;
+    if !base_meta.file_type().is_dir() || !(owned_and_closed || sticky) {
+        return Err(refuse(
+            "the base directory lets other users replace entries in it; set TMPDIR to a private directory",
         ));
+    }
+    #[cfg(target_os = "macos")]
+    for checked in [base_real.as_path(), dir] {
+        if macos_acl::has_entries(checked)? {
+            return Err(refuse(
+                "an access-control entry could let other users read or replace the directory",
+            ));
+        }
     }
     Ok(())
 }
 
 #[cfg(windows)]
-fn restrict_directory(path: &Path) -> io::Result<()> {
-    windows_acl::restrict_to_current_user(path)
+fn verify_private(base: &Path, dir: &Path) -> io::Result<()> {
+    for checked in [base, dir] {
+        if !windows_acl::is_private(checked)? {
+            return Err(refuse(
+                "the directory grants access to other accounts or is a link; set TEMP to a private directory",
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(not(any(unix, windows)))]
-fn restrict_directory(_path: &Path) -> io::Result<()> {
-    Err(io::Error::new(
-        io::ErrorKind::Unsupported,
-        "no way to make a private directory on this platform",
+fn verify_private(_base: &Path, _dir: &Path) -> io::Result<()> {
+    Err(refuse(
+        "no way to confirm a private directory on this platform",
     ))
 }
 
@@ -125,55 +157,46 @@ mod macos_acl {
     use std::path::Path;
     use std::process::Command;
 
-    /// `chmod -N` removes every ACL entry; `ls -led` then lists any that remain as numbered
-    /// lines (` 0: ...`). The directory is still empty, so nothing inside it was ever exposed.
-    pub(super) fn strip_and_confirm(path: &Path) -> io::Result<()> {
-        let stripped = Command::new("/bin/chmod").arg("-N").arg(path).status()?;
+    /// Whether `path` itself (not what a link points to: `ls -d` does not follow a link named on
+    /// the command line) carries any access-control entry. `ls -le` lists them as numbered lines
+    /// after the entry line. Read-only.
+    pub(super) fn has_entries(path: &Path) -> io::Result<bool> {
         let listing = Command::new("/bin/ls").arg("-led").arg(path).output()?;
-        let entries_remain = String::from_utf8_lossy(&listing.stdout)
+        if !listing.status.success() {
+            return Err(io::Error::other(
+                "could not list the directory's access entries",
+            ));
+        }
+        Ok(String::from_utf8_lossy(&listing.stdout)
             .lines()
             .skip(1)
-            .any(|line| !line.trim().is_empty());
-        if stripped.success() && listing.status.success() && !entries_remain {
-            Ok(())
-        } else {
-            Err(io::Error::new(
-                io::ErrorKind::PermissionDenied,
-                "could not remove inherited access entries from the dashboard's directory",
-            ))
-        }
+            .any(|line| !line.trim().is_empty()))
     }
 }
 
-/// Windows has no mode bits, and a new directory inherits whatever its parent grants. Without an
-/// FFI binding (`unsafe` is forbidden outside `cancellai-sealedfs`), the ACL is set and read back
-/// through PowerShell's `Set-Acl`/`Get-Acl`, which ship with every supported Windows: the empty
-/// directory's DACL is replaced by one protected rule granting the current user's SID full
-/// control, inherited by everything later created inside it, and the result is checked to name
-/// exactly that SID. Any failure refuses.
+/// Windows: read-only. Without FFI (`unsafe` is forbidden outside `cancellai-sealedfs`), the
+/// check runs through PowerShell's .NET access to the directory's security descriptor: the
+/// directory must not be a reparse point (junction or link), and every access rule, explicit or
+/// inherited, must name the current user, `SYSTEM` or `Administrators`. Nothing is modified.
 #[cfg(windows)]
 mod windows_acl {
     use std::io;
     use std::path::Path;
     use std::process::Command;
 
-    // .NET APIs rather than the `Set-Acl`/`Get-Acl` cmdlets: the cmdlets live in a module that
-    // Windows PowerShell cannot load when it inherits a PowerShell 7 `PSModulePath` (seen on the
-    // CI runner), whereas `DirectoryInfo` is always there. Rules are read back as SIDs directly.
+    // .NET APIs rather than the ACL cmdlets: the cmdlets live in a module Windows PowerShell
+    // cannot load when it inherits a PowerShell 7 `PSModulePath` (seen on the CI runner).
     const SCRIPT: &str = "$ErrorActionPreference = 'Stop'; \
         $d = New-Object System.IO.DirectoryInfo($env:CANCELLAI_PRIVATE_PATH); \
-        $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User; \
-        $acl = New-Object System.Security.AccessControl.DirectorySecurity; \
-        $acl.SetAccessRuleProtection($true, $false); \
-        $inherit = [System.Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'; \
-        $none = [System.Security.AccessControl.PropagationFlags]::None; \
-        $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($sid, 'FullControl', $inherit, $none, 'Allow'))); \
-        $d.SetAccessControl($acl); \
+        if (-not $d.Exists) { exit 4 }; \
+        if (($d.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { exit 5 }; \
+        $me = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value; \
+        $allowed = @($me, 'S-1-5-18', 'S-1-5-32-544'); \
         $rules = @($d.GetAccessControl().GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])); \
-        if ($rules.Count -ne 1 -or $rules[0].IdentityReference.Value -ne $sid.Value -or $rules[0].AccessControlType -ne 'Allow') { exit 3 }; \
+        foreach ($r in $rules) { if ($r.AccessControlType -eq 'Allow' -and $allowed -notcontains $r.IdentityReference.Value) { exit 3 } }; \
         exit 0";
 
-    pub(super) fn restrict_to_current_user(path: &Path) -> io::Result<()> {
+    pub(super) fn is_private(path: &Path) -> io::Result<bool> {
         // The path travels in the environment, not in the command text, so no quoting of a path
         // can change what the script does.
         let status = Command::new("powershell.exe")
@@ -181,14 +204,7 @@ mod windows_acl {
             .env("CANCELLAI_PRIVATE_PATH", path)
             .env_remove("PSModulePath")
             .status()?;
-        if status.success() {
-            Ok(())
-        } else {
-            Err(io::Error::new(
-                io::ErrorKind::PermissionDenied,
-                "could not restrict the dashboard's directory to the current user",
-            ))
-        }
+        Ok(status.success())
     }
 }
 
@@ -473,11 +489,26 @@ mod tests {
         std::fs::remove_dir_all(&base).ok();
     }
 
-    /// The macOS reproduction from the E19 self-review: a parent directory that hands an
-    /// "everyone may read" entry to everything created in it.
+    #[cfg(unix)]
+    #[test]
+    fn a_base_other_users_can_write_is_refused_unless_sticky() {
+        use std::os::unix::fs::PermissionsExt;
+        let base = scratch("shared");
+        std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o777)).expect("chmod");
+        let refused = PrivateDir::create(&base).expect_err("a world-writable base");
+        assert_eq!(refused.kind(), io::ErrorKind::PermissionDenied);
+        std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o1777)).expect("chmod");
+        let dir = PrivateDir::create(&base).expect("a sticky base, like /tmp");
+        assert!(dir.path().starts_with(&base));
+        std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o700)).expect("chmod");
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    /// The reproduction from the E19 self-reviews: a base that hands an access entry to
+    /// everything created in it. The base is refused, and nothing's permissions are changed.
     #[cfg(target_os = "macos")]
     #[test]
-    fn macos_inherited_access_entries_do_not_reach_the_private_directory_or_its_files() {
+    fn macos_a_base_with_access_entries_is_refused_and_left_unchanged() {
         let base = scratch("acl");
         let granted = std::process::Command::new("/bin/chmod")
             .args([
@@ -488,7 +519,7 @@ mod tests {
             .status()
             .expect("chmod");
         assert!(granted.success());
-        let entries = |p: &Path| {
+        let listing = |p: &Path| {
             let out = std::process::Command::new("/bin/ls")
                 .arg("-led")
                 .arg(p)
@@ -497,24 +528,18 @@ mod tests {
             String::from_utf8_lossy(&out.stdout)
                 .lines()
                 .skip(1)
-                .filter(|l| !l.trim().is_empty())
-                .count()
+                .map(str::to_string)
+                .collect::<Vec<_>>()
         };
-        // Control: without the private directory, a file here inherits the entry.
-        let exposed = base.join("control.txt");
-        std::fs::write(&exposed, "x").expect("control");
-        assert!(
-            entries(&exposed) > 0,
-            "the fixture must reproduce the exposure"
+        let before = listing(&base);
+        assert!(!before.is_empty(), "the fixture must carry an entry");
+        let refused = PrivateDir::create(&base).expect_err("an ACL'd base");
+        assert_eq!(refused.kind(), io::ErrorKind::PermissionDenied);
+        assert_eq!(
+            listing(&base),
+            before,
+            "the base's entries must be left exactly as they were"
         );
-
-        let dir = PrivateDir::create(&base).expect("private dir");
-        let url = write_url_file(&dir, "http://127.0.0.1:1/t").expect("url");
-        let launcher = Launcher::create(&dir, "http://127.0.0.1:1/t").expect("launcher");
-        for path in [dir.path(), url.as_path(), launcher.path()] {
-            assert_eq!(entries(path), 0, "{} kept an access entry", path.display());
-        }
-        drop(launcher);
         std::fs::remove_dir_all(&base).ok();
     }
 
@@ -545,15 +570,7 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn windows_private_directories_and_files_grant_only_the_current_user_under_a_broad_parent() {
-        let base = scratch("acl");
-        // Make the parent deliberately broad: Everyone may read, inherited by new children.
-        let broadened = std::process::Command::new("icacls")
-            .arg(&base)
-            .args(["/grant", "*S-1-1-0:(OI)(CI)R"])
-            .status()
-            .expect("icacls");
-        assert!(broadened.success());
+    fn windows_private_directories_hold_only_private_rules_and_broad_bases_are_refused() {
         let me = std::process::Command::new("powershell.exe")
             .args([
                 "-NoProfile",
@@ -565,13 +582,40 @@ mod tests {
             .output()
             .expect("powershell");
         let me = String::from_utf8_lossy(&me.stdout).trim().to_string();
-        let dir = PrivateDir::create(&base).expect("private dir");
+        let allowed = [me.as_str(), "S-1-5-18", "S-1-5-32-544"];
+
+        // The per-user temporary directory is private: the directory and its files carry only
+        // the user, SYSTEM and Administrators.
+        let base = scratch("acl-ok");
+        let dir = PrivateDir::create(&base).expect("private dir under the user's temp");
         let url = write_url_file(&dir, "http://127.0.0.1:1/t").expect("url");
         let launcher = Launcher::create(&dir, "http://127.0.0.1:1/t").expect("launcher");
         for path in [dir.path(), url.as_path(), launcher.path()] {
-            assert_eq!(acl_sids(path), vec![me.clone()], "{}", path.display());
+            let sids = acl_sids(path);
+            assert!(!sids.is_empty(), "{}", path.display());
+            for sid in &sids {
+                assert!(
+                    allowed.contains(&sid.as_str()),
+                    "{} grants {sid}",
+                    path.display()
+                );
+            }
         }
         drop(launcher);
         std::fs::remove_dir_all(&base).ok();
+
+        // A base that grants Everyone read is refused, and left as it was.
+        let broad = scratch("acl-broad");
+        let broadened = std::process::Command::new("icacls")
+            .arg(&broad)
+            .args(["/grant", "*S-1-1-0:(OI)(CI)R"])
+            .status()
+            .expect("icacls");
+        assert!(broadened.success());
+        let before = acl_sids(&broad);
+        let refused = PrivateDir::create(&broad).expect_err("a broad base");
+        assert_eq!(refused.kind(), io::ErrorKind::PermissionDenied);
+        assert_eq!(acl_sids(&broad), before);
+        std::fs::remove_dir_all(&broad).ok();
     }
 }
