@@ -118,6 +118,14 @@ plan, a dry `clean`), and fails when Rust is slower than the reference beyond a 
 tolerance or exceeds a 64 MiB peak RSS. It refuses to time a corpus either engine does not see.
 `rust.yml`'s `cutover-budget` job gates it on Linux and reports it on macOS and Windows.
 
+Crash/recovery is tested by killing a real process (E06-S09). `cancellai-cli/tests/kill_harness.rs`
+starts `clean --yes`, waits for the marker an armed pause point writes (`src/kill_points.rs`,
+compiled only with the `kill-points` feature, so the released binary has no pause and no way to
+request one), kills it, and checks that nothing outside the plan changed, that each planned
+artifact is intact or gone in exactly the number the point implies, and that a rerun finishes
+the plan without acting twice. An unreached point fails the case. `rust.yml`'s `kill-harness`
+job runs it on macOS, Linux and Windows.
+
 ### Installer/release tests
 
 Fresh-machine/container/VM smoke tests for each tier-1 artifact/package channel where feasible, plus provenance/SBOM verification.

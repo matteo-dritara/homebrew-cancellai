@@ -858,7 +858,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S09 - clean survives being killed at every mutation point
 
-**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** none | **Safety obligations:** SI-019
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** none | **Safety obligations:** SI-019
 
 **Outcome.** G4's other open item is crash and recovery: nothing beyond unit tests shows what a real process kill in the middle of clean leaves behind. The owner chose a real-kill harness: clean is killed (SIGKILL, TerminateProcess) at each point on the mutation path, and what remains is checked for unsafe partial state, a consistent ledger, and an idempotent rerun. It runs on macOS, Linux and Windows CI.
 
@@ -902,9 +902,30 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 - `docs/CLI_RUST.md`
 - `CHANGELOG.md`
 
+### E06-S11 - clean --json always prints a document
+
+**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** SI-008, SI-009
+
+**Outcome.** E06-S09's kill harness found that `cancellai-cli clean --json` prints a plain sentence - "Nothing to clean..." or "Nothing was cleaned: safety withheld..." - when no deletion is planned, where the reference prints a JSON document carrying the exit code and a `result` of `nothing-to-do` or `safety-withheld`. Automation that parses the output of the canonical engine would break on exactly the run that did nothing, including the one where safety withheld work. The exit code is already right; the document is missing.
+
+**Acceptance criteria**
+
+- When clean is given --json and no deletion is planned, the system shall print a JSON document stating the exit code and whether the run had nothing to do or safety withheld the work.
+- If safety withheld the requested work, then the document shall say so and the exit code shall stay the safety-block code.
+- The system shall keep the human-readable sentences for runs without --json.
+
+**Verification**
+
+- CLI tests parse the output of clean --json and clean --dry-run --json on an empty tree and on a tree whose scan is incomplete.
+
+**Documentation impact**
+
+- `docs/CLI_RUST.md`
+- `CHANGELOG.md`
+
 ### E06-S04 - Canonical engine switch
 
-**Status:** `blocked` | **Change Risk:** `CR4` | **Dependencies:** E06-S03, E21, E22-S01, E06-S06, E06-S07, E06-S08, E06-S09, E06-S10 | **Safety obligations:** SI-019
+**Status:** `blocked` | **Change Risk:** `CR4` | **Dependencies:** E06-S03, E21, E22-S01, E06-S06, E06-S07, E06-S08, E06-S09, E06-S10, E06-S11 | **Safety obligations:** SI-019
 
 **Outcome.** Promote Rust to stable only after functional, safety, compatibility, and operability gates pass.
 

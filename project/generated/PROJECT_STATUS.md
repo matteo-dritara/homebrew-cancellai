@@ -4,7 +4,7 @@
 
 Current phase: **P1**
 
-Epics: **34** | Stories: **175**
+Epics: **34** | Stories: **176**
 
 ## Story status
 
@@ -12,13 +12,13 @@ Epics: **34** | Stories: **175**
 - `cancelled`: 1
 - `done`: 167
 - `planned`: 4
-- `ready_for_review`: 2
+- `ready_for_review`: 3
 
 ## Change risk distribution
 
 - `CR0`: 14
 - `CR1`: 39
-- `CR2`: 50
+- `CR2`: 51
 - `CR3`: 33
 - `CR4`: 39
 
@@ -29,4 +29,5 @@ Epics: **34** | Stories: **175**
 ## Awaiting independent review
 
 - **E06-S08** - The Rust CLI stays within a performance self-budget measured against the reference (CR1)
+- **E06-S09** - clean survives being killed at every mutation point (CR3)
 - **E06-S10** - clean accepts --keep-claude-history and --verbose as the reference does (CR3)

@@ -339,6 +339,7 @@ this prose:
 | G4 | Performance self-budget: no slower than the reference, under a fixed memory ceiling | E06-S08 |
 | G4 | Crash/recovery under a real process kill at every mutation point | E06-S09 |
 | G1 | `clean --keep-claude-history` and `--verbose`; the other G1 gaps stay disclosed divergences | E06-S10 |
+| G1 | `clean --json` prints plain text when it plans nothing (found by E06-S09's kill harness) | E06-S11 |
 
 ## Epic closure
 

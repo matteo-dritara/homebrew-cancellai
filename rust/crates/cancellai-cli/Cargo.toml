@@ -10,6 +10,11 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+# E06-S09: named pause points on `clean`'s mutation path for the kill harness
+# (`src/kill_points.rs`, `tests/kill_harness.rs`). Never enabled in a release build.
+kill-points = []
+
 [dependencies]
 cancellai-model = { path = "../cancellai-model", version = "0.1.0" }
 cancellai-safety = { path = "../cancellai-safety", version = "0.1.0" }

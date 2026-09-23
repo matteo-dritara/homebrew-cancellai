@@ -167,7 +167,7 @@
     {
       "id": "E06-S09",
       "title": "clean survives being killed at every mutation point",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "G4's other open item is crash and recovery: nothing beyond unit tests shows what a real process kill in the middle of clean leaves behind. The owner chose a real-kill harness: clean is killed (SIGKILL, TerminateProcess) at each point on the mutation path, and what remains is checked for unsafe partial state, a consistent ledger, and an idempotent rerun. It runs on macOS, Linux and Windows CI.",
       "change_risk": "CR3",
       "dependencies": [],
@@ -215,17 +215,42 @@
       ]
     },
     {
+      "id": "E06-S11",
+      "title": "clean --json always prints a document",
+      "status": "planned",
+      "outcome": "E06-S09's kill harness found that `cancellai-cli clean --json` prints a plain sentence - \"Nothing to clean...\" or \"Nothing was cleaned: safety withheld...\" - when no deletion is planned, where the reference prints a JSON document carrying the exit code and a `result` of `nothing-to-do` or `safety-withheld`. Automation that parses the output of the canonical engine would break on exactly the run that did nothing, including the one where safety withheld work. The exit code is already right; the document is missing.",
+      "change_risk": "CR2",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "When clean is given --json and no deletion is planned, the system shall print a JSON document stating the exit code and whether the run had nothing to do or safety withheld the work.",
+        "If safety withheld the requested work, then the document shall say so and the exit code shall stay the safety-block code.",
+        "The system shall keep the human-readable sentences for runs without --json."
+      ],
+      "safety_obligations": [
+        "SI-008",
+        "SI-009"
+      ],
+      "verification": [
+        "CLI tests parse the output of clean --json and clean --dry-run --json on an empty tree and on a tree whose scan is incomplete."
+      ],
+      "documentation_impact": [
+        "docs/CLI_RUST.md",
+        "CHANGELOG.md"
+      ]
+    },
+    {
       "id": "E06-S04",
       "title": "Canonical engine switch",
       "status": "blocked",
       "blocked_by": {
-        "summary": "The cutover perimeter is decided by ADR-0039 (local containment ledger; network channel moved to E33). What holds this story is the work that perimeter requires, each now carried by its own story: G2's independent confirmation of the E21 repairs (E06-S06), G4's live containment and channel authority (E06-S07), the performance self-budget (E06-S08), crash/recovery under a real kill (E06-S09), and the two clean flags G1 closes before cutover (E06-S10). When they are done, closing this still needs the checklist reading ready against real evidence, an independent CR4 verifier pass, and the owner's own Safety Verdict.",
+        "summary": "The cutover perimeter is decided by ADR-0039 (local containment ledger; network channel moved to E33). What holds this story is the work that perimeter requires, each now carried by its own story: G2's independent confirmation of the E21 repairs (E06-S06), G4's live containment and channel authority (E06-S07), the performance self-budget (E06-S08), crash/recovery under a real kill (E06-S09), the two clean flags G1 closes before cutover (E06-S10), and clean --json printing a document on a run that plans nothing (E06-S11, found by the kill harness). When they are done, closing this still needs the checklist reading ready against real evidence, an independent CR4 verifier pass, and the owner's own Safety Verdict.",
         "waiting_on": [
           "E06-S06",
           "E06-S07",
           "E06-S08",
           "E06-S09",
-          "E06-S10"
+          "E06-S10",
+          "E06-S11"
         ],
         "argument": "docs/development/RELEASE_GATES.md",
         "recorded": "2026-09-23"
@@ -240,7 +265,8 @@
         "E06-S07",
         "E06-S08",
         "E06-S09",
-        "E06-S10"
+        "E06-S10",
+        "E06-S11"
       ],
       "acceptance_criteria": [
         "Owner-visible migration Safety Verdict is accepted.",

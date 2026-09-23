@@ -20,6 +20,7 @@ mod cli;
 mod desktop;
 mod documents;
 mod install_source;
+mod kill_points;
 mod roots;
 mod timestamp;
 
@@ -711,6 +712,8 @@ fn execute_clean(resolved: &Resolved, actions: &[Action], flags: &CommonFlags) -
     let mut any_blocked = false;
     let mut reclaimed_bytes = 0u64;
     let mut claude_session_deleted = false;
+    let mut delete_visit = 0usize;
+    kill_points::reached("roots-established", 0);
 
     for action in actions {
         // A sealed plan always names at least one target, but a plan is data and this loop is the
@@ -759,6 +762,7 @@ fn execute_clean(resolved: &Resolved, actions: &[Action], flags: &CommonFlags) -
                     } else {
                         Some(process_names)
                     };
+                    kill_points::reached("before-delete", delete_visit);
                     let doc = delete_one(
                         approved_root,
                         &resolver,
@@ -775,6 +779,8 @@ fn execute_clean(resolved: &Resolved, actions: &[Action], flags: &CommonFlags) -
                     if provider_id == "claude-code" && doc.status == "succeeded" {
                         claude_session_deleted = true;
                     }
+                    kill_points::reached("after-delete", delete_visit);
+                    delete_visit += 1;
                     doc
                 }
             },
@@ -792,6 +798,7 @@ fn execute_clean(resolved: &Resolved, actions: &[Action], flags: &CommonFlags) -
         results.push(doc);
     }
 
+    kill_points::reached("before-report", 0);
     let now = SystemClock.now();
     if flags.json {
         let doc = documents::result_document("plan-1".to_string(), now, results);
