@@ -335,6 +335,7 @@ this prose:
 | Gate | Open item | Story |
 | --- | --- | --- |
 | G2 | Independent confirmation of the E21-S03/E21-S07 repairs | E06-S06 |
+| G2 | E06-S06's first pass found a swallowed Codex lineage read error (a complete scope with a delete) and unbounded Claude companion error retention; repair, then E06-S06's recheck | E06-S12 |
 | G4 | CLI authority computed through the release channel and the persisted containment ledger | E06-S07 |
 | G4 | Performance self-budget: no slower than the reference, under a fixed memory ceiling | E06-S08 |
 | G4 | Crash/recovery under a real process kill at every mutation point | E06-S09 |

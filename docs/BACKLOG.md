@@ -782,7 +782,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S06 - An independent verifier confirms the E21 authority repairs
 
-**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-008, SI-009, SI-010, SI-019
+**Status:** `in_progress` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-008, SI-009, SI-010, SI-019
 
 **Outcome.** G2 of the cutover checklist is open for one reason: E21's round-1 independent review found the scan-completeness authority defect, the executor repaired every finding and pinned each with a regression written against the verifier's own reproduction, and the owner then closed E21 without spending a second round on those repairs (project/evidence/E21-CLOSURE.md). Repaired-by-executor is not independently-confirmed-repaired, and that act has had no work item to carry it, which is why it lived only in E06-S04's blocker prose. This story carries it: an independent adversarial pass over E21-S03 (scan completeness makes the scope incomplete, never absent) and E21-S07 (handle-relative unlink) as they stand in the code the cutover would ship, not as they stood at E21's closure.
 
@@ -923,9 +923,33 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 - `docs/CLI_RUST.md`
 - `CHANGELOG.md`
 
+### E06-S12 - Codex lineage I/O errors and Claude companion error retention fail closed
+
+**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-008, SI-009, SI-010, SI-019
+
+**Outcome.** E06-S06's independent pass (round 1, FAIL) found that an unreadable Codex rollout can be planned for deletion while its scope reports complete, because lineage open/read errors become None without a completeness reason. Claude companion traversal also accumulates unbounded failure reasons before applying ReasonLog retention. Repair both E21-S03 authority gaps and independently verify that failures remain visible, bounded and non-destructive.
+
+**Acceptance criteria**
+
+- If Codex lineage content cannot be opened or read after its entry metadata was observed, then the Codex scope shall record the path and cause as incomplete and emit no destructive action, while successfully read content with no recognized parent remains a valid no-parent result.
+- If Claude companion traversal encounters more than MAX_RETAINED_REASONS failures, then retained reasons shall remain bounded, the total error count shall remain exact, the scope shall be Partial and every destructive action in the scope shall be withheld.
+- The unreadable Codex rollout and high-error-count Claude companion cases shall match the frozen Python reference in default and custom root-origin scenarios.
+- The E21-S07 fstatat/unlinkat leaf-entry race shall have an owner-visible disposition before E06-S04 can close.
+
+**Verification**
+
+- Native CLI regressions exercise unreadable Codex lineage content after metadata observation and assert incomplete scan, zero delete actions and reference parity.
+- Adapter-level Claude regression injects more than 64 failures and asserts bounded retained reasons, exact total and complete withholding.
+- An independent CR4 verifier reviews the repair and the owner records a disposition for the documented unlink residual.
+
+**Documentation impact**
+
+- `docs/development/RELEASE_GATES.md`
+- `docs/security/SAFETY_INVARIANTS.md`
+
 ### E06-S04 - Canonical engine switch
 
-**Status:** `blocked` | **Change Risk:** `CR4` | **Dependencies:** E06-S03, E21, E22-S01, E06-S06, E06-S07, E06-S08, E06-S09, E06-S10, E06-S11 | **Safety obligations:** SI-019
+**Status:** `blocked` | **Change Risk:** `CR4` | **Dependencies:** E06-S03, E21, E22-S01, E06-S06, E06-S07, E06-S08, E06-S09, E06-S10, E06-S11, E06-S12 | **Safety obligations:** SI-019
 
 **Outcome.** Promote Rust to stable only after functional, safety, compatibility, and operability gates pass.
 
