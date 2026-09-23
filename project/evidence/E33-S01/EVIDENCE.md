@@ -18,6 +18,13 @@ PASS
 | AC2 - unreachable, oversized, malformed, replayed, rolled-back or untrusted feed: history byte-identical, authority from local state | `every_unusable_feed_leaves_the_history_byte_identical`: curl failure, HTTP 500, a body over 256 KiB (refused before parsing, "larger than" asserted), malformed, a rolled-back sequence, an untrusted signer - each exit 4 with the history compared byte for byte; HTTP 404 is "nothing published", exit 0, unchanged. `a_missing_curl_is_unavailability_not_a_notice`; `a_feed_override_that_is_not_https_is_refused`. | PASS |
 | AC3 - never lift, narrow or loosen a containment from feed content | The feed reaches the ledger only through `ContainmentLedger::install`, whose notice vocabulary has no lift, and records are append-only (E17-S07). | PASS |
 
+## Round-6 repairs (Codex, `project/evidence/E06-VERIFIER-REVIEW-ROUND6.md`)
+
+| Finding | Repair | Evidence |
+| --- | --- | --- |
+| A notice already present in an unverifiable history made refresh answer "already current", exit 0 | The history is replayed and verified before "already current" is ever said; an unusable ledger is refused (exit 4) | `an_unverifiable_history_is_never_already_current` |
+| A `curl` supplied through `PATH` was executed | Only the system curl at its fixed location runs (`/usr/bin/curl` or `/bin/curl`; `C:\Windows\System32\curl.exe`); the fake-curl test hook exists only in `--features test-curl` builds | `a_curl_on_path_is_never_executed` (runs in every build); the fake-curl tests run in `rust.yml`'s stable-channel job with the feature |
+
 ## Safety Evidence
 
 | Invariant | Counterexample tested | Evidence | Result |

@@ -374,6 +374,26 @@ fn feed_url(root: &LocalStateRoot) -> Result<String, String> {
     }
 }
 
+/// The system `curl`, at its fixed OS location - never resolved through `PATH` (E06 review round
+/// 6: a `curl` earlier on `PATH` was executed). The bytes it returns are signature-verified, so a
+/// hostile curl could only deny service; running an arbitrary program was the defect.
+fn trusted_curl() -> Option<std::path::PathBuf> {
+    #[cfg(feature = "test-curl")]
+    if let Some(path) = std::env::var_os("CANCELLAI_TEST_CURL") {
+        // Test builds only (`--features test-curl`): the release build has no such override.
+        return Some(std::path::PathBuf::from(path));
+    }
+    let candidates: &[&str] = if cfg!(windows) {
+        &[r"C:\Windows\System32\curl.exe"]
+    } else {
+        &["/usr/bin/curl", "/bin/curl"]
+    };
+    candidates
+        .iter()
+        .map(std::path::PathBuf::from)
+        .find(|path| path.is_file())
+}
+
 /// What fetching the feed produced.
 enum Fetched {
     Notice(String),
@@ -389,7 +409,12 @@ enum Fetched {
 /// verifies it. A missing `curl` or any network failure is unavailability, never a notice.
 fn fetch(url: &str) -> Fetched {
     use std::io::Read as _;
-    let spawned = std::process::Command::new("curl")
+    let Some(curl) = trusted_curl() else {
+        return Fetched::Unavailable(
+            "no curl at the system location this build trusts".to_string(),
+        );
+    };
+    let spawned = std::process::Command::new(curl)
         .args([
             "--silent",
             "--show-error",
@@ -479,6 +504,14 @@ pub fn cmd_refresh() -> Result<Vec<String>, (i32, String)> {
             ));
         }
     };
+    // "Already current" is only true of a history that replays: an unverifiable history holding
+    // the same text is unknown, not current (E06 review round 6).
+    if let LedgerState::Unknown(reason) = replay_at(&root) {
+        return Err((
+            4,
+            format!("refusing to refresh an unusable ledger: {reason}"),
+        ));
+    }
     if let Load::Found(events) = containment_state::load_log(&root)
         && events.contains(&StoredEvent::Install(text.clone()))
     {

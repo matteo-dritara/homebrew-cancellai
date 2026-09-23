@@ -14,6 +14,9 @@ workspace = true
 # E06-S09: named pause points on `clean`'s mutation path for the kill harness
 # (`src/kill_points.rs`, `tests/kill_harness.rs`). Never enabled in a release build.
 kill-points = []
+# E33-S01: lets tests point `containment refresh` at a fake curl through CANCELLAI_TEST_CURL.
+# Never enabled in a release build, which only runs the system curl at its fixed location.
+test-curl = []
 
 [dependencies]
 cancellai-model = { path = "../cancellai-model", version = "1.21.0" }

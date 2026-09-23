@@ -10,7 +10,7 @@
     {
       "id": "E33-S01",
       "title": "Signed containment notices are fetched from a published feed",
-      "status": "in_progress",
+      "status": "ready_for_review",
       "outcome": "Fetch signed containment notices from a published feed and ingest them through the same path as containment install, so an incident reaches installations without a manual step, while an unreachable, oversized, stale or forged feed leaves the ledger exactly as it was. Owner decisions (2026-09-23): fetch with the system curl, no HTTP client in the binary; publish one cumulative signed notice as containment/notice.json in the canonical repository, fetched by an explicit containment refresh.",
       "change_risk": "CR4",
       "dependencies": [

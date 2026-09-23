@@ -110,11 +110,12 @@ impl Tree {
         self.run_with_path(args, None)
     }
 
-    /// Runs with `PATH` pointing only at `bin_dir` (a fake `curl`), when given.
+    /// Runs with `CANCELLAI_TEST_CURL` pointing at `bin_dir`'s fake `curl`, when given (a
+    /// `test-curl` build only; the release build runs the system curl at its fixed location).
     fn run_with_path(&self, args: &[&str], bin_dir: Option<&std::path::Path>) -> Output {
         let mut command = Command::new(env!("CARGO_BIN_EXE_cancellai-cli"));
         if let Some(dir) = bin_dir {
-            command.env("PATH", dir);
+            command.env("CANCELLAI_TEST_CURL", dir.join("curl"));
         }
         command
             .args(args)
@@ -463,7 +464,7 @@ fn only_a_confirmed_local_lift_removes_a_containment() {
 
 /// A fake `curl` for `containment refresh` (E33-S01): prints `body` to stdout and `status` to
 /// stderr the way `--write-out '%{stderr}%{http_code}'` does, then exits `code`.
-#[cfg(unix)]
+#[cfg(all(unix, feature = "test-curl"))]
 fn fake_curl(tree: &Tree, body: &str, status: &str, code: i32) -> PathBuf {
     use std::os::unix::fs::PermissionsExt;
     let dir = tree.0.join(format!("fakebin-{status}-{code}"));
@@ -483,7 +484,7 @@ fn fake_curl(tree: &Tree, body: &str, status: &str, code: i32) -> PathBuf {
     dir
 }
 
-#[cfg(unix)]
+#[cfg(all(unix, feature = "test-curl"))]
 #[test]
 fn refresh_installs_a_published_notice_once_and_is_current_after() {
     let tree = Tree::new("refresh");
@@ -506,7 +507,7 @@ fn refresh_installs_a_published_notice_once_and_is_current_after() {
     assert!(String::from_utf8_lossy(&listed.stdout).contains("INC-1"));
 }
 
-#[cfg(unix)]
+#[cfg(all(unix, feature = "test-curl"))]
 #[test]
 fn every_unusable_feed_leaves_the_history_byte_identical() {
     let tree = Tree::new("refresh-refusals");
@@ -557,15 +558,67 @@ fn every_unusable_feed_leaves_the_history_byte_identical() {
     }
 }
 
+/// E06 review round 6: a `curl` earlier on `PATH` must never run. With no test override, the
+/// feed is pointed at an unreachable address so the system curl fails fast without network.
 #[cfg(unix)]
 #[test]
-fn a_missing_curl_is_unavailability_not_a_notice() {
-    let tree = Tree::new("no-curl");
-    let empty = tree.0.join("empty-bin");
-    std::fs::create_dir_all(&empty).unwrap();
-    let output = tree.run_with_path(&["containment", "refresh"], Some(&empty));
-    assert_eq!(output.status.code(), Some(4));
-    assert!(!tree.log().exists());
+fn a_curl_on_path_is_never_executed() {
+    use std::os::unix::fs::PermissionsExt;
+    let tree = Tree::new("path-hijack");
+    let bin = tree.0.join("hijack-bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let marker = tree.0.join("hijacked");
+    let script = bin.join("curl");
+    std::fs::write(
+        &script,
+        format!("#!/bin/sh\ntouch '{}'\n", marker.display()),
+    )
+    .unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::create_dir_all(tree.state()).unwrap();
+    std::fs::write(
+        tree.state().join("containment_feed_url"),
+        "https://127.0.0.1:9/notice.json",
+    )
+    .unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_cancellai-cli"))
+        .args(["containment", "refresh"])
+        .env("HOME", &tree.0)
+        .env("CANCELLAI_HOME", tree.0.join("cancellai-home"))
+        .env("PATH", &bin)
+        .env_remove("CANCELLAI_TEST_CURL")
+        .output()
+        .unwrap();
+    assert_eq!(
+        output.status.code(),
+        Some(4),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!marker.exists(), "the curl on PATH was executed");
+}
+
+/// E06 review round 6: "already current" is only said of a history that replays.
+#[cfg(all(unix, feature = "test-curl"))]
+#[test]
+fn an_unverifiable_history_is_never_already_current() {
+    let tree = Tree::new("stale-current");
+    tree.trust_test_publisher();
+    let text = "{\"not\":\"a bundle\"}".to_string();
+    std::fs::create_dir_all(tree.state()).unwrap();
+    let line = serde_json::json!({ "install": text }).to_string();
+    std::fs::write(tree.log(), format!("{line}\n")).unwrap();
+    let before = std::fs::read(tree.log()).unwrap();
+    let bin = fake_curl(&tree, &text, "200", 0);
+    let output = tree.run_with_path(&["containment", "refresh"], Some(&bin));
+    assert_eq!(
+        output.status.code(),
+        Some(4),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("already current"));
+    assert_eq!(std::fs::read(tree.log()).unwrap(), before);
 }
 
 #[test]

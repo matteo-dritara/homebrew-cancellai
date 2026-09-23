@@ -28,6 +28,15 @@ PASS (pending the independent pass and the owner's migration Safety Verdict)
 | A broken install must not reach users | `tests.yml` renders the cutover formula against the latest published release, taps it and runs `brew install`, `cancellai version` and `cancellai-legacy --version` on every change. |
 | The switch must not ship before the verdict | The live `Formula/cancellai.rb` has no engine resources (`test_the_live_formula_has_no_engine_yet`); the template is adopted only by `finalize` of the cutover release. |
 
+## Round-6 repairs (Codex, `project/evidence/E06-VERIFIER-REVIEW-ROUND6.md`)
+
+| Finding | Repair | Evidence |
+| --- | --- | --- |
+| `release.py check` accepted wrong-version engine URLs, corrupted digests and an extra malformed resource | `formula_engine_problems` requires exactly one well-formed resource per target, no other release-download URL, and every URL at the formula's version; `check` and `finalize` both apply it | `CutoverFormulaValidationTests` (wrong version, malformed digest, extra resource, pre-cutover formula) |
+| Re-running `finalize` for v1.21.0 adopted the Rust template, and a failed post-write check left the formula changed | Adoption needs `--adopt-cutover` and is refused for any version before 2.0.0 or in `UNVERSIONED_ENGINE_RELEASES`; the finalized text is validated before an atomic write, and a failing post-write `check` restores the original | `test_finalize_never_adopts_the_cutover_without_being_told_or_for_an_unversioned_engine`, `test_a_failed_post_write_check_restores_the_formula` |
+| The cutover CI job ran `version` without asserting it | `release.py verify-installed` asserts `cancellai version` = `cancellai-cli <version>` (`0.1.0` only for the one release listed as unversioned) and `cancellai-legacy --version`; the formula's own `brew test` runs for every versioned release | `tests.yml` homebrew job |
+| Undisclosed: `configure` refused on Windows; help/version still presented `cancellai-cli` as a beta | Disclosed in the Unreleased notes and `docs/CLI_RUST.md`; the "target-engine beta" wording is gone from the help; a checked inventory of every shared flag, `project/cli_inventory.json`, is tested against the Python parser, the Rust help goldens and the release notes | `tests/test_cli_inventory.py` |
+
 ## Verification (native reproduction per platform, E21-S02 partial-scan fixtures)
 
 `rust_python_parity.py check` runs the partial-scan fixtures (`codex-partial-tree`,

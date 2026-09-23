@@ -101,5 +101,10 @@ jobs:
           brew style cancellai-ci/cutover/cancellai
           brew audit --strict cancellai-ci/cutover/cancellai
           HOMEBREW_NO_INSTALL_FROM_API=1 brew install cancellai-ci/cutover/cancellai
-          "$(brew --prefix)/bin/cancellai" version
-          "$(brew --prefix)/bin/cancellai-legacy" --version
+          # Both commands must report the version the formula names (E06 review round 6); the
+          # formula's own test block runs too, except for the one release whose engine predates
+          # carrying its version (release.py UNVERSIONED_ENGINE_RELEASES).
+          python3 scripts/release.py verify-installed --version "$version" --prefix "$(brew --prefix)"
+          if ! python3 -c "import sys; sys.path.insert(0, 'scripts'); import release; sys.exit(0 if '$version' in release.UNVERSIONED_ENGINE_RELEASES else 1)"; then
+            brew test cancellai-ci/cutover/cancellai
+          fi

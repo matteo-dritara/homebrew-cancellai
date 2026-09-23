@@ -40,7 +40,7 @@ const TOP_LEVEL_TOKENS: &[&str] = &["--help", "-h", "--version"];
 #[command(
     name = "cancellai-cli",
     version = env!("CARGO_PKG_VERSION"),
-    about = "Safely reclaim disk space from old Codex and Claude Code sessions (target-engine beta)."
+    about = "Safely reclaim disk space from old Codex and Claude Code sessions."
 )]
 struct Cli {
     #[command(subcommand)]

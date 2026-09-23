@@ -1,4 +1,4 @@
-# Rust CLI reference (target engine, beta)
+# Rust CLI reference (the canonical engine from 2.0.0)
 
 This documents `cancellai-cli` (`rust/crates/cancellai-cli`), the target-engine command
 surface built starting at E06-S01. It is a separate document from [`CLI.md`](CLI.md), which
@@ -7,10 +7,11 @@ stays generated from the frozen Python reference's `argparse` definitions per `A
 replaces it through an explicit story/ADR") - no such story/ADR exists yet, so this file is
 hand-maintained until one does.
 
-This is not yet the canonical CLI (see `docs/development/MIGRATION_PYTHON_RUST.md` - cutover
-happens at E06-S04, gated on the full migration Safety Verdict). During the beta/side-by-side
-period (E06-S03), `cancellai-cli` and `cancellai.py` coexist; `cancellai-cli version` identifies
-which engine and version a given binary is.
+From the 2.0.0 release the Homebrew formula installs this engine as `cancellai`, and the frozen
+Python reference as `cancellai-legacy` through 2.1.0 (E06-S04,
+`docs/development/MIGRATION_PYTHON_RUST.md` M8). Help and `version` still name the program
+`cancellai-cli`, the engine's own name, so `cancellai version` says which engine answered. The
+checked inventory of every flag the two CLIs share is `project/cli_inventory.json`.
 
 ## Commands
 

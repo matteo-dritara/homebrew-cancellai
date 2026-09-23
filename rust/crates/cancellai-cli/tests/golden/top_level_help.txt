@@ -1,4 +1,4 @@
-Safely reclaim disk space from old Codex and Claude Code sessions (target-engine beta).
+Safely reclaim disk space from old Codex and Claude Code sessions.
 
 Usage: cancellai-cli <COMMAND>
 

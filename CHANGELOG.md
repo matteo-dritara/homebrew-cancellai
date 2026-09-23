@@ -14,12 +14,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stays installed as `cancellai-legacy` until and including 2.1.0, as the immediate rollback.
   Intentional differences from the Python CLI, each disclosed in `docs/CLI_RUST.md`:
   - new commands: `inspect`, `plan`, `update --check`, `containment`, `desktop-api`;
-  - removed: `--aggressive`, `status --paths`/`--coverage`/`--top`, `--codex-backend` - refused
+  - removed: `--aggressive`, `status --paths`/`--coverage`/`--top`, `--codex-backend` (on `status`
+    and `clean`) - refused
     as usage errors; the Codex native delete backend is not used;
   - `--json` prints the documented `JSON_CONTRACTS.md` documents, not the Python shapes;
   - `clean` never rewrites Claude's `history.jsonl` (it says so), never deletes a file with more
     than one hard link, and obeys signed incident containment and the release channel;
+  - `configure --claude-retention` is refused on Windows (no verified handle-bound settings
+    write there yet); it works as before on macOS and Linux;
+  - `status --json` and `clean --json` print the documented documents (see above);
+  - `cancellai version` prints `cancellai-cli <version>` and the help names the program
+    `cancellai-cli`, the engine's own name; `cancellai-legacy --version` prints the Python one;
   - Windows is supported natively.
+  The full, checked inventory of every shared flag is `project/cli_inventory.json`.
 - The Rust engine now reports the release version it ships in (it reported `0.1.0` through
   1.21.0).
 
