@@ -132,3 +132,61 @@ Brief-Checksum: 255d8f22ed2d1d30165dd673fdbc2d6d045646d1ee799f5a416669efb31c62ea
 Owner note: This verifier round found unresolved issues and does not accept the CR4 change. This was the owner-authorized final E17 review round; no round 5 is authorized.
 
 FAIL
+
+## Round 5 - 2026-09-23
+
+Verifier: Codex
+Brief-Checksum: 255d8f22ed2d1d30165dd673fdbc2d6d045646d1ee799f5a416669efb31c62ea
+
+### Invariants
+
+| Invariant | Required property | Evidence | Result |
+| --- | --- | --- | --- |
+| SI-022 | Knowledge remains inert and verified; incident evidence identifies its signed knowledge and running-release provenance without provider payload content. | Provenance/evidence fields remain private with compile-fail constructor/mutation doctests; release provenance is derived internally. Validation accepts only bounded identifier alphabets and invariant IDs. | PASS |
+| SI-029 | Replays, rollback, expiry, refusal, and capacity pressure cannot remove or weaken containment; offline local-kernel operation remains available. | Append-only active records; only `lift_locally` removes records. Canonical scopes and evidence-aware dedup fixes confirmed; capacity checks precede sequence insertion and append. Existing tests exercise refusal atomicity and retry. Raw bundle bytes remain unbounded before parse (residual). | PASS_WITH_RESIDUALS |
+| SI-030 | Containment cannot raise authority above local and compiled-channel constraints. | `effective_authority_under_containment` adds only the matched Observe/Recommend ceiling into the common minimum calculation; tests cover channel and containment combinations. No elevation counterexample found. | PASS |
+
+### Adversarial cases
+
+- Round-4 scope repair holds: versions, action classes, and platforms are sorted/deduplicated as sets before retention; the regression permutes and repeats each list, confirms no extra record is retained, then confirms a novel record fits at capacity.
+- Round-4 evidence repair holds: severity, invariants, and affected releases participate in dedup identity. Tests prove each changed evidence field remains inspectable as its own active record.
+- A semantically identical reissue with newer knowledge sequence/publisher does not consume another retained-record slot. Each successful `ingest` returns evidence containing that verified provenance; active ledger storage remains bounded by semantic containment/evidence identity.
+- At-capacity updates refuse whole, keep existing bindings, and do not consume the publisher sequence; a smaller retry at the same sequence succeeds. Publisher tracking is separately bounded and does not evict prior sequence state.
+- Same-ID narrower scopes and looser ceilings append alongside prior records; matching remains the union of records and the strictest ceiling. Remote omission, expiry, rollback, replay and failed verification cannot lift active records.
+- Signature, publisher, schema, kind, identifier, invariant, duplicate-ID, expiry and malformed-payload checks fail closed. Evidence contains identifiers/digests, not provider payload content.
+- Offline refresh does not alter the ledger. Exact matching treats an unknown installed version as affected by a version-scoped notice.
+- Raw bundle text has no maximum byte-size validation before parsing/verifying. A caller that accepts arbitrarily large network responses can expose the process to memory/CPU exhaustion; this is retained as an explicit availability residual.
+- No filesystem path, link, mount, or reparse-point operation is represented in or performed by the containment ledger. No async shared mutation path is present; Rust's exclusive mutable borrow serializes each ledger mutation.
+
+### Differential / compatibility evidence
+
+No Python/Rust behavior comparison applies to this Rust safety API. Full workspace Rust tests and doctests passed. The helper is not yet wired into a live mutation path; cutover wiring remains E06-S04 as disclosed in the story and runbook.
+
+### Gates
+
+- `cargo fmt --check`: PASS
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings`: PASS
+- `cargo check --workspace --all-targets`: PASS
+- `cargo test --workspace`: PASS; workspace tests and doctests completed without failures.
+- `cargo deny check`: PASS on retry with writable temporary `CARGO_HOME`; advisories, bans, licenses and sources OK, with existing duplicate crate and unmatched allowance warnings.
+- `python3 -m pytest tests`: PASS; 689 passed.
+- `python3 scripts/project_os.py check`: PASS before final evidence/status generation; rerun after generation.
+- `python3 scripts/verifier_handoff.py check`: PASS before final evidence/status generation; rerun after generation.
+- `python3 scripts/check_process.py check`: PASS before final evidence/status generation, with existing historical over-ceiling warnings; rerun after adding this round.
+
+### Required repairs
+
+None for this round. Round-4's required repairs are confirmed.
+
+### Known residual risks
+
+- The raw network-facing bundle text has no pre-parse byte-size cap. Add a bounded fetch/parser contract and adversarial oversized-input coverage before exposing this path to an untrusted network response.
+- The containment helper is not yet wired to a live mutation path or shipped distribution channel; this remains E06-S04 cutover work.
+
+### Owner decision
+
+`PENDING`
+
+Owner note: Round 5 confirms the two authorized repairs. This verifier records `PASS_WITH_RESIDUALS`; CR4 closure and acceptance of residual risk remain an owner decision.
+
+PASS_WITH_RESIDUALS

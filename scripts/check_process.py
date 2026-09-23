@@ -131,7 +131,9 @@ REVIEW_ROUND_EXCEPTIONS = {
     "owner's two-review limit for E17-S07, both FAIL - see E17-VERIFIER-REVIEW-ROUND3.md and "
     "project/evidence/E17-S07/EVIDENCE.md for what happened after the limit. On 2026-09-23 the "
     "owner, asked directly, authorized exactly one further round (round 4) for E17-S07, because "
-    "a CR4 story cannot close without an independent Safety Verdict",
+    "a CR4 story cannot close without an independent Safety Verdict. Round 4 failed on two "
+    "narrow deduplication defects, both repaired in f4eefe5; the owner then authorized exactly "
+    "one further round (round 5) to verify those repairs",
 }
 # Matches both an epic-scoped record (`E07-VERIFIER-REVIEW.md`) and a story-scoped one
 # (`E07-S07-VERIFIER-REVIEW.md`), counting both against the *epic's* ceiling (captured
