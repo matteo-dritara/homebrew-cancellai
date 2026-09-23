@@ -1633,3 +1633,32 @@ fn a_json_clean_discloses_the_untouched_history_on_stderr_only() {
         assert_eq!(noted, !keep, "{}", stderr(&output));
     }
 }
+
+/// E06-S13 (review round 3): a stale session with a second hard link is refused, on every
+/// platform, and both names keep their bytes. A second name for the planned object cannot be
+/// told apart from a decoy link planted beside a swapped-out root.
+#[test]
+fn a_hard_linked_session_is_refused_and_both_names_survive() {
+    needs_stable_build!();
+    let home = TempHome::new("hard-link");
+    let session = home.write_stale_claude_session("proj-l", "99999999-9999-4999-8999-999999999997");
+    let outside = home.path().join("backup-of-session.jsonl");
+    std::fs::hard_link(&session, &outside).unwrap();
+    let output = run(
+        &home,
+        &[
+            "clean",
+            "--yes",
+            "--json",
+            "--allow-running",
+            "--keep-latest",
+            "0",
+            "--tool",
+            "claude",
+        ],
+    );
+    assert!(!output.status.success(), "{}", stdout(&output));
+    assert!(stdout(&output).contains("links"), "{}", stdout(&output));
+    assert_eq!(std::fs::read_to_string(&session).unwrap(), "{}");
+    assert_eq!(std::fs::read_to_string(&outside).unwrap(), "{}");
+}

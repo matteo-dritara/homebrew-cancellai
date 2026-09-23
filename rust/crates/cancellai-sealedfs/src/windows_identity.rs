@@ -54,6 +54,8 @@ pub struct WindowsFileFacts {
     /// Unix identity token's `modified_nanos`: the sub-second remainder needed to disambiguate
     /// a same-second delete-and-recreate, E07-S05).
     pub last_write_time_ticks: u64,
+    /// `nNumberOfLinks`: how many names this object has (E06-S13 refuses deleting one of several).
+    pub number_of_links: u32,
 }
 
 /// Observe `path`'s real identity. Never follows a reparse point at the final component -
@@ -106,6 +108,7 @@ pub(crate) fn observe_identity_of_handle(handle: RawHandle) -> io::Result<Window
         is_directory: info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY != 0,
         last_write_time_ticks: ((info.ftLastWriteTime.dwHighDateTime as u64) << 32)
             | info.ftLastWriteTime.dwLowDateTime as u64,
+        number_of_links: info.nNumberOfLinks,
     })
 }
 

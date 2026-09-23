@@ -303,6 +303,17 @@ fn confirmed_delete_file_inner(
                 .to_string(),
         ));
     }
+    // E06-S13: a file with more than one link is refused. At deletion time a legitimate second
+    // hard link and a decoy link planted beside a swapped-out root are the same fact - another
+    // name for the planned inode - and the post-unlink check below can only tell "this fd's
+    // object is gone" when there was exactly one name to remove.
+    if before.nlink() > 1 {
+        return Err(MutationError(format!(
+            "refusing to delete a file with {} links: another name for the same object cannot be \
+             told apart from a decoy, so a hard-linked file is only observed",
+            before.nlink()
+        )));
+    }
 
     between_open_and_unlink();
 
@@ -930,6 +941,15 @@ fn confirmed_delete_file_inner(
             "target identity changed between revalidation and deletion (open-time check)"
                 .to_string(),
         ));
+    }
+    // E06-S13: as on Unix, a file with more than one link is refused - a second name cannot be
+    // told apart from a decoy planted beside a swapped-out root.
+    if before.number_of_links > 1 {
+        return Err(MutationError(format!(
+            "refusing to delete a file with {} links: another name for the same object cannot be \
+             told apart from a decoy, so a hard-linked file is only observed",
+            before.number_of_links
+        )));
     }
 
     between_open_and_unlink();

@@ -241,6 +241,10 @@ orderings).
   handle, and `GetFileInformationByHandleEx` enumeration of that same handle, which is bound with
   the listing right on the provider root alone -
   where it used to fail closed.
+- A stale session file with more than one hard link is never deleted, on any platform
+  (E06-S13): another name for the planned object cannot be told apart from a decoy link planted
+  beside a swapped-out root, so such a file is refused at deletion with its link count in the
+  reason.
 - A default-named root (`$HOME/.claude`/`$HOME/.codex`, no override) that is itself a link is
   refused as non-default on every platform (E07-S07, `rust/crates/cancellai-cli/src/roots.rs`'s
   `is_symlink`) - proven with real fixtures for a Unix symlink and, since `std` exposes no
