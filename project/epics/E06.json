@@ -83,10 +83,8 @@
       "title": "Canonical engine switch",
       "status": "blocked",
       "blocked_by": {
-        "summary": "Two gates in the cutover checklist are open and neither is a dependency this story can declare. G2: the authority defect the 2026-09-03 target-engine review reproduced is repaired and pinned by regressions, but repaired-by-executor is not independently-confirmed-repaired, and no verifier has taken a second adversarial pass at E21-S03/E21-S07 - an act no work item currently carries, which is why it appears here rather than in waiting_on. G4: the operability leg needs E17-S07 (signed capability containment). It is implemented, and every finding of its three independent rounds (2026-09-23) is repaired, but its latest Safety Verdict line is still round 4's FAIL, so it is not done; it also has no caller on the live mutation path, which is cutover work inside this story. The performance self-budget and crash/recovery gaps named in the same checklist are also unaddressed. Closing this needs either the checklist reading ready against real evidence with an independent CR4 verifier pass and the owner's own Safety Verdict, or an explicit ADR narrowing the cutover perimeter. Neither is something an executor grants itself.",
-        "waiting_on": [
-          "E17-S07"
-        ],
+        "summary": "Two gates in the cutover checklist are open and neither is a dependency this story can declare. G2: the authority defect the 2026-09-03 target-engine review reproduced is repaired and pinned by regressions, but repaired-by-executor is not independently-confirmed-repaired, and no verifier has taken a second adversarial pass at E21-S03/E21-S07 - an act no work item currently carries, which is why it appears here rather than in waiting_on. G4: the operability leg needs E17-S07 (signed capability containment). It passed its fifth independent round and the owner accepted it (2026-09-23), but it has no caller on the live mutation path, which is cutover work inside this story. The performance self-budget and crash/recovery gaps named in the same checklist are also unaddressed. Closing this needs either the checklist reading ready against real evidence with an independent CR4 verifier pass and the owner's own Safety Verdict, or an explicit ADR narrowing the cutover perimeter. Neither is something an executor grants itself.",
+        "waiting_on": [],
         "argument": "docs/development/RELEASE_GATES.md",
         "recorded": "2026-09-23"
       },

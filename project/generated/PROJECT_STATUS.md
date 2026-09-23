@@ -10,8 +10,7 @@ Epics: **33** | Stories: **169**
 
 - `blocked`: 1
 - `cancelled`: 1
-- `done`: 166
-- `verification`: 1
+- `done`: 167
 
 ## Change risk distribution
 

@@ -190,3 +190,13 @@ None for this round. Round-4's required repairs are confirmed.
 Owner note: Round 5 confirms the two authorized repairs. This verifier records `PASS_WITH_RESIDUALS`; CR4 closure and acceptance of residual risk remain an owner decision.
 
 PASS_WITH_RESIDUALS
+
+## Owner decision - Round 5
+
+`ACCEPTED`
+
+Owner note (2026-09-23, recorded by the executor at the owner's direction): the round-5
+`PASS_WITH_RESIDUALS` verdict is accepted and E17-S07 may close. Both residuals are assigned
+rather than accepted as permanent: both move to E06-S04's cutover work, where the story that
+wires the ledger into the CLI reads notices from local files and must cap their bytes before
+parsing.
