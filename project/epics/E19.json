@@ -12,7 +12,7 @@
     {
       "id": "E19-S01",
       "title": "Desktop API boundary",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "Expose a narrow local IPC/API that reuses engine plans and explanations.",
       "change_risk": "CR3",
       "dependencies": [
@@ -36,7 +36,7 @@
     {
       "id": "E19-S02",
       "title": "Cross-platform desktop shell",
-      "status": "ready_for_review",
+      "status": "in_progress",
       "outcome": "Implement tray/menu-bar/dashboard experience using shared core, with Tauri or an equivalent evidence-backed choice.",
       "change_risk": "CR1",
       "dependencies": [

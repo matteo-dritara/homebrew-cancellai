@@ -2172,7 +2172,7 @@ Add a cross-platform desktop client only after CLI/TUI/Guardian domain contracts
 
 ### E19-S01 - Desktop API boundary
 
-**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E15-S04 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR3` | **Dependencies:** E15-S04 | **Safety obligations:** none
 
 **Outcome.** Expose a narrow local IPC/API that reuses engine plans and explanations.
 
@@ -2194,7 +2194,7 @@ Add a cross-platform desktop client only after CLI/TUI/Guardian domain contracts
 
 ### E19-S02 - Cross-platform desktop shell
 
-**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E19-S01 | **Safety obligations:** none
+**Status:** `in_progress` | **Change Risk:** `CR1` | **Dependencies:** E19-S01 | **Safety obligations:** none
 
 **Outcome.** Implement tray/menu-bar/dashboard experience using shared core, with Tauri or an equivalent evidence-backed choice.
 
