@@ -91,3 +91,48 @@ Check multi-link state at the final Unix held-parent check and on the exact Wind
 PENDING
 
 FAIL
+
+## Round 5
+
+Verifier: Codex
+Brief-Checksum: 867c06801cf21e247190f5d88a7dbc7ea2ee9d08e699dcc6f61881702d181121
+
+- Reviewed repair commit: `7f6c554b2a25e4dcda16b11e5aa912d917499e74`.
+- Scope: E06-S13 only. This is the owner-authorized extra independent pass after rounds 3 and 4 failed.
+
+### Invariants
+
+| Invariant | Independent evidence | Result |
+| --- | --- | --- |
+| SI-013 | The Unix final held-parent `fstatat` checks device/inode and link count before `unlinkat`; Windows checks volume/file index and link count from the exact child handle used for delete disposition. The deterministic late-link test and E21 renamed-root hard-linked-decoy regression pass on Unix. The final check and OS mutation remain separate calls. | PASS_WITH_RESIDUALS |
+| SI-017 | Windows uses native `BY_HANDLE_FILE_INFORMATION.nNumberOfLinks`, volume/file index and reparse classification. Only plain files enter the delete operation; directories, reparse points and unconfirmed kinds remain refused. Windows-target Clippy and exact repair-commit native Windows CI pass. | PASS_WITH_RESIDUALS |
+| SI-019 | `check_mutation_boundary.py check` passes. The production CLI still reaches deletion only through the safety executor and platform confirmed-delete path; no alternate multi-link delete route was found. | PASS |
+
+### Adversarial cases
+
+- Independent stable-release CLI fixture: a stale, synthetic Claude session with two hard-link names returned exit 3, reported links, and kept both names byte-identical. Removing the extra name and rerunning returned exit 0 and deleted the eligible single-link session.
+- The Unix `a_hard_link_added_after_the_open_time_check_is_refused_before_any_name_is_removed` test passed: its callback adds a second link after the first open; the final held-parent check refuses before either name is removed. The matching Windows test ran in the exact repair-commit Windows quality job. Native Windows execution by this verifier was **NOT RUN** because there is no local Windows host.
+- `execute_refuses_a_root_renamed_and_replaced_with_a_hardlinked_decoy` passed. The original Unix `after.nlink() == 0` postcondition remains; `eb0638f`'s weakened postcondition was not restored.
+- Source trace of `NtCreateFile` and `SetFileInformationByHandle` confirms `number_of_links` is read on the handle whose delete disposition is then set. Unix `fstatat` reads link count on the held parent immediately before `unlinkat`.
+- Residual: a link created after the final read but before the deletion syscall can still make the precheck stale. On Unix, the post-unlink check reports failure only after a name might be removed. The Unix final two-syscall leaf-name interval was owner-accepted in E06-S06's Safety Verdict; the analogous Windows link-count interval is stated here for an explicit owner CR4 decision. This pass does not treat post-delete detection as refusal preserving both names.
+
+### Gates
+
+| Gate | Result |
+| --- | --- |
+| Rust fmt, workspace Clippy, Windows-target Clippy, workspace tests | PASS |
+| Stable-channel CLI suite with kill-points | PASS |
+| Focused Unix late-link and E21 hard-linked-decoy tests | PASS |
+| Independent stable-release CLI two-link/single-link fixture | PASS |
+| Python tests, cutover benchmark after stable release build | PASS |
+| `check_mutation_boundary.py` | PASS |
+| Exact repair-commit Windows `quality`, `cli-stable-channel`, `kill-harness` (`gh run view 35898569202`) | PASS |
+| Latest-main Windows CI at review time | UNKNOWN: newer main SHA `184acaa5…` queued |
+| Native Windows late-link run by this verifier | NOT RUN: no Windows host |
+| Post-evidence governance, handoff, process and process-metrics checks | PASS; process check reports the owner-recorded E06 round-count exception |
+
+### Owner decision
+
+PENDING
+
+PASS_WITH_RESIDUALS
