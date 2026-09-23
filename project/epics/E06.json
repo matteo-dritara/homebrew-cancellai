@@ -81,7 +81,7 @@
     {
       "id": "E06-S06",
       "title": "An independent verifier confirms the E21 authority repairs",
-      "status": "verification",
+      "status": "done",
       "outcome": "G2 of the cutover checklist is open for one reason: E21's round-1 independent review found the scan-completeness authority defect, the executor repaired every finding and pinned each with a regression written against the verifier's own reproduction, and the owner then closed E21 without spending a second round on those repairs (project/evidence/E21-CLOSURE.md). Repaired-by-executor is not independently-confirmed-repaired, and that act has had no work item to carry it, which is why it lived only in E06-S04's blocker prose. This story carries it: an independent adversarial pass over E21-S03 (scan completeness makes the scope incomplete, never absent) and E21-S07 (handle-relative unlink) as they stand in the code the cutover would ship, not as they stood at E21's closure.",
       "change_risk": "CR4",
       "dependencies": [],
@@ -108,7 +108,7 @@
     {
       "id": "E06-S07",
       "title": "The CLI's authority passes through the release channel and the local containment ledger",
-      "status": "verification",
+      "status": "done",
       "outcome": "ADR-0039 puts signed incident containment inside the cutover perimeter, fed by locally installed notices. Today `clean` seals every plan at a constant Govern, so neither the release-channel ceiling (E17-S05) nor containment (E17-S07) can reach a mutation; LocalTrustPolicy is never constructed outside tests; and the ledger lives in memory, so restarting the process would lift every containment. This story makes authority computed rather than asserted, compiles in the project incident-response key, adds the explicit containment install/list/lift commands, persists the ledger, and closes E17-S07's round-5 residual by capping a notice's bytes before parsing. It builds on E17-S07's ledger, which is done before this story starts; the edge is not declared because E17 sits in a later roadmap phase, the same inversion E06-S04's blocker already records.",
       "change_risk": "CR4",
       "dependencies": [],
@@ -144,7 +144,7 @@
     {
       "id": "E06-S08",
       "title": "The Rust CLI stays within a performance self-budget measured against the reference",
-      "status": "ready_for_review",
+      "status": "done",
       "outcome": "G4 names a performance self-budget for the CLI's own command paths as unaddressed. E21-S05 retargeted the benchmark onto the shipped resolution path and E21-S06 bounded rollout reads, but nothing compares the command a user runs against the engine it replaces. The owner chose the criterion: on a large synthetic corpus, the Rust CLI is no slower than the frozen Python reference for status, inspect, plan and a dry clean, and never exceeds a fixed resident-memory ceiling. Measured in CI on Linux; reported on macOS and Windows.",
       "change_risk": "CR1",
       "dependencies": [],
@@ -167,7 +167,7 @@
     {
       "id": "E06-S09",
       "title": "clean survives being killed at every mutation point",
-      "status": "verification",
+      "status": "done",
       "outcome": "G4's other open item is crash and recovery: nothing beyond unit tests shows what a real process kill in the middle of clean leaves behind. The owner chose a real-kill harness: clean is killed (SIGKILL, TerminateProcess) at each point on the mutation path, and what remains is checked for unsafe partial state, a consistent ledger, and an idempotent rerun. It runs on macOS, Linux and Windows CI.",
       "change_risk": "CR3",
       "dependencies": [],
@@ -192,7 +192,7 @@
     {
       "id": "E06-S10",
       "title": "clean accepts --keep-claude-history and --verbose as the reference does",
-      "status": "verification",
+      "status": "done",
       "outcome": "G1 lists disclosed functional gaps. The owner chose to close the two clean flags before cutover, because a script that passes them to the canonical engine would otherwise break, and to accept the rest (--aggressive, status --paths/--coverage/--top) as disclosed divergences stated in the release notes. In the reference, --keep-claude-history does not protect an artifact: it turns off the rewrite of history.jsonl that drops lines tied to deleted Claude sessions. The Rust engine never rewrites history.jsonl - that rewrite is a second kind of mutation the one safety boundary does not have, the same reason E22-S05 declined the Codex native backend - so Rust already behaves as if the flag were always given. Accepting the flag is therefore exact, and the absent trim stays a disclosed divergence rather than being added here as a side effect. --verbose only reports more.",
       "change_risk": "CR3",
       "dependencies": [],
@@ -217,7 +217,7 @@
     {
       "id": "E06-S11",
       "title": "clean --json always prints a document",
-      "status": "verification",
+      "status": "done",
       "outcome": "E06-S09's kill harness found that `cancellai-cli clean --json` prints a plain sentence - \"Nothing to clean...\" or \"Nothing was cleaned: safety withheld...\" - when no deletion is planned, where the reference prints a JSON document carrying the exit code and a `result` of `nothing-to-do` or `safety-withheld`. Automation that parses the output of the canonical engine would break on exactly the run that did nothing, including the one where safety withheld work. The exit code is already right; the document is missing.",
       "change_risk": "CR2",
       "dependencies": [],
@@ -242,7 +242,7 @@
     {
       "id": "E06-S12",
       "title": "Codex lineage I/O errors and Claude companion error retention fail closed",
-      "status": "verification",
+      "status": "done",
       "outcome": "E06-S06's independent pass (round 1, FAIL) found that an unreadable Codex rollout can be planned for deletion while its scope reports complete, because lineage open/read errors become None without a completeness reason. Claude companion traversal also accumulates unbounded failure reasons before applying ReasonLog retention. Repair both E21-S03 authority gaps and independently verify that failures remain visible, bounded and non-destructive.",
       "change_risk": "CR4",
       "dependencies": [],
@@ -271,7 +271,7 @@
     {
       "id": "E06-S13",
       "title": "clean deletes on Windows through the identity-confirmed handle path",
-      "status": "verification",
+      "status": "done",
       "outcome": "E06-S09's kill harness, on its first Windows run, showed that `cancellai-cli clean` deletes nothing on Windows: every planned deletion is safely skipped with \"identity-confirmed deletion is only implemented for plain files, not this target's kind\". E20-S05 implemented Windows identity observation and a handle-relative `confirmed_delete_file` in `cancellai-platform`, and closed with an independent PASS, but `cancellai-safety::mutation_executor::delete_operation_for` still maps every `IdentityToken::Windows` to no operation - the second, independent backstop written before the Windows primitive existed, never revisited. The engine is therefore fail-closed on Windows, which is safe, while the cutover checklist reads G3 as ready, which is not true of the one mutating command. This story lets the executor select the delete operation for a Windows identity it can confirm is a regular file, and nothing else.",
       "change_risk": "CR4",
       "dependencies": [],
@@ -301,22 +301,7 @@
     {
       "id": "E06-S04",
       "title": "Canonical engine switch",
-      "status": "blocked",
-      "blocked_by": {
-        "summary": "The cutover perimeter is decided by ADR-0039 (local containment ledger; network channel moved to E33). What holds this story is the work that perimeter requires, each now carried by its own story: G2's independent confirmation of the E21 repairs (E06-S06, whose first pass failed on two new scan-completeness gaps now carried by E06-S12), G4's live containment and channel authority (E06-S07), the performance self-budget (E06-S08), crash/recovery under a real kill (E06-S09), the two clean flags G1 closes before cutover (E06-S10), and clean --json printing a document on a run that plans nothing (E06-S11, found by the kill harness). When they are done, closing this still needs the checklist reading ready against real evidence, an independent CR4 verifier pass, and the owner's own Safety Verdict. G3 is also not ready as recorded: on Windows the safety executor still refuses every deletion (E06-S13, found by the kill harness's first Windows run).",
-        "waiting_on": [
-          "E06-S06",
-          "E06-S07",
-          "E06-S08",
-          "E06-S09",
-          "E06-S10",
-          "E06-S11",
-          "E06-S12",
-          "E06-S13"
-        ],
-        "argument": "docs/development/RELEASE_GATES.md",
-        "recorded": "2026-09-23"
-      },
+      "status": "in_progress",
       "outcome": "Promote Rust to stable only after functional, safety, compatibility, and operability gates pass.",
       "change_risk": "CR4",
       "dependencies": [

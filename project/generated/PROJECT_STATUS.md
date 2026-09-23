@@ -8,12 +8,11 @@ Epics: **34** | Stories: **179**
 
 ## Story status
 
-- `blocked`: 1
 - `cancelled`: 1
-- `done`: 167
-- `planned`: 2
+- `done`: 175
+- `in_progress`: 1
+- `planned`: 1
 - `ready_for_review`: 1
-- `verification`: 7
 
 ## Change risk distribution
 
@@ -29,4 +28,4 @@ Epics: **34** | Stories: **179**
 
 ## Awaiting independent review
 
-- **E06-S08** - The Rust CLI stays within a performance self-budget measured against the reference (CR1)
+- **E33-S01** - Signed containment notices are fetched from a published feed (CR4)

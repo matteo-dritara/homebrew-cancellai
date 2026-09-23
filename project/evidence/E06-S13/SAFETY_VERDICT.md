@@ -136,3 +136,10 @@ Brief-Checksum: 867c06801cf21e247190f5d88a7dbc7ea2ee9d08e699dcc6f61881702d181121
 PENDING
 
 PASS_WITH_RESIDUALS
+
+## Owner decision - latest round (2026-09-24)
+
+`ACCEPTED`
+
+Owner note (recorded by the executor at the owner's direction): the latest independent verdict
+and its stated residuals are accepted; E06-S13 may close.

@@ -49,3 +49,10 @@ PENDING
 The prior owner-state disposition is recorded; owner acceptance of this CR4 review remains separate.
 
 PASS_WITH_RESIDUALS
+
+## Owner decision - latest round (2026-09-24)
+
+`ACCEPTED`
+
+Owner note (recorded by the executor at the owner's direction): the latest independent verdict
+and its stated residuals are accepted; E06-S07 may close.

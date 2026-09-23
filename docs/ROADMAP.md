@@ -116,7 +116,7 @@ Scale provider coverage and ship verifiable, signed, multi-channel releases with
 
 - **E16 - Provider Ecosystem and Federated Knowledge** (`done`): Scale provider coverage through manifests, native adapters, signed knowledge bundles, and explicit trust promotion.
 - **E17 - Verifiable Supply Chain and Distribution** (`done`): Automate canonical cross-platform builds, provenance, SBOM, signatures/attestations, and channel-aware installers.
-- **E33 - Containment Notice Distribution** (`planned`): ADR-0039 kept the network out of the Rust cutover: a signed containment notice reaches an installation only when its owner runs containment install. That makes the kill-switch as fast as a person reading an advisory. This epic adds the distribution channel ADR-0039 deferred: a fetch client that retrieves signed notices from a published feed, bounded in bytes before parsing, verified by the same trust policy, and never able to do more than the local install command can. It depends on the live ledger E06-S07 wires, not on E06 closing.
+- **E33 - Containment Notice Distribution** (`in_progress`): ADR-0039 kept the network out of the Rust cutover: a signed containment notice reaches an installation only when its owner runs containment install. That makes the kill-switch as fast as a person reading an advisory. This epic adds the distribution channel ADR-0039 deferred: a fetch client that retrieves signed notices from a published feed, bounded in bytes before parsing, verified by the same trust policy, and never able to do more than the local install command can. It depends on the live ledger E06-S07 wires, not on E06 closing.
 
 ## P6 - Network & Experience
 

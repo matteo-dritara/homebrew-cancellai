@@ -144,3 +144,10 @@ PENDING
 The existing owner acceptance above covers only the Unix leaf-name residual; it does not accept any new defect or close the cutover gate.
 
 PASS_WITH_RESIDUALS
+
+## Owner decision - latest round (2026-09-24)
+
+`ACCEPTED`
+
+Owner note (recorded by the executor at the owner's direction): the latest independent verdict
+and its stated residuals are accepted; E06-S06 may close.

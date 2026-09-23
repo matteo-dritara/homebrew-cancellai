@@ -782,7 +782,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S06 - An independent verifier confirms the E21 authority repairs
 
-**Status:** `verification` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-008, SI-009, SI-010, SI-019
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-008, SI-009, SI-010, SI-019
 
 **Outcome.** G2 of the cutover checklist is open for one reason: E21's round-1 independent review found the scan-completeness authority defect, the executor repaired every finding and pinned each with a regression written against the verifier's own reproduction, and the owner then closed E21 without spending a second round on those repairs (project/evidence/E21-CLOSURE.md). Repaired-by-executor is not independently-confirmed-repaired, and that act has had no work item to carry it, which is why it lived only in E06-S04's blocker prose. This story carries it: an independent adversarial pass over E21-S03 (scan completeness makes the scope incomplete, never absent) and E21-S07 (handle-relative unlink) as they stand in the code the cutover would ship, not as they stood at E21's closure.
 
@@ -804,7 +804,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S07 - The CLI's authority passes through the release channel and the local containment ledger
 
-**Status:** `verification` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-019, SI-022, SI-029, SI-030
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-019, SI-022, SI-029, SI-030
 
 **Outcome.** ADR-0039 puts signed incident containment inside the cutover perimeter, fed by locally installed notices. Today `clean` seals every plan at a constant Govern, so neither the release-channel ceiling (E17-S05) nor containment (E17-S07) can reach a mutation; LocalTrustPolicy is never constructed outside tests; and the ledger lives in memory, so restarting the process would lift every containment. This story makes authority computed rather than asserted, compiles in the project incident-response key, adds the explicit containment install/list/lift commands, persists the ledger, and closes E17-S07's round-5 residual by capping a notice's bytes before parsing. It builds on E17-S07's ledger, which is done before this story starts; the edge is not declared because E17 sits in a later roadmap phase, the same inversion E06-S04's blocker already records.
 
@@ -835,7 +835,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S08 - The Rust CLI stays within a performance self-budget measured against the reference
 
-**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** G4 names a performance self-budget for the CLI's own command paths as unaddressed. E21-S05 retargeted the benchmark onto the shipped resolution path and E21-S06 bounded rollout reads, but nothing compares the command a user runs against the engine it replaces. The owner chose the criterion: on a large synthetic corpus, the Rust CLI is no slower than the frozen Python reference for status, inspect, plan and a dry clean, and never exceeds a fixed resident-memory ceiling. Measured in CI on Linux; reported on macOS and Windows.
 
@@ -858,7 +858,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S09 - clean survives being killed at every mutation point
 
-**Status:** `verification` | **Change Risk:** `CR3` | **Dependencies:** none | **Safety obligations:** SI-019
+**Status:** `done` | **Change Risk:** `CR3` | **Dependencies:** none | **Safety obligations:** SI-019
 
 **Outcome.** G4's other open item is crash and recovery: nothing beyond unit tests shows what a real process kill in the middle of clean leaves behind. The owner chose a real-kill harness: clean is killed (SIGKILL, TerminateProcess) at each point on the mutation path, and what remains is checked for unsafe partial state, a consistent ledger, and an idempotent rerun. It runs on macOS, Linux and Windows CI.
 
@@ -881,7 +881,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S10 - clean accepts --keep-claude-history and --verbose as the reference does
 
-**Status:** `verification` | **Change Risk:** `CR3` | **Dependencies:** none | **Safety obligations:** SI-019
+**Status:** `done` | **Change Risk:** `CR3` | **Dependencies:** none | **Safety obligations:** SI-019
 
 **Outcome.** G1 lists disclosed functional gaps. The owner chose to close the two clean flags before cutover, because a script that passes them to the canonical engine would otherwise break, and to accept the rest (--aggressive, status --paths/--coverage/--top) as disclosed divergences stated in the release notes. In the reference, --keep-claude-history does not protect an artifact: it turns off the rewrite of history.jsonl that drops lines tied to deleted Claude sessions. The Rust engine never rewrites history.jsonl - that rewrite is a second kind of mutation the one safety boundary does not have, the same reason E22-S05 declined the Codex native backend - so Rust already behaves as if the flag were always given. Accepting the flag is therefore exact, and the absent trim stays a disclosed divergence rather than being added here as a side effect. --verbose only reports more.
 
@@ -904,7 +904,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S11 - clean --json always prints a document
 
-**Status:** `verification` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** SI-008, SI-009
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** SI-008, SI-009
 
 **Outcome.** E06-S09's kill harness found that `cancellai-cli clean --json` prints a plain sentence - "Nothing to clean..." or "Nothing was cleaned: safety withheld..." - when no deletion is planned, where the reference prints a JSON document carrying the exit code and a `result` of `nothing-to-do` or `safety-withheld`. Automation that parses the output of the canonical engine would break on exactly the run that did nothing, including the one where safety withheld work. The exit code is already right; the document is missing.
 
@@ -926,7 +926,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S12 - Codex lineage I/O errors and Claude companion error retention fail closed
 
-**Status:** `verification` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-008, SI-009, SI-010, SI-019
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-008, SI-009, SI-010, SI-019
 
 **Outcome.** E06-S06's independent pass (round 1, FAIL) found that an unreadable Codex rollout can be planned for deletion while its scope reports complete, because lineage open/read errors become None without a completeness reason. Claude companion traversal also accumulates unbounded failure reasons before applying ReasonLog retention. Repair both E21-S03 authority gaps and independently verify that failures remain visible, bounded and non-destructive.
 
@@ -950,7 +950,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S13 - clean deletes on Windows through the identity-confirmed handle path
 
-**Status:** `verification` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-013, SI-017, SI-019
+**Status:** `done` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-013, SI-017, SI-019
 
 **Outcome.** E06-S09's kill harness, on its first Windows run, showed that `cancellai-cli clean` deletes nothing on Windows: every planned deletion is safely skipped with "identity-confirmed deletion is only implemented for plain files, not this target's kind". E20-S05 implemented Windows identity observation and a handle-relative `confirmed_delete_file` in `cancellai-platform`, and closed with an independent PASS, but `cancellai-safety::mutation_executor::delete_operation_for` still maps every `IdentityToken::Windows` to no operation - the second, independent backstop written before the Windows primitive existed, never revisited. The engine is therefore fail-closed on Windows, which is safe, while the cutover checklist reads G3 as ready, which is not true of the one mutating command. This story lets the executor select the delete operation for a Windows identity it can confirm is a regular file, and nothing else.
 
@@ -976,7 +976,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S04 - Canonical engine switch
 
-**Status:** `blocked` | **Change Risk:** `CR4` | **Dependencies:** E06-S03, E21, E22-S01, E06-S06, E06-S07, E06-S08, E06-S09, E06-S10, E06-S11, E06-S12, E06-S13 | **Safety obligations:** SI-019
+**Status:** `in_progress` | **Change Risk:** `CR4` | **Dependencies:** E06-S03, E21, E22-S01, E06-S06, E06-S07, E06-S08, E06-S09, E06-S10, E06-S11, E06-S12, E06-S13 | **Safety obligations:** SI-019
 
 **Outcome.** Promote Rust to stable only after functional, safety, compatibility, and operability gates pass.
 
@@ -4124,13 +4124,13 @@ E12-S04's round-5 independent review (project/evidence/E12-S04-VERIFIER-REVIEW-R
 
 ## E33 - Containment Notice Distribution
 
-**Phase:** `P5` | **Status:** `planned` | **Epic dependencies:** none
+**Phase:** `P5` | **Status:** `in_progress` | **Epic dependencies:** none
 
 ADR-0039 kept the network out of the Rust cutover: a signed containment notice reaches an installation only when its owner runs containment install. That makes the kill-switch as fast as a person reading an advisory. This epic adds the distribution channel ADR-0039 deferred: a fetch client that retrieves signed notices from a published feed, bounded in bytes before parsing, verified by the same trust policy, and never able to do more than the local install command can. It depends on the live ledger E06-S07 wires, not on E06 closing.
 
 ### E33-S01 - Signed containment notices are fetched from a published feed
 
-**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E06-S07 | **Safety obligations:** SI-022, SI-029, SI-030
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E06-S07 | **Safety obligations:** SI-022, SI-029, SI-030
 
 **Outcome.** Fetch signed containment notices from a published feed and ingest them through the same path as containment install, so an incident reaches installations without a manual step, while an unreachable, oversized, stale or forged feed leaves the ledger exactly as it was. Owner decisions (2026-09-23): fetch with the system curl, no HTTP client in the binary; publish one cumulative signed notice as containment/notice.json in the canonical repository, fetched by an explicit containment refresh.
 

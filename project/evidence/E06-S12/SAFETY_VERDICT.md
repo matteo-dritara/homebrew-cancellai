@@ -42,3 +42,10 @@ PENDING
 The Unix leaf-name residual has its separate owner disposition; this verdict records no new accepted safety gap.
 
 PASS
+
+## Owner decision - latest round (2026-09-24)
+
+`ACCEPTED`
+
+Owner note (recorded by the executor at the owner's direction): the latest independent verdict
+and its stated residuals are accepted; E06-S12 may close.
