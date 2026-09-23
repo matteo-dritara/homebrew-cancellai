@@ -44,3 +44,39 @@ Replay and verify the local history/trust before reporting `already current`, an
 PENDING
 
 FAIL
+
+## Round 7
+
+Verifier: Codex
+Brief-Checksum: bb614fb4de0d31b814e7497488c4e83eac0c298b389fc899b433a3d92b1854a9
+
+Second and final owner-authorized independent pass over repair commit `23bb14e`. The full reproduction and eleven-axis audit are in `project/evidence/E06-VERIFIER-REVIEW-ROUND7.md`.
+
+| Invariant / obligation | Adversarial evidence | Result |
+| --- | --- | --- |
+| SI-022, verified notice only | The fixed system-curl path and HTTPS-only arguments remain; PATH hijack test passes, and `test-curl` injection is feature-gated. Valid new notices still use `install_text`. | PASS within tested scope |
+| SI-029, rollback/tamper fails closed | A valid older notice (publisher sequence 1) already in history, followed by valid sequence 2, returned exit 0 `already current` when sequence 1 was served again. History bytes stayed unchanged, but a rolled-back feed was falsely accepted. | FAIL |
+| SI-030, channel bounds deletion | Stable-channel integration suite passed with `kill-points,test-curl`; no authority lift from fetched content was reproduced. | PASS within tested scope |
+| Feed refusal contract | Corrupt history now refuses before the `already current` path; HTTP override, malformed/untrusted content, oversized body and curl failures refuse in the integration suite. The exact old signed text remains a rollback gap. | FAIL |
+
+### Adversarial cases
+
+- Added a temporary integration test using a synthetic home and trusted test publisher. Installed signed sequences 1 and 2, served the exact sequence 1 through test curl, and compared history bytes. Refresh said `already current` with exit 0 rather than safety refusal. The test failed as expected and was removed; the tracked source is unchanged.
+- Rechecked the round 6 malformed-history regression and PATH-hijack test through the stable-channel suite; both pass.
+- Source inspected the 256 KiB plus one read, fixed curl executable candidates, HTTPS initial/redirect options, and the raw `events.contains` shortcut.
+
+### Gates
+
+| Gate | Result |
+| --- | --- |
+| Rust fmt, workspace Clippy, Windows-target Clippy, workspace tests, stable-channel CLI with `kill-points,test-curl` | PASS locally; temporary old-sequence test failed as expected |
+| Python pytest | PASS: 714 passed, 3 skipped |
+| `release.py check`, `project_os.py check`, `verifier_handoff.py check`, `check_process.py check` | PASS at baseline |
+| Native Linux/Windows refresh | NOT RUN: no native host here |
+| Latest main CI | All four workflows PASS for both `23bb14e` and `bfce0cd`; reproduced counterexamples are outside those gates |
+
+### Owner decision
+
+PENDING
+
+FAIL

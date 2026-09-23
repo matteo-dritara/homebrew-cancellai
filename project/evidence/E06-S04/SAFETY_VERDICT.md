@@ -109,3 +109,43 @@ Do not adopt the template yet. The live formula still installs the Python `cance
 PENDING
 
 FAIL
+
+## Round 7
+
+Verifier: Codex
+Brief-Checksum: 76f63bf3b664b057b00bc82b00b7377d819011f07f9aa96bda0d4b81cedcc642
+
+Second and final owner-authorized independent pass, over repair commit `23bb14e` and round-count metadata `bfce0cd`. The full reproduction and eleven-axis audit are in `project/evidence/E06-VERIFIER-REVIEW-ROUND7.md`.
+
+| Invariant / obligation | Adversarial evidence | Result |
+| --- | --- | --- |
+| SI-019, C-16, release identity | `release.check()` accepted a synthetic v2.0.0 formula with three fabricated all-zero engine digests; it also accepted arm64/Intel archive URLs exchanged between their platform blocks. | FAIL |
+| C-17 and M8, controlled cutover | An isolated v2.0.0 `finalize` succeeded with `adopt_cutover=False` and no Rust engine; an explicit adoption silently replaced a partly edited live formula. No owner-accepted verdict is consulted, and the runbook still documents implicit adoption. | FAIL |
+| G1-G4 packaged engine/version proof | The v1.21.0 cutover job accepts `cancellai-cli 0.1.0` and skips `brew test`. `verify-installed` accepted a synthetic legacy command reporting `12.0.0` for expected `2.0.0`. | FAIL |
+| Release-note acceptance criterion | Windows `configure` and engine naming are now disclosed, but Rust-only `status --allow-running` and `version --source` are absent from the claimed full CLI inventory and Unreleased notes. The canonical CLI document still says no package manager distributes the engine. | FAIL |
+| Rollback availability | The template installs tagged `cancellai.py` as `cancellai-legacy` with Python dependency; live formula still installs Python as `cancellai`. | PASS as a proposed mechanism |
+
+### Adversarial cases
+
+- Substituted a v2.0.0 formula with correct URLs but all-zero 64-digit resource digests into an isolated `release.check` call: result `[]`.
+- Swapped arm64 and Intel archive URLs between Homebrew platform blocks: `formula_engine_problems` returned `[]`.
+- Reproduced v2.0.0 finalize without adoption, and template adoption over a malformed existing engine block, using temporary formula files; both succeeded.
+- Compared Python and Rust help for `status`, `clean`, `configure` and `version`; found two undocumented Rust-only flags.
+- Rendered the v1.21.0 cutover formula; Ruby syntax passed. No Homebrew installation, tag, push or publication occurred.
+
+### Gates
+
+| Gate | Result |
+| --- | --- |
+| Rust fmt, workspace Clippy, Windows-target Clippy, workspace tests, stable-channel CLI with `kill-points,test-curl` | PASS locally |
+| Python pytest | PASS: 714 passed, 3 skipped |
+| `release.py check`, `project_os.py check`, `verifier_handoff.py check`, `check_process.py check` | PASS at baseline; release check has reproduced false negatives |
+| v1.21.0 render and Ruby syntax | PASS; Homebrew style/audit NOT RUN in round 7 (passed on a byte-identical render in round 6) |
+| Native Linux/Windows cutover install | NOT RUN: no native host here |
+| Latest main CI | All four workflows PASS for both `23bb14e` and `bfce0cd`; reproduced counterexamples are outside those gates |
+
+### Owner decision
+
+PENDING
+
+FAIL
