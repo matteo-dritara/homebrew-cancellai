@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "cancellAI",
-  "updated": "2026-09-13",
+  "updated": "2026-09-23",
   "decisions": [
     {
       "id": "PD-001",
@@ -290,6 +290,18 @@
         "E14-S01 and E14-S03's own dependency on E13-S03 remains the real, enforced gate; nothing about E14's technical prerequisites changed.",
         "E13 still needs E13-S04/S06 to pass independent review before the epic itself can close and cut its own release evidence - this decision does not close E13 or substitute for that review.",
         "Backlog authors should check, as PD-023 already asks, whether a coarse epic-level dependency is standing in for a narrower story-level one before adding or keeping it."
+      ]
+    },
+    {
+      "id": "PD-026",
+      "title": "E17's epic-level dependency on E06 points the wrong way and is replaced by the epics its stories consume",
+      "status": "accepted",
+      "decision": "E17 (\"Verifiable Supply Chain and Distribution\") declared a coarse epic-level dependency on E06 (\"Rust CLI Parity and Cutover\") in the original 2026-08-27 roadmap. No E17 story depends on any E06 story: their story-level dependencies are E02-S02, E16-S05, E17-*, E20-S03 and E26-S01. The only real edge between the two epics runs the other way - E06-S04 (the canonical engine switch) waits on E17-S07 (incident containment), because a cutover needs the supply-chain and containment machinery, not the reverse. Held as declared, the edge makes E17 unclosable until E06 closes, and E06 cannot close until E06-S04 does, which itself needs E17-S07: every E17 story can be done while the epic stays open for a reason no story states. The E17->E06 edge is replaced by E17->[E02, E16, E20, E26], the epics its stories actually read. Owner-authorized 2026-09-23 as part of reducing open work to E06-S04 alone.",
+      "rationale": "Same pattern as PD-023 and PD-025: a coarse epic-level edge standing in for, and here contradicting, the precise story-level graph. E17 releases describe supply-chain machinery that exists and is verified independently of whether the Rust CLI is canonical; E06-S04 remains the gate that decides when that machinery ships the Rust engine as the default.",
+      "implications": [
+        "E06-S04 keeps its own dependency on E17-S07; the cutover still cannot happen before incident containment is done and independently verified.",
+        "E17 may close, and cut its release, once its own stories are done - this decision does not close E17 or substitute for its review.",
+        "E18's dependency on E17 is unchanged and now reflects a real closure order rather than a transitive wait on the cutover."
       ]
     }
   ]

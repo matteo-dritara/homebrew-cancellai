@@ -84,6 +84,7 @@ use cancellai_model::{
 };
 
 use crate::build_channel::BuildChannel;
+use crate::incident::{ContainmentLedger, ContainmentTarget};
 use crate::provider_layout::LayoutSignature;
 use crate::trust_promotion::TrustedTier;
 
@@ -371,6 +372,31 @@ pub fn effective_authority_for_channel(
         name: "release_channel_authority",
         ceiling: release_channel_ceiling(channel.level()),
     });
+    compute_effective_authority(&constraints)
+}
+
+/// [`effective_authority_for_channel`], plus any safety-incident containment the local
+/// [`ContainmentLedger`] holds for `target` (E17-S07, SI-022, SI-029). A containment only ever
+/// adds an `incident_containment_authority` constraint at `Observe` or `Recommend`, so the
+/// result is never above what [`effective_authority_for_channel`] alone returns; with an empty
+/// ledger - including a node that has never reached a knowledge service - it is exactly that.
+pub fn effective_authority_under_containment(
+    inputs: AuthorityInputs,
+    channel: BuildChannel,
+    ledger: &ContainmentLedger,
+    target: &ContainmentTarget<'_>,
+) -> EffectiveAuthority {
+    let mut constraints = base_constraints(&inputs);
+    constraints.push(AuthorityConstraint {
+        name: "release_channel_authority",
+        ceiling: release_channel_ceiling(channel.level()),
+    });
+    if let Some(binding) = ledger.binding_for(target) {
+        constraints.push(AuthorityConstraint {
+            name: "incident_containment_authority",
+            ceiling: binding.ceiling,
+        });
+    }
     compute_effective_authority(&constraints)
 }
 

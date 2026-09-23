@@ -5,7 +5,10 @@
   "title": "Verifiable Supply Chain and Distribution",
   "objective": "Automate canonical cross-platform builds, provenance, SBOM, signatures/attestations, and channel-aware installers.",
   "dependencies": [
-    "E06"
+    "E02",
+    "E16",
+    "E20",
+    "E26"
   ],
   "status": "planned",
   "stories": [
@@ -146,15 +149,7 @@
     {
       "id": "E17-S07",
       "title": "Safety incident containment and capability downgrade",
-      "status": "blocked",
-      "blocked_by": {
-        "summary": "Sits behind the remaining Guardian closure chain. The declared story dependencies (E16-S05, E17-S03, E17-S05) are all done; E15 is now closed, but epic E16 is awaiting its separately authorized review/closure decision. The performance self-budget and crash/recovery gaps named in the same checklist are also unaddressed.",
-        "waiting_on": [
-          "E16"
-        ],
-        "argument": "docs/development/RELEASE_GATES.md",
-        "recorded": "2026-09-15"
-      },
+      "status": "ready_for_review",
       "outcome": "Operationalize a least-authority incident path that can stop promotion and remotely distribute signed capability downgrades without introducing a remote destructive control plane.",
       "change_risk": "CR4",
       "dependencies": [

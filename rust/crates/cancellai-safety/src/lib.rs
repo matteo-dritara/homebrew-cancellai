@@ -33,10 +33,14 @@
 //! E18-S02 adds [`remote_execution`] (SI-031, RFC-0001, ADR-0031): a remote controller's signed
 //! request, verified the same way, whose only effect on [`AuthorityInputs`] is supplying
 //! `user_requested` - every other input, and `effective_authority` itself, stays exactly as it
-//! is for a local caller.
+//! is for a local caller. E17-S07 adds [`incident`] (SI-022, SI-029): signed capability
+//! containment carried in a knowledge bundle, which can only cap a provider at `Observe` or
+//! `Recommend`, is recorded in a ledger that replay, rollback and expiry cannot shrink, and is
+//! lifted only locally.
 
 pub mod authority;
 pub mod build_channel;
+pub mod incident;
 pub mod knowledge_bundle;
 pub mod mutation_executor;
 pub mod provider_layout;
@@ -48,9 +52,14 @@ pub mod trust_promotion;
 pub use authority::{
     AuthorityConstraint, AuthorityInputs, EffectiveAuthority, ProviderExecutionPermit,
     compute_effective_authority, effective_authority, effective_authority_for_channel,
-    resolve_provider_execution_authority,
+    effective_authority_under_containment, resolve_provider_execution_authority,
 };
 pub use build_channel::BuildChannel;
+pub use incident::{
+    ContainmentBinding, ContainmentCeiling, ContainmentEntry, ContainmentError, ContainmentLedger,
+    ContainmentNotice, ContainmentTarget, IncidentEvidence, IncidentPlatform, IncidentSeverity,
+    KnowledgeProvenance, KnowledgeUnavailable, RefreshOutcome, ReleaseProvenance, parse_notice,
+};
 pub use knowledge_bundle::{
     KnowledgeBundle, KnowledgeBundleError, KnowledgeStore, LocalTrustPolicy,
     SUPPORTED_SCHEMA_VERSIONS, TrustedPublisher, VerifiedKnowledgeBundle, parse_bundle,

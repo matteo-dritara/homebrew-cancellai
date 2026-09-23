@@ -102,9 +102,10 @@ class TheCommittedControlPlane(unittest.TestCase):
     def test_every_blocked_item_is_explained(self) -> None:
         project_os.validate(self.MODEL)  # raises if any block is unexplained
 
-    def test_the_two_cutover_stories_record_a_real_argument(self) -> None:
+    def test_the_cutover_story_records_a_real_argument(self) -> None:
+        # E17-S07 carried the same record until it was implemented (E17-S07, PD-026).
         stories = {s["id"]: s for s in self.MODEL.stories}
-        for story_id in ("E06-S04", "E17-S07"):
+        for story_id in ("E06-S04",):
             recorded = stories[story_id].get("blocked_by")
             self.assertIsNotNone(recorded, f"{story_id} is the case this story exists for")
             assert recorded is not None

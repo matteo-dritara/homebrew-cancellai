@@ -193,4 +193,8 @@ Future `cancellai version --provenance` or equivalent should make supply-chain e
 
 ## Incident containment
 
-Supply-chain and compatibility incidents use the runbook in [`INCIDENT_RESPONSE.md`](INCIDENT_RESPONSE.md). The federated knowledge path may rapidly **downgrade** a provider/version/capability to Observe/Recommend after verified compromise evidence, but it can never become a remote destructive switch. E17-S07 turns this containment model into tested release/knowledge infrastructure.
+Supply-chain and compatibility incidents use the runbook in [`INCIDENT_RESPONSE.md`](INCIDENT_RESPONSE.md). The federated knowledge path may rapidly **downgrade** a provider/version/capability to Observe/Recommend after verified compromise evidence, but it can never become a remote destructive switch. E17-S07 turns this containment model into tested knowledge infrastructure:
+`cancellai-safety::incident` accepts a containment only from a verified bundle, can express only
+an `Observe` or `Recommend` ceiling, records it in a ledger that replay, rollback and expiry cannot
+shrink, and lifts it only locally. See [`INCIDENT_RESPONSE.md`](INCIDENT_RESPONSE.md)'s "Signed
+capability containment" for the full contract and what is not yet wired.

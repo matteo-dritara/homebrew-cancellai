@@ -264,11 +264,13 @@ E06 to close.
 **G4 Operability - not ready, narrower than before.** Packaged installers for macOS/Linux/
 Windows now exist (E17-S02, `done`, `docs/RELEASING.md` "Target Rust release factory"), with
 provenance/SBOM/signing (E17-S03) and installation-source-aware upgrade guidance (E17-S04) on
-top. What remains open in E17 is **E17-S07** (safety incident containment and capability
-downgrade), `blocked` because epic E16 depends on `E15`
-(Guardian runtime, phase P4, not yet started) - so this leg of G4 will not close until Guardian
-work begins, unless the owner instead accepts a scoped cutover perimeter by ADR per E06-S04's
-own acceptance criteria. Independent of E17, no performance/self-budget measurement exists for
+top. **E17-S07** (safety incident containment and capability downgrade) is now implemented in
+`cancellai-safety::incident`: a signed containment can cap a provider/version/capability at
+Observe or Recommend and nothing more, replay/rollback/expiry cannot lift it, and an offline node
+keeps its installed kernel (`docs/security/INCIDENT_RESPONSE.md`, "Signed capability
+containment"). What it does not have yet is a shipped distribution channel or a caller on the
+live mutation path, and both are cutover work inside E06-S04 itself rather than a dependency
+outside it. Independent of E17, no performance/self-budget measurement exists for
 the CLI's own command paths, and no crash/recovery testing beyond unit tests. The benchmark
 that does exist measures `cancellai-inventory`'s `scan_scope`,
 which the 2026-09-03 review found (`CR-TE-02`) is not reachable from the shipped binary at all -
@@ -313,9 +315,9 @@ the 2026-09-03 update. G1 is substantially ready with permanently disclosed gaps
 ready with independent verification behind it. What remains is: (a) G2 - the reproduced
 authority defect is repaired and pinned by regressions, but repaired-by-executor is not the same
 claim as independently-confirmed-repaired, and no verifier has taken a second adversarial pass
-at `E21-S03`/`E21-S07` specifically; and (b) G4 - `E17-S07` sits behind a real dependency chain
-into Guardian (`E16` → `E15`, phase P4, not yet started), plus the still-unaddressed
-performance self-budget and crash/recovery gaps. Closing E06-S04 (and E06 as a whole) requires
+at `E21-S03`/`E21-S07` specifically; and (b) G4 - the containment mechanism (`E17-S07`) exists but is not yet wired into
+the CLI's authority computation or fed by a real distribution channel, plus the
+still-unaddressed performance self-budget and crash/recovery gaps. Closing E06-S04 (and E06 as a whole) requires
 either this checklist to read "ready" against real evidence with an independent CR4 verifier
 pass and the owner's own Safety Verdict acceptance, or an explicit ADR narrowing the cutover
 perimeter per E06-S04's own acceptance criteria ("a scoped cutover perimeter decided by ADR") so

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The Rust safety kernel can contain a safety incident by signed capability downgrade
+  (`cancellai-safety::incident`, E17-S07). A containment arrives as the payload of a signed
+  knowledge bundle, can cap a provider - optionally narrowed to versions, action classes and
+  platforms - at Observe or Recommend and at nothing higher, and is recorded in a ledger that a
+  replayed bundle, a knowledge-store rollback or a bundle's expiry cannot shrink; only a local
+  lift removes one. An unreachable knowledge service leaves the installed kernel in charge.
+  Each containment produces an incident evidence record of identifiers and provenance only. Not
+  yet wired into the beta Rust CLI; that is cutover work (E06-S04).
+
 ### Fixed
 
 - `scripts/check_provider_trust.py` accepted a provider trust promotion whose

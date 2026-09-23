@@ -1854,7 +1854,7 @@ Scale provider coverage through manifests, native adapters, signed knowledge bun
 
 ## E17 - Verifiable Supply Chain and Distribution
 
-**Phase:** `P5` | **Status:** `planned` | **Epic dependencies:** E06
+**Phase:** `P5` | **Status:** `planned` | **Epic dependencies:** E02, E16, E20, E26
 
 Automate canonical cross-platform builds, provenance, SBOM, signatures/attestations, and channel-aware installers.
 
@@ -1979,7 +1979,7 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 ### E17-S07 - Safety incident containment and capability downgrade
 
-**Status:** `blocked` | **Change Risk:** `CR4` | **Dependencies:** E16-S05, E17-S03, E17-S05 | **Safety obligations:** SI-022, SI-029, SI-030
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E16-S05, E17-S03, E17-S05 | **Safety obligations:** SI-022, SI-029, SI-030
 
 **Outcome.** Operationalize a least-authority incident path that can stop promotion and remotely distribute signed capability downgrades without introducing a remote destructive control plane.
 

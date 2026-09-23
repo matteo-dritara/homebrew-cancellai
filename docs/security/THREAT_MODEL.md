@@ -142,6 +142,13 @@ An attacker serves altered compatibility rules intended to label data disposable
 
 Control: signed/attested bundle, trusted publisher policy, rollback/replay defense, bundle authority ceiling. See SI-022, SI-029.
 
+Delta (E17-S07): the same bundle path now carries capability containment. Two new attacks were
+considered. *Suppressing a containment* - replaying an older bundle, withholding updates until a
+bundle expires, or rolling the store back - is closed by a monotonic ledger that only a local lift
+shrinks. *Abusing containment* - a trusted publisher's key used to downgrade providers
+maliciously - is accepted as availability impact only: the worst outcome is Observe/Recommend,
+which is non-destructive by construction, and it is visible in the incident evidence record.
+
 ### TM-12 Compromised release/build pipeline
 
 Malicious binary is published under a legitimate release name.

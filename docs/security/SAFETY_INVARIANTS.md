@@ -351,6 +351,12 @@ Guardian actions are equal to or weaker than the Effective Policy computed by th
 
 Invalid, expired, replayed, or unauthorized knowledge updates are rejected or downgraded to non-destructive use; a bad update cannot brick basic offline inspection.
 
+Implemented for bundles at `rust/crates/cancellai-safety/src/knowledge_bundle.rs` (E16-S02) and
+for incident containment at `rust/crates/cancellai-safety/src/incident.rs` (E17-S07): a refused
+containment update - unreachable service, malformed text, bad signature, unknown publisher,
+expiry, replay - leaves the containment ledger exactly as it was, and no refusal, rollback or
+expiry can remove a containment already recorded. Only a local lift does.
+
 ### SI-030 Release channel bounds default authority
 
 Experimental/nightly builds do not inherit stable-level autonomous destructive defaults merely because user configuration exists from a stable install.

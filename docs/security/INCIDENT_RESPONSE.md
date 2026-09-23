@@ -91,3 +91,40 @@ The preferred order is least invasive first:
 5. ship a narrowly scoped patched release.
 
 There is no remote "delete switch". Central/federated systems can only reduce capability or inform a local node.
+
+## Signed capability containment (E17-S07)
+
+Rungs 1 and 3 of the hierarchy above are implemented as data, not as a control channel:
+`cancellai-safety::incident`.
+
+- **What a containment can say.** A `ContainmentNotice` is the payload of an ordinary signed
+  knowledge bundle (`SUPPLY_CHAIN.md`, "Knowledge updates"). Each entry names an incident id,
+  severity (`S0`/`S1`), a provider, and optionally the affected provider versions, action classes
+  and platforms, plus a ceiling. The ceiling vocabulary has two members, `observe` and
+  `recommend`; both sit below the authority any mutating action requires, and no field exists for
+  a command, path, tier, restore or lift.
+- **How it applies.** `effective_authority_under_containment` adds an
+  `incident_containment_authority` constraint to the monotonic minimum, so containment can only
+  lower the result. An installed provider version that is not known is treated as affected by a
+  version-scoped containment.
+- **Stop promotion.** While a containment names a provider, `ContainmentLedger::freezes_promotion_of`
+  reports that its trust tier must not be raised; and even a raised tier cannot lift the
+  containment ceiling, because the two constraints are independent.
+- **Nothing remote can undo it.** The ledger is monotonic: a replayed or older bundle is refused,
+  a newer bundle that omits an incident does not lift it, rolling the knowledge store back does
+  not lift it, and a bundle's expiry does not lift it. Only `ContainmentLedger::lift_locally`
+  removes a containment, and it is for local code acting on the owner-visible closure decision
+  this runbook requires.
+- **Offline.** An unreachable knowledge service, an unparseable response, a bad signature, an
+  unknown publisher, an expired bundle and a replay all leave the ledger exactly as it was
+  (`RefreshOutcome::Offline` / `Refused`). A node that never reaches the service computes
+  authority from its installed kernel alone.
+- **Evidence.** Each applied containment yields an `IncidentEvidence` record: incident id,
+  severity, provider, versions, action classes, platforms, ceiling, Safety Invariant ids, affected
+  releases, knowledge provenance (publisher, sequence, issue time, payload digest) and the
+  running build's release provenance (version, channel). Every string is checked against a
+  bounded identifier alphabet on the way in, so no provider payload content can reach the record.
+
+Not yet in place: a shipped distribution channel for containment bundles and a caller on the live
+mutation path. Both belong to the Rust CLI cutover (E06-S04); until then the mechanism is
+implemented and adversarially tested, not deployed.
