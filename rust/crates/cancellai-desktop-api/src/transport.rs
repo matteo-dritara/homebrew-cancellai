@@ -80,7 +80,7 @@ impl Server {
     }
 }
 
-/// How long, and how much, a closing connection's unread input is drained.
+/// How long in total, and how much, a closing connection's unread input is drained.
 const DRAIN_TIMEOUT: Duration = Duration::from_millis(250);
 const DRAIN_LIMIT: usize = 64 * 1024;
 
@@ -96,7 +96,9 @@ fn close_gracefully(stream: &TcpStream) {
     let mut sink = [0u8; 4096];
     let mut drained = 0usize;
     let mut reader = stream;
-    while drained < DRAIN_LIMIT {
+    // A total deadline too, so a client trickling bytes cannot hold the single-threaded server.
+    let deadline = std::time::Instant::now() + DRAIN_TIMEOUT;
+    while drained < DRAIN_LIMIT && std::time::Instant::now() < deadline {
         match reader.read(&mut sink) {
             Ok(0) | Err(_) => break,
             Ok(n) => drained = drained.saturating_add(n),

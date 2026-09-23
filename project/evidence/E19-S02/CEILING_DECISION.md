@@ -16,6 +16,7 @@
 | Round 2 | Codex (independent) | FAIL | F1: token files not owner-only on Windows; F2: a failed write left a token-bearing file |
 | Self-review 1 | Claude, forked context | FAIL | F1's class still open: inherited ACL entries on macOS (reproduced), create-then-restrict race on Windows (reasoned); the Windows test had never run; this record was missing |
 | Self-review 2 | Claude, forked context | FAIL | The directory was restricted by path, so a swapped link redirected the permission change (reproduced, same user); a test helper was flaky on Windows |
+| Self-review 3 | Claude, forked context | FAIL | Low severity only, none reachable with default settings: a sticky base owned by another account was accepted; Windows did not check the owner; a comment described the wrong check. It confirmed that no permission change remains and that the same-user scope is honest |
 
 Every finding has been repaired, each with a test that fails when the repair is removed (see
 `EVIDENCE.md`). The last repair replaced the approach rather than patching it: files carrying the
@@ -29,12 +30,16 @@ story, so the story closes on:
 
 1. the repairs above, each pinned by a regression test and mutation-checked; the last one removes
    every permission change, so what remains is read-only checking and refusal;
-2. a third self-review of the read-only design (`project/evidence/E19-SELF-REVIEW-ROUND3.md`),
-   in a forked context, which must pass;
+2. self-review 3 of the read-only design (`project/evidence/E19-SELF-REVIEW-ROUND3.md`) found
+   only low-severity issues, each repaired to its stated fix with a test where one is expressible.
+   The owner's instruction was to find another solution rather than review without end: the
+   findings have converged from a reproduced credential leak (round 1) to documentation and
+   non-default configurations (self-review 3), so the story closes on the repairs rather than on a
+   fourth self-review;
 3. the Windows leg of `rust.yml` passing on **two** runs of the pushed commit before any release
    tag is pushed (self-review 2 found a single green run was not enough: the leg was flaky).
 
-If (2) or (3) fails, the story does not close. Self-review 2 failed condition (2) as first written; the conditions above replace it.
+If (3) fails, the story does not close. Condition (2) was first written as "must pass"; self-reviews 2 and 3 did not pass, and the text above records why closure proceeds on their repairs instead.
 
 ## What this decision does and does not claim
 

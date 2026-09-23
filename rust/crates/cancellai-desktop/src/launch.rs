@@ -97,10 +97,23 @@ fn refuse(why: &str) -> io::Error {
     )
 }
 
-/// Unix: the new directory must be a real directory (not a link), mode `0700`, owned by the same
-/// user as the process (read from the directory the process just made). The base must be a real
-/// directory that either this user owns and nobody else may write, or is sticky (like `/tmp`),
-/// where other users cannot rename or remove this user's entries. On macOS neither may carry an
+/// Whether other accounts are unable to rename or replace entries in a base with this owner and
+/// mode, for a process running as `me`: it is owned by `me` and nobody else may write it, or it is
+/// sticky (like `/tmp`) and owned by `me` or root - the owner of a sticky directory can still
+/// rename anything in it, so a sticky directory owned by another account is refused (E19
+/// self-review 3).
+#[cfg(unix)]
+fn base_is_safe(me: u32, base_uid: u32, mode: u32) -> bool {
+    let owned_and_closed = base_uid == me && mode & 0o022 == 0;
+    let sticky_and_trusted = mode & 0o1000 != 0 && (base_uid == me || base_uid == 0);
+    owned_and_closed || sticky_and_trusted
+}
+
+/// Unix: the new directory must be a real directory (not a link) with mode `0700`. Its owner is
+/// the process's effective user - `mkdir` creates a directory owned by the creating process's
+/// effective user id - which is how the process learns its own identity without a `getuid` call
+/// (std has none, and this crate has no `libc`). The base must be a real directory that
+/// [`base_is_safe`] accepts for that user. On macOS neither may carry an
 /// access-control entry, since those are evaluated before the mode bits and can grant others the
 /// right to rename or read. Linux default ACLs are masked by the `0700`/`0600` creation modes.
 #[cfg(unix)]
@@ -114,9 +127,7 @@ fn verify_private(base: &Path, dir: &Path) -> io::Result<()> {
     let base_real = std::fs::canonicalize(base)?;
     let base_meta = std::fs::symlink_metadata(&base_real)?;
     let mode = base_meta.permissions().mode();
-    let owned_and_closed = base_meta.uid() == me && mode & 0o022 == 0;
-    let sticky = mode & 0o1000 != 0;
-    if !base_meta.file_type().is_dir() || !(owned_and_closed || sticky) {
+    if !base_meta.file_type().is_dir() || !base_is_safe(me, base_meta.uid(), mode) {
         return Err(refuse(
             "the base directory lets other users replace entries in it; set TMPDIR to a private directory",
         ));
@@ -176,8 +187,10 @@ mod macos_acl {
 
 /// Windows: read-only. Without FFI (`unsafe` is forbidden outside `cancellai-sealedfs`), the
 /// check runs through PowerShell's .NET access to the directory's security descriptor: the
-/// directory must not be a reparse point (junction or link), and every access rule, explicit or
-/// inherited, must name the current user, `SYSTEM` or `Administrators`. Nothing is modified.
+/// directory must not be a reparse point (junction or link), its owner - who can always change its
+/// permissions - must be the current user, `SYSTEM` or `Administrators` (E19 self-review 3), and
+/// every allow rule, explicit or inherited, must name one of those. Nothing is modified.
+/// Conditional access entries are not reported by .NET's rule listing; ADR-0038 discloses that.
 #[cfg(windows)]
 mod windows_acl {
     use std::io;
@@ -192,20 +205,34 @@ mod windows_acl {
         if (($d.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { exit 5 }; \
         $me = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value; \
         $allowed = @($me, 'S-1-5-18', 'S-1-5-32-544'); \
-        $rules = @($d.GetAccessControl().GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])); \
+        $sec = $d.GetAccessControl(); \
+        if ($allowed -notcontains $sec.GetOwner([System.Security.Principal.SecurityIdentifier]).Value) { exit 6 }; \
+        $rules = @($sec.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])); \
         foreach ($r in $rules) { if ($r.AccessControlType -eq 'Allow' -and $allowed -notcontains $r.IdentityReference.Value) { exit 3 } }; \
         exit 0";
 
     pub(super) fn is_private(path: &Path) -> io::Result<bool> {
         // The path travels in the environment, not in the command text, so no quoting of a path
         // can change what the script does.
-        let status = Command::new("powershell.exe")
+        let status = Command::new(super::windows_powershell())
             .args(["-NoProfile", "-NonInteractive", "-Command", SCRIPT])
             .env("CANCELLAI_PRIVATE_PATH", path)
             .env_remove("PSModulePath")
             .status()?;
         Ok(status.success())
     }
+}
+
+/// The system's Windows PowerShell by absolute path, not whatever `powershell.exe` the search path
+/// finds first.
+#[cfg(windows)]
+fn windows_powershell() -> PathBuf {
+    let root = std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into());
+    PathBuf::from(root)
+        .join("System32")
+        .join("WindowsPowerShell")
+        .join("v1.0")
+        .join("powershell.exe")
 }
 
 /// Where secret bytes are written: a file, or (in tests) a writer that fails on purpose.
@@ -487,6 +514,26 @@ mod tests {
         assert_eq!(mode(dir.path()), 0o700);
         assert_eq!(mode(&file), 0o600);
         std::fs::remove_dir_all(&base).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn base_safety_follows_ownership_and_the_sticky_bit() {
+        let (me, other, root) = (501, 502, 0);
+        assert!(base_is_safe(me, me, 0o700));
+        assert!(base_is_safe(me, me, 0o755));
+        assert!(!base_is_safe(me, me, 0o775), "group-writable");
+        assert!(!base_is_safe(me, me, 0o777), "world-writable");
+        assert!(
+            !base_is_safe(me, other, 0o700),
+            "another account's directory"
+        );
+        assert!(base_is_safe(me, root, 0o1777), "/tmp");
+        assert!(base_is_safe(me, me, 0o1777));
+        assert!(
+            !base_is_safe(me, other, 0o1777),
+            "a sticky directory's owner can still rename entries in it"
+        );
     }
 
     #[cfg(unix)]

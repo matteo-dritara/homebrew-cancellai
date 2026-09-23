@@ -2,7 +2,7 @@
 
 - Commit/PR: the commit carrying this packet on `main`
 - Executor: Claude
-- Independent verifier: Codex (pending, E19 round 1)
+- Independent verifier: Codex (rounds 1-2, both FAIL); then forked self-reviews 1-3 (see "Verifier verdict")
 - Change Risk: CR1
 - Spec version/commit: `project/epics/E19.json` E19-S02; technology choice recorded in
   [ADR-0038](../../../docs/adrs/0038-the-desktop-shell-is-a-loopback-dashboard-over-the-desktop-api.md)
@@ -116,8 +116,19 @@ was replaced rather than patched:
 | SR2-F2: the Windows leg was flaky - a reset discarded the refusal the server had sent | The API server now ends a connection gracefully: after the last response it shuts down its write side and drains (bounded: 250 ms, 64 KiB) what the client already sent, so no reset discards the response | `tests/unauthorized_clients.rs` pipelines a request behind every refusal; Windows CI run repeatedly before any tag (recorded in `CEILING_DECISION.md`) |
 | SR2-F3: stale statements | ADR-0038, the Windows module comment and this packet corrected | this commit |
 
+## Self-review 3 repairs (`project/evidence/E19-SELF-REVIEW-ROUND3.md`)
+
+| Finding | Repair | Evidence |
+| --- | --- | --- |
+| SR3-F1: a sticky base was accepted whoever owned it; its owner can rename entries in it | A sticky base must be owned by the user or root (`base_is_safe`) | `base_safety_follows_ownership_and_the_sticky_bit`; dropping the owner condition fails it |
+| SR3-F2: the "same user as the process" comment described a different check | Comment rewritten: the owner of the directory `mkdir` just created is the process's effective user, which is what is compared | this commit |
+| SR3-F3: Windows never checked the owner, who can always change permissions | The script refuses unless the owner is the user, `SYSTEM` or `Administrators`; conditional ACEs (not listed by .NET) disclosed in ADR-0038 | Windows CI |
+| Residuals: drain had no total deadline; `powershell.exe` found through the search path | A total 250 ms deadline on the drain; Windows PowerShell by absolute path under `%SystemRoot%` | this commit |
+| SR2-F3 remainder: this packet's verifier header | Corrected | this commit |
+
 ## Verifier verdict
 
 Independent round 1: FAIL. Independent round 2: FAIL (the owner's limit for this story).
-Self-review 1: FAIL. Self-review 2: FAIL. All repaired above; see `CEILING_DECISION.md` for how
-the story closes.
+Self-reviews 1, 2, 3: FAIL, each with fewer and smaller findings (3 found only low-severity
+issues, none reachable with default settings). All repaired above; see `CEILING_DECISION.md` for
+how the story closes.

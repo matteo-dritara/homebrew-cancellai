@@ -49,8 +49,10 @@ dependency is `cancellai-desktop-api`.
   `cancellai-desktop-<random>` directory created with `mkdir` (mode `0700` on Unix) under
   `$XDG_RUNTIME_DIR` or the temporary directory. No permission is ever changed after creation.
   Instead the base must already be one where no other account can replace entries - on Unix owned
-  by the user and not group/other-writable, or sticky like `/tmp`; on macOS without any ACL entry;
-  on Windows not a reparse point and granting only the user, `SYSTEM` and `Administrators` - and
+  by the user and not group/other-writable, or sticky like `/tmp` and owned by the user or root
+  (the owner of a sticky directory can still rename entries in it); on macOS without any ACL
+  entry; on Windows not a reparse point, owned by the user, `SYSTEM` or `Administrators`, and
+  granting only those - and
   the new directory is confirmed to be a real, private directory before any file is created in
   it. An unsafe base is refused, not repaired. The design got here by elimination: restricting a
   file after creating it left a window another user could open it in, a `0600` file kept inherited
@@ -120,6 +122,10 @@ Would need `unsafe` FFI into Cocoa, Win32 and a Linux status-notifier protocol. 
   swapped path changes any permission.
 - A base that is shared (for example `TEMP=C:\Temp` on Windows) is refused; the user points
   `TMPDIR`/`TEMP` at a private directory instead.
+- Only the base itself is checked, not its ancestors; the default bases (per-user `TMPDIR`,
+  `$XDG_RUNTIME_DIR`, `/tmp`, per-user `%TEMP%`) have no ancestor another account controls.
+- On Windows, .NET's rule listing does not report conditional access entries, so a base whose only
+  grant to another account is conditional would pass the check. No default base carries one.
 
 ### Neutral / follow-up
 
