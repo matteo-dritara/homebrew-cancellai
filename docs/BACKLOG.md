@@ -1830,7 +1830,7 @@ Scale provider coverage through manifests, native adapters, signed knowledge bun
 
 ### E16-S08 - A trust promotion's fixture evidence must exist inside the repository
 
-**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E16-S06 | **Safety obligations:** SI-021
+**Status:** `done` | **Change Risk:** `CR3` | **Dependencies:** E16-S06 | **Safety obligations:** SI-021
 
 **Outcome.** Close the residual the E16 round-1 independent review recorded against E16-S06: `scripts/check_provider_trust.py` accepted a `builtin_verified` registry entry whose `fixture_references` named a path that does not exist, because it checked that evidence was listed, not that it was there. A promotion above Untrusted now names fixtures that resolve to real files or directories inside the repository, so a reference can be neither invented nor pointed outside the reviewed tree.
 

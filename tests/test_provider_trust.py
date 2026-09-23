@@ -10,6 +10,8 @@ from __future__ import annotations
 import copy
 import json
 import os
+import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -166,6 +168,27 @@ class ProviderTrustWorkflowTests(unittest.TestCase):
     def test_an_empty_fixture_reference_is_refused(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.assert_reference_refused("  ", Path(tmp), "is empty")
+
+    def test_repository_root_is_not_fixture_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assert_reference_refused(".", root, "repository root")
+            self.assert_reference_refused("./", root, "repository root")
+
+    def test_a_nul_byte_reference_is_refused_without_crashing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assert_reference_refused("fixtures/\x00file", Path(tmp), "cannot be resolved")
+
+    def test_an_ignored_existing_path_is_not_fixture_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            git = shutil.which("git")
+            if git is None:
+                self.fail("Git is required for the ignored-path check")
+            subprocess.run([git, "init", "--quiet", str(root)], check=True)  # noqa: S603
+            (root / ".gitignore").write_text("ignored-fixture.json\n", encoding="utf-8")
+            (root / "ignored-fixture.json").write_text("{}", encoding="utf-8")
+            self.assert_reference_refused("ignored-fixture.json", root, "ignored by Git")
 
     def test_an_untrusted_entry_does_not_need_fixtures_to_exist(self):
         errors: list[str] = []

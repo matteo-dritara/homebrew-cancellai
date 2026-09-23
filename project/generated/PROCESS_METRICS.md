@@ -58,6 +58,7 @@ distinguished by the next round, which is why the ceiling matters.
 | E15 | 2 | independent | 4 | 2 | 2 | 50% |
 | E15 | 3 | independent | 4 | 0 | 0 | 0% |
 | E16 | 1 | independent | 6 | 0 | 0 | 0% |
+| E16 | 2 | independent | 1 | 1 | 0 | 100% |
 | E17 | 1 | independent | 6 | 0 | 0 | 0% |
 | E18 | 1 | independent | 3 | 2 | 2 | 67% |
 | E18 | 2 | independent | 2 | 2 | 2 | 100% |
@@ -106,6 +107,7 @@ independent samples, and the population estimate collapses to what one round alr
 | E13 | 1 and 2 | 4 | 0 | 0 | undefined - disjoint findings | at least 4 were present |
 | E14 | 2 | 1 | 1 | 2.0 | 0.0 |
 | E15 | 3 | 2 | 2 | 3.0 | 0.0 |
+| E16 | 1 and 2 | 0 | 0 | 0 | undefined - disjoint findings | at least 0 were present |
 | E18 | 2 | 2 | 2 | 2.0 | 0.0 |
 | E20 | 1 and 2 | 3 | 0 | 0 | undefined - disjoint findings | at least 3 were present |
 
@@ -155,7 +157,7 @@ load-bearing rather than academic.
 
 ## Documentation readership
 
-- Documents a committed review record has named: **30**. Never named: **18**.
+- Documents a committed review record has named: **31**. Never named: **17**.
 - Never named is not the same as never read, and an unread document may still be the right
   document. This is a list for the owner once a phase, not a purge, and accepted ADRs are
   undeletable regardless of what it says.
@@ -179,7 +181,6 @@ load-bearing rather than academic.
 - `project/templates/RELEASE_EVIDENCE.md`
 - `project/templates/RFC.md`
 - `project/templates/STORY.md`
-- `project/templates/VERIFIER_PROMPT.md`
 
 </details>
 

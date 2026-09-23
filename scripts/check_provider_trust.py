@@ -37,6 +37,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -130,12 +132,30 @@ def fixture_reference_error(reference: str, root: Path) -> str | None:
     resolved_root = root.resolve()
     try:
         resolved = (root / candidate).resolve()
-    except (OSError, RuntimeError) as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         return f"cannot be resolved: {exc}"
     if not resolved.is_relative_to(resolved_root):
         return "resolves outside the repository"
+    if resolved == resolved_root:
+        return "resolves to the repository root, not a fixture"
     if not resolved.exists():
         return "does not exist in the repository"
+    git = shutil.which("git")
+    if git is None:
+        ignored = None
+    else:
+        try:
+            ignored = subprocess.run(  # noqa: S603
+                [git, "check-ignore", "--quiet", "--", str(resolved)],
+                cwd=resolved_root,
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+        except (OSError, subprocess.SubprocessError):
+            ignored = None
+    if ignored is not None and ignored.returncode == 0:
+        return "is ignored by Git and is not repository evidence"
     return None
 
 
