@@ -6,7 +6,7 @@
 - Commit: recorded by the release workflow at the tag
 - Channel: stable
 - Date: 2026-09-23
-- Published: pending
+- Published: yes - release run 35855097624 succeeded; every job green including publish
 
 ## Included work
 
