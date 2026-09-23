@@ -104,3 +104,43 @@ close it, and adds unsafe code and a new intermediate state. Whoever can win the
 the permissions to delete that file directly, so the race grants no capability the attacker lacks.
 Windows deletes by handle and is not affected. This disposition covers only the residual; the
 round-1 `FAIL` stands until E06-S12's repairs are independently rechecked.
+
+## Independent verification — round 2 (2026-09-23)
+
+Verifier: Codex
+Brief-Checksum: 817de404f11c12559e5d15fc1f1c11e17aa4731db38847bbb757505ef9c96b65
+
+### Invariants
+
+| Invariant | Adversarial evidence | Result |
+| --- | --- | --- |
+| SI-008 | Independent synthetic Codex mode-000 rollout-content failure and Claude companion with 70 unreadable descendants: both scopes incomplete, zero delete actions, artifacts retained, in default and custom roots. The 14 normative fixtures match the Python reference in both origins. | PASS |
+| SI-009 | Unreadable lineage is no longer interpreted as no parent/complete; read errors lead to exit 4 and withholding, as in Python. | PASS |
+| SI-010 | Codex's open/read errors enter the scope `ReasonLog`; Claude walker records straight into its bounded log, with exact error count 70 and retention capped at 64 in the adapter test. | PASS |
+| SI-019 | `check_mutation_boundary.py` passed. E21-S07 uses a held no-follow parent descriptor for the final unlink; an intermediate component swap cannot redirect it. | PASS_WITH_RESIDUALS |
+
+### Adversarial cases
+
+- Repeated the round-1 F-01 reproduction with a readable directory entry and unreadable rollout bytes. `inspect` reported complete=false/error_count=1, `plan` emitted zero deletes, Python exited 4, and the file survived in both root origins.
+- Repeated the round-1 F-02 resource case with 70 denied companion directories. `inspect` reported 70 errors, zero deletes, Python exit 4 and file survival in both root origins. Source confirms no intermediate vector of reasons remains.
+- Reviewed no-follow root/parent binding and `fstatat`/`unlinkat` placement. The leaf-name race remains exactly the prior owner-accepted residual; no claim of atomic leaf unlink is made.
+- Cross-platform native execution beyond this macOS host was unavailable. Exact-main `rust.yml` quality and CLI jobs passed on macOS, Linux and Windows; those jobs do not directly reproduce this new permission fixture on every filesystem.
+
+### Gates
+
+| Gate | Result |
+| --- | --- |
+| Rust fmt, workspace Clippy, workspace tests | PASS |
+| Windows-target Clippy | PASS |
+| Stable-channel CLI suite with kill-points, full rerun | PASS |
+| `cargo deny --offline check` with writable advisory DB copy | PASS |
+| Python tests; Rust/Python parity; mutation boundary | PASS |
+| Native Windows hard-link and Unix leaf race reproductions | NOT RUN locally; Windows CI jobs passed, and leaf race was owner-dispositioned |
+
+### Owner decision
+
+PENDING
+
+The existing owner acceptance above covers only the Unix leaf-name residual; it does not accept any new defect or close the cutover gate.
+
+PASS_WITH_RESIDUALS

@@ -134,6 +134,12 @@ REVIEW_ROUND_EXCEPTIONS = {
     "a CR4 story cannot close without an independent Safety Verdict. Round 4 failed on two "
     "narrow deduplication defects, both repaired in f4eefe5; the owner then authorized exactly "
     "one further round (round 5) to verify those repairs",
+    # E06-S06..S13 are new cutover stories added 2026-09-23 under ADR-0039, long after E06's
+    # original rounds 1 and 2 (2026-09-01/02) reviewed E06-S01..S03.
+    "E06": "round 3 is the first independent pass over E06-S07..S13, the cutover stories added "
+    "under ADR-0039 on 2026-09-23 with the owner's direction to close the cutover, and the second "
+    "for E06-S06; rounds 1 and 2 reviewed different stories (E06-S01..S03) - not a repeated "
+    "attempt at the same work. See E06-VERIFIER-REVIEW-ROUND3.md",
 }
 # Matches both an epic-scoped record (`E07-VERIFIER-REVIEW.md`) and a story-scoped one
 # (`E07-S07-VERIFIER-REVIEW.md`), counting both against the *epic's* ceiling (captured
