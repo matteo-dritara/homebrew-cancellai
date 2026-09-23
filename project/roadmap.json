@@ -104,7 +104,8 @@
       ],
       "epics": [
         "E16",
-        "E17"
+        "E17",
+        "E33"
       ]
     },
     {
@@ -155,6 +156,7 @@
     "project/epics/E29.json",
     "project/epics/E30.json",
     "project/epics/E31.json",
-    "project/epics/E32.json"
+    "project/epics/E32.json",
+    "project/epics/E33.json"
   ]
 }

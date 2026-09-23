@@ -325,6 +325,21 @@ that the Guardian-dependent leg of G4 is not required for an initial cutover. Ne
 something the executor grants itself (`AGENT_PROTOCOL.md`: "an executor's work is finished at
 `ready_for_review`... it does not write its own Safety Verdict").
 
+**Update 2026-09-23: the perimeter is decided and every open item has a story.** E17-S07 passed
+its fifth independent round (`PASS_WITH_RESIDUALS`) and the owner accepted it. The owner then
+chose the ADR path above: [ADR-0039](../adrs/0039-the-cutover-perimeter-binds-cli-authority-to-a-local-containment-ledger.md)
+keeps containment inside the perimeter, fed by locally installed signed notices, and moves the
+network distribution channel to E33. What remains is now carried by work items rather than by
+this prose:
+
+| Gate | Open item | Story |
+| --- | --- | --- |
+| G2 | Independent confirmation of the E21-S03/E21-S07 repairs | E06-S06 |
+| G4 | CLI authority computed through the release channel and the persisted containment ledger | E06-S07 |
+| G4 | Performance self-budget: no slower than the reference, under a fixed memory ceiling | E06-S08 |
+| G4 | Crash/recovery under a real process kill at every mutation point | E06-S09 |
+| G1 | `clean --keep-claude-history` and `--verbose`; the other G1 gaps stay disclosed divergences | E06-S10 |
+
 ## Epic closure
 
 Closing an epic is what triggers a release (ADR-0014, PD-021). An epic may close when:

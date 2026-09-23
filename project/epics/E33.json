@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "id": "E33",
+  "phase": "P5",
+  "title": "Containment Notice Distribution",
+  "objective": "ADR-0039 kept the network out of the Rust cutover: a signed containment notice reaches an installation only when its owner runs containment install. That makes the kill-switch as fast as a person reading an advisory. This epic adds the distribution channel ADR-0039 deferred: a fetch client that retrieves signed notices from a published feed, bounded in bytes before parsing, verified by the same trust policy, and never able to do more than the local install command can. It depends on the live ledger E06-S07 wires, not on E06 closing.",
+  "dependencies": [],
+  "status": "planned",
+  "stories": [
+    {
+      "id": "E33-S01",
+      "title": "Signed containment notices are fetched from a published feed",
+      "status": "planned",
+      "outcome": "Fetch signed containment notices from a published feed and ingest them through the same path as containment install, so an incident reaches installations without a manual step, while an unreachable, oversized, stale or forged feed leaves the ledger exactly as it was.",
+      "change_risk": "CR4",
+      "dependencies": [
+        "E06-S07"
+      ],
+      "acceptance_criteria": [
+        "When the feed is reachable, the system shall ingest every new notice through the same verification and persistence path as containment install.",
+        "If the feed is unreachable, oversized, malformed, replayed, rolled back or signed by an untrusted publisher, then the ledger shall stay byte-identical and authority shall keep being computed from local state.",
+        "The system shall never lift, narrow or loosen a containment from feed content."
+      ],
+      "safety_obligations": [
+        "SI-022",
+        "SI-029",
+        "SI-030"
+      ],
+      "verification": [
+        "Adversarial tests against a local test feed cover every refusal case, including a response larger than the byte cap."
+      ],
+      "documentation_impact": [
+        "docs/security/INCIDENT_RESPONSE.md",
+        "docs/security/SUPPLY_CHAIN.md"
+      ]
+    }
+  ]
+}

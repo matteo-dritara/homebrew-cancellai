@@ -780,9 +780,131 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 - `docs/development/MIGRATION_PYTHON_RUST.md`
 - `docs/RELEASING.md`
 
+### E06-S06 - An independent verifier confirms the E21 authority repairs
+
+**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-008, SI-009, SI-010, SI-019
+
+**Outcome.** G2 of the cutover checklist is open for one reason: E21's round-1 independent review found the scan-completeness authority defect, the executor repaired every finding and pinned each with a regression written against the verifier's own reproduction, and the owner then closed E21 without spending a second round on those repairs (project/evidence/E21-CLOSURE.md). Repaired-by-executor is not independently-confirmed-repaired, and that act has had no work item to carry it, which is why it lived only in E06-S04's blocker prose. This story carries it: an independent adversarial pass over E21-S03 (scan completeness makes the scope incomplete, never absent) and E21-S07 (handle-relative unlink) as they stand in the code the cutover would ship, not as they stood at E21's closure.
+
+**Acceptance criteria**
+
+- The system shall have an independent verifier's adversarial pass over the current E21-S03 and E21-S07 code, recorded as a Safety Verdict round against a committed verifier brief.
+- If any directory, companion payload or project the scan cannot read exists under a provider root, then the Rust CLI shall withhold every destructive action in that scope and exit as the frozen reference does, on every platform in the cutover perimeter.
+- If a path component is swapped between validation and unlink, then the unlink shall not reach the substituted target.
+- If the pass finds a defect, then E06-S04 shall stay blocked on it and the finding shall become a backlog item carrying its own story id.
+
+**Verification**
+
+- A Codex verifier round produces E21-S03/E21-S07 Safety Verdict sections answering a brief rendered by scripts/verifier_handoff.py.
+- The E21-S02 partial-scan fixtures (codex-partial-tree, claude-partial-project) are rerun through the differential gate in both root-origin scenarios on the reviewed commit.
+
+**Documentation impact**
+
+- `docs/development/RELEASE_GATES.md`
+
+### E06-S07 - The CLI's authority passes through the release channel and the local containment ledger
+
+**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-019, SI-022, SI-029, SI-030
+
+**Outcome.** ADR-0039 puts signed incident containment inside the cutover perimeter, fed by locally installed notices. Today `clean` seals every plan at a constant Govern, so neither the release-channel ceiling (E17-S05) nor containment (E17-S07) can reach a mutation; LocalTrustPolicy is never constructed outside tests; and the ledger lives in memory, so restarting the process would lift every containment. This story makes authority computed rather than asserted, compiles in the project incident-response key, adds the explicit containment install/list/lift commands, persists the ledger, and closes E17-S07's round-5 residual by capping a notice's bytes before parsing. It builds on E17-S07's ledger, which is done before this story starts; the edge is not declared because E17 sits in a later roadmap phase, the same inversion E06-S04's blocker already records.
+
+**Acceptance criteria**
+
+- The system shall compute every plan and clean action's authority with effective_authority_under_containment from the running build's compiled release channel and the persisted containment ledger, and seal the plan at that authority rather than a constant.
+- If an action's effective authority is below the minimum its action class requires, then plan and clean shall both downgrade it to Observe and explain which constraint and which incident capped it.
+- When the owner runs containment install on a notice signed by the compiled project key or an owner-trusted publisher, the system shall ingest it and persist the ledger atomically before reporting success.
+- If a notice file exceeds the fixed byte cap, is unsigned, is signed by an untrusted publisher, is malformed, replays a sequence or is expired, then containment install shall refuse it, leave the persisted ledger byte-identical, and exit non-zero.
+- If the ledger file exists but cannot be read, parsed or validated, then every action above Recommend shall be capped at Recommend and the CLI shall say why, because unknown state is not an empty ledger.
+- If the ledger file is missing, then the ledger shall be empty and authority shall equal the release-channel-constrained kernel authority.
+- If a persisted containment's bundle has expired, then it shall still bind, because only containment lift --confirm removes a containment.
+- The system shall accept no trusted publisher, ceiling or lift from any notice content; trust comes only from the compiled key and the owner's private trust file.
+
+**Verification**
+
+- Integration tests drive the CLI binary against synthetic roots with a test-only signing key: a contained provider's deletions become Observe in plan and clean alike, and an uncontained one still deletes.
+- Adversarial tests cover an oversized notice, a forged signature, an untrusted publisher, a replay, an expired notice, a corrupt ledger file, a truncated ledger file and a missing ledger file.
+- A mutation check shows that removing the containment constraint, or reverting the seal to a constant Govern, fails the suite.
+
+**Documentation impact**
+
+- `docs/CLI_RUST.md`
+- `docs/security/INCIDENT_RESPONSE.md`
+- `docs/development/RELEASE_GATES.md`
+- `CHANGELOG.md`
+- `docs/adrs/0039-the-cutover-perimeter-binds-cli-authority-to-a-local-containment-ledger.md`
+
+### E06-S08 - The Rust CLI stays within a performance self-budget measured against the reference
+
+**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
+
+**Outcome.** G4 names a performance self-budget for the CLI's own command paths as unaddressed. E21-S05 retargeted the benchmark onto the shipped resolution path and E21-S06 bounded rollout reads, but nothing compares the command a user runs against the engine it replaces. The owner chose the criterion: on a large synthetic corpus, the Rust CLI is no slower than the frozen Python reference for status, inspect, plan and a dry clean, and never exceeds a fixed resident-memory ceiling. Measured in CI on Linux; reported on macOS and Windows.
+
+**Acceptance criteria**
+
+- The system shall measure wall time and peak resident memory of status, inspect, plan and a dry clean for both the Rust CLI and the Python reference on the same generated synthetic corpus.
+- If the Rust CLI is slower than the reference on any measured command beyond a recorded noise tolerance, or exceeds the resident-memory ceiling, then the gate shall fail on Linux CI.
+- If a measurement runs against a corpus that resolved no artifacts, then the gate shall fail rather than report a fast empty run.
+- The system shall report the same measurements on macOS and Windows without gating on them.
+
+**Verification**
+
+- The gate is shown failing against a deliberately slowed build before it is shown passing.
+- The corpus generator is synthetic and writes nothing outside a temporary directory.
+
+**Documentation impact**
+
+- `docs/development/RELEASE_GATES.md`
+- `docs/development/VERIFICATION_STRATEGY.md`
+
+### E06-S09 - clean survives being killed at every mutation point
+
+**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** none | **Safety obligations:** SI-019
+
+**Outcome.** G4's other open item is crash and recovery: nothing beyond unit tests shows what a real process kill in the middle of clean leaves behind. The owner chose a real-kill harness: clean is killed (SIGKILL, TerminateProcess) at each point on the mutation path, and what remains is checked for unsafe partial state, a consistent ledger, and an idempotent rerun. It runs on macOS, Linux and Windows CI.
+
+**Acceptance criteria**
+
+- The system shall provide a harness that kills a running clean at each enumerated point on its mutation path on macOS, Linux and Windows.
+- If clean is killed at any enumerated point, then no artifact outside the plan shall be changed, every planned artifact shall be either intact or fully removed, and no partially written state file shall be read as valid.
+- When clean is rerun after a kill, the system shall complete the remaining plan without error and without acting twice on an already removed artifact.
+- If the harness cannot reach an enumerated kill point, then the run shall fail rather than count it as survived.
+
+**Verification**
+
+- Each kill point is shown reached by a marker the harness observes before killing.
+- A planted defect that leaves a half-written state file is shown caught by the harness.
+
+**Documentation impact**
+
+- `docs/development/RELEASE_GATES.md`
+- `docs/development/VERIFICATION_STRATEGY.md`
+
+### E06-S10 - clean accepts --keep-claude-history and --verbose as the reference does
+
+**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** none | **Safety obligations:** SI-019
+
+**Outcome.** G1 lists disclosed functional gaps. The owner chose to close the two clean flags before cutover, because a script that passes them to the canonical engine would otherwise break, and to accept the rest (--aggressive, status --paths/--coverage/--top) as disclosed divergences stated in the release notes. --keep-claude-history narrows what clean may remove; --verbose only reports more.
+
+**Acceptance criteria**
+
+- When clean or plan is given --keep-claude-history, the system shall propose no action on any artifact the reference's flag protects, matching the reference on the NORMATIVE corpus.
+- If --keep-claude-history is given and the classification of a history artifact is unknown, then the system shall keep it.
+- When clean is given --verbose, the system shall report per-action detail without changing which actions run.
+- The system shall keep refusing --aggressive and the unsupported status flags as usage errors, and the release notes shall list them as intentional divergences.
+
+**Verification**
+
+- New NORMATIVE fixtures cover --keep-claude-history and pass the differential gate.
+- A test shows the --verbose action set equals the non-verbose one.
+
+**Documentation impact**
+
+- `docs/CLI_RUST.md`
+- `CHANGELOG.md`
+
 ### E06-S04 - Canonical engine switch
 
-**Status:** `blocked` | **Change Risk:** `CR4` | **Dependencies:** E06-S03, E21, E22-S01 | **Safety obligations:** SI-019
+**Status:** `blocked` | **Change Risk:** `CR4` | **Dependencies:** E06-S03, E21, E22-S01, E06-S06, E06-S07, E06-S08, E06-S09, E06-S10 | **Safety obligations:** SI-019
 
 **Outcome.** Promote Rust to stable only after functional, safety, compatibility, and operability gates pass.
 
@@ -3927,3 +4049,30 @@ E12-S04's round-5 independent review (project/evidence/E12-S04-VERIFIER-REVIEW-R
 **Documentation impact**
 
 - `docs/development/AGENT_PROTOCOL.md`
+
+## E33 - Containment Notice Distribution
+
+**Phase:** `P5` | **Status:** `planned` | **Epic dependencies:** none
+
+ADR-0039 kept the network out of the Rust cutover: a signed containment notice reaches an installation only when its owner runs containment install. That makes the kill-switch as fast as a person reading an advisory. This epic adds the distribution channel ADR-0039 deferred: a fetch client that retrieves signed notices from a published feed, bounded in bytes before parsing, verified by the same trust policy, and never able to do more than the local install command can. It depends on the live ledger E06-S07 wires, not on E06 closing.
+
+### E33-S01 - Signed containment notices are fetched from a published feed
+
+**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E06-S07 | **Safety obligations:** SI-022, SI-029, SI-030
+
+**Outcome.** Fetch signed containment notices from a published feed and ingest them through the same path as containment install, so an incident reaches installations without a manual step, while an unreachable, oversized, stale or forged feed leaves the ledger exactly as it was.
+
+**Acceptance criteria**
+
+- When the feed is reachable, the system shall ingest every new notice through the same verification and persistence path as containment install.
+- If the feed is unreachable, oversized, malformed, replayed, rolled back or signed by an untrusted publisher, then the ledger shall stay byte-identical and authority shall keep being computed from local state.
+- The system shall never lift, narrow or loosen a containment from feed content.
+
+**Verification**
+
+- Adversarial tests against a local test feed cover every refusal case, including a response larger than the byte cap.
+
+**Documentation impact**
+
+- `docs/security/INCIDENT_RESPONSE.md`
+- `docs/security/SUPPLY_CHAIN.md`

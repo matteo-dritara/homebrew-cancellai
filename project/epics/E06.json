@@ -79,12 +79,154 @@
       ]
     },
     {
+      "id": "E06-S06",
+      "title": "An independent verifier confirms the E21 authority repairs",
+      "status": "planned",
+      "outcome": "G2 of the cutover checklist is open for one reason: E21's round-1 independent review found the scan-completeness authority defect, the executor repaired every finding and pinned each with a regression written against the verifier's own reproduction, and the owner then closed E21 without spending a second round on those repairs (project/evidence/E21-CLOSURE.md). Repaired-by-executor is not independently-confirmed-repaired, and that act has had no work item to carry it, which is why it lived only in E06-S04's blocker prose. This story carries it: an independent adversarial pass over E21-S03 (scan completeness makes the scope incomplete, never absent) and E21-S07 (handle-relative unlink) as they stand in the code the cutover would ship, not as they stood at E21's closure.",
+      "change_risk": "CR4",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "The system shall have an independent verifier's adversarial pass over the current E21-S03 and E21-S07 code, recorded as a Safety Verdict round against a committed verifier brief.",
+        "If any directory, companion payload or project the scan cannot read exists under a provider root, then the Rust CLI shall withhold every destructive action in that scope and exit as the frozen reference does, on every platform in the cutover perimeter.",
+        "If a path component is swapped between validation and unlink, then the unlink shall not reach the substituted target.",
+        "If the pass finds a defect, then E06-S04 shall stay blocked on it and the finding shall become a backlog item carrying its own story id."
+      ],
+      "safety_obligations": [
+        "SI-008",
+        "SI-009",
+        "SI-010",
+        "SI-019"
+      ],
+      "verification": [
+        "A Codex verifier round produces E21-S03/E21-S07 Safety Verdict sections answering a brief rendered by scripts/verifier_handoff.py.",
+        "The E21-S02 partial-scan fixtures (codex-partial-tree, claude-partial-project) are rerun through the differential gate in both root-origin scenarios on the reviewed commit."
+      ],
+      "documentation_impact": [
+        "docs/development/RELEASE_GATES.md"
+      ]
+    },
+    {
+      "id": "E06-S07",
+      "title": "The CLI's authority passes through the release channel and the local containment ledger",
+      "status": "planned",
+      "outcome": "ADR-0039 puts signed incident containment inside the cutover perimeter, fed by locally installed notices. Today `clean` seals every plan at a constant Govern, so neither the release-channel ceiling (E17-S05) nor containment (E17-S07) can reach a mutation; LocalTrustPolicy is never constructed outside tests; and the ledger lives in memory, so restarting the process would lift every containment. This story makes authority computed rather than asserted, compiles in the project incident-response key, adds the explicit containment install/list/lift commands, persists the ledger, and closes E17-S07's round-5 residual by capping a notice's bytes before parsing. It builds on E17-S07's ledger, which is done before this story starts; the edge is not declared because E17 sits in a later roadmap phase, the same inversion E06-S04's blocker already records.",
+      "change_risk": "CR4",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "The system shall compute every plan and clean action's authority with effective_authority_under_containment from the running build's compiled release channel and the persisted containment ledger, and seal the plan at that authority rather than a constant.",
+        "If an action's effective authority is below the minimum its action class requires, then plan and clean shall both downgrade it to Observe and explain which constraint and which incident capped it.",
+        "When the owner runs containment install on a notice signed by the compiled project key or an owner-trusted publisher, the system shall ingest it and persist the ledger atomically before reporting success.",
+        "If a notice file exceeds the fixed byte cap, is unsigned, is signed by an untrusted publisher, is malformed, replays a sequence or is expired, then containment install shall refuse it, leave the persisted ledger byte-identical, and exit non-zero.",
+        "If the ledger file exists but cannot be read, parsed or validated, then every action above Recommend shall be capped at Recommend and the CLI shall say why, because unknown state is not an empty ledger.",
+        "If the ledger file is missing, then the ledger shall be empty and authority shall equal the release-channel-constrained kernel authority.",
+        "If a persisted containment's bundle has expired, then it shall still bind, because only containment lift --confirm removes a containment.",
+        "The system shall accept no trusted publisher, ceiling or lift from any notice content; trust comes only from the compiled key and the owner's private trust file."
+      ],
+      "safety_obligations": [
+        "SI-019",
+        "SI-022",
+        "SI-029",
+        "SI-030"
+      ],
+      "verification": [
+        "Integration tests drive the CLI binary against synthetic roots with a test-only signing key: a contained provider's deletions become Observe in plan and clean alike, and an uncontained one still deletes.",
+        "Adversarial tests cover an oversized notice, a forged signature, an untrusted publisher, a replay, an expired notice, a corrupt ledger file, a truncated ledger file and a missing ledger file.",
+        "A mutation check shows that removing the containment constraint, or reverting the seal to a constant Govern, fails the suite."
+      ],
+      "documentation_impact": [
+        "docs/CLI_RUST.md",
+        "docs/security/INCIDENT_RESPONSE.md",
+        "docs/development/RELEASE_GATES.md",
+        "CHANGELOG.md",
+        "docs/adrs/0039-the-cutover-perimeter-binds-cli-authority-to-a-local-containment-ledger.md"
+      ]
+    },
+    {
+      "id": "E06-S08",
+      "title": "The Rust CLI stays within a performance self-budget measured against the reference",
+      "status": "planned",
+      "outcome": "G4 names a performance self-budget for the CLI's own command paths as unaddressed. E21-S05 retargeted the benchmark onto the shipped resolution path and E21-S06 bounded rollout reads, but nothing compares the command a user runs against the engine it replaces. The owner chose the criterion: on a large synthetic corpus, the Rust CLI is no slower than the frozen Python reference for status, inspect, plan and a dry clean, and never exceeds a fixed resident-memory ceiling. Measured in CI on Linux; reported on macOS and Windows.",
+      "change_risk": "CR1",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "The system shall measure wall time and peak resident memory of status, inspect, plan and a dry clean for both the Rust CLI and the Python reference on the same generated synthetic corpus.",
+        "If the Rust CLI is slower than the reference on any measured command beyond a recorded noise tolerance, or exceeds the resident-memory ceiling, then the gate shall fail on Linux CI.",
+        "If a measurement runs against a corpus that resolved no artifacts, then the gate shall fail rather than report a fast empty run.",
+        "The system shall report the same measurements on macOS and Windows without gating on them."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "The gate is shown failing against a deliberately slowed build before it is shown passing.",
+        "The corpus generator is synthetic and writes nothing outside a temporary directory."
+      ],
+      "documentation_impact": [
+        "docs/development/RELEASE_GATES.md",
+        "docs/development/VERIFICATION_STRATEGY.md"
+      ]
+    },
+    {
+      "id": "E06-S09",
+      "title": "clean survives being killed at every mutation point",
+      "status": "planned",
+      "outcome": "G4's other open item is crash and recovery: nothing beyond unit tests shows what a real process kill in the middle of clean leaves behind. The owner chose a real-kill harness: clean is killed (SIGKILL, TerminateProcess) at each point on the mutation path, and what remains is checked for unsafe partial state, a consistent ledger, and an idempotent rerun. It runs on macOS, Linux and Windows CI.",
+      "change_risk": "CR3",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "The system shall provide a harness that kills a running clean at each enumerated point on its mutation path on macOS, Linux and Windows.",
+        "If clean is killed at any enumerated point, then no artifact outside the plan shall be changed, every planned artifact shall be either intact or fully removed, and no partially written state file shall be read as valid.",
+        "When clean is rerun after a kill, the system shall complete the remaining plan without error and without acting twice on an already removed artifact.",
+        "If the harness cannot reach an enumerated kill point, then the run shall fail rather than count it as survived."
+      ],
+      "safety_obligations": [
+        "SI-019"
+      ],
+      "verification": [
+        "Each kill point is shown reached by a marker the harness observes before killing.",
+        "A planted defect that leaves a half-written state file is shown caught by the harness."
+      ],
+      "documentation_impact": [
+        "docs/development/RELEASE_GATES.md",
+        "docs/development/VERIFICATION_STRATEGY.md"
+      ]
+    },
+    {
+      "id": "E06-S10",
+      "title": "clean accepts --keep-claude-history and --verbose as the reference does",
+      "status": "planned",
+      "outcome": "G1 lists disclosed functional gaps. The owner chose to close the two clean flags before cutover, because a script that passes them to the canonical engine would otherwise break, and to accept the rest (--aggressive, status --paths/--coverage/--top) as disclosed divergences stated in the release notes. --keep-claude-history narrows what clean may remove; --verbose only reports more.",
+      "change_risk": "CR3",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "When clean or plan is given --keep-claude-history, the system shall propose no action on any artifact the reference's flag protects, matching the reference on the NORMATIVE corpus.",
+        "If --keep-claude-history is given and the classification of a history artifact is unknown, then the system shall keep it.",
+        "When clean is given --verbose, the system shall report per-action detail without changing which actions run.",
+        "The system shall keep refusing --aggressive and the unsupported status flags as usage errors, and the release notes shall list them as intentional divergences."
+      ],
+      "safety_obligations": [
+        "SI-019"
+      ],
+      "verification": [
+        "New NORMATIVE fixtures cover --keep-claude-history and pass the differential gate.",
+        "A test shows the --verbose action set equals the non-verbose one."
+      ],
+      "documentation_impact": [
+        "docs/CLI_RUST.md",
+        "CHANGELOG.md"
+      ]
+    },
+    {
       "id": "E06-S04",
       "title": "Canonical engine switch",
       "status": "blocked",
       "blocked_by": {
-        "summary": "Two gates in the cutover checklist are open and neither is a dependency this story can declare. G2: the authority defect the 2026-09-03 target-engine review reproduced is repaired and pinned by regressions, but repaired-by-executor is not independently-confirmed-repaired, and no verifier has taken a second adversarial pass at E21-S03/E21-S07 - an act no work item currently carries, which is why it appears here rather than in waiting_on. G4: the operability leg needs E17-S07 (signed capability containment). It passed its fifth independent round and the owner accepted it (2026-09-23), but it has no caller on the live mutation path, which is cutover work inside this story. The performance self-budget and crash/recovery gaps named in the same checklist are also unaddressed. Closing this needs either the checklist reading ready against real evidence with an independent CR4 verifier pass and the owner's own Safety Verdict, or an explicit ADR narrowing the cutover perimeter. Neither is something an executor grants itself.",
-        "waiting_on": [],
+        "summary": "The cutover perimeter is decided by ADR-0039 (local containment ledger; network channel moved to E33). What holds this story is the work that perimeter requires, each now carried by its own story: G2's independent confirmation of the E21 repairs (E06-S06), G4's live containment and channel authority (E06-S07), the performance self-budget (E06-S08), crash/recovery under a real kill (E06-S09), and the two clean flags G1 closes before cutover (E06-S10). When they are done, closing this still needs the checklist reading ready against real evidence, an independent CR4 verifier pass, and the owner's own Safety Verdict.",
+        "waiting_on": [
+          "E06-S06",
+          "E06-S07",
+          "E06-S08",
+          "E06-S09",
+          "E06-S10"
+        ],
         "argument": "docs/development/RELEASE_GATES.md",
         "recorded": "2026-09-23"
       },
@@ -93,7 +235,12 @@
       "dependencies": [
         "E06-S03",
         "E21",
-        "E22-S01"
+        "E22-S01",
+        "E06-S06",
+        "E06-S07",
+        "E06-S08",
+        "E06-S09",
+        "E06-S10"
       ],
       "acceptance_criteria": [
         "Owner-visible migration Safety Verdict is accepted.",
