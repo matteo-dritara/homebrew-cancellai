@@ -29,6 +29,8 @@ for the identical property at the Rust type level, `docs/adrs` cross-references 
 
 AC2 ("promotion requires maintainer-owned evidence and compatibility tests"): enforced by the
 same non-empty `verified_by`/`fixture_references` requirement above.
+E16-S08 adds that each `fixture_references` entry must exist inside the repository: a listed
+path that is absent, absolute, parent-escaping or symlinked outside the tree is not evidence.
 """
 
 from __future__ import annotations
@@ -109,7 +111,35 @@ def load_manifests(errors: list[str]) -> dict[str, str]:
     return provider_ids
 
 
-def validate_registry_entry(entry: Any, where: str, errors: list[str]) -> str | None:
+def fixture_reference_error(reference: str, root: Path) -> str | None:
+    """Why `reference` is not usable promotion evidence under `root`, or None if it is (E16-S08).
+
+    Listing a fixture is not having one: the E16 round-1 review promoted a synthetic entry to
+    `builtin_verified` with a verifier and a fixture path that did not exist, and the check
+    accepted it. A reference must be repository-relative, stay inside `root` after symbolic
+    links are resolved, and name something that exists. The check only looks - it never runs
+    or opens the fixture.
+    """
+    if not reference.strip():
+        return "is empty"
+    candidate = Path(reference)
+    if candidate.is_absolute() or reference.startswith(("/", "\\")) or (len(reference) > 1 and reference[1] == ":"):
+        return "is absolute - a fixture reference is a path inside this repository"
+    if ".." in candidate.parts or ".." in reference.replace("\\", "/").split("/"):
+        return "contains a parent-directory component"
+    resolved_root = root.resolve()
+    try:
+        resolved = (root / candidate).resolve()
+    except (OSError, RuntimeError) as exc:
+        return f"cannot be resolved: {exc}"
+    if not resolved.is_relative_to(resolved_root):
+        return "resolves outside the repository"
+    if not resolved.exists():
+        return "does not exist in the repository"
+    return None
+
+
+def validate_registry_entry(entry: Any, where: str, errors: list[str], root: Path = ROOT) -> str | None:
     allowed = {"provider_id", "tier", "verified_by", "fixture_references"}
     _check_no_unknown_keys(entry, allowed, where, errors)
     if not isinstance(entry, dict):
@@ -143,10 +173,18 @@ def validate_registry_entry(entry: Any, where: str, errors: list[str]) -> str | 
                 "maintainer-owned compatibility evidence, not a bare claim "
                 "(mirrors cancellai-safety::trust_promotion's MissingFixtureEvidence rule)",
             )
+        for reference in fixture_references or []:
+            problem = fixture_reference_error(reference, root)
+            if problem is not None:
+                _err(
+                    errors,
+                    where,
+                    f"fixture reference {reference!r} {problem} - promotion evidence must be a real fixture committed in this repository",
+                )
     return provider_id
 
 
-def validate_registry(registry: Any, manifest_provider_ids: dict[str, str], where: str) -> list[str]:
+def validate_registry(registry: Any, manifest_provider_ids: dict[str, str], where: str, root: Path = ROOT) -> list[str]:
     """Pure cross-check between a parsed registry document and the known manifest provider ids -
     no filesystem access, so tests can exercise it against synthetic documents directly rather
     than mutating the real committed registry file on disk."""
@@ -164,7 +202,7 @@ def validate_registry(registry: Any, manifest_provider_ids: dict[str, str], wher
     registry_provider_ids: dict[str, int] = {}
     for i, entry in enumerate(publishers):
         entry_where = f"{where}:publishers[{i}]"
-        provider_id = validate_registry_entry(entry, entry_where, errors)
+        provider_id = validate_registry_entry(entry, entry_where, errors, root)
         if provider_id is None:
             continue
         if provider_id in registry_provider_ids:

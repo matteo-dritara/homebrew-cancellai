@@ -1684,7 +1684,7 @@ Run monitoring continuously using OS-native user services while keeping all acti
 
 ## E16 - Provider Ecosystem and Federated Knowledge
 
-**Phase:** `P5` | **Status:** `ready_for_review` | **Epic dependencies:** E15
+**Phase:** `P5` | **Status:** `in_progress` | **Epic dependencies:** E15
 
 Scale provider coverage through manifests, native adapters, signed knowledge bundles, and explicit trust promotion.
 
@@ -1826,6 +1826,30 @@ Scale provider coverage through manifests, native adapters, signed knowledge bun
 
 **Documentation impact**
 
+- `CHANGELOG.md`
+
+### E16-S08 - A trust promotion's fixture evidence must exist inside the repository
+
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E16-S06 | **Safety obligations:** SI-021
+
+**Outcome.** Close the residual the E16 round-1 independent review recorded against E16-S06: `scripts/check_provider_trust.py` accepted a `builtin_verified` registry entry whose `fixture_references` named a path that does not exist, because it checked that evidence was listed, not that it was there. A promotion above Untrusted now names fixtures that resolve to real files or directories inside the repository, so a reference can be neither invented nor pointed outside the reviewed tree.
+
+**Acceptance criteria**
+
+- If a registry entry above Untrusted names a fixture reference that does not exist in the repository, then the provider trust check shall fail and name that reference.
+- If a fixture reference is absolute, contains a parent-directory component, or resolves outside the repository (including through a symbolic link), then the provider trust check shall fail.
+- When every fixture reference of a promoted entry resolves to an existing path inside the repository, the provider trust check shall accept the entry.
+- The provider trust check shall remain read-only and shall not execute the referenced fixtures.
+
+**Verification**
+
+- Synthetic registries against a temporary repository root: nonexistent, absolute, parent-escaping and symlink-escaping references are refused; an existing in-tree fixture file and directory are accepted.
+- The real committed registry still passes.
+
+**Documentation impact**
+
+- `.github/CONTRIBUTING.md`
+- `docs/development/ENGINEERING_SYSTEM.md`
 - `CHANGELOG.md`
 
 ## E17 - Verifiable Supply Chain and Distribution

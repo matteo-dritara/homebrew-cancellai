@@ -4,7 +4,7 @@
 
 Current phase: **P1**
 
-Epics: **33** | Stories: **168**
+Epics: **33** | Stories: **169**
 
 ## Story status
 
@@ -12,13 +12,14 @@ Epics: **33** | Stories: **168**
 - `cancelled`: 1
 - `done`: 163
 - `planned`: 2
+- `ready_for_review`: 1
 
 ## Change risk distribution
 
 - `CR0`: 14
 - `CR1`: 38
 - `CR2`: 50
-- `CR3`: 30
+- `CR3`: 31
 - `CR4`: 36
 
 ## Explicitly ready work
@@ -27,4 +28,4 @@ Epics: **33** | Stories: **168**
 
 ## Awaiting independent review
 
-- none
+- **E16-S08** - A trust promotion's fixture evidence must exist inside the repository (CR3)

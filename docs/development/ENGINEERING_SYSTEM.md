@@ -109,7 +109,8 @@ Anything deterministic and repeatable should be automated:
 - fixture/schema validation;
 - community contribution trust/evidence validation (`scripts/check_provider_trust.py`, E16-S06:
   a manifest cannot smuggle a trust/capability field, and a promotion above `Untrusted` cannot
-  merge without a named maintainer verifier and compatibility fixtures - see
+  merge without a named maintainer verifier and compatibility fixtures that exist inside the
+  repository (E16-S08) - see
   `.github/CONTRIBUTING.md`'s "Provider contributions");
 - security/dependency scans;
 - differential tests;

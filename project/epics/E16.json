@@ -7,7 +7,7 @@
   "dependencies": [
     "E15"
   ],
-  "status": "ready_for_review",
+  "status": "in_progress",
   "stories": [
     {
       "id": "E16-S01",
@@ -170,6 +170,34 @@
         "The MSRV legs of rust.yml are the only proof available here that 1.85 compiles: no 1.85 toolchain is installed on the executor's machine, and installing one is not an executor decision."
       ],
       "documentation_impact": [
+        "CHANGELOG.md"
+      ]
+    },
+    {
+      "id": "E16-S08",
+      "title": "A trust promotion's fixture evidence must exist inside the repository",
+      "status": "ready_for_review",
+      "outcome": "Close the residual the E16 round-1 independent review recorded against E16-S06: `scripts/check_provider_trust.py` accepted a `builtin_verified` registry entry whose `fixture_references` named a path that does not exist, because it checked that evidence was listed, not that it was there. A promotion above Untrusted now names fixtures that resolve to real files or directories inside the repository, so a reference can be neither invented nor pointed outside the reviewed tree.",
+      "change_risk": "CR3",
+      "dependencies": [
+        "E16-S06"
+      ],
+      "acceptance_criteria": [
+        "If a registry entry above Untrusted names a fixture reference that does not exist in the repository, then the provider trust check shall fail and name that reference.",
+        "If a fixture reference is absolute, contains a parent-directory component, or resolves outside the repository (including through a symbolic link), then the provider trust check shall fail.",
+        "When every fixture reference of a promoted entry resolves to an existing path inside the repository, the provider trust check shall accept the entry.",
+        "The provider trust check shall remain read-only and shall not execute the referenced fixtures."
+      ],
+      "safety_obligations": [
+        "SI-021"
+      ],
+      "verification": [
+        "Synthetic registries against a temporary repository root: nonexistent, absolute, parent-escaping and symlink-escaping references are refused; an existing in-tree fixture file and directory are accepted.",
+        "The real committed registry still passes."
+      ],
+      "documentation_impact": [
+        ".github/CONTRIBUTING.md",
+        "docs/development/ENGINEERING_SYSTEM.md",
         "CHANGELOG.md"
       ]
     }

@@ -112,7 +112,9 @@ key fails here even before the Rust toolchain would also reject it), and validat
 `project/provider_trust.json` - the registry recording each shipped manifest's current
 `cancellai_model::ProviderTrust` tier. A tier above `Untrusted` requires a non-empty `verified_by`
 and at least one `fixture_references` entry; a bare tier claim with no evidence fails the check
-regardless of what the rest of the PR says. `project/provider_trust.json` is also listed in
+regardless of what the rest of the PR says. Each fixture reference must be a repository-relative
+path, with no `..` component, that exists and stays inside the repository once symbolic links are
+resolved (E16-S08) - naming a fixture is not the same as committing one. `project/provider_trust.json` is also listed in
 [`CODEOWNERS`](CODEOWNERS), so only the project owner can merge a change to it at all - the
 evidence requirement and the review requirement are both required, neither alone is the
 guarantee.

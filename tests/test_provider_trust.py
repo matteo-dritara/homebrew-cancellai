@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import copy
 import json
+import os
+import tempfile
 import unittest
+from pathlib import Path
 
 from scripts import check_provider_trust as cpt
 
@@ -20,6 +23,15 @@ def real_manifests() -> dict[str, dict]:
 
 def real_registry() -> dict:
     return json.loads(cpt.REGISTRY_PATH.read_text(encoding="utf-8"))
+
+
+def promoted_entry(fixture_references: list[str]) -> dict:
+    return {
+        "provider_id": "opencode",
+        "tier": "builtin_verified",
+        "verified_by": "maintainer-review-2026-09-23",
+        "fixture_references": fixture_references,
+    }
 
 
 class ProviderTrustWorkflowTests(unittest.TestCase):
@@ -98,13 +110,75 @@ class ProviderTrustWorkflowTests(unittest.TestCase):
         self.assertTrue(any("verified_by" in e for e in errors), errors)
 
     def test_a_promotion_with_real_evidence_is_accepted(self):
-        registry = copy.deepcopy(real_registry())
-        registry["publishers"][0]["tier"] = "community_verified"
-        registry["publishers"][0]["verified_by"] = "maintainer-review-2026-09-09"
-        registry["publishers"][0]["fixture_references"] = ["tests/fixtures/opencode/v1-layout"]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "tests" / "fixtures" / "opencode" / "v1-layout").mkdir(parents=True)
+            (root / "tests" / "fixtures" / "opencode" / "session.json").write_text("{}", encoding="utf-8")
+            entry = promoted_entry(["tests/fixtures/opencode/v1-layout", "tests/fixtures/opencode/session.json"])
+            errors: list[str] = []
+            cpt.validate_registry_entry(entry, "synthetic", errors, root)
+            self.assertEqual([], errors)
+
+    # --- E16-S08: listed fixture evidence must exist inside the repository --------------------
+
+    def assert_reference_refused(self, reference: str, root: Path, needle: str) -> None:
         errors: list[str] = []
-        cpt.validate_registry_entry(registry["publishers"][0], "synthetic", errors)
+        cpt.validate_registry_entry(promoted_entry([reference]), "synthetic", errors, root)
+        self.assertTrue(any(repr(reference) in e and needle in e for e in errors), errors)
+
+    def test_a_nonexistent_fixture_reference_is_refused(self):
+        # The exact counterexample the E16 round-1 review recorded as a residual.
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assert_reference_refused("tests/fixtures/opencode/v1-layout", Path(tmp), "does not exist")
+
+    def test_a_nonexistent_reference_is_refused_even_beside_a_real_one(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "tests" / "fixtures").mkdir(parents=True)
+            errors: list[str] = []
+            entry = promoted_entry(["tests/fixtures", "tests/fixtures/missing"])
+            cpt.validate_registry_entry(entry, "synthetic", errors, root)
+            self.assertEqual(1, len(errors), errors)
+            self.assertIn("'tests/fixtures/missing'", errors[0])
+
+    def test_an_absolute_fixture_reference_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "real").mkdir()
+            self.assert_reference_refused(str((root / "real").resolve()), root, "absolute")
+            self.assert_reference_refused("C:\\fixtures", root, "absolute")
+
+    def test_a_parent_directory_reference_is_refused_even_when_it_lands_inside(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "tests" / "fixtures").mkdir(parents=True)
+            self.assert_reference_refused("tests/../tests/fixtures", root, "parent-directory")
+            self.assert_reference_refused("..\\outside", root, "parent-directory")
+
+    @unittest.skipIf(os.name == "nt", "symlink creation needs privileges on Windows")
+    def test_a_symlink_escaping_the_repository_is_refused(self):
+        with tempfile.TemporaryDirectory() as outside, tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "tests").mkdir()
+            (root / "tests" / "escape").symlink_to(Path(outside), target_is_directory=True)
+            self.assert_reference_refused("tests/escape", root, "outside the repository")
+
+    def test_an_empty_fixture_reference_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assert_reference_refused("  ", Path(tmp), "is empty")
+
+    def test_an_untrusted_entry_does_not_need_fixtures_to_exist(self):
+        errors: list[str] = []
+        entry = {"provider_id": "opencode", "tier": "untrusted", "verified_by": None, "fixture_references": ["nope"]}
+        with tempfile.TemporaryDirectory() as tmp:
+            cpt.validate_registry_entry(entry, "synthetic", errors, Path(tmp))
         self.assertEqual([], errors)
+
+    def test_the_whole_registry_check_applies_the_fixture_rule(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            registry = {"schema_version": 1, "publishers": [promoted_entry(["tests/fixtures/ghost"])]}
+            errors = cpt.validate_registry(registry, {"opencode": "synthetic-manifest"}, "synthetic", Path(tmp))
+            self.assertTrue(any("ghost" in e and "does not exist" in e for e in errors), errors)
 
     def test_checker_flags_an_invalid_tier_value(self):
         registry = copy.deepcopy(real_registry())
