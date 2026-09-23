@@ -897,6 +897,7 @@ fn confirmed_delete_file_inner(
     let IdentityToken::Windows {
         volume_serial_number: expected_volume,
         file_index: expected_file_index,
+        modified: expected_modified,
         modified_ticks: expected_modified_ticks,
         ..
     } = expected
@@ -907,11 +908,23 @@ fn confirmed_delete_file_inner(
         ));
     };
 
+    // E06-S13: the token carries the last-write time the way `SystemIdentityObserver` builds it
+    // - whole Unix seconds in `modified`, the sub-second remainder in `modified_ticks` - so the
+    // raw `FILETIME` observed here is converted the same way before comparing. Comparing the raw
+    // ticks to the remainder, as this did since E20-S05, refused every Windows deletion; nothing
+    // reached this path end to end until the executor admitted Windows files.
+    let same_last_write = |raw_ticks: u64| {
+        crate::identity::windows_filetime_to_unix_timestamp(raw_ticks).is_some_and(
+            |(modified, remainder)| {
+                modified == *expected_modified && u64::from(remainder) == *expected_modified_ticks
+            },
+        )
+    };
     let (file, before) = cancellai_sealedfs::open_and_observe_identity(target)
         .map_err(|e| MutationError(format!("could not open target for confirmed deletion: {e}")))?;
     if before.volume_serial_number != *expected_volume
         || before.file_index != *expected_file_index
-        || before.last_write_time_ticks != *expected_modified_ticks
+        || !same_last_write(before.last_write_time_ticks)
     {
         return Err(MutationError(
             "target identity changed between revalidation and deletion (open-time check)"
@@ -932,7 +945,7 @@ fn confirmed_delete_file_inner(
     })?;
     if just_before.volume_serial_number != *expected_volume
         || just_before.file_index != *expected_file_index
-        || just_before.last_write_time_ticks != *expected_modified_ticks
+        || !same_last_write(just_before.last_write_time_ticks)
     {
         return Err(MutationError(
             "target identity changed immediately before deletion (path re-check failed); \
@@ -2269,16 +2282,16 @@ mod tests {
         }
     }
 
+    /// The token exactly as production builds it: `SystemIdentityObserver`, not a hand-assembled
+    /// value. E06-S13 found this helper had assembled `modified_ticks` from the raw `FILETIME` -
+    /// the same unit mistake the delete primitive made - so these tests passed while no real
+    /// Windows deletion could.
     #[cfg(windows)]
     fn windows_identity_of(path: &Path) -> IdentityToken {
-        let facts =
-            cancellai_sealedfs::observe_identity(path).expect("observe path for test identity");
-        IdentityToken::Windows {
-            volume_serial_number: facts.volume_serial_number,
-            file_index: facts.file_index,
-            kind: crate::identity::FileKind::File,
-            modified: crate::clock::Timestamp(0),
-            modified_ticks: facts.last_write_time_ticks,
+        use crate::identity::{IdentityObservation, IdentityObserver, SystemIdentityObserver};
+        match SystemIdentityObserver.observe(path) {
+            IdentityObservation::Identity(token) => token,
+            other => panic!("observe path for test identity: {other:?}"),
         }
     }
 

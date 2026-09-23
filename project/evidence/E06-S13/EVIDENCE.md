@@ -19,6 +19,10 @@ PASS (native Windows evidence from CI, see AC1)
 | AC3 - a swap between planning and deletion does not reach the substitute | Unchanged primitive: E20-S05's Windows `confirmed_delete_file_inner` refuses on any volume/file-index/last-write mismatch at open time and immediately before the handle-relative delete, with native swap/reparse fixtures verified in E20-VERIFIER-REVIEW-ROUND2. The executor still revalidates the plan (`revalidate`) before selecting the operation. | PASS (inherited, independently verified in E20) |
 | AC4 - kill harness and CLI deletion tests run on Windows | `#[cfg(unix)]` removed from those tests and from the harness's deletion case; tests that need `chmod` or Unix symlinks stay Unix-only. | PASS pending CI |
 
+## Method defects
+
+- **What happened**: three stacked defects kept Windows from deleting, each hidden by the one before it: the executor refused every Windows identity; then the provider-layout observation failed closed on Windows; then E20-S05's own delete primitive compared the raw `FILETIME` against the token's sub-second remainder and refused every target. The third was invisible to E20-S05's tests (and its independent PASS) because the test helper assembled the expected token by hand with the same unit mistake, instead of taking it from `SystemIdentityObserver`. Each layer was only reachable once the one above it was fixed, and each was found by real Windows CI, never locally. **Prevented by**: none exists - no gate requires a mutation-path test to take its expected identity from the production observer rather than a hand-built value, and no end-to-end Windows deletion test existed while the executor refused. **Disposition**: accepted 2026-09-23 - the helper now uses `SystemIdentityObserver`, and the CLI deletion, containment and kill-harness tests run end to end on Windows CI; proposed: an `adversarial-cases` axis asking whether a test's expected value is produced by the code under test's own production path.
+
 ## Safety Evidence
 
 | Invariant | Counterexample tested | Evidence | Result |
