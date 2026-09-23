@@ -835,7 +835,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S08 - The Rust CLI stays within a performance self-budget measured against the reference
 
-**Status:** `in_progress` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** G4 names a performance self-budget for the CLI's own command paths as unaddressed. E21-S05 retargeted the benchmark onto the shipped resolution path and E21-S06 bounded rollout reads, but nothing compares the command a user runs against the engine it replaces. The owner chose the criterion: on a large synthetic corpus, the Rust CLI is no slower than the frozen Python reference for status, inspect, plan and a dry clean, and never exceeds a fixed resident-memory ceiling. Measured in CI on Linux; reported on macOS and Windows.
 
@@ -950,7 +950,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S13 - clean deletes on Windows through the identity-confirmed handle path
 
-**Status:** `in_progress` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-013, SI-017, SI-019
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-013, SI-017, SI-019
 
 **Outcome.** E06-S09's kill harness, on its first Windows run, showed that `cancellai-cli clean` deletes nothing on Windows: every planned deletion is safely skipped with "identity-confirmed deletion is only implemented for plain files, not this target's kind". E20-S05 implemented Windows identity observation and a handle-relative `confirmed_delete_file` in `cancellai-platform`, and closed with an independent PASS, but `cancellai-safety::mutation_executor::delete_operation_for` still maps every `IdentityToken::Windows` to no operation - the second, independent backstop written before the Windows primitive existed, never revisited. The engine is therefore fail-closed on Windows, which is safe, while the cutover checklist reads G3 as ready, which is not true of the one mutating command. This story lets the executor select the delete operation for a Windows identity it can confirm is a regular file, and nothing else.
 

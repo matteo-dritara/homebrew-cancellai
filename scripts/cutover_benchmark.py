@@ -172,6 +172,29 @@ def prove_corpus_is_live(rust_bin: Path, env: dict[str, str], expected: int) -> 
     return errors
 
 
+def result_matches_corpus(engine: str, command: str, stdout: bytes, sessions: int) -> bool:
+    """Whether a timed command's output describes the corpus it was built for (E06 review round 4:
+    a run that exits 0 and prints anything was still being timed as if it had done the work).
+    `sessions` stale sessions per provider; `2 * (sessions - KEEP_LATEST)` are deletion candidates."""
+    expected = 2 * (sessions - KEEP_LATEST)
+    text = stdout.decode("utf-8", errors="replace")
+    try:
+        if engine == "Rust":
+            if command == "status":
+                return f"claude-code: {sessions} artifact(s)" in text and f"codex-cli: {sessions} artifact(s)" in text
+            if command == "inspect":
+                return len(json.loads(text)["artifacts"]) == 2 * sessions
+            if command == "plan":
+                return delete_count_rust(stdout) == expected
+            return f"{expected} delete candidate(s)" in text
+        if command in ("inspect", "plan"):
+            count: int = json.loads(text)["actions"]
+            return count == expected
+        return f"Candidates: {expected} action(s)" in text
+    except (ValueError, KeyError, TypeError):
+        return False
+
+
 def failed_run(engine: str, command: str, stdout: bytes, code: int | None) -> str | None:
     """A timed run only counts if it succeeded and said something (E06 review round 3: a command
     that exits early with an error is fast, and was being timed as if it had done the work)."""
@@ -202,12 +225,16 @@ def measure(rust_bin: Path, sessions: int, runs: int) -> tuple[list[Measurement]
                 seconds, rss, out, code = run_once(rust_argv, env)
                 if failure := failed_run("Rust", name, out, code):
                     return [], [failure]
+                if not result_matches_corpus("Rust", name, out, sessions):
+                    return [], [f"the Rust engine's {name} output does not describe the corpus; not a timing"]
                 rust_times.append(seconds)
                 if rss is not None:
                     rust_rss.append(rss)
                 seconds, rss, out, code = run_once(ref_argv, env)
                 if failure := failed_run("reference", name, out, code):
                     return [], [failure]
+                if not result_matches_corpus("reference", name, out, sessions):
+                    return [], [f"the reference's {name} output does not describe the corpus; not a timing"]
                 ref_times.append(seconds)
                 if rss is not None:
                     ref_rss.append(rss)

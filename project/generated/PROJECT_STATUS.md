@@ -11,8 +11,8 @@ Epics: **34** | Stories: **179**
 - `blocked`: 1
 - `cancelled`: 1
 - `done`: 167
-- `in_progress`: 2
 - `planned`: 2
+- `ready_for_review`: 2
 - `verification`: 6
 
 ## Change risk distribution
@@ -29,4 +29,5 @@ Epics: **34** | Stories: **179**
 
 ## Awaiting independent review
 
-- none
+- **E06-S08** - The Rust CLI stays within a performance self-budget measured against the reference (CR1)
+- **E06-S13** - clean deletes on Windows through the identity-confirmed handle path (CR4)

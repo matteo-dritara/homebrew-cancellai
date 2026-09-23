@@ -108,6 +108,10 @@ pub enum SealError {
     /// a name, which is exactly the TOCTOU shape this crate closes elsewhere) - refused rather
     /// than resolved.
     PathNotNormalized,
+    /// The child still names the confirmed object, but that object has other names too.
+    /// Refused (E06-S13): a second hard link cannot be told apart from a decoy link planted
+    /// beside a swapped-out directory, so only a single-name file is removed.
+    MultipleLinks(u64),
     Io(io::Error),
 }
 
@@ -142,6 +146,10 @@ impl std::fmt::Display for SealError {
             SealError::PathNotNormalized => {
                 write!(f, "root path must not contain '.' or '..' components")
             }
+            SealError::MultipleLinks(links) => write!(
+                f,
+                "the child has {links} links; refusing to remove one name of a hard-linked file"
+            ),
             SealError::Io(e) => write!(f, "{e}"),
         }
     }
@@ -663,6 +671,14 @@ mod unix_impl {
             }
             if stat.st_dev as u64 != device || stat.st_ino as u64 != inode {
                 return Err(SealError::IdentityMismatch);
+            }
+            // E06-S13: the link count read in the same `fstatat` that confirms identity, as
+            // late as this seam can read it. A link added after this and before `unlinkat` is
+            // the same window as the owner-accepted leaf-name race.
+            #[allow(clippy::unnecessary_cast)] // `st_nlink` is u16 on macOS, u64 on Linux.
+            let links = stat.st_nlink as u64;
+            if links != 1 {
+                return Err(SealError::MultipleLinks(links));
             }
 
             // SAFETY: same invariants as the `fstatat` above - a valid borrowed directory

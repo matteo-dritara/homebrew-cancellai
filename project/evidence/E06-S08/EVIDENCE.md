@@ -25,6 +25,12 @@ PASS
 | --- | --- | --- |
 | A timed command that exits non-zero (or prints nothing) was timed as if it had done the work; a wrapper exiting 7 for status/inspect/dry clean still passed `check` | `failed_run` refuses any timed run that did not exit 0 or printed nothing; `measure` returns the error instead of a timing | `test_a_timed_command_that_fails_is_refused_not_timed` (Codex's exact reproduction: real plan, exit 7 elsewhere), `test_a_timed_command_that_prints_nothing_is_refused_not_timed`, `test_failed_run_accepts_only_a_successful_non_empty_run` |
 
+## Round-4 repair
+
+| Finding | Repair | Evidence |
+| --- | --- | --- |
+| A run exiting 0 with non-blank output that did no work was still timed | Every timed run of both engines must describe the generated corpus (`result_matches_corpus`) | `test_a_successful_non_blank_run_that_did_no_work_is_refused`, `test_result_matches_corpus_on_each_engines_real_output_shapes`; see `CEILING_DECISION.md` |
+
 ## Safety Evidence
 
 | Invariant | Counterexample tested | Evidence | Result |

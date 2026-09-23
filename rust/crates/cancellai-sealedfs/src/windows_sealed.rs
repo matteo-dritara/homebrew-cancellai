@@ -402,6 +402,10 @@ impl SealedRoot {
         if facts.volume_serial_number != volume_serial_number || facts.file_index != file_index {
             return Err(SealError::IdentityMismatch);
         }
+        // E06-S13: the link count read from the very handle the deletion is set on.
+        if facts.number_of_links != 1 {
+            return Err(SealError::MultipleLinks(u64::from(facts.number_of_links)));
+        }
 
         let disposition = FILE_DISPOSITION_INFO { DeleteFile: true };
         // SAFETY: `file` is a valid, currently-open HANDLE for the duration of this call, just

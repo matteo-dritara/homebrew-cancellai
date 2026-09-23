@@ -91,6 +91,25 @@ class CorpusLivenessTests(unittest.TestCase):
         self.assertEqual(results, [])
         self.assertIn("printed nothing", errors[0])
 
+    @unittest.skipUnless(bench.DEFAULT_RUST_BIN.exists(), "needs the stable-channel release build")
+    def test_a_successful_non_blank_run_that_did_no_work_is_refused(self) -> None:
+        # E06 review round 4's reproduction: real plan, `x` for every other command, exit 0.
+        with tempfile.TemporaryDirectory() as tmp:
+            results, errors = bench.measure(self._wrapper(tmp, "echo x; exit 0"), sessions=5, runs=1)
+        self.assertEqual(results, [])
+        self.assertIn("does not describe the corpus", errors[0])
+
+    def test_result_matches_corpus_on_each_engines_real_output_shapes(self) -> None:
+        self.assertTrue(
+            bench.result_matches_corpus("Rust", "status", b"claude-code: 5 artifact(s), 1 bytes\ncodex-cli: 5 artifact(s), 1 bytes\n", 5)
+        )
+        self.assertFalse(bench.result_matches_corpus("Rust", "status", b"x\n", 5))
+        self.assertTrue(bench.result_matches_corpus("Rust", "clean --dry-run", b"6 delete candidate(s)", 5))
+        self.assertFalse(bench.result_matches_corpus("Rust", "inspect", b"{}", 5))
+        self.assertTrue(bench.result_matches_corpus("reference", "plan", b'{"actions": 6}', 5))
+        self.assertTrue(bench.result_matches_corpus("reference", "status", b"Candidates: 6 action(s) |", 5))
+        self.assertFalse(bench.result_matches_corpus("reference", "status", b"Candidates: 0 action(s)", 5))
+
     def test_failed_run_accepts_only_a_successful_non_empty_run(self) -> None:
         self.assertIsNone(bench.failed_run("Rust", "status", b"ok\n", 0))
         self.assertIsNotNone(bench.failed_run("Rust", "status", b"ok\n", 7))

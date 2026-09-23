@@ -1347,6 +1347,33 @@ mod tests {
             .expect("replacement content must be intact");
     }
 
+    /// E06-S13 (review round 4): a second hard link added after the open-time check is caught by
+    /// the check on the final unlink seam, before any name is removed - both names survive.
+    #[cfg(unix)]
+    #[test]
+    fn a_hard_link_added_after_the_open_time_check_is_refused_before_any_name_is_removed() {
+        let dir = TempDir::new("late-link");
+        let file = dir.path("target.txt");
+        let late = dir.path("late-link.txt");
+        std::fs::write(&file, b"original").expect("create original");
+        let expected = identity_of(&file);
+
+        let result = confirmed_delete_file_inner(&file, &expected, || {
+            std::fs::hard_link(&file, &late).expect("add a second link mid-flight");
+        });
+
+        let err = result.expect_err("a multi-link file must be refused");
+        assert!(err.0.contains("links"), "reason was: {}", err.0);
+        assert_eq!(
+            std::fs::read(&file).expect("planned name survives"),
+            b"original"
+        );
+        assert_eq!(
+            std::fs::read(&late).expect("late link survives"),
+            b"original"
+        );
+    }
+
     #[test]
     fn synthetic_executor_succeeds_by_default_for_unconfigured_paths() {
         let executor = SyntheticMutationExecutor::new();
@@ -2484,6 +2511,34 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(&file).expect("replacement content must be intact"),
             "replacement"
+        );
+    }
+
+    /// E06-S13 (review round 4): the Windows counterpart - the link count is read from the handle
+    /// the delete disposition would be set on, so a late second link is refused with both
+    /// names intact.
+    #[cfg(windows)]
+    #[test]
+    fn windows_a_hard_link_added_after_the_open_time_check_is_refused_before_deletion() {
+        let dir = WindowsTempDir::new("late-link");
+        let file = dir.path("target.txt");
+        let late = dir.path("late-link.txt");
+        std::fs::write(&file, b"original").expect("create original");
+        let expected = windows_identity_of(&file);
+
+        let result = confirmed_delete_file_inner(&file, &expected, || {
+            std::fs::hard_link(&file, &late).expect("add a second link mid-flight");
+        });
+
+        let err = result.expect_err("a multi-link file must be refused");
+        assert!(err.0.contains("links"), "reason was: {}", err.0);
+        assert_eq!(
+            std::fs::read(&file).expect("planned name survives"),
+            b"original"
+        );
+        assert_eq!(
+            std::fs::read(&late).expect("late link survives"),
+            b"original"
         );
     }
 

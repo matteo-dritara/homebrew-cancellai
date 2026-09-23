@@ -141,7 +141,10 @@ REVIEW_ROUND_EXCEPTIONS = {
     "for E06-S06; rounds 1 and 2 reviewed different stories (E06-S01..S03) - not a repeated "
     "attempt at the same work. See E06-VERIFIER-REVIEW-ROUND3.md. Round 4 re-reviews only the "
     "three stories round 3 failed (E06-S08, E06-S10, E06-S13) - their second pass, within the "
-    "owner's two-review limit per story",
+    "owner's two-review limit per story. Round 5 reviews E06-S13 alone: it failed rounds 3 and 4 and, "
+    "as a CR4 story, cannot close without an independent verdict; the owner authorized exactly "
+    "this one extra round on 2026-09-23. E06-S08 (CR1) instead closes on "
+    "project/evidence/E06-S08/CEILING_DECISION.md",
 }
 # Matches both an epic-scoped record (`E07-VERIFIER-REVIEW.md`) and a story-scoped one
 # (`E07-S07-VERIFIER-REVIEW.md`), counting both against the *epic's* ceiling (captured
