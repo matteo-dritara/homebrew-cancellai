@@ -71,9 +71,11 @@ manual smoke: cancellai-desktop --requests 3 on this machine             -> 200 
 - TUI parity is by construction rather than by test: the TUI renders `cancellai-policy` views and
   is not yet wired to a live scan, so the parity test holds the dashboard to the CLI, whose
   output comes from the same engine.
-- The tokenised URL is kept in the local browser history, and the launcher page exists on disk
-  (owner-only, then emptied of the URL) and is not removed; the temporary directory's own
-  cleanup removes it.
+- The tokenised URL is kept in the local browser history. The private directory and its (emptied)
+  launcher are not removed; the temporary directory's own cleanup removes them. An exit by signal
+  skips the emptying, leaving a dead server's URL in the user's own private directory.
+- On Windows, a parent granting another user `WRITE_DAC` on inherited children leaves a moment
+  before the private directory's DACL is replaced; closing it needs FFI (ADR-0038).
 - Not packaged: users build `cancellai-desktop` from source until a release story adds it.
 
 ## Round-1 repair (independent review FAIL, `project/evidence/E19-VERIFIER-REVIEW.md`)
@@ -92,7 +94,20 @@ appeared 0 times in stdout and stderr; the URL file was `-rw-------`.
 | F1: on Windows the launcher and URL file inherited their directory's ACL, so a broad directory exposed the token | `create_private` replaces the new (still empty) file's DACL with one protected rule granting the current user's SID full control, reads it back, and refuses unless exactly that SID remains - before any secret is written. Unix keeps `0600` | `windows_private_files_grant_only_the_current_user_even_under_a_broad_directory` (Windows only: the directory is first granted to Everyone, then both files' ACLs are read back as SIDs); clippy clean for `x86_64-pc-windows-gnu`. **Not executable on the executor's macOS machine; Windows CI runs it** |
 | F2: a write or sync failure after creating the launcher (or URL file) left a token-bearing file | `write_private_with` arms a guard right after creation that empties the file on any failure or panic, and is disarmed only after write and sync succeed; both the launcher and the URL file go through it | `a_failed_launcher_write_or_sync_leaves_no_token_on_disk` (failure before any byte, mid-URL, after the URL, at sync), `a_failed_url_file_write_or_sync_leaves_no_url_on_disk`; disarming the guard fails both |
 
+## Self-review repairs (`project/evidence/E19-SELF-REVIEW.md`)
+
+The round-2 repair of F1 restricted each file after creating it. The self-review reproduced the
+same exposure on macOS (a `0600` file keeps an inherited `everyone allow read` ACL entry) and
+reasoned a race on Windows (a handle opened before `Set-Acl` survives it). The file-level approach
+was replaced rather than patched:
+
+| Finding | Repair | Evidence |
+| --- | --- | --- |
+| SR-F1 macOS inherited ACL entries; SR-F2 Windows create-then-restrict race | Token files are only ever created inside a `PrivateDir`: a fresh random directory made owner-only while empty (Unix `0700` read back; macOS `chmod -N` and `ls -le` confirmation; Windows protected current-user DACL set and read back). `--url-file <path>` is removed: with `--no-open` the URL goes to `url.txt` in the private directory and only its path is printed | `macos_inherited_access_entries_do_not_reach_the_private_directory_or_its_files` (the self-review's reproduction as a control that must expose a plain file, then zero entries on the private directory, URL file and launcher; removing the `chmod -N` step fails it); `unix_private_directories_and_files_are_owner_only`; `windows_private_directories_and_files_grant_only_the_current_user_under_a_broad_parent` (Windows CI); `tests/startup_output.rs` (real binary: URL file under a `0700` directory, file `0600`, token absent from stdout/stderr); manual smoke on this Mac: `drwx------` directory, `-rw-------` file, no ACL entries, token 0 times in output |
+| SR-F3 Windows test never executed | The E19 closing commit is pushed and `rust.yml`'s Windows leg is read before the release tag is pushed | recorded in `CEILING_DECISION.md` |
+| SR-F4 missing ceiling record | Written | `CEILING_DECISION.md` |
+
 ## Verifier verdict
 
-Round 1: FAIL. Round 2: FAIL. Both repaired above. Round 2 was the second independent review of
-this story, the owner's limit; see `CEILING_DECISION.md` for how the story was closed.
+Independent round 1: FAIL. Independent round 2: FAIL (the owner's limit for this story).
+Self-review: FAIL. All repaired above; see `CEILING_DECISION.md` for how the story closes.

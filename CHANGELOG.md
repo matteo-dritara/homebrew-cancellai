@@ -16,9 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `cancellai-desktop`, an optional read-only dashboard (E19-S02): it starts the engine's desktop
   API and opens a local page in the system browser showing the same per-provider summary and
   plan preview the CLI prints, with the same warnings. It has no control that cleans or
-  executes, and its access token is never printed: the browser is opened through an owner-only
-  launcher file, or `--no-open --url-file <path>` writes the URL to an owner-only file. No tray
-  or menu-bar icon (ADR-0038). Not included in release archives yet.
+  executes, and its access token is never printed or passed on a command line: it is written
+  only into a fresh directory made private to the current user before anything is created in it
+  - a launcher page for the browser, or with `--no-open` a URL file whose path is printed. No
+  tray or menu-bar icon (ADR-0038). Not included in release archives yet.
 
 ## [1.18.0] - 2026-09-23
 

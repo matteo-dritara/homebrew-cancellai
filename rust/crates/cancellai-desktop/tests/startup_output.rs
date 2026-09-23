@@ -4,20 +4,20 @@
 //!
 //! The engine is stood in for by a shell script that prints the descriptor of a desktop API
 //! server this test runs in-process, so the binary is exercised end to end - start the engine,
-//! write the URL file, serve a page - without needing `cancellai-cli` built. Unix-only because the
+//! write the URL file in a fresh private directory, serve a page - without needing
+//! `cancellai-cli` built. Unix-only because the
 //! stand-in is a shell script; the property itself is platform-independent and the pure startup
 //! message is unit-tested everywhere (`launch::tests`).
 
 #![cfg(unix)]
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
-use std::time::{Duration, Instant};
 
 use cancellai_desktop_api::{
     DocumentEnvelope, DocumentKind, DocumentSource, ProviderSummary, Query, Server,
@@ -69,45 +69,58 @@ fn fake_cli(dir: &Path, descriptor_line: &str) -> PathBuf {
     path
 }
 
-fn wait_for(path: &Path) -> String {
-    let deadline = Instant::now() + Duration::from_secs(20);
-    loop {
-        if let Ok(text) = std::fs::read_to_string(path)
-            && text.ends_with('\n')
-        {
-            return text.trim().to_string();
-        }
-        assert!(Instant::now() < deadline, "the URL file never appeared");
-        thread::sleep(Duration::from_millis(20));
-    }
+/// Starts the real binary with `--no-open` against the stand-in engine and returns the child and
+/// the startup line it printed.
+fn start(dir: &Path, descriptor: &str) -> (std::process::Child, String) {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_cancellai-desktop"))
+        .args(["--cli"])
+        .arg(fake_cli(dir, descriptor))
+        .args(["--no-open", "--requests", "1"])
+        .env("TMPDIR", dir)
+        .env_remove("XDG_RUNTIME_DIR")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    BufReader::new(child.stdout.as_mut().unwrap())
+        .read_line(&mut line)
+        .unwrap();
+    (child, line)
+}
+
+fn url_file_from(line: &str) -> PathBuf {
+    let path = line
+        .split("URL written to ")
+        .nth(1)
+        .unwrap_or_else(|| panic!("no URL file named in {line:?}"))
+        .trim()
+        .trim_end_matches('.');
+    PathBuf::from(path)
 }
 
 #[test]
-fn the_token_reaches_the_url_file_and_never_the_output() {
+fn the_token_reaches_a_private_url_file_and_never_the_output() {
     let dir = scratch("run");
     let api = Server::bind().unwrap();
     let descriptor = serde_json::to_string(&api.descriptor().unwrap()).unwrap();
     let api_thread = thread::spawn(move || api.serve(&FakeEngine, Some(1)).unwrap());
 
-    let url_file = dir.join("url.txt");
-    let child = Command::new(env!("CARGO_BIN_EXE_cancellai-desktop"))
-        .args(["--cli"])
-        .arg(fake_cli(&dir, &descriptor))
-        .args(["--no-open", "--url-file"])
-        .arg(&url_file)
-        .args(["--requests", "1"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
-
-    let url = wait_for(&url_file);
+    let (child, line) = start(&dir, &descriptor);
+    assert!(line.contains("listening on 127.0.0.1:"), "{line}");
+    let url_file = url_file_from(&line);
+    assert!(url_file.starts_with(&dir), "{}", url_file.display());
+    let url = std::fs::read_to_string(&url_file)
+        .unwrap()
+        .trim()
+        .to_string();
     let token = url.rsplit('/').next().unwrap().to_string();
     assert_eq!(token.len(), 64);
-    assert_eq!(
-        std::fs::metadata(&url_file).unwrap().permissions().mode() & 0o777,
-        0o600
-    );
+    assert!(!line.contains(&token));
+    let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode(url_file.parent().unwrap()), 0o700);
+    assert_eq!(mode(&url_file), 0o600);
+
     let authority = url
         .trim_start_matches("http://")
         .split('/')
@@ -123,46 +136,21 @@ fn the_token_reaches_the_url_file_and_never_the_output() {
 
     let output = child.wait_with_output().unwrap();
     api_thread.join().unwrap();
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let rest = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(output.status.success(), "{stdout}\n{stderr}");
-    assert!(stdout.contains("listening on 127.0.0.1:"), "{stdout}");
-    assert!(!stdout.contains(&token), "token on stdout: {stdout}");
+    assert!(output.status.success(), "{rest}\n{stderr}");
+    assert!(!rest.contains(&token), "token on stdout: {rest}");
     assert!(!stderr.contains(&token), "token on stderr: {stderr}");
     std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
-fn an_existing_url_file_is_refused_without_printing_the_token() {
-    let dir = scratch("exists");
-    let api = Server::bind().unwrap();
-    let descriptor = serde_json::to_string(&api.descriptor().unwrap()).unwrap();
-    let url_file = dir.join("url.txt");
-    std::fs::write(&url_file, "planted\n").unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_cancellai-desktop"))
-        .args(["--cli"])
-        .arg(fake_cli(&dir, &descriptor))
-        .args(["--no-open", "--url-file"])
-        .arg(&url_file)
-        .output()
-        .unwrap();
-    assert_eq!(output.status.code(), Some(3));
-    assert_eq!(std::fs::read_to_string(&url_file).unwrap(), "planted\n");
-    let all = format!(
-        "{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert!(!all.contains("http://127.0.0.1"), "{all}");
-    std::fs::remove_dir_all(&dir).ok();
-}
-
-#[test]
-fn no_open_without_a_url_file_is_a_usage_error() {
-    let output = Command::new(env!("CARGO_BIN_EXE_cancellai-desktop"))
-        .arg("--no-open")
-        .output()
-        .unwrap();
-    assert_eq!(output.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&output.stderr).contains("--no-open needs --url-file"));
+fn an_unknown_option_is_a_usage_error() {
+    for bad in [&["--url-file", "/tmp/u"][..], &["--open"]] {
+        let output = Command::new(env!("CARGO_BIN_EXE_cancellai-desktop"))
+            .args(bad)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2), "{bad:?}");
+    }
 }

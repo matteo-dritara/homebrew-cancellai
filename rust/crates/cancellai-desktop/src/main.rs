@@ -1,19 +1,20 @@
 //! `cancellai-desktop`: start the engine's desktop API, then serve the read-only dashboard.
 //!
 //! ```text
-//! cancellai-desktop [--cli <path>] [--no-open] [--url-file <path>] [--requests <n>]
+//! cancellai-desktop [--cli <path>] [--no-open] [--requests <n>]
 //! ```
 //!
 //! `--cli` names the `cancellai-cli` binary (default: `$CANCELLAI_CLI`, then the one beside this
 //! executable, then `cancellai-cli` on `PATH`). By default the dashboard opens in the system
-//! browser; `--no-open` skips that, and then `--url-file` is required, because the tokenised URL
-//! is never printed (`launch.rs`). `--requests` exits after that many page requests.
+//! browser. The tokenised URL is never printed (`launch.rs`): with `--no-open` it is written to a
+//! file inside a fresh private directory, and only that file's path is printed. `--requests`
+//! exits after that many page requests.
 
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Child, Command, ExitCode, Stdio};
 
-use cancellai_desktop::launch::{self, Launcher};
+use cancellai_desktop::launch::{self, Launcher, PrivateDir};
 use cancellai_desktop::{ApiViewSource, Dashboard};
 use cancellai_desktop_api::Descriptor;
 
@@ -21,7 +22,6 @@ use cancellai_desktop_api::Descriptor;
 struct Options {
     cli: Option<PathBuf>,
     open: bool,
-    url_file: Option<PathBuf>,
     requests: Option<usize>,
 }
 
@@ -30,14 +30,12 @@ impl Default for Options {
         Self {
             cli: None,
             open: true,
-            url_file: None,
             requests: None,
         }
     }
 }
 
-const USAGE: &str =
-    "usage: cancellai-desktop [--cli <path>] [--no-open] [--url-file <path>] [--requests <n>]";
+const USAGE: &str = "usage: cancellai-desktop [--cli <path>] [--no-open] [--requests <n>]";
 
 fn parse(args: &[String]) -> Result<Options, String> {
     let mut options = Options::default();
@@ -48,10 +46,6 @@ fn parse(args: &[String]) -> Result<Options, String> {
                 options.cli = Some(PathBuf::from(iter.next().ok_or("--cli needs a path")?));
             }
             "--no-open" => options.open = false,
-            "--url-file" => {
-                options.url_file =
-                    Some(PathBuf::from(iter.next().ok_or("--url-file needs a path")?));
-            }
             "--requests" => {
                 let value = iter.next().ok_or("--requests needs a number")?;
                 let n: usize = value
@@ -65,12 +59,6 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "-h" | "--help" => return Err(String::new()),
             other => return Err(format!("unrecognized argument: {other}")),
         }
-    }
-    if !options.open && options.url_file.is_none() {
-        return Err(
-            "--no-open needs --url-file: the URL is never printed, so nothing else could reach it"
-                .to_string(),
-        );
     }
     Ok(options)
 }
@@ -160,30 +148,37 @@ fn main() -> ExitCode {
         }
     };
     let url = dashboard.url();
-    if let Some(path) = &options.url_file
-        && let Err(error) = launch::write_url_file(path, &url)
-    {
-        eprintln!("could not write the URL file {}: {error}", path.display());
-        return ExitCode::from(3);
-    }
-    let launcher = if options.open {
-        match Launcher::create(&std::env::temp_dir(), &url) {
-            Ok(launcher) => Some(launcher),
+    let private = match PrivateDir::create(&launch::default_base()) {
+        Ok(private) => private,
+        Err(error) => {
+            eprintln!("could not create a private directory for the dashboard URL: {error}");
+            return ExitCode::from(3);
+        }
+    };
+    let (launcher, url_file) = if options.open {
+        match Launcher::create(&private, &url) {
+            Ok(launcher) => (Some(launcher), None),
             Err(error) => {
                 eprintln!("could not prepare the browser launcher: {error}");
                 return ExitCode::from(3);
             }
         }
     } else {
-        None
+        match launch::write_url_file(&private, &url) {
+            Ok(path) => (None, Some(path)),
+            Err(error) => {
+                eprintln!("could not write the dashboard URL file: {error}");
+                return ExitCode::from(3);
+            }
+        }
     };
     let opened = launcher.as_ref().is_some_and(open_in_browser);
     println!(
         "{}",
-        launch::startup_message(dashboard.port(), opened, options.url_file.as_deref())
+        launch::startup_message(dashboard.port(), opened, url_file.as_deref())
     );
     if launcher.is_some() && !opened {
-        eprintln!("could not open a browser; rerun with --no-open --url-file <path>");
+        eprintln!("could not open a browser; rerun with --no-open to get a URL file instead");
     }
     // The launcher page holds the token; it is emptied as soon as the dashboard has loaded.
     let mut remove_launcher = |reply: &cancellai_desktop::Reply| {
@@ -226,22 +221,18 @@ mod tests {
                 "--cli",
                 "/x/cancellai-cli",
                 "--no-open",
-                "--url-file",
-                "/tmp/u",
                 "--requests",
                 "3"
             ])),
             Ok(Options {
                 cli: Some(PathBuf::from("/x/cancellai-cli")),
                 open: false,
-                url_file: Some(PathBuf::from("/tmp/u")),
                 requests: Some(3)
             })
         );
         for bad in [
             &["--cli"][..],
-            &["--url-file"],
-            &["--no-open"],
+            &["--url-file", "/tmp/u"],
             &["--requests"],
             &["--requests", "x"],
             &["--requests", "0"],

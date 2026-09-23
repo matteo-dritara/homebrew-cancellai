@@ -44,17 +44,20 @@ dependency is `cancellai-desktop-api`.
 - `cancellai-desktop` starts `cancellai-cli desktop-api`, reads its descriptor, and serves one
   HTML page on `127.0.0.1` behind a fresh 256-bit path token.
 - The token is the dashboard's only credential, so the tokenised URL is never printed and never
-  passed as a process argument (where other local users could read it in a process list). By
-  default it goes into an owner-only launcher page in the temporary directory - an HTML redirect
-  handed to the browser opener by path and overwritten without the URL once the dashboard has
-  loaded (emptied, not deleted: deletion belongs to the one mutation seam, SI-019); with
-  `--no-open`, `--url-file <path>` writes it to a new owner-only file instead. Standard output
-  names only the port (E19 round 1).
-- "Owner-only" is enforced, not assumed from the directory (E19 round 2): mode `0600` on Unix;
-  on Windows the file's DACL is replaced by a single protected rule for the current user's SID
-  (through PowerShell `Set-Acl`, since `unsafe` FFI is not available to this crate) and read back
-  before any secret is written, refusing if it names anyone else. A write or sync that fails
-  part way leaves the file empty, never holding part of the URL.
+  passed as a process argument, where other local users could read it in a process list (E19
+  round 1). It leaves the process only as a file inside a **private directory**: a fresh
+  `cancellai-desktop-<random>` directory under `$XDG_RUNTIME_DIR` or the temporary directory,
+  made owner-only while it is still empty - mode `0700` read back on Unix, inherited ACL entries
+  stripped and confirmed absent on macOS (`chmod -N`, `ls -le`), a protected current-user-only
+  DACL set and read back on Windows (PowerShell `Set-Acl`/`Get-Acl`, since `unsafe` FFI is not
+  available to this crate). Only then is a file created inside it, so no other user can open the
+  file at any point and it inherits nothing but the owner's access. Restricting a file after
+  creating it was tried first and failed review twice: a handle opened in the gap survives the
+  restriction on Windows, and a `0600` file keeps inherited ACL entries on macOS (E19 round 2 and
+  its self-review). By default the directory holds a launcher page, handed to the browser opener
+  by path and overwritten without the URL once the dashboard has loaded (emptied, not deleted:
+  deletion belongs to the one mutation seam, SI-019); with `--no-open` it holds `url.txt`, and
+  only that file's path is printed. A write or sync that fails part way leaves the file empty.
 - The page contains no script and one `GET` form that changes only the query. It shows the
   engine's per-provider `status` summary, root origin and eligibility, and the plan preview
   counted exactly as the CLI's `plan` summary counts it, plus the CLI's incomplete-scan and
@@ -106,6 +109,12 @@ Would need `unsafe` FFI into Cocoa, Win32 and a Linux status-notifier protocol. 
 - No tray or menu-bar presence; the user starts `cancellai-desktop` and a browser tab opens.
 - A browser tab is a weaker UI surface than a native window: the URL (with its token) sits in
   the browser's history on the local machine.
+- An exit by signal skips the launcher's overwrite, leaving the URL of a server that no longer
+  runs in the user's own private directory; the token authorizes nothing once the process is gone.
+- On Windows, a parent directory that grants another user `WRITE_DAC` on inherited children
+  would let that user re-open the private directory in the moment before its DACL is replaced.
+  Closing that needs a security descriptor supplied at creation, which needs FFI this crate may
+  not use; the per-user temporary directory does not grant it.
 
 ### Neutral / follow-up
 
