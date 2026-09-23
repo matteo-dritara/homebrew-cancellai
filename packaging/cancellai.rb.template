@@ -41,6 +41,6 @@ class Cancellai < Formula
   test do
     assert_match version.to_s, shell_output("#{bin}/cancellai version")
     assert_match version.to_s, shell_output("#{bin}/cancellai-legacy --version")
-    assert_match "action(s) proposed", shell_output("#{bin}/cancellai plan", 0..4)
+    assert_match "action(s) proposed", shell_output("#{bin}/cancellai plan")
   end
 end

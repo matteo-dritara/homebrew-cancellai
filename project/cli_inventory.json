@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "purpose": "E06-S04: every flag of the four commands the Python CLI and the Rust engine share, and what `cancellai` 2.0.0 does with it. tests/test_cli_inventory.py checks this against the Python parser, the Rust help goldens and the Unreleased release notes.",
+  "purpose": "E06-S04: every long flag of the four commands the Python CLI and the Rust engine share, and what `cancellai` 2.0.0 does with it. tests/test_cli_inventory.py checks this against the Python parser, the Rust help goldens and the Unreleased release notes.",
   "commands": {
     "status": {
       "--days": "same",
@@ -11,7 +11,8 @@
       "--aggressive": "removed",
       "--paths": "removed",
       "--coverage": "removed",
-      "--top": "removed"
+      "--top": "removed",
+      "--allow-running": "added: proceed although a provider process appears to be running, as clean already could"
     },
     "clean": {
       "--days": "same",
@@ -29,7 +30,9 @@
     "configure": {
       "--claude-retention": "changed: refused on Windows (no verified handle-bound settings write there yet); macOS and Linux as before"
     },
-    "version": {}
+    "version": {
+      "--source": "added: also print the detected installation source (E17-S04)"
+    }
   },
   "presentation": {
     "version": "changed: `cancellai version` prints `cancellai-cli <version>`, naming the engine; `cancellai-legacy --version` prints the Python reference's",

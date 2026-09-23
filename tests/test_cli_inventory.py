@@ -41,16 +41,24 @@ def unreleased_notes() -> str:
 
 
 class CliInventoryTests(unittest.TestCase):
-    def test_every_python_flag_is_inventoried(self) -> None:
+    def test_every_python_and_every_rust_flag_is_inventoried(self) -> None:
+        # E06 review round 7: the inventory omitted two Rust-only flags. It now lists the union of
+        # both CLIs' flags on the shared commands; a flag only Rust has is "added".
+        import re
+
         for command, flags in python_flags().items():
             self.assertIn(command, INVENTORY["commands"], command)
-            self.assertEqual(set(INVENTORY["commands"][command]), flags, command)
+            rust = set(re.findall(r"--[a-z][a-z-]*", (GOLDEN / f"{command}_help.txt").read_text(encoding="utf-8")))
+            rust.discard("--help")
+            self.assertEqual(set(INVENTORY["commands"][command]), flags | rust, command)
+            for flag in rust - flags:
+                self.assertTrue(INVENTORY["commands"][command][flag].startswith("added"), f"{command} {flag}")
 
     def test_every_same_flag_is_in_the_rust_help(self) -> None:
         for command, flags in INVENTORY["commands"].items():
             help_text = (GOLDEN / f"{command}_help.txt").read_text(encoding="utf-8")
             for flag, disposition in flags.items():
-                if disposition == "same":
+                if disposition == "same" or disposition.startswith("added"):
                     self.assertIn(flag, help_text, f"{command} {flag}")
 
     def test_every_removed_or_changed_flag_is_disclosed_in_the_release_notes(self) -> None:

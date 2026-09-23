@@ -634,3 +634,34 @@ fn a_feed_override_that_is_not_https_is_refused() {
     assert_eq!(output.status.code(), Some(4));
     assert!(String::from_utf8_lossy(&output.stderr).contains("https"));
 }
+
+/// E06 review round 7: after sequences 1 and 2 are installed, a feed serving the exact older
+/// sequence 1 is a rollback - refused, not "already current".
+#[cfg(all(unix, feature = "test-curl"))]
+#[test]
+fn a_feed_serving_an_older_installed_notice_is_refused_as_a_rollback() {
+    let tree = Tree::new("rollback-current");
+    tree.trust_test_publisher();
+    let first = signed(7, PUBLISHER, 1, None, &notice("INC-1", "claude-code"));
+    let second = signed(7, PUBLISHER, 2, None, &notice("INC-1", "claude-code"));
+    assert_eq!(tree.install("one.json", &first).status.code(), Some(0));
+    assert_eq!(tree.install("two.json", &second).status.code(), Some(0));
+    let before = std::fs::read(tree.log()).unwrap();
+    let bin = fake_curl(&tree, &first, "200", 0);
+    let output = tree.run_with_path(&["containment", "refresh"], Some(&bin));
+    assert_eq!(
+        output.status.code(),
+        Some(4),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(String::from_utf8_lossy(&output.stderr).contains("older"));
+    assert_eq!(std::fs::read(tree.log()).unwrap(), before);
+    let bin = fake_curl(&tree, &second, "200", 1);
+    let output = tree.run_with_path(&["containment", "refresh"], Some(&bin));
+    assert_eq!(output.status.code(), Some(4), "curl failure is not current");
+    let bin = fake_curl(&tree, &second, "200", 0);
+    let output = tree.run_with_path(&["containment", "refresh"], Some(&bin));
+    assert_eq!(output.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("already current"));
+}

@@ -44,13 +44,23 @@ git commit -am "chore(release): point formula at the vX.Y.Z tarball" && git push
 
 ### The cutover release (E06-S04)
 
-The first release after the owner's migration Safety Verdict is `2.0.0`. `prepare` moves the Rust
-workspace version with the source version (the engine used to report `0.1.0`), and the release
-workflow refuses a tag that disagrees with either. `finalize` finds no engine resources in the live
-formula and adopts `packaging/cancellai.rb.template`, pointing its source URL and its three engine
-resources (`aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`) at the tag,
-with the digests the release published beside each archive. Every later `finalize` rewrites
-those same resources.
+The first release after the owner accepts the migration Safety Verdict - E06-S04 `done` - is
+`2.0.0`. `prepare` moves the Rust workspace version with the source version (the engine used to
+report `0.1.0`), and the release workflow refuses a tag that disagrees with either. Finalize the
+cutover release with the switch stated explicitly:
+
+```sh
+python3 scripts/release.py finalize --version 2.0.0 --adopt-cutover
+```
+
+`--adopt-cutover` replaces the live formula with `packaging/cancellai.rb.template` only when E06-S04
+is `done`, the version is 2.0.0 or later, and the live formula is the untouched pre-cutover one; it
+points the source URL and the three engine resources - each in its own platform block - at the tag,
+with the digests the release published, validates the whole text, and writes it atomically,
+restoring the original if the post-write check fails. Every release from 2.0.0 on must carry the
+engine: `finalize` refuses one that would not. `release.py verify-formula` re-checks the live
+formula's digests against the published ones, and `tests.yml` installs the cutover formula built
+from each commit and runs its `brew test`.
 
 ### When a release fails
 

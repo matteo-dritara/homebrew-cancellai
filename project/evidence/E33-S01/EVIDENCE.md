@@ -25,6 +25,12 @@ PASS
 | A notice already present in an unverifiable history made refresh answer "already current", exit 0 | The history is replayed and verified before "already current" is ever said; an unusable ledger is refused (exit 4) | `an_unverifiable_history_is_never_already_current` |
 | A `curl` supplied through `PATH` was executed | Only the system curl at its fixed location runs (`/usr/bin/curl` or `/bin/curl`; `C:\Windows\System32\curl.exe`); the fake-curl test hook exists only in `--features test-curl` builds | `a_curl_on_path_is_never_executed` (runs in every build); the fake-curl tests run in `rust.yml`'s stable-channel job with the feature |
 
+## Round-7 repair
+
+| Finding | Repair | Evidence |
+| --- | --- | --- |
+| After sequences 1 and 2, a feed serving the older sequence 1 was "already current" | Refresh compares the feed's sequence with the ledger's last verified sequence from that publisher: older is refused as a rollback (exit 4, history unchanged); only the newest installed notice is current | `a_feed_serving_an_older_installed_notice_is_refused_as_a_rollback` |
+
 ## Safety Evidence
 
 | Invariant | Counterexample tested | Evidence | Result |

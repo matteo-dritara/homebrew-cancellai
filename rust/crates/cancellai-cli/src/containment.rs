@@ -506,16 +506,36 @@ pub fn cmd_refresh() -> Result<Vec<String>, (i32, String)> {
     };
     // "Already current" is only true of a history that replays: an unverifiable history holding
     // the same text is unknown, not current (E06 review round 6).
-    if let LedgerState::Unknown(reason) = replay_at(&root) {
-        return Err((
-            4,
-            format!("refusing to refresh an unusable ledger: {reason}"),
-        ));
-    }
-    if let Load::Found(events) = containment_state::load_log(&root)
-        && events.contains(&StoredEvent::Install(text.clone()))
+    let ledger = match replay_at(&root) {
+        LedgerState::Known(ledger) => ledger,
+        LedgerState::Unknown(reason) => {
+            return Err((
+                4,
+                format!("refusing to refresh an unusable ledger: {reason}"),
+            ));
+        }
+    };
+    // Current means the feed serves the newest notice this ledger verified from its publisher.
+    // An older one - even one installed before - is a rollback and is refused (E06 review round
+    // 7); a newer one goes through the full install path, which verifies it.
+    if let Ok(bundle) = cancellai_safety::parse_bundle(&text)
+        && let Some(last) = ledger.last_sequence(&bundle.publisher_id)
     {
-        return Ok(vec![format!("already current with {url}")]);
+        if bundle.sequence < last {
+            return Err((
+                4,
+                format!(
+                    "the feed serves sequence {} from {}, older than the verified {last}; a rolled-back notice is refused and the ledger is unchanged",
+                    bundle.sequence, bundle.publisher_id
+                ),
+            ));
+        }
+        if bundle.sequence == last
+            && let Load::Found(events) = containment_state::load_log(&root)
+            && events.contains(&StoredEvent::Install(text.clone()))
+        {
+            return Ok(vec![format!("already current with {url}")]);
+        }
     }
     install_text(&root, text)
 }

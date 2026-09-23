@@ -606,6 +606,12 @@ impl ContainmentLedger {
         Ok(ledger)
     }
 
+    /// The last sequence this ledger verified from `publisher_id`, if any (E33-S01: a feed
+    /// serving an older, already superseded notice is a rollback, not "already current").
+    pub fn last_sequence(&self, publisher_id: &str) -> Option<u64> {
+        self.last_sequence.get(publisher_id).copied()
+    }
+
     pub fn lift_locally(&mut self, incident_id: &str) -> Vec<IncidentEvidence> {
         let (lifted, kept) = std::mem::take(&mut self.active)
             .into_iter()

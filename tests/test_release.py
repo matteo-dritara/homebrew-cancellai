@@ -317,3 +317,73 @@ class CutoverFormulaValidationTests(unittest.TestCase):
             ):
                 release.finalize(version, sha256="f" * 64, engine_digests={})
             self.assertEqual(formula.read_text(encoding="utf-8"), before)
+
+
+class CutoverRoundSevenTests(unittest.TestCase):
+    """E06 review round 7's counterexamples, pinned."""
+
+    def _rendered(self) -> str:
+        digests = {target: f"{index:064x}" for index, target in enumerate(release.ENGINE_TARGETS, 1)}
+        return release.point_engine_resources(release.read(release.CUTOVER_FORMULA), "2.0.0", digests)
+
+    def test_archives_swapped_between_platform_blocks_are_reported(self) -> None:
+        text = self._rendered()
+        arm = "cancellai-cli-2.0.0-aarch64-apple-darwin.tar.gz"
+        intel = "cancellai-cli-2.0.0-x86_64-apple-darwin.tar.gz"
+        swapped = text.replace(arm, "@@").replace(intel, arm).replace("@@", intel)
+        problems = release.formula_engine_problems(swapped, "2.0.0")
+        self.assertTrue(any("sits in" in p for p in problems), problems)
+
+    def _finalize_as(self, version: str, formula_text: str, *, adopt: bool, story_status: str = "in_progress") -> str:
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            formula = Path(tmp) / "cancellai.rb"
+            formula.write_text(formula_text, encoding="utf-8")
+            evidence = Path(tmp) / "RELEASE.md"
+            evidence.write_text("x", encoding="utf-8")
+            versions = release.Versions(source=version, packaging=version, formula=version, engine=version)
+            digests = dict.fromkeys(release.ENGINE_TARGETS, "a" * 64)
+            with (
+                mock.patch.object(release, "FORMULA", formula),
+                mock.patch.object(release, "current_versions", return_value=versions),
+                mock.patch.object(release, "release_evidence_path", return_value=evidence),
+                mock.patch.object(release, "cutover_story_status", return_value=story_status),
+                mock.patch.object(release, "check", return_value=[]),
+            ):
+                release.finalize(version, sha256="b" * 64, engine_digests=digests, adopt_cutover=adopt)
+            return formula.read_text(encoding="utf-8")
+
+    def test_a_release_at_or_after_the_cutover_cannot_skip_the_engine(self) -> None:
+        with self.assertRaises(release.ReleaseError):
+            self._finalize_as("2.0.0", release.read(release.FORMULA), adopt=False)
+
+    def test_adoption_needs_the_owner_accepted_cutover_story(self) -> None:
+        with self.assertRaises(release.ReleaseError):
+            self._finalize_as("2.0.0", release.read(release.FORMULA), adopt=True, story_status="verification")
+        adopted = self._finalize_as("2.0.0", release.read(release.FORMULA), adopt=True, story_status="done")
+        self.assertIn('resource "engine"', adopted)
+        self.assertEqual(release.formula_engine_problems(adopted, "2.0.0"), [])
+
+    def test_a_partly_converted_formula_is_refused(self) -> None:
+        partial = release.read(release.FORMULA).replace("  def install", "  on_macos do\n  end\n\n  def install")
+        with self.assertRaises(release.ReleaseError):
+            self._finalize_as("2.0.0", partial, adopt=True, story_status="done")
+
+    def test_verify_installed_demands_exact_versions(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            bin_dir = Path(tmp) / "bin"
+            bin_dir.mkdir()
+            for name, output in (("cancellai", "cancellai-cli 2.0.0"), ("cancellai-legacy", "cancellai 12.0.0")):
+                script = bin_dir / name
+                script.write_text(f"#!/bin/sh\necho '{output}'\n", encoding="utf-8")
+                script.chmod(0o755)
+            with self.assertRaises(release.ReleaseError):
+                release.verify_installed("2.0.0", Path(tmp))
+            (bin_dir / "cancellai-legacy").write_text("#!/bin/sh\necho 'cancellai 2.0.0'\n", encoding="utf-8")
+            self.assertEqual(len(release.verify_installed("2.0.0", Path(tmp))), 2)

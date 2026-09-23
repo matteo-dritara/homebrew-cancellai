@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stays installed as `cancellai-legacy` until and including 2.1.0, as the immediate rollback.
   Intentional differences from the Python CLI, each disclosed in `docs/CLI_RUST.md`:
   - new commands: `inspect`, `plan`, `update --check`, `containment`, `desktop-api`;
+  - new flags on shared commands: `status --allow-running`, `version --source`;
   - removed: `--aggressive`, `status --paths`/`--coverage`/`--top`, `--codex-backend` (on `status`
     and `clean`) - refused
     as usage errors; the Codex native delete backend is not used;
