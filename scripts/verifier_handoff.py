@@ -103,6 +103,27 @@ def render_brief(story_id: str) -> str:
     return result.stdout
 
 
+# A relative markdown link, excluding URLs, anchors and absolute paths.
+RELATIVE_LINK = re.compile(r"\]\((?!https?://|#|/)([^)\s]+)\)")
+
+
+def relocate_links(body: str) -> str:
+    """Rewrite the brief's relative links for its home under `project/evidence/<ID>/`.
+
+    The only relative links a brief carries come from the Safety Invariant text it quotes, which
+    is written relative to `docs/security/` - so `../adrs/x.md` means `docs/adrs/x.md`, and a
+    bare `x.md` means `docs/security/x.md`. Copied verbatim they point nowhere.
+    """
+
+    def relocate(match: re.Match[str]) -> str:
+        target = match.group(1)
+        if target.startswith("../"):
+            return f"](../../../docs/{target[3:]})"
+        return f"](../../../docs/security/{target})"
+
+    return RELATIVE_LINK.sub(relocate, body)
+
+
 def brief_path(story_id: str) -> Path:
     return EVIDENCE / story_id / BRIEF
 
@@ -110,7 +131,7 @@ def brief_path(story_id: str) -> Path:
 def write_brief(story_id: str, rendered_by: str, today: dt.date) -> Path:
     if not STORY_ID.match(story_id):
         raise HandoffError(f"{story_id!r} is not a story id")
-    body = render_brief(story_id)
+    body = relocate_links(render_brief(story_id))
     path = brief_path(story_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     header = (

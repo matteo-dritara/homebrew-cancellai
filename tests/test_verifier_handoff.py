@@ -160,5 +160,20 @@ class TheSeparationSurvivesTheAutomation(unittest.TestCase):
         self.assertEqual(source.count("write_text"), 1, "the only write is the brief itself")
 
 
+class LinkRelocation(unittest.TestCase):
+    def test_invariant_links_are_rewritten_for_the_evidence_directory(self) -> None:
+        body = "see [ADR](../adrs/0023-x.md), [model](THREAT_MODEL.md#tm-11), [web](https://e.x), [a](#s)"
+        self.assertEqual(
+            handoff.relocate_links(body),
+            "see [ADR](../../../docs/adrs/0023-x.md), [model](../../../docs/security/THREAT_MODEL.md#tm-11), [web](https://e.x), [a](#s)",
+        )
+
+    def test_every_relocated_link_in_a_real_brief_resolves(self) -> None:
+        body = handoff.relocate_links(handoff.render_brief("E17-S07"))
+        base = handoff.EVIDENCE / "E17-S07"
+        for target in handoff.RELATIVE_LINK.findall(body):
+            self.assertTrue((base / target.split("#")[0]).resolve().exists(), target)
+
+
 if __name__ == "__main__":
     unittest.main()
