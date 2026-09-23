@@ -59,6 +59,7 @@ distinguished by the next round, which is why the ceiling matters.
 | E15 | 3 | independent | 4 | 0 | 0 | 0% |
 | E16 | 1 | independent | 6 | 0 | 0 | 0% |
 | E16 | 2 | independent | 1 | 1 | 0 | 100% |
+| E16 | 3 | independent | 1 | 1 | 1 | 100% |
 | E17 | 1 | independent | 6 | 0 | 0 | 0% |
 | E18 | 1 | independent | 3 | 2 | 2 | 67% |
 | E18 | 2 | independent | 2 | 2 | 2 | 100% |
@@ -157,7 +158,7 @@ load-bearing rather than academic.
 
 ## Documentation readership
 
-- Documents a committed review record has named: **31**. Never named: **17**.
+- Documents a committed review record has named: **32**. Never named: **16**.
 - Never named is not the same as never read, and an unread document may still be the right
   document. This is a list for the owner once a phase, not a purge, and accepted ADRs are
   undeletable regardless of what it says.
@@ -165,7 +166,6 @@ load-bearing rather than academic.
 <details><summary>Never named in a review record</summary>
 
 - `docs/DECISION_REGISTER.md`
-- `docs/PROVIDERS.md`
 - `docs/ROADMAP.md`
 - `docs/architecture/AS_IS.md`
 - `docs/audits/2026-08-27-CODE_REVIEW.md`

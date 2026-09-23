@@ -65,9 +65,17 @@ python3 -m mypy scripts/check_provider_trust.py       -> Success
   the check. Tying a reference to a test that consumes it would need a convention for how Rust
   and Python tests name their fixtures, which does not exist yet; the `CODEOWNERS` review of
   `project/provider_trust.json` remains the control for that property.
-- A fixture ignored by git but present locally passes locally; CI's clean checkout would fail it,
-  which is where the check is authoritative.
+- After round 3: the fixture must be tracked by Git, and every Git failure refuses. The final
+  code was verified by executor tests and mutation, not by a third independent round (see
+  `CEILING_DECISION.md`).
+
+## Review history
+
+- Round 2 (Codex): REPAIRED - `project/evidence/E16-VERIFIER-REVIEW-ROUND2.md`.
+- Round 3 (Codex): FAIL - `project/evidence/E16-VERIFIER-REVIEW-ROUND3.md`; repaired to its
+  exact required repair, closed by owner decision at the review limit -
+  `project/evidence/E16-S08/CEILING_DECISION.md`.
 
 ## Verifier verdict
 
-(pending - independent reviewer)
+See the review history above; no further independent round was run.

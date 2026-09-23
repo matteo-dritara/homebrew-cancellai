@@ -117,6 +117,14 @@ REVIEW_ROUND_EXCEPTIONS = {
     "its regression test never reached readdir() at all (it failed earlier, at try_clone); "
     "repaired with a test-only hook matching this crate's own established pattern and "
     "submitted for an eighth review round - see E14-S04-VERIFIER-REVIEW-ROUND7.md.",
+    # E16: three epic rounds plus E16-S07's owner-authorized standalone CR4 review. Round 3
+    # failed E16-S08 on a fail-open Git probe the round-2 verifier had added as a repair; the
+    # owner capped independent review at two rounds per story and directed a repair to round
+    # 3's exact prescription instead of a fourth round.
+    "E16": "4 records once E16-S07's owner-authorized standalone review is counted; round 3 "
+    "failed E16-S08 and the owner, having capped review at two rounds per story, accepted a "
+    "repair to round 3's exact required repair with each of its counterexamples pinned as a "
+    "regression test in place of a fourth round - see project/evidence/E16-S08/CEILING_DECISION.md",
 }
 # Matches both an epic-scoped record (`E07-VERIFIER-REVIEW.md`) and a story-scoped one
 # (`E07-S07-VERIFIER-REVIEW.md`), counting both against the *epic's* ceiling (captured

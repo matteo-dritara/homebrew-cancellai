@@ -23,8 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/check_provider_trust.py` accepted a provider trust promotion whose
   `fixture_references` named a fixture that did not exist: it checked that evidence was listed,
   not that it was there. A promotion above `Untrusted` now fails unless every fixture reference
-  is a repository-relative path that exists and stays inside the repository after symbolic links
-  are resolved (E16-S08).
+  is a repository-relative path that exists, stays inside the repository after symbolic links
+  are resolved, and is tracked by Git; when Git cannot answer, the check refuses (E16-S08).
 
 ## [1.17.4] - 2026-09-22
 

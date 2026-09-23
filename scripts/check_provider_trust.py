@@ -113,14 +113,45 @@ def load_manifests(errors: list[str]) -> dict[str, str]:
     return provider_ids
 
 
+# `git ls-files --error-unmatch` exits 0 when the path (or, for a directory, something under it)
+# is tracked and 1 when it is not. Every other outcome - no Git, not a repository, a timeout, an
+# unexpected status - is a question the checker could not answer, and an unanswered question is
+# not evidence (E16 round 3: the previous `check-ignore` probe accepted the fixture in all of them).
+GIT_TRACKED, GIT_UNTRACKED = 0, 1
+GIT_TIMEOUT_SECONDS = 10
+
+
+def tracked_error(resolved: Path, resolved_root: Path) -> str | None:
+    """Why `resolved` is not a Git-tracked path of the repository at `resolved_root`, or None."""
+    git = shutil.which("git")
+    if git is None:
+        return "cannot be confirmed as committed evidence: Git is not available"
+    try:
+        result = subprocess.run(  # noqa: S603 - fixed argument list, no shell
+            [git, "ls-files", "--error-unmatch", "--", str(resolved.relative_to(resolved_root))],
+            cwd=resolved_root,
+            capture_output=True,
+            check=False,
+            timeout=GIT_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"cannot be confirmed as committed evidence: Git failed ({exc.__class__.__name__})"
+    if result.returncode == GIT_TRACKED:
+        return None
+    if result.returncode == GIT_UNTRACKED:
+        return "is not tracked by Git - promotion evidence must be a fixture committed in this repository"
+    return f"cannot be confirmed as committed evidence: Git exited {result.returncode}"
+
+
 def fixture_reference_error(reference: str, root: Path) -> str | None:
     """Why `reference` is not usable promotion evidence under `root`, or None if it is (E16-S08).
 
     Listing a fixture is not having one: the E16 round-1 review promoted a synthetic entry to
     `builtin_verified` with a verifier and a fixture path that did not exist, and the check
     accepted it. A reference must be repository-relative, stay inside `root` after symbolic
-    links are resolved, and name something that exists. The check only looks - it never runs
-    or opens the fixture.
+    links are resolved, and name something that exists and that Git tracks - a file present only
+    in one working copy is not evidence anyone else reviewed. The check only looks - it never
+    runs or opens the fixture.
     """
     if not reference.strip():
         return "is empty"
@@ -140,23 +171,7 @@ def fixture_reference_error(reference: str, root: Path) -> str | None:
         return "resolves to the repository root, not a fixture"
     if not resolved.exists():
         return "does not exist in the repository"
-    git = shutil.which("git")
-    if git is None:
-        ignored = None
-    else:
-        try:
-            ignored = subprocess.run(  # noqa: S603
-                [git, "check-ignore", "--quiet", "--", str(resolved)],
-                cwd=resolved_root,
-                capture_output=True,
-                check=False,
-                timeout=10,
-            )
-        except (OSError, subprocess.SubprocessError):
-            ignored = None
-    if ignored is not None and ignored.returncode == 0:
-        return "is ignored by Git and is not repository evidence"
-    return None
+    return tracked_error(resolved, resolved_root)
 
 
 def validate_registry_entry(entry: Any, where: str, errors: list[str], root: Path = ROOT) -> str | None:

@@ -10,9 +10,9 @@ Epics: **33** | Stories: **169**
 
 - `blocked`: 1
 - `cancelled`: 1
-- `done`: 163
+- `done`: 164
 - `planned`: 2
-- `ready_for_review`: 2
+- `ready_for_review`: 1
 
 ## Change risk distribution
 
@@ -28,5 +28,4 @@ Epics: **33** | Stories: **169**
 
 ## Awaiting independent review
 
-- **E16-S08** - A trust promotion's fixture evidence must exist inside the repository (CR3)
 - **E17-S07** - Safety incident containment and capability downgrade (CR4)

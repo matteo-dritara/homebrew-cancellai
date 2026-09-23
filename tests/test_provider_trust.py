@@ -15,8 +15,19 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from scripts import check_provider_trust as cpt
+
+
+def tracked_repository(root: Path, *paths: str) -> None:
+    """Make `root` a Git repository whose index tracks `paths` (nothing, when none are given)."""
+    git = shutil.which("git")
+    if git is None:
+        raise unittest.SkipTest("Git is required to build a tracked fixture repository")
+    subprocess.run([git, "init", "--quiet", str(root)], check=True)  # noqa: S603
+    if paths:
+        subprocess.run([git, "add", *paths], cwd=root, check=True)  # noqa: S603
 
 
 def real_manifests() -> dict[str, dict]:
@@ -115,7 +126,9 @@ class ProviderTrustWorkflowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "tests" / "fixtures" / "opencode" / "v1-layout").mkdir(parents=True)
+            (root / "tests" / "fixtures" / "opencode" / "v1-layout" / "part.json").write_text("{}", encoding="utf-8")
             (root / "tests" / "fixtures" / "opencode" / "session.json").write_text("{}", encoding="utf-8")
+            tracked_repository(root, "tests")
             entry = promoted_entry(["tests/fixtures/opencode/v1-layout", "tests/fixtures/opencode/session.json"])
             errors: list[str] = []
             cpt.validate_registry_entry(entry, "synthetic", errors, root)
@@ -137,6 +150,8 @@ class ProviderTrustWorkflowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "tests" / "fixtures").mkdir(parents=True)
+            (root / "tests" / "fixtures" / "real.json").write_text("{}", encoding="utf-8")
+            tracked_repository(root, "tests")
             errors: list[str] = []
             entry = promoted_entry(["tests/fixtures", "tests/fixtures/missing"])
             cpt.validate_registry_entry(entry, "synthetic", errors, root)
@@ -179,16 +194,71 @@ class ProviderTrustWorkflowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             self.assert_reference_refused("fixtures/\x00file", Path(tmp), "cannot be resolved")
 
-    def test_an_ignored_existing_path_is_not_fixture_evidence(self):
+    # --- E16 round 3: evidence must be tracked, and an unanswerable Git question refuses ------
+
+    def test_an_untracked_existing_file_is_not_fixture_evidence(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            git = shutil.which("git")
-            if git is None:
-                self.fail("Git is required for the ignored-path check")
-            subprocess.run([git, "init", "--quiet", str(root)], check=True)  # noqa: S603
+            tracked_repository(root)
+            (root / "local.json").write_text("{}", encoding="utf-8")
+            self.assert_reference_refused("local.json", root, "not tracked by Git")
+
+    def test_an_ignored_untracked_file_is_not_fixture_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
             (root / ".gitignore").write_text("ignored-fixture.json\n", encoding="utf-8")
+            tracked_repository(root, ".gitignore")
             (root / "ignored-fixture.json").write_text("{}", encoding="utf-8")
-            self.assert_reference_refused("ignored-fixture.json", root, "ignored by Git")
+            self.assert_reference_refused("ignored-fixture.json", root, "not tracked by Git")
+
+    def test_a_tracked_file_matching_an_ignore_pattern_is_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".gitignore").write_text("*.json\n", encoding="utf-8")
+            (root / "forced.json").write_text("{}", encoding="utf-8")
+            tracked_repository(root, "-f", "forced.json")
+            self.assertIsNone(cpt.fixture_reference_error("forced.json", root))
+
+    def test_a_directory_with_no_tracked_file_is_not_fixture_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            tracked_repository(root)
+            (root / "empty-fixture").mkdir()
+            (root / "empty-fixture" / "local.json").write_text("{}", encoding="utf-8")
+            self.assert_reference_refused("empty-fixture", root, "not tracked by Git")
+
+    def test_a_root_that_is_not_a_repository_refuses(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "fixture.json").write_text("{}", encoding="utf-8")
+            # Git may still find an enclosing repository above a temporary directory; pin
+            # discovery to this directory so "not a repository" is what is actually tested.
+            with mock.patch.dict(os.environ, {"GIT_CEILING_DIRECTORIES": str(root.parent), "GIT_DIR": str(root / ".git")}):
+                self.assert_reference_refused("fixture.json", root, "cannot be confirmed")
+
+    def test_git_being_unavailable_refuses(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "fixture.json").write_text("{}", encoding="utf-8")
+            with mock.patch.object(cpt.shutil, "which", return_value=None):
+                self.assert_reference_refused("fixture.json", root, "Git is not available")
+
+    def test_a_git_timeout_or_launch_failure_refuses(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "fixture.json").write_text("{}", encoding="utf-8")
+            for failure in (subprocess.TimeoutExpired(cmd="git", timeout=1), OSError("exec failed")):
+                with mock.patch.object(cpt.subprocess, "run", side_effect=failure):
+                    self.assert_reference_refused("fixture.json", root, "Git failed")
+
+    def test_an_unexpected_git_exit_status_refuses(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "fixture.json").write_text("{}", encoding="utf-8")
+            for status in (2, 128, -9):
+                completed = subprocess.CompletedProcess(args=["git"], returncode=status)
+                with mock.patch.object(cpt.subprocess, "run", return_value=completed):
+                    self.assert_reference_refused("fixture.json", root, f"Git exited {status}")
 
     def test_an_untrusted_entry_does_not_need_fixtures_to_exist(self):
         errors: list[str] = []
