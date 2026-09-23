@@ -107,8 +107,9 @@ def child_env(home: Path) -> dict[str, str]:
     return env
 
 
-def run_once(argv: list[str], env: dict[str, str]) -> tuple[float, int | None, bytes]:
-    """Run one command; return its wall time, its own peak RSS in bytes (None if unmeasurable), and stdout."""
+def run_once(argv: list[str], env: dict[str, str]) -> tuple[float, int | None, bytes, int | None]:
+    """Run one command; return its wall time, its own peak RSS in bytes (None if unmeasurable), its
+    stdout and its exit code."""
     start = time.perf_counter()
     with tempfile.TemporaryFile() as out:
         proc = subprocess.Popen(  # noqa: S603 - argv is this script's own fixed command list
@@ -126,7 +127,7 @@ def run_once(argv: list[str], env: dict[str, str]) -> tuple[float, int | None, b
             proc.wait()
             elapsed = time.perf_counter() - start
         out.seek(0)
-        return elapsed, rss, out.read()
+        return elapsed, rss, out.read(), proc.returncode
 
 
 def delete_count_rust(stdout: bytes) -> int:
@@ -142,7 +143,7 @@ def delete_count_reference(stdout: bytes) -> int:
 def prove_corpus_is_live(rust_bin: Path, env: dict[str, str], expected: int) -> list[str]:
     """Both engines must propose exactly `expected` deletions, or the timings mean nothing."""
     errors = []
-    _t, _r, rust_out = run_once([str(rust_bin), "plan", "--json", "--allow-running", "--keep-latest", str(KEEP_LATEST)], env)
+    _t, _r, rust_out, _c = run_once([str(rust_bin), "plan", "--json", "--allow-running", "--keep-latest", str(KEEP_LATEST)], env)
     ref_argv = [
         sys.executable,
         str(REFERENCE),
@@ -154,7 +155,7 @@ def prove_corpus_is_live(rust_bin: Path, env: dict[str, str], expected: int) -> 
         str(KEEP_LATEST),
         *REFERENCE_BACKEND,
     ]
-    _t, _r, ref_out = run_once(ref_argv, env)
+    _t, _r, ref_out, _c = run_once(ref_argv, env)
     try:
         rust_count = delete_count_rust(rust_out)
     except (ValueError, KeyError, TypeError) as exc:
@@ -169,6 +170,16 @@ def prove_corpus_is_live(rust_bin: Path, env: dict[str, str], expected: int) -> 
                 f"the {engine} engine proposed {count} deletions on a corpus built for {expected}; refusing to time a corpus it does not see"
             )
     return errors
+
+
+def failed_run(engine: str, command: str, stdout: bytes, code: int | None) -> str | None:
+    """A timed run only counts if it succeeded and said something (E06 review round 3: a command
+    that exits early with an error is fast, and was being timed as if it had done the work)."""
+    if code != 0:
+        return f"the {engine} engine's {command} exited {code}; a failed command is not a timing"
+    if not stdout.strip():
+        return f"the {engine} engine's {command} printed nothing; an empty run is not a timing"
+    return None
 
 
 def measure(rust_bin: Path, sessions: int, runs: int) -> tuple[list[Measurement], list[str]]:
@@ -188,11 +199,15 @@ def measure(rust_bin: Path, sessions: int, runs: int) -> tuple[list[Measurement]
             rust_rss: list[int] = []
             ref_rss: list[int] = []
             for _ in range(runs):
-                seconds, rss, _out = run_once(rust_argv, env)
+                seconds, rss, out, code = run_once(rust_argv, env)
+                if failure := failed_run("Rust", name, out, code):
+                    return [], [failure]
                 rust_times.append(seconds)
                 if rss is not None:
                     rust_rss.append(rss)
-                seconds, rss, _out = run_once(ref_argv, env)
+                seconds, rss, out, code = run_once(ref_argv, env)
+                if failure := failed_run("reference", name, out, code):
+                    return [], [failure]
                 ref_times.append(seconds)
                 if rss is not None:
                     ref_rss.append(rss)

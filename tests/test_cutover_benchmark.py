@@ -69,6 +69,34 @@ class CorpusLivenessTests(unittest.TestCase):
         self.assertEqual(len(errors), 1)
         self.assertIn("Rust engine proposed 0 deletions", errors[0])
 
+    def _wrapper(self, tmp: str, body: str) -> Path:
+        """A Rust stand-in: the real plan for the liveness check, `body` for every other command."""
+        real = bench.DEFAULT_RUST_BIN
+        wrapper = Path(tmp) / "wrapper"
+        wrapper.write_text(f'#!/bin/sh\nif [ "$1" = plan ]; then exec "{real}" "$@"; fi\n{body}\n', encoding="utf-8")
+        wrapper.chmod(wrapper.stat().st_mode | stat.S_IXUSR)
+        return wrapper
+
+    @unittest.skipUnless(bench.DEFAULT_RUST_BIN.exists(), "needs the stable-channel release build")
+    def test_a_timed_command_that_fails_is_refused_not_timed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            results, errors = bench.measure(self._wrapper(tmp, "echo partial; exit 7"), sessions=5, runs=1)
+        self.assertEqual(results, [])
+        self.assertIn("exited 7", errors[0])
+
+    @unittest.skipUnless(bench.DEFAULT_RUST_BIN.exists(), "needs the stable-channel release build")
+    def test_a_timed_command_that_prints_nothing_is_refused_not_timed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            results, errors = bench.measure(self._wrapper(tmp, "exit 0"), sessions=5, runs=1)
+        self.assertEqual(results, [])
+        self.assertIn("printed nothing", errors[0])
+
+    def test_failed_run_accepts_only_a_successful_non_empty_run(self) -> None:
+        self.assertIsNone(bench.failed_run("Rust", "status", b"ok\n", 0))
+        self.assertIsNotNone(bench.failed_run("Rust", "status", b"ok\n", 7))
+        self.assertIsNotNone(bench.failed_run("Rust", "status", b"  \n", 0))
+        self.assertIsNotNone(bench.failed_run("Rust", "status", b"ok", None))
+
     def test_the_reference_sees_exactly_the_corpus_it_was_built_for(self) -> None:
         sessions = 5
         expected = 2 * (sessions - bench.KEEP_LATEST)

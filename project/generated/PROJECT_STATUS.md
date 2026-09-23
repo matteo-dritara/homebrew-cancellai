@@ -11,8 +11,9 @@ Epics: **34** | Stories: **178**
 - `blocked`: 1
 - `cancelled`: 1
 - `done`: 167
-- `in_progress`: 3
+- `in_progress`: 2
 - `planned`: 1
+- `ready_for_review`: 1
 - `verification`: 5
 
 ## Change risk distribution
@@ -29,4 +30,4 @@ Epics: **34** | Stories: **178**
 
 ## Awaiting independent review
 
-- none
+- **E06-S08** - The Rust CLI stays within a performance self-budget measured against the reference (CR1)

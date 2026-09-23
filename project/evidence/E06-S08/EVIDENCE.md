@@ -19,6 +19,12 @@ PASS
 | AC3 - a corpus that resolved no artifacts fails rather than reporting a fast empty run | `prove_corpus_is_live` requires both engines to propose exactly `2 * (sessions - keep_latest)` deletions before anything is timed. `test_a_rust_engine_that_sees_nothing_is_refused_before_anything_is_timed` and `test_the_reference_sees_exactly_the_corpus_it_was_built_for` pin both directions. | PASS |
 | AC4 - macOS and Windows reported, not gated | The same job runs `report` on macos-latest and windows-latest; report mode prints violations as notes and exits 0 unless the corpus is not seen. RSS is reported as unmeasured on Windows, never guessed. | PASS (first CI run pending) |
 
+## Round-3 repair (Codex, `project/evidence/E06-VERIFIER-REVIEW-ROUND3.md`)
+
+| Finding | Repair | Evidence |
+| --- | --- | --- |
+| A timed command that exits non-zero (or prints nothing) was timed as if it had done the work; a wrapper exiting 7 for status/inspect/dry clean still passed `check` | `failed_run` refuses any timed run that did not exit 0 or printed nothing; `measure` returns the error instead of a timing | `test_a_timed_command_that_fails_is_refused_not_timed` (Codex's exact reproduction: real plan, exit 7 elsewhere), `test_a_timed_command_that_prints_nothing_is_refused_not_timed`, `test_failed_run_accepts_only_a_successful_non_empty_run` |
+
 ## Safety Evidence
 
 | Invariant | Counterexample tested | Evidence | Result |
