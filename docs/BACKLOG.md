@@ -1684,7 +1684,7 @@ Run monitoring continuously using OS-native user services while keeping all acti
 
 ## E16 - Provider Ecosystem and Federated Knowledge
 
-**Phase:** `P5` | **Status:** `in_progress` | **Epic dependencies:** E15
+**Phase:** `P5` | **Status:** `done` | **Epic dependencies:** E15
 
 Scale provider coverage through manifests, native adapters, signed knowledge bundles, and explicit trust promotion.
 

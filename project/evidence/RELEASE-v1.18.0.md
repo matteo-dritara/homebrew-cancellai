@@ -1,19 +1,18 @@
-# Release Evidence - v1.17.4
+# Release Evidence - v1.18.0
 
 ## Source
 
-- Tag: `v1.17.4`
+- Tag: `v1.18.0`
 - Commit: recorded by the release workflow at the tag
 - Channel: stable
-- Date: 2026-09-22
-- Published: yes - release run 35768585401 succeeded; GitHub release published 2026-09-22T18:50:49Z
+- Date: 2026-09-23
+- Published: pending
 
 ## Included work
 
-This release closes no epic. It exists because an already tagged version could not
-carry the fix below, and a published tag is immutable history:
-
-Windows real-smoke schtasks enable-confirmation fix on the v1.17.3 tag
+- Epic: E16 - Provider Ecosystem and Federated Knowledge
+- Stories: E16-S01, E16-S02, E16-S03, E16-S04, E16-S05, E16-S06, E16-S07, E16-S08
+- CR4 Safety Verdicts: `project/evidence/E16-S02/SAFETY_VERDICT.md`, `project/evidence/E16-S07/SAFETY_VERDICT.md`
 
 ## Gates
 
@@ -63,25 +62,24 @@ python3 scripts/check_process.py check
 
 ## User-visible changes
 
+### Added
+
+- The Rust safety kernel can contain a safety incident by signed capability downgrade
+  (`cancellai-safety::incident`, E17-S07). A containment arrives as the payload of a signed
+  knowledge bundle, can cap a provider - optionally narrowed to versions, action classes and
+  platforms - at Observe or Recommend and at nothing higher, and is recorded in a ledger that a
+  replayed bundle, a knowledge-store rollback or a bundle's expiry cannot shrink; only a local
+  lift removes one. An unreachable knowledge service leaves the installed kernel in charge.
+  Each containment produces an incident evidence record of identifiers and provenance only. Not
+  yet wired into the beta Rust CLI; that is cutover work (E06-S04).
+
 ### Fixed
 
-- The Rust engine's `cancellai-guardian` crate failed its real Windows smoke test on the v1.17.3
-  tag: `status()` right after a successful `schtasks /Change ... /ENABLE` still failed to parse
-  the task as enabled (`Unsupported { reason: "schtasks /XML output did not contain a
-  recognizable Enabled field" }`), even though the very same `/Query /XML` parsed correctly
-  right after `install` in the same run. That asymmetry - the only difference being a
-  state-changing `/Change` call that had *just* run - points at `schtasks`' own task-cache
-  lagging behind its own write, not at the XML shape two prior fixes already targeted (a UTF-16
-  BOM decode, then a clippy-driven `as_chunks` change). `enable()` now polls `status()` for up to
-  2 seconds to confirm the change before returning `Ok`, matching the macOS/Linux adapters' own
-  enable contracts (AC1); the real smoke test accepts the resulting honest,
-  distinguishable "registration could not be confirmed" outcome the same way the macOS one
-  already does, instead of asserting a state `status` cannot yet corroborate.
-  `parse_enabled_from_xml` was also made whitespace/attribute-tolerant as a defensive
-  improvement, and `status()`'s `Unsupported` reason now includes a bounded snippet of the
-  actual `/XML` output so any further occurrence is diagnosable from the failure itself.
-  v1.17.3's tag stands as immutable history and is recorded as unpublished; this fix ships as the
-  next version.
+- `scripts/check_provider_trust.py` accepted a provider trust promotion whose
+  `fixture_references` named a fixture that did not exist: it checked that evidence was listed,
+  not that it was there. A promotion above `Untrusted` now fails unless every fixture reference
+  is a repository-relative path that exists, stays inside the repository after symbolic links
+  are resolved, and is tracked by Git; when Git cannot answer, the check refuses (E16-S08).
 
 ## Known residual risks
 
