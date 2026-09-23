@@ -448,15 +448,28 @@ fn cmd_read_only(flags: CommonFlags, mode: RunMode) -> i32 {
     }
 }
 
+/// One line of the human `status` summary per provider: id, artifact count, total bytes, scan
+/// completeness. Shared with the desktop API (E19-S02) so a dashboard shows the same numbers.
+fn provider_summaries(resolved: &Resolved) -> Vec<(&'static str, u64, u64, bool)> {
+    resolved
+        .resolutions
+        .iter()
+        .map(|resolution| {
+            let total_bytes: u64 = resolution.observed().iter().map(|c| c.size_bytes).sum();
+            (
+                resolution.provider_id,
+                u64::try_from(resolution.observed().len()).unwrap_or(u64::MAX),
+                total_bytes,
+                resolution.scan_complete(),
+            )
+        })
+        .collect()
+}
+
 fn print_status_summary(resolved: &Resolved) {
-    for resolution in &resolved.resolutions {
-        let total_bytes: u64 = resolution.observed().iter().map(|c| c.size_bytes).sum();
+    for (provider_id, artifacts, total_bytes, scan_complete) in provider_summaries(resolved) {
         println!(
-            "{}: {} artifact(s), {} bytes, scan_complete={}",
-            resolution.provider_id,
-            resolution.observed().len(),
-            total_bytes,
-            resolution.scan_complete()
+            "{provider_id}: {artifacts} artifact(s), {total_bytes} bytes, scan_complete={scan_complete}"
         );
     }
 }

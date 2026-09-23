@@ -7,13 +7,16 @@
 
 use std::io::Write as _;
 
-use cancellai_desktop_api::{DocumentEnvelope, DocumentKind, DocumentSource, Query, Server};
+use cancellai_desktop_api::{
+    DocumentEnvelope, DocumentKind, DocumentSource, ProviderSummary, Query, Server,
+};
 use cancellai_model::ErrorCategory;
 use cancellai_platform::{Clock, SystemClock};
 use cancellai_policy::ToolScope;
 
 use crate::{
-    CommonFlags, VERSION, any_incomplete, inventory_doc, plan_actions, plan_doc, resolve_all,
+    CommonFlags, VERSION, any_incomplete, inventory_doc, plan_actions, plan_doc,
+    provider_summaries, resolve_all,
 };
 
 /// The engine's document source for the desktop API.
@@ -62,6 +65,17 @@ impl DocumentSource for EngineDocuments {
             document,
             scan_incomplete,
             withheld_by_root_authority: withheld,
+            provider_summaries: provider_summaries(&resolved)
+                .into_iter()
+                .map(
+                    |(provider_id, artifacts, bytes, scan_complete)| ProviderSummary {
+                        provider_id: provider_id.to_string(),
+                        artifacts,
+                        bytes,
+                        scan_complete,
+                    },
+                )
+                .collect(),
         })
     }
 }

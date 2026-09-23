@@ -25,8 +25,8 @@ pub mod transport;
 
 pub use auth::SessionToken;
 pub use protocol::{
-    API_VERSION, Descriptor, DocumentEnvelope, DocumentKind, ErrorCode, MAX_REQUEST_BYTES, Query,
-    Request, Response, SUPPORTED_VERSIONS, ToolScope,
+    API_VERSION, Descriptor, DocumentEnvelope, DocumentKind, ErrorCode, MAX_REQUEST_BYTES,
+    ProviderSummary, Query, Request, Response, SUPPORTED_VERSIONS, ToolScope,
 };
 pub use session::{DocumentSource, Next, Session, read_frame, serve_connection};
 pub use transport::{Client, ClientError, IDLE_TIMEOUT, Server};

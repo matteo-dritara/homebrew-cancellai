@@ -118,6 +118,16 @@ bound the final result when a request was not granted in full (E11-S03). The sam
 for CLI, TUI, Guardian, and later fleet UI - one shared account of "why," never a per-surface
 narrative that could quietly disagree with another.
 
+The desktop dashboard (E19-S02, [ADR-0038](adrs/0038-the-desktop-shell-is-a-loopback-dashboard-over-the-desktop-api.md))
+is an optional, read-only view of the same answers. `cancellai-desktop` starts the engine's
+desktop API (`cancellai-cli desktop-api`, E19-S01) and opens a page in the system browser that
+shows each provider's line of the CLI's `status` summary, its root origin and eligibility, and
+the plan preview with the same counts, reasons and warnings `plan` prints. It cannot clean,
+configure or execute anything - to act on a plan, the user runs `cancellai-cli clean` in a
+terminal - and nothing in the CLI or TUI depends on it, so the engine stays fully usable
+headless. There is no tray or menu-bar icon: every UI toolkit that provides one would add
+hundreds of third-party crates and licences outside this project's allow-list (ADR-0038).
+
 ## Open-source and commercial boundary
 
 The single-machine product remains open source: scanner, artifact model, provider framework, safety kernel, CLI/TUI, quarantine, Guardian, and local policy engine. None of it requires an account, a network connection, or any fleet-coordination component to be present - `cancellai-cli`/`cancellai-tui` depend on no networking crate at all, and every authority decision (`cancellai_safety::authority::effective_authority`) is fully computable from purely local inputs (E18-S03, `local_authority_is_unaffected_by_an_unconfigured_commercial_service`).

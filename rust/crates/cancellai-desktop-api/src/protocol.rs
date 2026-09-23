@@ -80,6 +80,18 @@ pub enum Request {
     Goodbye,
 }
 
+/// One provider's line of the CLI's human `status` summary, computed by the engine from the same
+/// resolution (E19-S02): the document's artifacts carry no size, and a desktop view must not
+/// invent a total the CLI does not print.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderSummary {
+    pub provider_id: String,
+    pub artifacts: u64,
+    pub bytes: u64,
+    pub scan_complete: bool,
+}
+
 /// A document together with the conditions the CLI reports on stderr and in its exit code, so a
 /// desktop client sees what a CLI user sees rather than only the JSON body.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -94,6 +106,8 @@ pub struct DocumentEnvelope {
     /// Providers whose destructive work a plan withheld because their root is not the default
     /// root - the CLI's `SafetyBlock` exit. Always empty for inventory documents.
     pub withheld_by_root_authority: Vec<String>,
+    /// The CLI's human `status` summary, one entry per provider, in its order.
+    pub provider_summaries: Vec<ProviderSummary>,
 }
 
 /// Why the server refused a frame.

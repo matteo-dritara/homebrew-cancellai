@@ -40,6 +40,7 @@ impl DocumentSource for CountingEngine {
             document: serde_json::json!({"secret": "engine-data"}),
             scan_incomplete: false,
             withheld_by_root_authority: Vec::new(),
+            provider_summaries: Vec::new(),
         })
     }
 }

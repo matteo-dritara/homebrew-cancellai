@@ -69,6 +69,7 @@ crates/
   cancellai-tui/              # terminal experience
   cancellai-guardian/         # later user-service runtime
   cancellai-desktop-api/      # versioned, locally-authenticated, read-only engine/desktop channel
+  cancellai-desktop/          # optional read-only loopback dashboard; a client of the desktop API
 ```
 
 Forbidden dependency direction:
@@ -497,6 +498,19 @@ enough for one desktop client and not a multi-client service. Authentication pro
 the token, not the identity of the process presenting it; a local process able to read the
 parent's memory or pipes can read the token too, which is the same trust boundary as the user
 account itself.
+
+### Desktop dashboard (E19-S02)
+
+`cancellai-desktop` is the desktop shell ([ADR-0038](../adrs/0038-the-desktop-shell-is-a-loopback-dashboard-over-the-desktop-api.md)):
+a std-only HTTP server on `127.0.0.1` that renders one script-free page from the documents the
+desktop API returns. Its only `cancellai-*` dependency is `cancellai-desktop-api`, so it has no
+route to a provider root, the policy crate or the mutation executor - it cannot even link them.
+The view model copies what the engine computed (`provider_summaries`, `scan_incomplete`,
+`withheld_by_root_authority`) and counts plan actions the way `print_plan_summary` does, and
+`cancellai-cli/tests/desktop_api.rs::the_dashboard_view_matches_the_cli_human_summaries` holds it
+to the CLI's own `status`/`plan` output for the same tree. The page is reached through a fresh
+256-bit path token, answers only `GET` from a loopback `Host`, and forbids script and framing by
+CSP. It is not packaged by `release.yml`; the engine does not depend on it.
 
 ## Core loop
 

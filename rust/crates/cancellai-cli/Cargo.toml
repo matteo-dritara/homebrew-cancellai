@@ -25,3 +25,7 @@ cancellai-desktop-api = { path = "../cancellai-desktop-api", version = "0.1.0" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 clap = { workspace = true }
+
+[dev-dependencies]
+# E19-S02: the view-model parity test builds the dashboard view from this binary's own API.
+cancellai-desktop = { path = "../cancellai-desktop", version = "0.1.0" }

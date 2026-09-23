@@ -6,7 +6,9 @@
 //!   `plan --json` print for the same tree and the same query, field for field apart from the
 //!   generation timestamp - so a desktop view cannot show a different inventory or plan;
 //! - **no bypass**: serving every document kind, including a plan full of delete candidates,
-//!   leaves every provider file where it was.
+//!   leaves every provider file where it was;
+//! - **view-model parity** (E19-S02): the dashboard view built from those documents shows the
+//!   same per-provider lines and plan counts the CLI's human `status` and `plan` print.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 
@@ -326,4 +328,107 @@ fn desktop_api_refuses_a_zero_connection_limit() {
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(2));
+}
+
+fn cli_text(home: &TempHome, args: &[&str]) -> String {
+    String::from_utf8(command(home).args(args).output().unwrap().stdout).unwrap()
+}
+
+#[test]
+fn the_dashboard_view_matches_the_cli_human_summaries() {
+    let home = TempHome::populated("view-parity");
+    // A second, fresh Claude session so the plan holds both deletions and observations.
+    let fresh = home
+        .0
+        .join(".claude/projects/p/44444444-4444-4444-8444-444444444444.jsonl");
+    std::fs::write(&fresh, "{}").unwrap();
+
+    let cases = [
+        (
+            Query {
+                days: 1,
+                keep_latest: 0,
+                tool: ToolScope::All,
+                allow_running: true,
+            },
+            vec!["--days", "1", "--keep-latest", "0", "--allow-running"],
+        ),
+        (
+            Query {
+                days: 1,
+                keep_latest: 1,
+                tool: ToolScope::Claude,
+                allow_running: true,
+            },
+            vec![
+                "--days",
+                "1",
+                "--keep-latest",
+                "1",
+                "--tool",
+                "claude",
+                "--allow-running",
+            ],
+        ),
+    ];
+    let (mut child, descriptor) = start_api(&home, 1);
+    let mut client = Client::connect(&descriptor).unwrap();
+    let (mut seen_deletes, mut seen_observations) = (0, 0);
+    for (query, flags) in &cases {
+        let status = client.document(DocumentKind::Status, *query).unwrap();
+        let plan = client.document(DocumentKind::Plan, *query).unwrap();
+        let view = cancellai_desktop::build(client.engine_version(), &status, &plan).unwrap();
+        seen_deletes += view.plan.delete_candidates;
+        seen_observations += view.plan.observations;
+
+        let mut status_args = vec!["status"];
+        status_args.extend(flags.iter().copied());
+        let expected_status: Vec<String> = cli_text(&home, &status_args)
+            .lines()
+            .map(str::to_string)
+            .collect();
+        let shown_status: Vec<String> = view
+            .providers
+            .iter()
+            .map(|row| {
+                format!(
+                    "{}: {} artifact(s), {} bytes, scan_complete={}",
+                    row.provider_id, row.artifacts, row.bytes, row.scan_complete
+                )
+            })
+            .collect();
+        assert_eq!(shown_status, expected_status, "{flags:?}");
+
+        let mut plan_args = vec!["plan"];
+        plan_args.extend(flags.iter().copied());
+        let expected_plan = cli_text(&home, &plan_args);
+        let headline = format!(
+            "{} action(s) proposed: {} delete candidate(s), {} observation(s)",
+            view.plan.total_actions, view.plan.delete_candidates, view.plan.observations
+        );
+        assert_eq!(
+            expected_plan.lines().next(),
+            Some(headline.as_str()),
+            "{flags:?}"
+        );
+        assert_eq!(
+            expected_plan.lines().count(),
+            view.plan.actions.len() + 1,
+            "one CLI line per action the view shows: {flags:?}"
+        );
+        for action in &view.plan.actions {
+            assert!(
+                expected_plan.contains(&action.reason),
+                "the CLI does not print the reason the view shows: {}",
+                action.reason
+            );
+        }
+    }
+    assert!(
+        seen_deletes > 0 && seen_observations > 0,
+        "the fixture must exercise both counts, or the headline comparison proves little: \
+         {seen_deletes} deletes, {seen_observations} observations"
+    );
+    client.close().unwrap();
+    assert!(child.wait().unwrap().success());
 }

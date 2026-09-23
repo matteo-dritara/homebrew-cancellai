@@ -2194,7 +2194,7 @@ Add a cross-platform desktop client only after CLI/TUI/Guardian domain contracts
 
 ### E19-S02 - Cross-platform desktop shell
 
-**Status:** `planned` | **Change Risk:** `CR1` | **Dependencies:** E19-S01 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E19-S01 | **Safety obligations:** none
 
 **Outcome.** Implement tray/menu-bar/dashboard experience using shared core, with Tauri or an equivalent evidence-backed choice.
 

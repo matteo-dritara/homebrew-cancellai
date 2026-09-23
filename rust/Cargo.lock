@@ -170,6 +170,7 @@ checksum = "95832e849adfb21180ccb6826a99da14e5d266ae5c2e668e1602cf234f153797"
 name = "cancellai-cli"
 version = "0.1.0"
 dependencies = [
+ "cancellai-desktop",
  "cancellai-desktop-api",
  "cancellai-inventory",
  "cancellai-model",
@@ -183,6 +184,14 @@ dependencies = [
  "cancellai-store",
  "clap",
  "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "cancellai-desktop"
+version = "0.1.0"
+dependencies = [
+ "cancellai-desktop-api",
  "serde_json",
 ]
 

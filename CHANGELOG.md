@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   documents `status --json` and `plan --json` print - to a local desktop client over a
   versioned, token-authenticated loopback channel (E19-S01). The protocol has no request that
   can clean, configure or execute anything.
+- `cancellai-desktop`, an optional read-only dashboard (E19-S02): it starts the engine's desktop
+  API and opens a local page in the system browser showing the same per-provider summary and
+  plan preview the CLI prints, with the same warnings. It has no control that cleans or
+  executes. No tray or menu-bar icon (ADR-0038). Not included in release archives yet.
 
 ## [1.18.0] - 2026-09-23
 
