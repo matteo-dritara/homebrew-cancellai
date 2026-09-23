@@ -1,0 +1,22 @@
+[package]
+name = "cancellai-desktop-api"
+description = "Versioned, locally-authenticated, read-only API between the engine and desktop clients."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# Outer ring (ADR-0019). Deliberately no dependency on cancellai-safety, cancellai-platform,
+# cancellai-sealedfs, cancellai-inventory, cancellai-store or any provider adapter: this crate
+# carries documents between processes and has no way to reach a provider root or the mutation
+# executor, which is how "the desktop cannot bypass the safety executor" is made structural
+# rather than promised (E19-S01). `getrandom` supplies the session token's OS entropy; std has
+# no cryptographic random source.
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+getrandom = "0.4"

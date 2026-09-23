@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `cancellai-cli desktop-api` serves the engine's read-only documents - the inventory and plan
+  documents `status --json` and `plan --json` print - to a local desktop client over a
+  versioned, token-authenticated loopback channel (E19-S01). The protocol has no request that
+  can clean, configure or execute anything.
+
 ## [1.18.0] - 2026-09-23
 
 ### Added

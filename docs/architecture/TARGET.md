@@ -68,6 +68,7 @@ crates/
   cancellai-cli/              # headless/scriptable client
   cancellai-tui/              # terminal experience
   cancellai-guardian/         # later user-service runtime
+  cancellai-desktop-api/      # versioned, locally-authenticated, read-only engine/desktop channel
 ```
 
 Forbidden dependency direction:
@@ -464,6 +465,38 @@ real remote-execution deployment - it is mandatory before any real transport shi
 independent verifier review, E18-VERIFIER-REVIEW-ROUND3.md). Building it is that future
 outer-ring caller's own design question, not this module's, since this crate is kernel-ring and
 deliberately carries no I/O (ADR-0019).
+
+### Desktop API boundary (E19-S01)
+
+`cancellai-desktop-api` is the one channel between the engine and a desktop client. The engine
+side is `cancellai-cli desktop-api`, which binds an ephemeral port on `127.0.0.1`, prints a
+single-line JSON descriptor (`api_version`, `address`, `token`) on its standard output, and serves
+newline-delimited JSON frames. The client side is whatever process started it and read that line.
+
+- **Read-only by vocabulary.** A client can ask for three documents - `status`, `inspect`,
+  `plan` - with the read-only flags the CLI accepts for them (`days`, `keep_latest`, `tool`,
+  `allow_running`). There is no request for `clean`, `configure` or execution, and every frame is
+  parsed with `deny_unknown_fields`, so a mutating request is not refused so much as
+  inexpressible. The crate depends on no crate that can reach a provider root or the mutation
+  executor; the CLI builds the documents with the same functions `status --json` and
+  `plan --json` use (`inventory_doc`, `plan_actions`, `plan_doc`), so the desktop cannot see a
+  different inventory or plan than a CLI user.
+- **Locally authenticated.** A fresh 256-bit token from the OS random source per server process,
+  never written to disk; every connection must open with `hello` carrying it. A missing, wrong or
+  late token closes the connection without engine data, and loopback-only binding keeps the port
+  off the network. A browser page that rebinds a hostname to `127.0.0.1` can reach the port but
+  not the token, and an HTTP request line is not a frame.
+- **Versioned.** `hello` names an API version; an unsupported one is refused with the supported
+  list. The version-1 frames are pinned by schema tests.
+- **Same conditions as the CLI.** Each document arrives in an envelope that also carries what the
+  CLI reports through stderr and its exit code: whether any scan was incomplete, and which
+  providers' destructive work a plan withheld for root authority.
+
+**Residual**: the server serves one connection at a time with a 30-second idle timeout, which is
+enough for one desktop client and not a multi-client service. Authentication proves possession of
+the token, not the identity of the process presenting it; a local process able to read the
+parent's memory or pipes can read the token too, which is the same trust boundary as the user
+account itself.
 
 ## Core loop
 

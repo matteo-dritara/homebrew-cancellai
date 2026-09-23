@@ -1227,6 +1227,7 @@ fn every_subcommand_help_matches_its_committed_golden_snapshot() {
         ("configure", "configure_help.txt"),
         ("version", "version_help.txt"),
         ("update", "update_help.txt"),
+        ("desktop-api", "desktop_api_help.txt"),
     ] {
         let output = run(&home, &[command, "--help"]);
         assert!(

@@ -13,9 +13,11 @@
 //! JSON_CONTRACTS.md` plan document), `clean` (the only mutating command - `--dry-run`
 //! previews, otherwise requires `--yes` or an interactive confirmation; no flag or missing
 //! subcommand ever implies `clean`, per SI-007), `configure` (Claude Code's own
-//! `cleanupPeriodDays` retention setting), and `version`.
+//! `cleanupPeriodDays` retention setting), and `version`. E19-S01 adds `desktop-api`, which
+//! serves the read-only documents to a desktop client (`desktop.rs`).
 
 mod cli;
+mod desktop;
 mod documents;
 mod install_source;
 mod roots;
@@ -69,6 +71,10 @@ fn run(args: &[String]) -> i32 {
         cli::Invocation::Configure(a) => cmd_configure(a.claude_retention),
         cli::Invocation::Version(a) => cmd_version(a.source),
         cli::Invocation::Update(a) => cmd_update_check(a.check),
+        cli::Invocation::DesktopApi(a) => desktop::cmd_desktop_api(
+            a.connections
+                .map(|n| usize::try_from(n).unwrap_or(usize::MAX)),
+        ),
     }
 }
 
@@ -333,6 +339,54 @@ fn any_incomplete(resolved: &Resolved) -> bool {
     resolved.resolutions.iter().any(|r| !r.scan_complete())
 }
 
+/// The inventory document `status --json` and `inspect` print - also what the desktop API
+/// serves for those kinds (E19-S01), so the two can never disagree about what was observed.
+fn inventory_doc(resolved: &Resolved, now: cancellai_platform::Timestamp) -> serde_json::Value {
+    let artifacts: Vec<_> = resolved
+        .resolutions
+        .iter()
+        .flat_map(|r| r.observed().iter())
+        .map(|c| c.artifact.clone())
+        .collect();
+    documents::inventory_document(
+        "inventory-1".to_string(),
+        now,
+        runtime_environment_str(),
+        provider_root_docs(resolved),
+        scan_completeness_docs(resolved),
+        artifacts,
+    )
+}
+
+/// The actions a real `clean` would take, after the same root-authority withholding `clean`
+/// applies (SI-007: a preview that disagrees with the real run is itself a safety defect) -
+/// see `withhold_for_root_authority`'s docs. Shared by `plan` and the desktop API.
+fn plan_actions(resolved: &Resolved) -> (Vec<Action>, BTreeSet<&'static str>) {
+    let provider_by_target = provider_id_by_target(resolved);
+    withhold_for_root_authority(
+        build_actions(&planning_views(&resolved.resolutions)),
+        resolved,
+        &provider_by_target,
+    )
+}
+
+/// The plan document `plan --json` prints, for `actions` from [`plan_actions`].
+fn plan_doc(
+    resolved: &Resolved,
+    now: cancellai_platform::Timestamp,
+    actions: Vec<Action>,
+) -> serde_json::Value {
+    documents::plan_document(
+        "plan-1".to_string(),
+        "inventory-1".to_string(),
+        now,
+        runtime_environment_str(),
+        provider_root_docs(resolved),
+        actions,
+        Vec::new(),
+    )
+}
+
 fn cmd_read_only(flags: CommonFlags, mode: RunMode) -> i32 {
     let resolved = match resolve_all(&flags) {
         Ok(r) => r,
@@ -343,21 +397,8 @@ fn cmd_read_only(flags: CommonFlags, mode: RunMode) -> i32 {
 
     match mode {
         RunMode::Status | RunMode::Inspect => {
-            let artifacts: Vec<_> = resolved
-                .resolutions
-                .iter()
-                .flat_map(|r| r.observed().iter())
-                .map(|c| c.artifact.clone())
-                .collect();
             if flags.json || mode == RunMode::Inspect {
-                let doc = documents::inventory_document(
-                    "inventory-1".to_string(),
-                    now,
-                    runtime_environment_str(),
-                    provider_root_docs(&resolved),
-                    scan_completeness_docs(&resolved),
-                    artifacts,
-                );
+                let doc = inventory_doc(&resolved, now);
                 println!(
                     "{}",
                     serde_json::to_string_pretty(&doc).expect(
@@ -369,26 +410,10 @@ fn cmd_read_only(flags: CommonFlags, mode: RunMode) -> i32 {
             }
         }
         RunMode::Plan => {
-            // `plan` previews what a real `clean` would do, so it must apply the same
-            // root-authority withholding `clean` does (SI-007: a preview that disagrees with
-            // the real run is itself a safety defect) - see `withhold_for_root_authority`'s docs.
-            let provider_by_target = provider_id_by_target(&resolved);
-            let (actions, withheld) = withhold_for_root_authority(
-                build_actions(&planning_views(&resolved.resolutions)),
-                &resolved,
-                &provider_by_target,
-            );
+            let (actions, withheld) = plan_actions(&resolved);
             withheld_by_root_authority = withheld;
             if flags.json {
-                let doc = documents::plan_document(
-                    "plan-1".to_string(),
-                    "inventory-1".to_string(),
-                    now,
-                    runtime_environment_str(),
-                    provider_root_docs(&resolved),
-                    actions,
-                    Vec::new(),
-                );
+                let doc = plan_doc(&resolved, now, actions);
                 println!(
                     "{}",
                     serde_json::to_string_pretty(&doc).expect(

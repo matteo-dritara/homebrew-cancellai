@@ -2166,13 +2166,13 @@ Extend observation/governance to remote development environments without weakeni
 
 ## E19 - Desktop Experience
 
-**Phase:** `P6` | **Status:** `planned` | **Epic dependencies:** E15
+**Phase:** `P6` | **Status:** `in_progress` | **Epic dependencies:** E15
 
 Add a cross-platform desktop client only after CLI/TUI/Guardian domain contracts are stable.
 
 ### E19-S01 - Desktop API boundary
 
-**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** E15-S04 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** E15-S04 | **Safety obligations:** none
 
 **Outcome.** Expose a narrow local IPC/API that reuses engine plans and explanations.
 
@@ -2180,6 +2180,9 @@ Add a cross-platform desktop client only after CLI/TUI/Guardian domain contracts
 
 - Desktop cannot bypass safety executor.
 - API is local-authenticated and versioned.
+- If a local client connects without the session token, with a wrong token, or before authenticating, then the API shall refuse the request, disclose no engine data, and close the connection.
+- If a client requests an API version the engine does not support, then the API shall refuse it and name the versions it supports.
+- The API shall expose read-only documents only - the same inventory and plan documents the CLI's `status --json` and `plan --json` produce - and no request that performs or schedules a mutation.
 
 **Verification**
 

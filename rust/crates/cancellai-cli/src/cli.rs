@@ -27,6 +27,7 @@ const COMMANDS: &[&str] = &[
     "configure",
     "version",
     "update",
+    "desktop-api",
 ];
 /// Tokens that must reach the *top-level* parser unmodified so `cancellai-cli --help`/`-h`/
 /// `--version` show the overall command overview - matching the reference CLI's own
@@ -61,6 +62,9 @@ enum Commands {
     Version(VersionArgs),
     /// Report installation source and source-appropriate upgrade guidance - never mutates (E17-S04)
     Update(UpdateArgs),
+    /// Serve the read-only desktop API on loopback for a desktop client - never mutates (E19-S01)
+    #[command(name = "desktop-api")]
+    DesktopApi(DesktopApiArgs),
 }
 
 /// Flags shared by `status`/`inspect`/`plan` - every read-only command. A flag another
@@ -122,6 +126,13 @@ pub struct UpdateArgs {
     pub check: bool,
 }
 
+#[derive(clap::Args, Debug, Clone)]
+pub struct DesktopApiArgs {
+    /// Exit after serving this many connections (default: serve until terminated)
+    #[arg(long, value_parser = clap::value_parser!(u64).range(1..))]
+    pub connections: Option<u64>,
+}
+
 #[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToolArg {
     All,
@@ -150,6 +161,7 @@ pub enum Invocation {
     Configure(ConfigureArgs),
     Version(VersionArgs),
     Update(UpdateArgs),
+    DesktopApi(DesktopApiArgs),
 }
 
 /// No subcommand, or a leading flag with no subcommand, always means `status` - the read-only
@@ -190,6 +202,7 @@ pub fn parse(args: &[String]) -> Invocation {
         Commands::Configure(a) => Invocation::Configure(a),
         Commands::Version(a) => Invocation::Version(a),
         Commands::Update(a) => Invocation::Update(a),
+        Commands::DesktopApi(a) => Invocation::DesktopApi(a),
     }
 }
 

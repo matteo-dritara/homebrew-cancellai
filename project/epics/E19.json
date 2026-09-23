@@ -7,12 +7,12 @@
   "dependencies": [
     "E15"
   ],
-  "status": "planned",
+  "status": "in_progress",
   "stories": [
     {
       "id": "E19-S01",
       "title": "Desktop API boundary",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "Expose a narrow local IPC/API that reuses engine plans and explanations.",
       "change_risk": "CR3",
       "dependencies": [
@@ -20,7 +20,10 @@
       ],
       "acceptance_criteria": [
         "Desktop cannot bypass safety executor.",
-        "API is local-authenticated and versioned."
+        "API is local-authenticated and versioned.",
+        "If a local client connects without the session token, with a wrong token, or before authenticating, then the API shall refuse the request, disclose no engine data, and close the connection.",
+        "If a client requests an API version the engine does not support, then the API shall refuse it and name the versions it supports.",
+        "The API shall expose read-only documents only - the same inventory and plan documents the CLI's `status --json` and `plan --json` produce - and no request that performs or schedules a mutation."
       ],
       "safety_obligations": [],
       "verification": [

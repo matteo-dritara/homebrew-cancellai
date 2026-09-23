@@ -11,8 +11,8 @@ Epics: **33** | Stories: **169**
 - `blocked`: 1
 - `cancelled`: 1
 - `done`: 164
-- `planned`: 2
-- `ready_for_review`: 1
+- `planned`: 1
+- `ready_for_review`: 2
 
 ## Change risk distribution
 
@@ -29,3 +29,4 @@ Epics: **33** | Stories: **169**
 ## Awaiting independent review
 
 - **E17-S07** - Safety incident containment and capability downgrade (CR4)
+- **E19-S01** - Desktop API boundary (CR3)

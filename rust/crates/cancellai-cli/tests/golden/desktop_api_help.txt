@@ -1,0 +1,7 @@
+Serve the read-only desktop API on loopback for a desktop client - never mutates (E19-S01)
+
+Usage: cancellai-cli desktop-api [OPTIONS]
+
+Options:
+      --connections <CONNECTIONS>  Exit after serving this many connections (default: serve until terminated)
+  -h, --help                       Print help
