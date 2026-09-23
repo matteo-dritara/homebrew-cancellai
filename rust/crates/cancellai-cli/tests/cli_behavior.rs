@@ -1633,3 +1633,38 @@ fn a_json_clean_discloses_the_untouched_history_on_stderr_only() {
         assert_eq!(noted, !keep, "{}", stderr(&output));
     }
 }
+
+/// E06-S13 (review round 3, amended criterion): a stale session with a second hard link outside
+/// the provider root is deleted as one name; the other link keeps its bytes. Unlinking a name
+/// never removes data another link still reaches, on Windows as on Unix.
+#[test]
+fn a_hard_linked_session_is_deleted_as_one_name_and_the_other_link_survives() {
+    needs_stable_build!();
+    let home = TempHome::new("hard-link");
+    let session = home.write_stale_claude_session("proj-l", "99999999-9999-4999-8999-999999999997");
+    let outside = home.path().join("backup-of-session.jsonl");
+    std::fs::hard_link(&session, &outside).unwrap();
+    let output = run(
+        &home,
+        &[
+            "clean",
+            "--yes",
+            "--json",
+            "--allow-running",
+            "--keep-latest",
+            "0",
+            "--tool",
+            "claude",
+        ],
+    );
+    assert!(output.status.success(), "{}", stdout(&output));
+    assert!(
+        !session.exists(),
+        "the provider's name for the session is removed"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&outside).unwrap(),
+        "{}",
+        "the other link keeps its bytes"
+    );
+}
