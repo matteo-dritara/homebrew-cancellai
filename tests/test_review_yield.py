@@ -61,11 +61,14 @@ class FindingIsNotRejecting(unittest.TestCase):
         self.assertEqual(round(100 * len(record.found) / len(record.verdicts)), 80)
         self.assertGreaterEqual(100 * len(record.found) / len(record.verdicts), 10, "above ADR-0025's threshold")
 
+    # Records written after E29-S01 introduced REPAIRED, and so free to use it.
+    WRITTEN_AFTER_REPAIRED = frozenset({"E16-VERIFIER-REVIEW-ROUND2.md"})
+
     def test_the_new_verdict_changes_no_historical_number(self) -> None:
-        """No committed record uses REPAIRED, so every figure computed before it is unchanged."""
+        """No record older than REPAIRED uses it, so every figure computed before it is unchanged."""
         for records in pm.load_rounds().values():
             for record in records:
-                if record.path.name.startswith("E29-"):
+                if record.path.name.startswith("E29-") or record.path.name in self.WRITTEN_AFTER_REPAIRED:
                     continue
                 self.assertEqual(record.found, record.rejected, f"{record.path} predates the distinction")
 
