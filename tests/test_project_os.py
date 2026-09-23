@@ -174,13 +174,28 @@ class ProjectOSTests(unittest.TestCase):
                 return True
             return any(list((evidence_root / story["id"]).glob("*.md")) for story in epic["stories"])
 
-        epic = next(e for e in epics if not has_evidence(e))
+        # Every real epic has evidence once E19 started, so build one that cannot: a copy of an
+        # existing epic under an id no evidence file can name.
+        epic = copy.deepcopy(epics[-1])
+        epic["id"] = "E98"
+        epic["status"] = "in_progress"
+        for index, story in enumerate(epic["stories"], start=1):
+            story["id"] = f"E98-S{index:02d}"
+            story["status"] = "planned"
+            story["dependencies"] = []
+            story.pop("blocked_by", None)
+        self.assertFalse(has_evidence(epic))
+        epics.append(epic)
+        roadmap = copy.deepcopy(model.roadmap)
+        phase = next(p for p in roadmap["phases"] if p["id"] == epic["phase"])
+        phase["epics"].append(epic["id"])
+        epic["dependencies"] = []
+        neutral = project_os.Model(model.decisions, roadmap, epics)
+        project_os.validate(neutral)  # the synthetic epic is valid before the change under test
         target = epic["stories"][0]
         target["status"] = "ready_for_review"
-        target["dependencies"] = []
-        epic["dependencies"] = []
-        bad = project_os.Model(model.decisions, model.roadmap, epics)
-        with self.assertRaises(project_os.GovernanceError):
+        bad = project_os.Model(model.decisions, roadmap, epics)
+        with self.assertRaisesRegex(project_os.GovernanceError, "evidence"):
             project_os.validate(bad)
 
     def test_evidence_gate_rejects_an_empty_or_unrelated_file(self) -> None:
