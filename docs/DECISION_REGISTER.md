@@ -356,3 +356,17 @@ E17 ("Verifiable Supply Chain and Distribution") declared a coarse epic-level de
 - E06-S04 keeps its own dependency on E17-S07; the cutover still cannot happen before incident containment is done and independently verified.
 - E17 may close, and cut its release, once its own stories are done - this decision does not close E17 or substitute for its review.
 - E18's dependency on E17 is unchanged and now reflects a real closure order rather than a transitive wait on the cutover.
+
+## PD-027 - E18's epic-level dependency on E17 is not load-bearing and is removed
+
+**Status:** accepted
+
+E18 ("Remote Targets and Fleet Boundary") declared epic-level dependencies on E16 and E17 in the original roadmap. None of its stories reads anything E17 produced: E18-S01 depends on E16-S02 (the signed-envelope primitive its remote requests reuse), and E18-S02/E18-S03 depend only on their predecessors in E18. E18's three stories are done and its independent review closed at round 3 with a 0% yield. The E17 edge therefore only holds a finished, reviewed epic open behind E17-S07, whose closure is waiting on an owner decision about independent verification rather than on anything E18 needs. The edge is removed from project/epics/E18.json, leaving E18->E16. Owner-authorized 2026-09-23 as part of reducing open work to the cutover.
+
+**Rationale.** Same pattern as PD-023, PD-025 and PD-026: a coarse epic-level edge that no story-level dependency backs. The fleet boundary E18 defines (signed remote intents, local-only authority, the open node protocol) is independent of the supply-chain and incident-containment work E17 carries.
+
+**Implications**
+
+- E18 may close and cut its release now that its own stories are done and reviewed.
+- E17 stays open until E17-S07 has an independent Safety Verdict or the owner decides otherwise; nothing in E18 changes that.
+- A future fleet story that distributes containment notices (E17-S07's wire format) must declare its dependency on E17-S07 explicitly at story level.

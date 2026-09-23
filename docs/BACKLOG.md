@@ -2102,7 +2102,7 @@ Automate canonical cross-platform builds, provenance, SBOM, signatures/attestati
 
 ## E18 - Remote Targets and Fleet Boundary
 
-**Phase:** `P6` | **Status:** `planned` | **Epic dependencies:** E16, E17
+**Phase:** `P6` | **Status:** `planned` | **Epic dependencies:** E16
 
 Extend observation/governance to remote development environments without weakening local authority or OSS boundaries.
 

@@ -5,8 +5,7 @@
   "title": "Remote Targets and Fleet Boundary",
   "objective": "Extend observation/governance to remote development environments without weakening local authority or OSS boundaries.",
   "dependencies": [
-    "E16",
-    "E17"
+    "E16"
   ],
   "status": "planned",
   "stories": [
