@@ -253,7 +253,11 @@ def apply_dynamic_mutant(tree: Path, mutant: Mutant) -> None:
     for path in paths:
         epic = json.loads(path.read_text(encoding="utf-8"))
         for story in epic["stories"]:
-            if story["status"] == "planned":
+            # A CR4 story, or one whose evidence directory already exists (a rendered verifier
+            # brief, say), fails a different gate first - the Safety Verdict, or a partial packet -
+            # so forging it tests the wrong claim. E06-S06 was both, and was the first planned story.
+            forgeable = story.get("change_risk") != "CR4" and not (tree / "project" / "evidence" / story["id"]).exists()
+            if story["status"] == "planned" and forgeable:
                 # Clearing dependencies isolates the evidence obligation: the resulting project-os
                 # failure demonstrates missing evidence rather than an earlier dependency error.
                 story["status"] = "done"
