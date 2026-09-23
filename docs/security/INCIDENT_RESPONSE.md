@@ -169,5 +169,18 @@ while it waits at its prompt still binds.
   with `openssl pkeyutl -sign -rawin -inkey <(gpg --decrypt ~/cancellai-incident.key.gpg)`, and
   write the bundle with publisher `cancellai-incident` and a sequence above every earlier one.
 
-Not yet in place: a distribution channel that delivers notices without an owner running
-`install` (E33).
+- **Fetching the published notice (E33-S01).** `cancellai-cli containment refresh` fetches the
+  latest cumulative notice from
+  `https://raw.githubusercontent.com/matteo-dritara/homebrew-cancellai/main/containment/notice.json`
+  (or the single `https://` URL in `<state>/containment_feed_url`) with the system `curl` - https
+  only, redirects included, 30 s, at most 256 KiB read - and installs it through exactly the
+  `install` path. The transport is not trusted for authenticity; the signature is. An unreachable
+  feed, a missing `curl`, a non-200 answer, an oversized, malformed, replayed, rolled-back or
+  untrusted notice all leave the history byte-identical; a 404 means nothing is published; a
+  notice already installed is "already current".
+- **Publishing a notice** (maintainers). Sign it as above with a sequence above every earlier one,
+  make it cumulative (every incident still in force), and commit it as `containment/notice.json`
+  on `main`. Tell users to run `containment refresh`.
+
+Not yet in place: fetching on a schedule. The Guardian's `run` loop does not exist yet
+(E33-S02).

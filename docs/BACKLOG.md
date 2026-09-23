@@ -4132,7 +4132,7 @@ ADR-0039 kept the network out of the Rust cutover: a signed containment notice r
 
 **Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E06-S07 | **Safety obligations:** SI-022, SI-029, SI-030
 
-**Outcome.** Fetch signed containment notices from a published feed and ingest them through the same path as containment install, so an incident reaches installations without a manual step, while an unreachable, oversized, stale or forged feed leaves the ledger exactly as it was.
+**Outcome.** Fetch signed containment notices from a published feed and ingest them through the same path as containment install, so an incident reaches installations without a manual step, while an unreachable, oversized, stale or forged feed leaves the ledger exactly as it was. Owner decisions (2026-09-23): fetch with the system curl, no HTTP client in the binary; publish one cumulative signed notice as containment/notice.json in the canonical repository, fetched by an explicit containment refresh.
 
 **Acceptance criteria**
 
@@ -4148,3 +4148,24 @@ ADR-0039 kept the network out of the Rust cutover: a signed containment notice r
 
 - `docs/security/INCIDENT_RESPONSE.md`
 - `docs/security/SUPPLY_CHAIN.md`
+
+### E33-S02 - The Guardian refreshes containment on its schedule
+
+**Status:** `planned` | **Change Risk:** `CR4` | **Dependencies:** E33-S01 | **Safety obligations:** SI-022, SI-029, SI-030
+
+**Outcome.** E33-S01 fetches a published notice only when the owner runs containment refresh. The owner wanted the Guardian to refresh on each cycle, but the Guardian's run command is still the E02-S01 skeleton and has no cycle to hook into, and the containment code lives in the CLI binary. This story runs the same refresh from the Guardian once its detection loop exists, which means first moving the containment runtime out of cancellai-cli into a library the Guardian can call.
+
+**Acceptance criteria**
+
+- When the Guardian runs a cycle, the system shall refresh containment through the same verified path as containment refresh.
+- If the refresh fails for any reason, then the Guardian shall keep running and the ledger shall stay byte-identical.
+- The system shall keep exactly one implementation of fetch, verification and persistence shared by the CLI and the Guardian.
+
+**Verification**
+
+- A Guardian integration test drives a cycle against a fake feed and asserts the ledger before and after.
+
+**Documentation impact**
+
+- `docs/security/INCIDENT_RESPONSE.md`
+- `docs/architecture/GUARDIAN_MODEL.md`

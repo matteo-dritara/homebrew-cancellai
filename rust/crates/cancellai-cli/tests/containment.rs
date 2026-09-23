@@ -107,7 +107,16 @@ impl Tree {
     }
 
     fn run(&self, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_cancellai-cli"))
+        self.run_with_path(args, None)
+    }
+
+    /// Runs with `PATH` pointing only at `bin_dir` (a fake `curl`), when given.
+    fn run_with_path(&self, args: &[&str], bin_dir: Option<&std::path::Path>) -> Output {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_cancellai-cli"));
+        if let Some(dir) = bin_dir {
+            command.env("PATH", dir);
+        }
+        command
             .args(args)
             .env("HOME", &self.0)
             .env("CANCELLAI_HOME", self.0.join("cancellai-home"))
@@ -450,4 +459,125 @@ fn only_a_confirmed_local_lift_removes_a_containment() {
     if stable_build() {
         assert_eq!(deletes(&tree.plan()).len(), 2);
     }
+}
+
+/// A fake `curl` for `containment refresh` (E33-S01): prints `body` to stdout and `status` to
+/// stderr the way `--write-out '%{stderr}%{http_code}'` does, then exits `code`.
+#[cfg(unix)]
+fn fake_curl(tree: &Tree, body: &str, status: &str, code: i32) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tree.0.join(format!("fakebin-{status}-{code}"));
+    std::fs::create_dir_all(&dir).unwrap();
+    let body_file = dir.join("body");
+    std::fs::write(&body_file, body).unwrap();
+    let script = dir.join("curl");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\n/bin/cat '{}'\nprintf '{status}' >&2\nexit {code}\n",
+            body_file.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    dir
+}
+
+#[cfg(unix)]
+#[test]
+fn refresh_installs_a_published_notice_once_and_is_current_after() {
+    let tree = Tree::new("refresh");
+    tree.trust_test_publisher();
+    let text = signed(7, PUBLISHER, 1, None, &notice("INC-1", "claude-code"));
+    let bin = fake_curl(&tree, &text, "200", 0);
+    let first = tree.run_with_path(&["containment", "refresh"], Some(&bin));
+    assert_eq!(
+        first.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    let history = std::fs::read(tree.log()).unwrap();
+    let again = tree.run_with_path(&["containment", "refresh"], Some(&bin));
+    assert_eq!(again.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&again.stdout).contains("already current"));
+    assert_eq!(std::fs::read(tree.log()).unwrap(), history);
+    let listed = tree.run(&["containment", "list"]);
+    assert!(String::from_utf8_lossy(&listed.stdout).contains("INC-1"));
+}
+
+#[cfg(unix)]
+#[test]
+fn every_unusable_feed_leaves_the_history_byte_identical() {
+    let tree = Tree::new("refresh-refusals");
+    tree.trust_test_publisher();
+    let first = signed(7, PUBLISHER, 2, None, &notice("INC-1", "claude-code"));
+    assert_eq!(tree.install("first.json", &first).status.code(), Some(0));
+    let history = std::fs::read(tree.log()).unwrap();
+
+    let rolled_back = signed(7, PUBLISHER, 1, None, &notice("INC-2", "codex-cli"));
+    let untrusted = signed(9, PUBLISHER, 3, None, &notice("INC-2", "codex-cli"));
+    let oversized = "x".repeat(256 * 1024 + 10);
+    let cases: Vec<(&str, String, &str, i32, Option<i32>)> = vec![
+        ("unreachable", String::new(), "000", 7, Some(4)),
+        ("server-error", "oops".into(), "500", 0, Some(4)),
+        ("oversized", oversized, "200", 0, Some(4)),
+        (
+            "malformed",
+            "{\"not\":\"a bundle\"}".into(),
+            "200",
+            0,
+            Some(4),
+        ),
+        ("rolled-back", rolled_back, "200", 0, Some(4)),
+        ("untrusted", untrusted, "200", 0, Some(4)),
+        ("nothing-published", String::new(), "404", 0, Some(0)),
+    ];
+    for (label, body, status, code, expected) in cases {
+        let bin = fake_curl(&tree, &body, status, code);
+        let output = tree.run_with_path(&["containment", "refresh"], Some(&bin));
+        assert_eq!(
+            output.status.code(),
+            expected,
+            "{label}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            std::fs::read(tree.log()).unwrap(),
+            history,
+            "{label} changed the history"
+        );
+        if label == "oversized" {
+            assert!(
+                String::from_utf8_lossy(&output.stderr).contains("larger than"),
+                "the cap must refuse before parsing: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn a_missing_curl_is_unavailability_not_a_notice() {
+    let tree = Tree::new("no-curl");
+    let empty = tree.0.join("empty-bin");
+    std::fs::create_dir_all(&empty).unwrap();
+    let output = tree.run_with_path(&["containment", "refresh"], Some(&empty));
+    assert_eq!(output.status.code(), Some(4));
+    assert!(!tree.log().exists());
+}
+
+#[test]
+fn a_feed_override_that_is_not_https_is_refused() {
+    let tree = Tree::new("feed-override");
+    std::fs::create_dir_all(tree.state()).unwrap();
+    std::fs::write(
+        tree.state().join("containment_feed_url"),
+        "http://example.invalid/x",
+    )
+    .unwrap();
+    let output = tree.run(&["containment", "refresh"]);
+    assert_eq!(output.status.code(), Some(4));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("https"));
 }

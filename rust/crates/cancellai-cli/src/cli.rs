@@ -85,6 +85,8 @@ pub enum ContainmentAction {
     },
     /// Show every active containment
     List,
+    /// Fetch the published containment notice and install it if it is new (E33-S01)
+    Refresh,
     /// Lift a containment locally - the only way one is ever removed
     Lift {
         /// The incident id to lift

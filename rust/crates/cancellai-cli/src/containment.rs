@@ -263,7 +263,13 @@ fn read_notice(path: &std::path::Path) -> Result<String, String> {
 pub fn cmd_install(path: &std::path::Path) -> Result<Vec<String>, (i32, String)> {
     let text = read_notice(path).map_err(|e| (4, e))?;
     let root = LocalStateRoot::resolve_platform_default().map_err(|e| (4, e.to_string()))?;
-    let mut ledger = match replay_at(&root) {
+    install_text(&root, text)
+}
+
+/// Verifies `text` against the current history and trust, and appends it on success - the one
+/// path both `install` and `refresh` use.
+fn install_text(root: &LocalStateRoot, text: String) -> Result<Vec<String>, (i32, String)> {
+    let mut ledger = match replay_at(root) {
         LedgerState::Known(ledger) => ledger,
         LedgerState::Unknown(reason) => {
             return Err((
@@ -272,14 +278,14 @@ pub fn cmd_install(path: &std::path::Path) -> Result<Vec<String>, (i32, String)>
             ));
         }
     };
-    let policy = trust_policy(&root).map_err(|e| (4, e))?;
+    let policy = trust_policy(root).map_err(|e| (4, e))?;
     let evidence = ledger
         .install(&text, &policy, now_unix())
         .map_err(|e| (4, e.to_string()))?;
-    containment_state::append_event(&root, &StoredEvent::Install(text))
+    containment_state::append_event(root, &StoredEvent::Install(text))
         .map_err(|e| (4, format!("could not persist the containment: {e}")))?;
     // Read it back: the persisted history, not the in-memory ledger, is what later runs obey.
-    match replay_at(&root) {
+    match replay_at(root) {
         LedgerState::Known(_) => {}
         LedgerState::Unknown(reason) => {
             return Err((
@@ -345,6 +351,140 @@ pub fn cmd_lift(incident_id: &str) -> Result<usize, (i32, String)> {
     containment_state::append_event(&root, &StoredEvent::Lift(incident_id.to_string()))
         .map_err(|e| (4, format!("could not persist the lift: {e}")))?;
     Ok(lifted.len())
+}
+
+/// Where the cancellAI incident-response feed is published (E33-S01): the latest cumulative
+/// notice, signed with the project key, as a file in the canonical repository. The owner may
+/// point elsewhere with `<state>/containment_feed_url` (one `https://` URL); nothing read from the
+/// feed changes where it is fetched from.
+const PROJECT_FEED_URL: &str = "https://raw.githubusercontent.com/matteo-dritara/homebrew-cancellai/main/containment/notice.json";
+
+fn feed_url(root: &LocalStateRoot) -> Result<String, String> {
+    match containment_state::load_feed_override(root) {
+        Load::Missing => Ok(PROJECT_FEED_URL.to_string()),
+        Load::Unreadable(reason) => Err(format!("feed URL override: {reason}")),
+        Load::Found(url) => {
+            let url = url.trim().to_string();
+            if url.starts_with("https://") && !url.chars().any(char::is_whitespace) {
+                Ok(url)
+            } else {
+                Err("feed URL override must be a single https:// URL".to_string())
+            }
+        }
+    }
+}
+
+/// What fetching the feed produced.
+enum Fetched {
+    Notice(String),
+    /// The feed answered 404: no notice has been published.
+    NothingPublished,
+    Unavailable(String),
+}
+
+/// Fetches the feed with the system `curl` (owner decision, E33): https only, including on
+/// redirect, a time limit, and at most `MAX_NOTICE_BYTES` read - enforced here, not only by
+/// `--max-filesize`, which a server that sends no length cannot trigger. The transport does not
+/// need to be trusted for authenticity: the notice is signature-verified exactly as `install`
+/// verifies it. A missing `curl` or any network failure is unavailability, never a notice.
+fn fetch(url: &str) -> Fetched {
+    use std::io::Read as _;
+    let spawned = std::process::Command::new("curl")
+        .args([
+            "--silent",
+            "--show-error",
+            "--location",
+            "--proto",
+            "=https",
+            "--proto-redir",
+            "=https",
+            "--max-time",
+            "30",
+            "--max-filesize",
+            &MAX_NOTICE_BYTES.to_string(),
+            "--write-out",
+            "%{stderr}%{http_code}",
+            "--output",
+            "-",
+            url,
+        ])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn();
+    let mut child = match spawned {
+        Ok(child) => child,
+        Err(error) => return Fetched::Unavailable(format!("could not run curl: {error}")),
+    };
+    let mut body = Vec::new();
+    let read = match child.stdout.take() {
+        Some(stdout) => stdout
+            .take(MAX_NOTICE_BYTES as u64 + 1)
+            .read_to_end(&mut body)
+            .map(|_| ()),
+        None => Ok(()),
+    };
+    if body.len() > MAX_NOTICE_BYTES {
+        child.kill().ok();
+        child.wait().ok();
+        return Fetched::Unavailable(format!(
+            "the feed is larger than {MAX_NOTICE_BYTES} bytes; refused before parsing"
+        ));
+    }
+    let output = match child.wait_with_output() {
+        Ok(output) => output,
+        Err(error) => return Fetched::Unavailable(format!("curl did not finish: {error}")),
+    };
+    if let Err(error) = read {
+        return Fetched::Unavailable(format!("could not read the feed: {error}"));
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let status = stderr
+        .trim()
+        .rsplit(['\n', ' '])
+        .next()
+        .unwrap_or("")
+        .to_string();
+    if !output.status.success() {
+        return Fetched::Unavailable(format!("curl failed: {}", stderr.trim()));
+    }
+    match status.as_str() {
+        "200" => match String::from_utf8(body) {
+            Ok(text) => Fetched::Notice(text),
+            Err(_) => Fetched::Unavailable("the feed is not UTF-8".to_string()),
+        },
+        "404" => Fetched::NothingPublished,
+        other => Fetched::Unavailable(format!("the feed answered HTTP {other}")),
+    }
+}
+
+/// `containment refresh` (E33-S01): fetch the published notice and install it through exactly
+/// the path `containment install` uses. Unavailable, oversized, malformed, replayed, rolled-back
+/// or untrusted input leaves the history byte-identical; a notice already installed is
+/// "already current", not an error.
+pub fn cmd_refresh() -> Result<Vec<String>, (i32, String)> {
+    let root = LocalStateRoot::resolve_platform_default().map_err(|e| (4, e.to_string()))?;
+    let url = feed_url(&root).map_err(|e| (4, e))?;
+    let text = match fetch(&url) {
+        Fetched::Notice(text) => text,
+        Fetched::NothingPublished => {
+            return Ok(vec![format!(
+                "no containment notice is published at {url}; the ledger is unchanged"
+            )]);
+        }
+        Fetched::Unavailable(reason) => {
+            return Err((
+                4,
+                format!("containment feed unavailable ({reason}); the ledger is unchanged"),
+            ));
+        }
+    };
+    if let Load::Found(events) = containment_state::load_log(&root)
+        && events.contains(&StoredEvent::Install(text.clone()))
+    {
+        return Ok(vec![format!("already current with {url}")]);
+    }
+    install_text(&root, text)
 }
 
 #[cfg(test)]

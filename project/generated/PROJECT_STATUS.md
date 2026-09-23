@@ -4,14 +4,14 @@
 
 Current phase: **P1**
 
-Epics: **34** | Stories: **178**
+Epics: **34** | Stories: **179**
 
 ## Story status
 
 - `blocked`: 1
 - `cancelled`: 1
 - `done`: 167
-- `planned`: 1
+- `planned`: 2
 - `ready_for_review`: 3
 - `verification`: 5
 
@@ -21,7 +21,7 @@ Epics: **34** | Stories: **178**
 - `CR1`: 39
 - `CR2`: 51
 - `CR3`: 33
-- `CR4`: 41
+- `CR4`: 42
 
 ## Explicitly ready work
 

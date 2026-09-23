@@ -87,6 +87,7 @@ fn cmd_containment(action: cli::ContainmentAction) -> i32 {
     let outcome = match action {
         cli::ContainmentAction::Install { file } => containment::cmd_install(&file),
         cli::ContainmentAction::List => containment::cmd_list(),
+        cli::ContainmentAction::Refresh => containment::cmd_refresh(),
         cli::ContainmentAction::Lift {
             incident_id,
             confirm,

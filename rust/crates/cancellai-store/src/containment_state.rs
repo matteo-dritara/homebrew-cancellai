@@ -149,6 +149,18 @@ pub fn append_event(root: &LocalStateRoot, event: &StoredEvent) -> Result<(), St
         .map_err(|e| format!("{}: {e}", path.display()))
 }
 
+const FEED_OVERRIDE_FILENAME: &str = "containment_feed_url";
+
+/// The owner's override of the containment feed URL (E33-S01), as raw text; the CLI validates it.
+/// A missing file means the compiled project feed.
+pub fn load_feed_override(root: &LocalStateRoot) -> Load<String> {
+    let path = match root.path_for(FEED_OVERRIDE_FILENAME) {
+        Ok(path) => path,
+        Err(error) => return Load::Unreadable(error.to_string()),
+    };
+    read_bounded(&path, 4096)
+}
+
 /// The owner's trusted publishers. A missing file means none.
 pub fn load_trust(root: &LocalStateRoot) -> Load<Vec<TrustEntry>> {
     let path = match root.path_for(TRUST_FILENAME) {

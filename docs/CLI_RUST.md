@@ -37,7 +37,8 @@ mutates anything, regardless of any other flag.
 
 ### `containment`
 
-`containment install <file>`, `containment list` and `containment lift <incident-id> --confirm`
+`containment install <file>`, `containment refresh` (fetch the published notice, E33-S01),
+`containment list` and `containment lift <incident-id> --confirm`
 manage signed incident containment (E06-S07, ADR-0039; `docs/security/INCIDENT_RESPONSE.md`). A
 containment caps a provider - optionally narrowed to versions, action classes and platforms - at
 `observe` or `recommend`, which `plan` and `clean` obey: a contained deletion is shown as an

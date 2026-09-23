@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now reaches the live mutation path. A notice signed with the cancellAI incident-response key (or
   a publisher the owner trusts) caps a provider at observe or recommend, and `plan`/`clean` obey
   it, re-checking immediately before every deletion. Only `containment lift --confirm` removes one.
+- `cancellai-cli containment refresh` (E33-S01): fetches the published cancellAI containment
+  notice with the system `curl` (https only, 256 KiB cap) and installs it through the same
+  verified path as `containment install`; an unavailable or unusable feed changes nothing.
 
 - `cancellai-cli clean` accepts `--verbose`, which lists each performed action, and
   `--keep-claude-history`, for scripts written against the reference CLI (E06-S10). The Rust
