@@ -41,7 +41,11 @@ The only mutating command. `--dry-run` previews without touching anything; other
 interactive confirmation is required unless `--yes`/`-y` is given. `--json` combined with a
 real (non-`--dry-run`) run additionally requires `--yes` - a machine-readable destructive
 invocation must state its intent explicitly, mirroring `cancellai.py`'s own automation-safety
-gate. Prints (`--json`) a `JSON_CONTRACTS.md` result document.
+gate. With `--json` it always prints a `JSON_CONTRACTS.md` document, including on the paths that
+run nothing (E06-S11): `--dry-run --json` prints the plan document `plan --json` prints, and a real
+run prints a result document - when no deletion is planned, every action appears as
+`safely_skipped` with reason code `SAFETY_WITHHELD` (an incomplete scan or a non-default root
+withheld the work; exit code 4) or `NOT_ELIGIBLE` (nothing to do; exit code 0).
 
 Every deletion routes through `cancellai-safety`'s single mutation boundary (SI-019); see
 [ADR-0016](adrs/0016-rust-artifact-risk-classification.md) for what `clean` can and cannot do

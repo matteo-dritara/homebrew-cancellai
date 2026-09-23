@@ -264,24 +264,15 @@ fn clean_killed_at_every_mutation_point_leaves_a_safe_state_and_a_rerun_finishes
             String::from_utf8_lossy(&rerun.stdout),
             String::from_utf8_lossy(&rerun.stderr)
         );
-        if expected_gone == PLANNED {
-            // Nothing is left to remove. `clean --json` then prints a plain sentence rather than
-            // a document - a contract defect this harness found and E06-S11 carries - so the
-            // rerun's correctness here is its exit code and the unchanged tree checked below.
-            assert!(
-                String::from_utf8_lossy(&rerun.stdout).contains("Nothing to clean"),
-                "{point}: {}",
-                String::from_utf8_lossy(&rerun.stdout)
-            );
-        } else {
-            let doc: serde_json::Value = serde_json::from_slice(&rerun.stdout).unwrap();
-            assert_eq!(
-                doc["summary"]["succeeded"].as_u64(),
-                Some((PLANNED - expected_gone) as u64),
-                "{point}: the rerun must remove exactly the remainder"
-            );
-            assert_eq!(doc["summary"]["failed"].as_u64(), Some(0), "{point}");
-        }
+        // With nothing left, the rerun reports every action safely skipped (E06-S11: `--json`
+        // always prints a document); otherwise it removes exactly the remainder.
+        let doc: serde_json::Value = serde_json::from_slice(&rerun.stdout).unwrap();
+        assert_eq!(
+            doc["summary"]["succeeded"].as_u64(),
+            Some((PLANNED - expected_gone) as u64),
+            "{point}: the rerun must remove exactly the remainder"
+        );
+        assert_eq!(doc["summary"]["failed"].as_u64(), Some(0), "{point}");
 
         let after_rerun = snapshot(home.path());
         let problems = violations(&before, &after_rerun, &tree.planned, PLANNED);

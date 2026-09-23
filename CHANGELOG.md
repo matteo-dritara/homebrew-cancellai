@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `cancellai-cli clean --json` always prints a JSON document (E06-S11). It used to print a plain
+  sentence when no deletion was planned, and a human summary on `--dry-run`, which broke any
+  script parsing its output on exactly the runs that did nothing - including the ones where
+  safety withheld the work.
 - `cancellai-cli` no longer treats a Codex rollout it cannot read as a session with no parent:
   the failure now makes the Codex scan incomplete, which withholds every deletion for the tool,
   as the reference does (E06-S12). Before, the scan reported complete and the rollout could be

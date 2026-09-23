@@ -904,19 +904,20 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S11 - clean --json always prints a document
 
-**Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** SI-008, SI-009
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** SI-008, SI-009
 
 **Outcome.** E06-S09's kill harness found that `cancellai-cli clean --json` prints a plain sentence - "Nothing to clean..." or "Nothing was cleaned: safety withheld..." - when no deletion is planned, where the reference prints a JSON document carrying the exit code and a `result` of `nothing-to-do` or `safety-withheld`. Automation that parses the output of the canonical engine would break on exactly the run that did nothing, including the one where safety withheld work. The exit code is already right; the document is missing.
 
 **Acceptance criteria**
 
-- When clean is given --json and no deletion is planned, the system shall print a JSON document stating the exit code and whether the run had nothing to do or safety withheld the work.
-- If safety withheld the requested work, then the document shall say so and the exit code shall stay the safety-block code.
+- When clean is given --json and no deletion is planned, the system shall print a result document in which every action is safely skipped, with a reason code that says whether there was nothing to do or safety withheld the work.
+- If safety withheld the requested work, then the document's reason code shall say so and the exit code shall stay the safety-block code.
+- When clean is given --json and --dry-run, the system shall print the plan document plan --json prints.
 - The system shall keep the human-readable sentences for runs without --json.
 
 **Verification**
 
-- CLI tests parse the output of clean --json and clean --dry-run --json on an empty tree and on a tree whose scan is incomplete.
+- CLI tests parse the output of clean --json on an empty tree and on a tree whose scan is incomplete, and of clean --dry-run --json on a tree with work to do.
 
 **Documentation impact**
 

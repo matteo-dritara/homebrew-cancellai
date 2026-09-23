@@ -1395,3 +1395,93 @@ fn verbose_and_keep_claude_history_are_refused_outside_clean() {
         assert_eq!(output.status.code(), Some(2), "{flag}");
     }
 }
+
+/// E06-S11: `clean --json` prints a document on the paths that run nothing. A real run with no
+/// deletion planned prints a result document; a dry run prints the plan document.
+#[test]
+fn clean_json_with_nothing_to_do_prints_a_result_document() {
+    let home = TempHome::new("json-nothing");
+    std::fs::create_dir_all(home.path().join(".claude/projects")).unwrap();
+    let output = run(&home, &["clean", "--yes", "--json", "--allow-running"]);
+    assert_eq!(output.status.code(), Some(0), "{}", stdout(&output));
+    let doc: serde_json::Value = serde_json::from_str(&stdout(&output)).expect("valid JSON");
+    assert_eq!(doc["document_type"], "result");
+    assert_eq!(doc["summary"]["succeeded"], 0);
+    assert_eq!(doc["summary"]["failed"], 0);
+    for result in doc["action_results"].as_array().unwrap() {
+        assert_eq!(result["status"], "safely_skipped");
+        assert_eq!(result["reason_code"], "NOT_ELIGIBLE");
+    }
+}
+
+#[test]
+fn clean_dry_run_json_prints_the_plan_document() {
+    let home = TempHome::new("json-dry-run");
+    let session = home.write_stale_claude_session("proj-j", "99999999-9999-4999-8999-999999999991");
+    let output = run(
+        &home,
+        &[
+            "clean",
+            "--dry-run",
+            "--json",
+            "--allow-running",
+            "--keep-latest",
+            "0",
+        ],
+    );
+    assert!(output.status.success(), "{}", stdout(&output));
+    let doc: serde_json::Value = serde_json::from_str(&stdout(&output)).expect("valid JSON");
+    assert_eq!(doc["document_type"], "plan");
+    assert!(
+        doc["actions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|a| a["action_class"] == "delete"),
+        "{doc}"
+    );
+    assert!(session.exists(), "--dry-run must never delete anything");
+}
+
+/// E06-S11: when safety withheld the work, the document says so and the exit code stays the
+/// safety-block code - an unreadable project makes the Claude scope incomplete.
+#[cfg(unix)]
+#[test]
+fn clean_json_when_safety_withheld_says_so_and_keeps_the_exit_code() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let home = TempHome::new("json-withheld");
+    let session = home.write_stale_claude_session("proj-w", "99999999-9999-4999-8999-999999999992");
+    let locked = home.path().join(".claude/projects/proj-locked");
+    std::fs::create_dir_all(&locked).unwrap();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+    if std::fs::read_dir(&locked).is_ok() {
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        eprintln!("skipped: this process can read a 0o000 directory (running as root?)");
+        return;
+    }
+    let output = run(
+        &home,
+        &[
+            "clean",
+            "--yes",
+            "--json",
+            "--allow-running",
+            "--keep-latest",
+            "0",
+            "--tool",
+            "claude",
+        ],
+    );
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    assert_eq!(output.status.code(), Some(4), "{}", stdout(&output));
+    let doc: serde_json::Value = serde_json::from_str(&stdout(&output)).expect("valid JSON");
+    assert_eq!(doc["document_type"], "result");
+    let results = doc["action_results"].as_array().unwrap();
+    assert!(!results.is_empty());
+    for result in results {
+        assert_eq!(result["reason_code"], "SAFETY_WITHHELD", "{doc}");
+    }
+    assert!(session.exists(), "withheld work must not delete anything");
+}

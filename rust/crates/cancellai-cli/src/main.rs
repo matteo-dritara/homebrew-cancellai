@@ -530,6 +530,45 @@ fn cmd_clean(flags: CommonFlags) -> i32 {
         .filter(|a| a.action_class == ActionClass::Delete)
         .count();
 
+    // E06-S11: `--json` always prints a document, including on the two paths that run nothing.
+    // A dry run prints the plan document `plan --json` prints; a real run that plans no deletion
+    // prints a result document in which every action is safely skipped, with a reason code that
+    // distinguishes "safety withheld the work" from "there was nothing to do". The exit code is
+    // unchanged and still carries the same distinction.
+    if flags.json && (flags.dry_run || delete_count == 0) {
+        let now = SystemClock.now();
+        let doc = if flags.dry_run {
+            plan_doc(&resolved, now, actions)
+        } else {
+            let reason_code = if safety_withheld {
+                "SAFETY_WITHHELD"
+            } else {
+                "NOT_ELIGIBLE"
+            };
+            let results = actions
+                .iter()
+                .map(|action| ActionResultDoc {
+                    action_id: action.action_id.0.clone(),
+                    status: "safely_skipped",
+                    reason_code: reason_code.to_string(),
+                    reclaimed_bytes: 0,
+                    post_action_state: "hot",
+                })
+                .collect();
+            documents::result_document("plan-1".to_string(), now, results)
+        };
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&doc)
+                .expect("diagnostic documents are plain owned structs and always serialize")
+        );
+        return if safety_withheld {
+            ErrorCategory::SafetyBlock.exit_code()
+        } else {
+            0
+        };
+    }
+
     if delete_count == 0 {
         println!(
             "{}",
