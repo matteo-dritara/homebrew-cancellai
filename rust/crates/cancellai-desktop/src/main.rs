@@ -1,26 +1,43 @@
 //! `cancellai-desktop`: start the engine's desktop API, then serve the read-only dashboard.
 //!
 //! ```text
-//! cancellai-desktop [--cli <path>] [--open] [--requests <n>]
+//! cancellai-desktop [--cli <path>] [--no-open] [--url-file <path>] [--requests <n>]
 //! ```
 //!
 //! `--cli` names the `cancellai-cli` binary (default: `$CANCELLAI_CLI`, then the one beside this
-//! executable, then `cancellai-cli` on `PATH`). `--open` asks the operating system to open the
-//! dashboard URL in the default browser. `--requests` exits after that many page requests.
+//! executable, then `cancellai-cli` on `PATH`). By default the dashboard opens in the system
+//! browser; `--no-open` skips that, and then `--url-file` is required, because the tokenised URL
+//! is never printed (`launch.rs`). `--requests` exits after that many page requests.
 
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Child, Command, ExitCode, Stdio};
 
+use cancellai_desktop::launch::{self, Launcher};
 use cancellai_desktop::{ApiViewSource, Dashboard};
 use cancellai_desktop_api::Descriptor;
 
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 struct Options {
     cli: Option<PathBuf>,
     open: bool,
+    url_file: Option<PathBuf>,
     requests: Option<usize>,
 }
+
+impl Default for Options {
+    fn default() -> Self {
+        Self {
+            cli: None,
+            open: true,
+            url_file: None,
+            requests: None,
+        }
+    }
+}
+
+const USAGE: &str =
+    "usage: cancellai-desktop [--cli <path>] [--no-open] [--url-file <path>] [--requests <n>]";
 
 fn parse(args: &[String]) -> Result<Options, String> {
     let mut options = Options::default();
@@ -30,7 +47,11 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--cli" => {
                 options.cli = Some(PathBuf::from(iter.next().ok_or("--cli needs a path")?));
             }
-            "--open" => options.open = true,
+            "--no-open" => options.open = false,
+            "--url-file" => {
+                options.url_file =
+                    Some(PathBuf::from(iter.next().ok_or("--url-file needs a path")?));
+            }
             "--requests" => {
                 let value = iter.next().ok_or("--requests needs a number")?;
                 let n: usize = value
@@ -44,6 +65,12 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "-h" | "--help" => return Err(String::new()),
             other => return Err(format!("unrecognized argument: {other}")),
         }
+    }
+    if !options.open && options.url_file.is_none() {
+        return Err(
+            "--no-open needs --url-file: the URL is never printed, so nothing else could reach it"
+                .to_string(),
+        );
     }
     Ok(options)
 }
@@ -91,7 +118,9 @@ fn start_engine(cli: &PathBuf) -> Result<(EngineProcess, Descriptor), String> {
     Ok((engine, descriptor))
 }
 
-fn open_in_browser(url: &str) {
+/// Hands the launcher page to the system opener by path, so the token never appears in a
+/// process argument list.
+fn open_in_browser(launcher: &Launcher) -> bool {
     let mut command = if cfg!(target_os = "macos") {
         Command::new("open")
     } else if cfg!(windows) {
@@ -101,9 +130,7 @@ fn open_in_browser(url: &str) {
     } else {
         Command::new("xdg-open")
     };
-    if command.arg(url).spawn().is_err() {
-        eprintln!("could not open a browser; visit the URL above");
-    }
+    command.arg(launcher.path()).spawn().is_ok()
 }
 
 fn main() -> ExitCode {
@@ -114,7 +141,7 @@ fn main() -> ExitCode {
             if !message.is_empty() {
                 eprintln!("{message}");
             }
-            eprintln!("usage: cancellai-desktop [--cli <path>] [--open] [--requests <n>]");
+            eprintln!("{USAGE}");
             return ExitCode::from(2);
         }
     };
@@ -133,11 +160,44 @@ fn main() -> ExitCode {
         }
     };
     let url = dashboard.url();
-    println!("{url}");
-    if options.open {
-        open_in_browser(&url);
+    if let Some(path) = &options.url_file
+        && let Err(error) = launch::write_url_file(path, &url)
+    {
+        eprintln!("could not write the URL file {}: {error}", path.display());
+        return ExitCode::from(3);
     }
-    match dashboard.serve(&ApiViewSource::new(descriptor), options.requests) {
+    let launcher = if options.open {
+        match Launcher::create(&std::env::temp_dir(), &url) {
+            Ok(launcher) => Some(launcher),
+            Err(error) => {
+                eprintln!("could not prepare the browser launcher: {error}");
+                return ExitCode::from(3);
+            }
+        }
+    } else {
+        None
+    };
+    let opened = launcher.as_ref().is_some_and(open_in_browser);
+    println!(
+        "{}",
+        launch::startup_message(dashboard.port(), opened, options.url_file.as_deref())
+    );
+    if launcher.is_some() && !opened {
+        eprintln!("could not open a browser; rerun with --no-open --url-file <path>");
+    }
+    // The launcher page holds the token; it is emptied as soon as the dashboard has loaded.
+    let mut remove_launcher = |reply: &cancellai_desktop::Reply| {
+        if reply.status == 200
+            && let Some(launcher) = &launcher
+        {
+            launcher.expire();
+        }
+    };
+    match dashboard.serve_observed(
+        &ApiViewSource::new(descriptor),
+        options.requests,
+        &mut remove_launcher,
+    ) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("the dashboard stopped: {error}");
@@ -157,25 +217,35 @@ mod tests {
     #[test]
     fn options_parse_and_refuse() {
         assert_eq!(parse(&[]), Ok(Options::default()));
+        assert!(
+            Options::default().open,
+            "opening the browser is the default"
+        );
         assert_eq!(
             parse(&args(&[
                 "--cli",
                 "/x/cancellai-cli",
-                "--open",
+                "--no-open",
+                "--url-file",
+                "/tmp/u",
                 "--requests",
                 "3"
             ])),
             Ok(Options {
                 cli: Some(PathBuf::from("/x/cancellai-cli")),
-                open: true,
+                open: false,
+                url_file: Some(PathBuf::from("/tmp/u")),
                 requests: Some(3)
             })
         );
         for bad in [
             &["--cli"][..],
+            &["--url-file"],
+            &["--no-open"],
             &["--requests"],
             &["--requests", "x"],
             &["--requests", "0"],
+            &["--open"],
             &["clean"],
             &["--help"],
         ] {

@@ -10,6 +10,7 @@
 //! summary the engine computed, and the plan section counts the plan document's actions the way
 //! the CLI `plan` summary does ([`viewmodel`]).
 
+pub mod launch;
 pub mod render;
 pub mod server;
 pub mod source;

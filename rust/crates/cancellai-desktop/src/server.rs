@@ -96,6 +96,17 @@ impl Dashboard {
     /// Serves requests one at a time, until `max_requests` have been answered (forever when
     /// `None`). A failed connection never stops the server.
     pub fn serve(&self, source: &dyn ViewSource, max_requests: Option<usize>) -> io::Result<()> {
+        self.serve_observed(source, max_requests, &mut |_| {})
+    }
+
+    /// [`Dashboard::serve`], calling `observe` with every reply after it is sent - how the
+    /// binary learns the page has been loaded and its launcher file can go.
+    pub fn serve_observed(
+        &self,
+        source: &dyn ViewSource,
+        max_requests: Option<usize>,
+        observe: &mut dyn FnMut(&Reply),
+    ) -> io::Result<()> {
         let mut served = 0usize;
         while max_requests.is_none_or(|max| served < max) {
             let (stream, peer) = self.listener.accept()?;
@@ -103,12 +114,14 @@ impl Dashboard {
             if !peer.ip().is_loopback() {
                 continue;
             }
-            let _ = self.answer(stream, source);
+            if let Ok(reply) = self.answer(stream, source) {
+                observe(&reply);
+            }
         }
         Ok(())
     }
 
-    fn answer(&self, stream: TcpStream, source: &dyn ViewSource) -> io::Result<()> {
+    fn answer(&self, stream: TcpStream, source: &dyn ViewSource) -> io::Result<Reply> {
         stream.set_read_timeout(Some(READ_TIMEOUT))?;
         let mut reader = BufReader::new(stream.try_clone()?);
         let reply = match read_head(&mut reader) {
@@ -118,7 +131,8 @@ impl Dashboard {
             }
             Err(error) => return Err(error),
         };
-        write_reply(stream, &reply)
+        write_reply(stream, &reply)?;
+        Ok(reply)
     }
 
     /// Decides the reply for one request head. Public so tests can drive every branch without

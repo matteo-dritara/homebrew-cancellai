@@ -510,7 +510,8 @@ The view model copies what the engine computed (`provider_summaries`, `scan_inco
 `cancellai-cli/tests/desktop_api.rs::the_dashboard_view_matches_the_cli_human_summaries` holds it
 to the CLI's own `status`/`plan` output for the same tree. The page is reached through a fresh
 256-bit path token, answers only `GET` from a loopback `Host`, and forbids script and framing by
-CSP. It is not packaged by `release.yml`; the engine does not depend on it.
+CSP. The tokenised URL is never printed or passed as a process argument: it reaches the browser
+through an owner-only launcher file, or a `--url-file` the user names (`launch.rs`). It is not packaged by `release.yml`; the engine does not depend on it.
 
 ## Core loop
 

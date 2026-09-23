@@ -71,9 +71,20 @@ manual smoke: cancellai-desktop --requests 3 on this machine             -> 200 
 - TUI parity is by construction rather than by test: the TUI renders `cancellai-policy` views and
   is not yet wired to a live scan, so the parity test holds the dashboard to the CLI, whose
   output comes from the same engine.
-- The tokenised URL is kept in the local browser history.
+- The tokenised URL is kept in the local browser history, and the launcher page exists on disk
+  (owner-only, then emptied of the URL) and is not removed; the temporary directory's own
+  cleanup removes it.
 - Not packaged: users build `cancellai-desktop` from source until a release story adds it.
+
+## Round-1 repair (independent review FAIL, `project/evidence/E19-VERIFIER-REVIEW.md`)
+
+| Finding | Repair | Evidence |
+| --- | --- | --- |
+| The tokenised URL was printed on stdout, so redirecting output to a log captured the dashboard's only credential | The URL is never printed or passed as a process argument. Default: an owner-only (0600 on Unix) launcher page with a random name in the temporary directory, handed to the browser opener by path and overwritten without the URL after the first successful page load or on exit (emptied rather than deleted: `check_mutation_boundary.py` reserves deletion for the SI-019 seam). `--no-open --url-file <path>`: the URL goes to a new owner-only file, refusing an existing one. Stdout names only the port. `--no-open` without `--url-file` is a usage error | `tests/startup_output.rs` runs the real binary end to end with a stand-in engine: the token reaches the URL file (mode 0600) and serves a 200 page, and appears in neither stdout nor stderr; a pre-existing URL file is refused untouched with no URL printed. Reintroducing `println!("{url}")` fails two of its three tests. `launch::tests` cover the message, file privacy and launcher expiry (explicit and on drop) on every platform |
+
+Manual smoke with the real `cancellai-cli`: `--no-open --url-file` served a 200 page; the token
+appeared 0 times in stdout and stderr; the URL file was `-rw-------`.
 
 ## Verifier verdict
 
-(pending - independent reviewer)
+Round 1: FAIL (repaired above). Round 2 pending - independent reviewer.

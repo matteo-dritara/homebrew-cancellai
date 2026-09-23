@@ -42,8 +42,14 @@ the system browser**, in a new outer-ring crate `cancellai-desktop` whose only c
 dependency is `cancellai-desktop-api`.
 
 - `cancellai-desktop` starts `cancellai-cli desktop-api`, reads its descriptor, and serves one
-  HTML page on `127.0.0.1` behind a fresh 256-bit path token. `--open` hands the URL to the
-  operating system's browser opener.
+  HTML page on `127.0.0.1` behind a fresh 256-bit path token.
+- The token is the dashboard's only credential, so the tokenised URL is never printed and never
+  passed as a process argument (where other local users could read it in a process list). By
+  default it goes into an owner-only launcher page in the temporary directory - an HTML redirect
+  handed to the browser opener by path and overwritten without the URL once the dashboard has
+  loaded (emptied, not deleted: deletion belongs to the one mutation seam, SI-019); with
+  `--no-open`, `--url-file <path>` writes it to a new owner-only file instead. Standard output
+  names only the port (E19 round 1).
 - The page contains no script and one `GET` form that changes only the query. It shows the
   engine's per-provider `status` summary, root origin and eligibility, and the plan preview
   counted exactly as the CLI's `plan` summary counts it, plus the CLI's incomplete-scan and

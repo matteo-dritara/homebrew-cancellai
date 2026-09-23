@@ -36,7 +36,7 @@
     {
       "id": "E19-S02",
       "title": "Cross-platform desktop shell",
-      "status": "in_progress",
+      "status": "ready_for_review",
       "outcome": "Implement tray/menu-bar/dashboard experience using shared core, with Tauri or an equivalent evidence-backed choice.",
       "change_risk": "CR1",
       "dependencies": [
