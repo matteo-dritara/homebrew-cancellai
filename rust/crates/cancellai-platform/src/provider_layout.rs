@@ -187,9 +187,10 @@ impl BoundLayoutObservation {
         // absolute and normalized (no `.`/`..`) - `bind_existing` reports `NotAbsolute`/
         // `PathNotNormalized` clearly if it is not, rather than this function silently
         // resolving it on the caller's behalf.
-        let sealed = cancellai_sealedfs::SealedRoot::bind_existing(root).map_err(|e| {
-            LayoutObservationError(format!("could not bind {}: {e}", root.display()))
-        })?;
+        let sealed =
+            cancellai_sealedfs::SealedRoot::bind_existing_for_listing(root).map_err(|e| {
+                LayoutObservationError(format!("could not bind {}: {e}", root.display()))
+            })?;
 
         let root_identity = bound_root_identity(&sealed, root)?;
 

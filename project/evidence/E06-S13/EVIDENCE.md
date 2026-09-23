@@ -38,7 +38,7 @@ python3 scripts/check_mutation_boundary.py check                                
 
 ## Residual risks
 
-- **Native Windows behaviour is proven only by CI**, not on a local machine; the new `unsafe` (`ReOpenFile`, `GetFileInformationByHandleEx`) is lint-checked for Windows locally and executed only there.
+- **Native Windows behaviour is proven only by CI**, not on a local machine; the new `unsafe` (`GetFileInformationByHandleEx` enumeration) is lint-checked for Windows locally and executed only there.
 - **Directory enumeration buffer**: entries are parsed from a copy with bounds-checked reads; a malformed entry is an error, never a truncated listing.
 - **Hard links**: a Windows file with several links shares one file index; deleting a planned
   name removes that link only, as on Unix. Not separately fixture-tested.

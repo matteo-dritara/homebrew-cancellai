@@ -609,6 +609,12 @@ mod unix_impl {
             Ok(SealedRoot { dir: current })
         }
 
+        /// [`Self::bind_existing`]: on Unix a held directory descriptor can always be listed, so
+        /// the Windows-specific need for a listing right on the leaf (E06-S13) does not arise.
+        pub fn bind_existing_for_listing(path: &Path) -> Result<Self, SealError> {
+            Self::bind_existing(path)
+        }
+
         /// Removes a direct child by name, relative to the held directory descriptor, but only
         /// if that name still resolves - without following links - to the exact
         /// `(device, inode)` the caller confirmed (E21-S07, SI-013).
@@ -1626,6 +1632,10 @@ mod fallback_impl {
                 "no verified no-follow, handle-relative directory binding exists for this \
                  platform yet (see the crate module docs)",
             ))
+        }
+
+        pub fn bind_existing_for_listing(path: &Path) -> Result<Self, SealError> {
+            Self::bind_existing(path)
         }
 
         pub fn unlink_child_matching_unix_identity(

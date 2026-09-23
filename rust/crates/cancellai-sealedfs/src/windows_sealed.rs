@@ -144,8 +144,8 @@ fn open_anchor(anchor: &Path) -> Result<File, SealError> {
 /// nothing in this module actually needed it. Real Windows CI (not local cross-compilation)
 /// is what caught this; `windows_sealed.rs`'s own unit tests happened to only ever walk
 /// directories this same process created and therefore owns, masking the gap.
-/// E06-S13 needed to list the bound root itself; it re-opens that one handle with
-/// `FILE_LIST_DIRECTORY` (`reopen_for_listing`) rather than widening every hop of this walk.
+/// E06-S13 needed to list the bound root itself; `SealedRoot::bind_existing_for_listing` asks
+/// for `FILE_LIST_DIRECTORY` on that final component only, rather than widening every hop.
 fn nt_open_child(
     parent: &File,
     name: &[u16],
@@ -253,7 +253,17 @@ fn open_child_dir_nofollow(
     name: &[u16],
     disposition: u32,
 ) -> Result<File, SealError> {
-    let file = nt_open_child(parent, name, true, disposition, 0)?;
+    open_child_dir_nofollow_with(parent, name, disposition, 0)
+}
+
+/// [`open_child_dir_nofollow`] with extra desired access for this one hop.
+fn open_child_dir_nofollow_with(
+    parent: &File,
+    name: &[u16],
+    disposition: u32,
+    extra_access: u32,
+) -> Result<File, SealError> {
+    let file = nt_open_child(parent, name, true, disposition, extra_access)?;
     let facts = observe_identity_of_handle(file.as_raw_handle()).map_err(SealError::Io)?;
     if facts.is_reparse_point {
         return Err(SealError::IsSymlinkOrReparsePoint);
@@ -337,6 +347,32 @@ impl SealedRoot {
             current = open_child_dir_nofollow(&current, name, FILE_OPEN)?;
         }
         Ok(SealedRoot { dir: current })
+    }
+
+    /// [`Self::bind_existing`], but the final component - and only it - is opened with
+    /// `FILE_LIST_DIRECTORY`, so [`Self::list_child_names`] can enumerate the held handle
+    /// directly (E06-S13). Intermediate hops keep the narrow traverse-only access `nt_open_child`
+    /// explains: the ACL problem E20-S05 found was listing directories this process does not
+    /// own, and a provider root is the user's own directory. A root the caller may traverse but
+    /// not list fails here, closed, rather than later.
+    pub fn bind_existing_for_listing(path: &Path) -> Result<Self, SealError> {
+        let (anchor, names) = decompose_absolute_path(path)?;
+        let mut current = open_anchor(&anchor)?;
+        let Some((leaf, parents)) = names.split_last() else {
+            return Err(SealError::Unsupported(
+                "listing a drive root is not a provider-root observation",
+            ));
+        };
+        for name in parents {
+            current = open_child_dir_nofollow(&current, name, FILE_OPEN)?;
+        }
+        let dir = open_child_dir_nofollow_with(
+            &current,
+            leaf,
+            FILE_OPEN,
+            windows_sys::Win32::Storage::FileSystem::FILE_LIST_DIRECTORY,
+        )?;
+        Ok(SealedRoot { dir })
     }
 
     /// Removes a direct child file by name, relative to the held directory descriptor, but only
@@ -538,53 +574,15 @@ impl SealedRoot {
         observe_identity_of_handle(self.dir.as_raw_handle()).map_err(SealError::Io)
     }
 
-    /// The bound directory's direct children, as `(name, is_directory)`, enumerated from the same
-    /// object the held handle names (E06-S13, ADR-0036's "identity and listing from one bound
-    /// object"). The held handle deliberately lacks `FILE_LIST_DIRECTORY` (see `nt_open_child`),
-    /// so this re-opens *that handle* with `ReOpenFile` - which takes a handle, not a path, and
-    /// cannot resolve to a different object - confirms the reopened handle's identity equals the
-    /// held one's, and enumerates it with `GetFileInformationByHandleEx`. A reparse point is
+    /// The bound directory's direct children, as `(name, is_directory)`, enumerated from the held
+    /// handle itself with `GetFileInformationByHandleEx` (E06-S13, ADR-0036's "identity and
+    /// listing from one bound object"). The root must have been bound with
+    /// [`Self::bind_existing_for_listing`]; a handle without `FILE_LIST_DIRECTORY` is refused by
+    /// the system, and that refusal is returned, never an empty listing. A reparse point is
     /// reported as not a directory, matching the Unix listing's `DT_LNK` handling.
     pub fn list_child_names(&self) -> Result<Vec<(String, bool)>, SealError> {
-        let listing = reopen_for_listing(&self.dir)?;
-        let held = observe_identity_of_handle(self.dir.as_raw_handle()).map_err(SealError::Io)?;
-        let reopened =
-            observe_identity_of_handle(listing.as_raw_handle()).map_err(SealError::Io)?;
-        if held.volume_serial_number != reopened.volume_serial_number
-            || held.file_index != reopened.file_index
-        {
-            return Err(SealError::Io(io::Error::other(
-                "the directory re-opened for listing is not the bound directory",
-            )));
-        }
-        enumerate_directory(&listing)
+        enumerate_directory(&self.dir)
     }
-}
-
-/// Re-opens `dir` - the same object, by handle - with the right to list it.
-fn reopen_for_listing(dir: &File) -> Result<File, SealError> {
-    use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
-    use windows_sys::Win32::Storage::FileSystem::{
-        FILE_FLAG_OPEN_REPARSE_POINT, FILE_LIST_DIRECTORY, ReOpenFile,
-    };
-    // SAFETY: `dir` is a valid, open directory HANDLE for the duration of this call (it is
-    // borrowed from a live `File`). `ReOpenFile` takes no pointers; it returns either a new,
-    // independently owned HANDLE to the same object or `INVALID_HANDLE_VALUE`, and retains
-    // nothing from its arguments.
-    let handle = unsafe {
-        ReOpenFile(
-            dir.as_raw_handle(),
-            FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
-            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
-        )
-    };
-    if handle == INVALID_HANDLE_VALUE || handle.is_null() {
-        return Err(SealError::Io(io::Error::last_os_error()));
-    }
-    // SAFETY: `handle` is a valid HANDLE `ReOpenFile` just returned and nothing else owns;
-    // `File` takes ownership and closes it exactly once on drop.
-    Ok(unsafe { File::from_raw_handle(handle as RawHandle) })
 }
 
 /// Every entry of the directory `listing` names, except `.` and `..`.

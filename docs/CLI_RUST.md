@@ -237,7 +237,8 @@ orderings).
   refused. The same story completed the second Windows gate a deletion passes: the provider-layout
   observation (ADR-0036) needs the root's identity and its listing from one bound object, and
   `cancellai-sealedfs` now provides both on Windows - `GetFileInformationByHandle` on the held
-  handle, and a `ReOpenFile` of that same handle enumerated with `GetFileInformationByHandleEx` -
+  handle, and `GetFileInformationByHandleEx` enumeration of that same handle, which is bound with
+  the listing right on the provider root alone -
   where it used to fail closed.
 - A default-named root (`$HOME/.claude`/`$HOME/.codex`, no override) that is itself a link is
   refused as non-default on every platform (E07-S07, `rust/crates/cancellai-cli/src/roots.rs`'s
