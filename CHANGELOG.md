@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.21.0] - 2026-09-23
+
+### Added
+
+- The safety kernel can contain a safety incident by signed capability downgrade (E17-S07): a
+  verified containment notice caps a provider, version, action class or platform at Observe or
+  Recommend and nothing more, and replay, rollback, expiry or an offline node cannot lift it -
+  only a local lift can. It is a kernel capability only: no CLI command reads notices yet, which
+  is cutover work (E06-S04).
+
 ## [1.20.0] - 2026-09-23
 
 ### Fixed

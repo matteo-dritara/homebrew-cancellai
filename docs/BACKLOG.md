@@ -1854,7 +1854,7 @@ Scale provider coverage through manifests, native adapters, signed knowledge bun
 
 ## E17 - Verifiable Supply Chain and Distribution
 
-**Phase:** `P5` | **Status:** `planned` | **Epic dependencies:** E02, E16, E20, E26
+**Phase:** `P5` | **Status:** `done` | **Epic dependencies:** E02, E16, E20, E26
 
 Automate canonical cross-platform builds, provenance, SBOM, signatures/attestations, and channel-aware installers.
 
