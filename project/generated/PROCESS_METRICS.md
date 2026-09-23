@@ -22,6 +22,7 @@ distinguished by the next round, which is why the ceiling matters.
 | E03 | 1 | independent | 5 | 3 | 3 | 60% |
 | E04 | 1 | independent | 4 | 1 | 1 | 25% |
 | E05 | 1 | independent | 5 | 1 | 1 | 20% |
+| E06 | 1 | **self** | 1 | 0 | 0 | 0% |
 | E06 | 1 | independent | 4 | 3 | 3 | 75% |
 | E06 | 2 | independent | 3 | 2 | 2 | 67% |
 | E06 | 3 | independent | 8 | 3 | 3 | 38% |
@@ -90,7 +91,7 @@ The gap between *every gate passed* and *the work is right*. Each rejected story
 already been declared `ready_for_review` by an executor who ran the full gate set green.
 
 - **Independent reviewer:** 51 of 108 round-1 verdicts were `FAIL` - **47%**.
-- **Self-review (same agent as executor):** 3 of 12 round-1 verdicts were `FAIL` - **25%**.
+- **Self-review (same agent as executor):** 3 of 13 round-1 verdicts were `FAIL` - **23%**.
 
 - **Round-1 records excluded as unreadable:** 2. Their verdicts are in neither denominator above, so both rates are computed over the subset of records that use a machine-readable verdict table.
 
@@ -111,7 +112,7 @@ independent samples, and the population estimate collapses to what one round alr
 | Epic | Rounds compared | First found | Second found | Overlap | Estimated population | Estimated residual |
 | --- | --- | --- | --- | --- | --- | --- |
 | E00 | 6 | 7 | 6 | 7.0 | 0.0 |
-| E06 | 3 | 2 | 2 | 3.0 | 0.0 |
+| E06 | 1 and 1 | 0 | 3 | 0 | undefined - disjoint findings | at least 3 were present |
 | E09 | 1 and 1 | 0 | 0 | 0 | undefined - disjoint findings | at least 0 were present |
 | E10 | 1 | 1 | 1 | 1.0 | 0.0 |
 | E11 | 1 and 1 | 0 | 2 | 0 | undefined - disjoint findings | at least 2 were present |

@@ -49,6 +49,12 @@ python3 scripts/check_workflows.py check                               -> OK
 
 ## Residual risks
 
+- **A binary built to fool the gate** (self-review, `project/evidence/E06-SELF-REVIEW.md`): an
+  executable that runs the real `plan` and prints canned output with the corpus's exact counts
+  for the other commands passes. CI always gates the binary it just built, so an accidental
+  regression cannot know the counts in advance; randomizing the corpus and requiring its ids in
+  the JSON outputs would close it and is not in this story's criteria.
+
 - **The measured commands are read-only.** A real `clean` is not timed: it would need a fresh
   corpus per run and measures deletion syscalls more than the engine. E06-S09 exercises the real
   mutation path for correctness, not speed.
