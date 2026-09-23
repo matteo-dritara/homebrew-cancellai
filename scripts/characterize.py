@@ -112,12 +112,6 @@ CLASSIFICATIONS: dict[str, tuple[str, str]] = {
         "Added by E06-S12 after E06-S06's independent pass found the Rust engine planning a "
         "deletion here with the scope reported complete.",
     ),
-    "claude-many-companion-failures": (
-        "NORMATIVE",
-        "Seventy unlistable directories in one companion payload are each recorded and withhold "
-        "the whole tool. Added by E06-S12: more failures than the Rust reason log retains, so the "
-        "gate pins that retention is bounded without losing the incomplete verdict.",
-    ),
     "claude-partial-project": (
         "NORMATIVE",
         "An unreadable *project* directory is recorded by discover_claude_sessions' own "

@@ -98,13 +98,6 @@
       "category": "partial_tree",
       "layout": "default",
       "description": "Two readable rollouts plus a third whose content cannot be opened; unreadable lineage is not 'no parent', so the scope is incomplete and the whole tool is withheld (E06-S12)."
-    },
-    {
-      "id": "claude-many-companion-failures",
-      "tool": "claude",
-      "category": "partial_tree",
-      "layout": "default",
-      "description": "Two readable sessions plus a third whose companion payload holds 70 unlistable directories - more than the Rust reason log retains; the scope is incomplete and the whole tool is withheld (E06-S12)."
     }
   ],
   "category_asymmetry": [

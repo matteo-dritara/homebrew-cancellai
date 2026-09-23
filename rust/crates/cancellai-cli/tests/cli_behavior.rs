@@ -1467,3 +1467,63 @@ fn clean_json_when_safety_withheld_says_so_and_keeps_the_exit_code() {
     }
     assert!(session.exists(), "withheld work must not delete anything");
 }
+
+/// E06-S12: more companion failures than the reason log retains still withhold the whole Claude
+/// scope and report the exact count. Not a characterization fixture: the reference keeps the
+/// first 50 failures in filesystem listing order, so its recorded output differs between APFS
+/// and ext4; the behaviour class (an unreadable companion withholds the tool) is pinned against
+/// the reference by the `claude-partial-tree` NORMATIVE fixture.
+#[cfg(unix)]
+#[test]
+fn many_companion_failures_withhold_the_claude_scope_with_an_exact_count() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let home = TempHome::new("many-companion-failures");
+    let stale = home.write_stale_claude_session("proj-m", "99999999-9999-4999-8999-999999999993");
+    let session_id = "99999999-9999-4999-8999-999999999994";
+    home.write_stale_claude_session("proj-m", session_id);
+    let companion = home.path().join(".claude/projects/proj-m").join(session_id);
+    let mut locked = Vec::new();
+    for index in 0..70 {
+        let dir = companion.join(format!("part-{index:03}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o000)).unwrap();
+        locked.push(dir);
+    }
+    if std::fs::read_dir(&locked[0]).is_ok() {
+        for dir in &locked {
+            std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        eprintln!("skipped: this process can read a 0o000 directory (running as root?)");
+        return;
+    }
+    let inspect = run(
+        &home,
+        &["inspect", "--json", "--allow-running", "--tool", "claude"],
+    );
+    let clean = run(
+        &home,
+        &[
+            "clean",
+            "--yes",
+            "--json",
+            "--allow-running",
+            "--keep-latest",
+            "0",
+            "--tool",
+            "claude",
+        ],
+    );
+    for dir in &locked {
+        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    let inventory: serde_json::Value = serde_json::from_str(&stdout(&inspect)).unwrap();
+    let text = inventory.to_string();
+    assert!(
+        text.contains("\"error_count\":70"),
+        "exact count expected: {text}"
+    );
+    assert_eq!(clean.status.code(), Some(4), "{}", stdout(&clean));
+    assert!(stale.exists(), "a withheld scope must not delete anything");
+}
