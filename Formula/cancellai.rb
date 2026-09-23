@@ -1,8 +1,8 @@
 class Cancellai < Formula
   desc "Safely reclaim disk space from old Codex CLI and Claude Code session data"
   homepage "https://github.com/matteo-dritara/homebrew-cancellai"
-  url "https://github.com/matteo-dritara/homebrew-cancellai/archive/refs/tags/v1.19.0.tar.gz"
-  sha256 "4864587fd6e7558da970b3d298f6dbb3bbc279ce041f7ea6d916112a317af7f2"
+  url "https://github.com/matteo-dritara/homebrew-cancellai/archive/refs/tags/v1.18.0.tar.gz"
+  sha256 "f35b5cb6208e9bf5ffc7d2eae03b602708e57bc4658a79dbb48620a596c1e663"
   license "MIT"
 
   depends_on "python3"

@@ -7,7 +7,7 @@
   "dependencies": [
     "E15"
   ],
-  "status": "in_progress",
+  "status": "done",
   "stories": [
     {
       "id": "E19-S01",
@@ -36,7 +36,7 @@
     {
       "id": "E19-S02",
       "title": "Cross-platform desktop shell",
-      "status": "in_progress",
+      "status": "done",
       "outcome": "Implement tray/menu-bar/dashboard experience using shared core, with Tauri or an equivalent evidence-backed choice.",
       "change_risk": "CR1",
       "dependencies": [

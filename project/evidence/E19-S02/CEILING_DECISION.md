@@ -49,3 +49,10 @@ If (3) fails, the story does not close. Condition (2) was first written as "must
   unpackaged, whose worst remaining exposure is inventory metadata to another local account under
   conditions ADR-0038 names.
 - It does not relax the ceiling for any other story.
+
+## Outcome
+
+Condition (3) met on `7cb4b88`: `rust.yml` run 35853496003 and its rerun both passed every
+Windows job (`quality (windows-latest)`, `check (windows-latest, stable)`,
+`check (windows-latest, 1.88.0)`), with governance, tests and codeql green. E19-S02 closed on
+2026-09-23 under this decision.

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.20.0] - 2026-09-23
+
 ### Fixed
 
 - The desktop API server now ends a connection gracefully, so a client that sent a second request

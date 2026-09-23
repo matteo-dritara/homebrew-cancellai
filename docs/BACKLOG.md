@@ -2166,7 +2166,7 @@ Extend observation/governance to remote development environments without weakeni
 
 ## E19 - Desktop Experience
 
-**Phase:** `P6` | **Status:** `in_progress` | **Epic dependencies:** E15
+**Phase:** `P6` | **Status:** `done` | **Epic dependencies:** E15
 
 Add a cross-platform desktop client only after CLI/TUI/Guardian domain contracts are stable.
 
@@ -2194,7 +2194,7 @@ Add a cross-platform desktop client only after CLI/TUI/Guardian domain contracts
 
 ### E19-S02 - Cross-platform desktop shell
 
-**Status:** `in_progress` | **Change Risk:** `CR1` | **Dependencies:** E19-S01 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** E19-S01 | **Safety obligations:** none
 
 **Outcome.** Implement tray/menu-bar/dashboard experience using shared core, with Tauri or an equivalent evidence-backed choice.
 
