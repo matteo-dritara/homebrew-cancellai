@@ -219,7 +219,7 @@ fn observe_system_identity(path: &Path) -> IdentityObservation {
 /// directly unit-testable with fabricated `FILETIME` values on any host, matching this crate's
 /// `wsl` module's own split between real OS observation and testable pure logic.
 #[cfg(any(test, windows))]
-fn windows_filetime_to_unix_timestamp(ticks: u64) -> Option<(Timestamp, u32)> {
+pub(crate) fn windows_filetime_to_unix_timestamp(ticks: u64) -> Option<(Timestamp, u32)> {
     const WINDOWS_EPOCH_OFFSET_SECONDS: u64 = 11_644_473_600;
     const TICKS_PER_SECOND: u64 = 10_000_000;
 

@@ -189,11 +189,10 @@ fn every_read_only_command_leaves_no_trace_anywhere_under_home() {
     assert!(session.exists(), "the session itself must be untouched");
 }
 
-#[cfg(unix)]
 #[test]
 fn a_real_clean_touches_only_the_provider_artifact_it_deletes_nothing_else_anywhere() {
-    // Unix only until E06-S13 is complete (see cli_behavior.rs), and only on a stable-channel
-    // build since E06-S07 (a nightly build cannot delete, SI-030).
+    // Every platform since E06-S13; only a stable-channel build since E06-S07 (a nightly build
+    // cannot delete, SI-030).
     if !stable_build() {
         eprintln!("skipped: needs a CANCELLAI_CHANNEL=stable build (E06-S07)");
         return;

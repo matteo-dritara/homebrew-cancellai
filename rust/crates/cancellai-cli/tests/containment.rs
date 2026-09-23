@@ -260,13 +260,10 @@ fn a_contained_provider_is_withheld_in_plan_and_clean_and_an_uncontained_one_sti
         tree.claude_session().exists(),
         "the contained provider must not be deleted"
     );
-    // Windows cannot delete until E06-S13 is complete (provider-layout observation).
-    if cfg!(unix) {
-        assert!(
-            !tree.codex_session().exists(),
-            "the uncontained provider still deletes"
-        );
-    }
+    assert!(
+        !tree.codex_session().exists(),
+        "the uncontained provider still deletes"
+    );
 }
 
 #[test]

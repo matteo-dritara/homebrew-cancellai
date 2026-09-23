@@ -59,7 +59,6 @@ impl TempHome {
         path
     }
 
-    #[cfg(unix)]
     fn write_stale_codex_session(&self, session_id: &str) -> PathBuf {
         let dir = self.0.join(".codex/sessions/2020/01/01");
         std::fs::create_dir_all(&dir).unwrap();
@@ -228,11 +227,8 @@ fn clean_dry_run_never_deletes_anything() {
     assert!(session.exists(), "--dry-run must never delete anything");
 }
 
-// Unix only until E06-S13 is complete: the safety executor now admits a Windows plain file, but
-// a Windows deletion still stops at the provider-layout check, because
-// `cancellai-sealedfs::SealedRoot::metadata`/`list_child_names` have no verified handle-bound
-// Windows implementation (ADR-0036) and fail closed. Windows `clean` withholds every deletion.
-#[cfg(unix)]
+// Real-deletion tests run on every platform since E06-S13, which let the safety executor admit a
+// Windows plain file and gave the provider-layout check a handle-bound Windows observation.
 #[test]
 fn clean_yes_deletes_a_stale_unprotected_session_and_reports_it_in_the_result_document() {
     needs_stable_build!();
@@ -297,7 +293,6 @@ fn clean_without_confirmation_or_dry_run_declines_and_deletes_nothing() {
     );
 }
 
-#[cfg(unix)]
 #[test]
 fn keep_latest_protects_the_most_recent_session_from_a_json_clean_run() {
     needs_stable_build!();
@@ -1328,7 +1323,6 @@ fn an_irrelevant_flag_before_help_is_still_refused() {
 /// E06-S10: `--keep-claude-history` is accepted, and `history.jsonl` is byte-identical after a
 /// real clean whether or not it is given - this engine never rewrites it. Without the flag the
 /// human output says so; with it the note is silenced.
-#[cfg(unix)]
 #[test]
 fn clean_leaves_claude_history_untouched_with_and_without_keep_claude_history() {
     needs_stable_build!();
@@ -1372,7 +1366,6 @@ fn clean_leaves_claude_history_untouched_with_and_without_keep_claude_history() 
 
 /// E06-S10: `--verbose` reports each action without changing which actions run: the same tree
 /// cleaned with and without it deletes the same artifacts and reports the same totals.
-#[cfg(unix)]
 #[test]
 fn clean_verbose_reports_each_action_and_changes_nothing_it_does() {
     needs_stable_build!();

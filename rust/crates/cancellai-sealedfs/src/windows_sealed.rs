@@ -144,6 +144,8 @@ fn open_anchor(anchor: &Path) -> Result<File, SealError> {
 /// nothing in this module actually needed it. Real Windows CI (not local cross-compilation)
 /// is what caught this; `windows_sealed.rs`'s own unit tests happened to only ever walk
 /// directories this same process created and therefore owns, masking the gap.
+/// E06-S13 needed to list the bound root itself; it re-opens that one handle with
+/// `FILE_LIST_DIRECTORY` (`reopen_for_listing`) rather than widening every hop of this walk.
 fn nt_open_child(
     parent: &File,
     name: &[u16],
@@ -520,26 +522,153 @@ impl SealedRoot {
         rename_child(&self.dir, tmp_name, final_name)
     }
 
-    /// No verified handle-bound metadata/enumeration exists for this platform yet (E14-S04
-    /// round 5 second independent review's finding: identity and a directory listing must come
-    /// from the same held object, or a swap between two separate path-based calls can attach
-    /// one object's identity to a different, favorably-shaped object's contents). Fails closed
-    /// rather than falling back to `std::fs::metadata`/`read_dir`'s own path-based, swap-prone
-    /// lookups - the same choice this crate already makes for every other capability with no
-    /// verified Windows implementation (module docs).
+    /// Not available as `std::fs::Metadata` on Windows: `std` exposes no stable volume serial or
+    /// file index, which is the identity this crate binds to. Callers use
+    /// [`Self::windows_facts`], read from the same held handle, instead. Fails closed rather than
+    /// falling back to a path-based `std::fs::metadata`.
     pub fn metadata(&self) -> Result<std::fs::Metadata, SealError> {
         Err(SealError::Unsupported(
-            "no verified handle-bound metadata read exists on Windows yet",
+            "use SealedRoot::windows_facts: std::fs::Metadata carries no Windows file identity",
         ))
     }
 
-    /// See [`Self::metadata`]: no verified handle-bound directory enumeration exists for this
-    /// platform yet.
-    pub fn list_child_names(&self) -> Result<Vec<(String, bool)>, SealError> {
-        Err(SealError::Unsupported(
-            "no verified handle-bound directory listing exists on Windows yet",
-        ))
+    /// The bound directory's own identity, read from the held handle - no path lookup
+    /// (E06-S13). The Windows counterpart of the Unix `metadata()` `fstat`.
+    pub fn windows_facts(&self) -> Result<crate::windows_identity::WindowsFileFacts, SealError> {
+        observe_identity_of_handle(self.dir.as_raw_handle()).map_err(SealError::Io)
     }
+
+    /// The bound directory's direct children, as `(name, is_directory)`, enumerated from the same
+    /// object the held handle names (E06-S13, ADR-0036's "identity and listing from one bound
+    /// object"). The held handle deliberately lacks `FILE_LIST_DIRECTORY` (see `nt_open_child`),
+    /// so this re-opens *that handle* with `ReOpenFile` - which takes a handle, not a path, and
+    /// cannot resolve to a different object - confirms the reopened handle's identity equals the
+    /// held one's, and enumerates it with `GetFileInformationByHandleEx`. A reparse point is
+    /// reported as not a directory, matching the Unix listing's `DT_LNK` handling.
+    pub fn list_child_names(&self) -> Result<Vec<(String, bool)>, SealError> {
+        let listing = reopen_for_listing(&self.dir)?;
+        let held = observe_identity_of_handle(self.dir.as_raw_handle()).map_err(SealError::Io)?;
+        let reopened =
+            observe_identity_of_handle(listing.as_raw_handle()).map_err(SealError::Io)?;
+        if held.volume_serial_number != reopened.volume_serial_number
+            || held.file_index != reopened.file_index
+        {
+            return Err(SealError::Io(io::Error::other(
+                "the directory re-opened for listing is not the bound directory",
+            )));
+        }
+        enumerate_directory(&listing)
+    }
+}
+
+/// Re-opens `dir` - the same object, by handle - with the right to list it.
+fn reopen_for_listing(dir: &File) -> Result<File, SealError> {
+    use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_FLAG_OPEN_REPARSE_POINT, FILE_LIST_DIRECTORY, ReOpenFile,
+    };
+    // SAFETY: `dir` is a valid, open directory HANDLE for the duration of this call (it is
+    // borrowed from a live `File`). `ReOpenFile` takes no pointers; it returns either a new,
+    // independently owned HANDLE to the same object or `INVALID_HANDLE_VALUE`, and retains
+    // nothing from its arguments.
+    let handle = unsafe {
+        ReOpenFile(
+            dir.as_raw_handle(),
+            FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+        )
+    };
+    if handle == INVALID_HANDLE_VALUE || handle.is_null() {
+        return Err(SealError::Io(io::Error::last_os_error()));
+    }
+    // SAFETY: `handle` is a valid HANDLE `ReOpenFile` just returned and nothing else owns;
+    // `File` takes ownership and closes it exactly once on drop.
+    Ok(unsafe { File::from_raw_handle(handle as RawHandle) })
+}
+
+/// Every entry of the directory `listing` names, except `.` and `..`.
+fn enumerate_directory(listing: &File) -> Result<Vec<(String, bool)>, SealError> {
+    use windows_sys::Win32::Foundation::ERROR_NO_MORE_FILES;
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT, FILE_ID_BOTH_DIR_INFO,
+        FileIdBothDirectoryInfo, FileIdBothDirectoryRestartInfo,
+    };
+
+    const BUFFER_WORDS: usize = 8 * 1024; // 64 KiB, 8-byte aligned as the API requires
+    let next_offset = std::mem::offset_of!(FILE_ID_BOTH_DIR_INFO, NextEntryOffset);
+    let attributes_offset = std::mem::offset_of!(FILE_ID_BOTH_DIR_INFO, FileAttributes);
+    let name_length_offset = std::mem::offset_of!(FILE_ID_BOTH_DIR_INFO, FileNameLength);
+    let name_offset = std::mem::offset_of!(FILE_ID_BOTH_DIR_INFO, FileName);
+
+    let mut words = vec![0u64; BUFFER_WORDS];
+    let mut class = FileIdBothDirectoryRestartInfo;
+    let mut children = Vec::new();
+    loop {
+        // SAFETY: `listing` is a valid, open directory HANDLE with `FILE_LIST_DIRECTORY`.
+        // `words` is a live, 8-byte-aligned buffer of exactly `BUFFER_WORDS * 8` bytes, passed
+        // with that exact size; the call only writes within it and retains no pointer.
+        let ok = unsafe {
+            GetFileInformationByHandleEx(
+                listing.as_raw_handle(),
+                class,
+                words.as_mut_ptr().cast(),
+                (BUFFER_WORDS * 8) as u32,
+            )
+        };
+        class = FileIdBothDirectoryInfo;
+        if ok == 0 {
+            let error = io::Error::last_os_error();
+            if error.raw_os_error() == Some(ERROR_NO_MORE_FILES as i32) {
+                break;
+            }
+            return Err(SealError::Io(error));
+        }
+        // Parsed from a copy, with bounds-checked reads: no pointer arithmetic over the buffer.
+        let bytes: Vec<u8> = words.iter().flat_map(|w| w.to_ne_bytes()).collect();
+        let read_u32 = |at: usize| -> Result<u32, SealError> {
+            bytes
+                .get(at..at + 4)
+                .and_then(|b| <[u8; 4]>::try_from(b).ok())
+                .map(u32::from_ne_bytes)
+                .ok_or_else(|| {
+                    SealError::Io(io::Error::other("directory entry runs past the buffer"))
+                })
+        };
+        let mut entry = 0usize;
+        loop {
+            let next = read_u32(entry + next_offset)? as usize;
+            let attributes = read_u32(entry + attributes_offset)?;
+            let length = read_u32(entry + name_length_offset)? as usize;
+            let start = entry + name_offset;
+            let raw = bytes.get(start..start + length).ok_or_else(|| {
+                SealError::Io(io::Error::other(
+                    "directory entry name runs past the buffer",
+                ))
+            })?;
+            let units: Vec<u16> = raw
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|pair| u16::from_ne_bytes(*pair))
+                .collect();
+            let name = String::from_utf16(&units).map_err(|_| {
+                SealError::Io(io::Error::other(
+                    "a directory entry name is not valid UTF-16",
+                ))
+            })?;
+            if name != "." && name != ".." {
+                let is_directory = attributes & FILE_ATTRIBUTE_DIRECTORY != 0
+                    && attributes & FILE_ATTRIBUTE_REPARSE_POINT == 0;
+                children.push((name, is_directory));
+            }
+            if next == 0 {
+                break;
+            }
+            entry += next;
+        }
+    }
+    Ok(children)
 }
 
 /// Renames `old_name` to `new_name`, both direct children of `dir` - relative to the held
