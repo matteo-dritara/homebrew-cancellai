@@ -11,8 +11,8 @@ Epics: **33** | Stories: **169**
 - `blocked`: 1
 - `cancelled`: 1
 - `done`: 164
+- `in_progress`: 1
 - `planned`: 2
-- `ready_for_review`: 1
 
 ## Change risk distribution
 
@@ -28,4 +28,4 @@ Epics: **33** | Stories: **169**
 
 ## Awaiting independent review
 
-- **E17-S07** - Safety incident containment and capability downgrade (CR4)
+- none

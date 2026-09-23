@@ -61,6 +61,7 @@ distinguished by the next round, which is why the ceiling matters.
 | E16 | 2 | independent | 1 | 1 | 0 | 100% |
 | E16 | 3 | independent | 1 | 1 | 1 | 100% |
 | E17 | 1 | independent | 6 | 0 | 0 | 0% |
+| E17 | 2 | independent | 1 | 1 | 1 | 100% |
 | E18 | 1 | independent | 3 | 2 | 2 | 67% |
 | E18 | 2 | independent | 2 | 2 | 2 | 100% |
 | E18 | 3 | independent | 2 | 0 | 0 | 0% |
@@ -109,12 +110,13 @@ independent samples, and the population estimate collapses to what one round alr
 | E14 | 2 | 1 | 1 | 2.0 | 0.0 |
 | E15 | 3 | 2 | 2 | 3.0 | 0.0 |
 | E16 | 1 and 2 | 0 | 0 | 0 | undefined - disjoint findings | at least 0 were present |
+| E17 | 1 and 2 | 0 | 1 | 0 | undefined - disjoint findings | at least 1 were present |
 | E18 | 2 | 2 | 2 | 2.0 | 0.0 |
 | E20 | 1 and 2 | 3 | 0 | 0 | undefined - disjoint findings | at least 3 were present |
 
 ## Evidence-ledger integrity
 
-- **150 of 165** story packets past `ready_for_review` carry a row per acceptance criterion.
+- **149 of 164** story packets past `ready_for_review` carry a row per acceptance criterion.
 - Packets that do not:
   - E00-S01 (CR4): 0 rows for 3 criteria
   - E00-S02 (CR4): 0 rows for 3 criteria
@@ -158,7 +160,7 @@ load-bearing rather than academic.
 
 ## Documentation readership
 
-- Documents a committed review record has named: **32**. Never named: **16**.
+- Documents a committed review record has named: **33**. Never named: **15**.
 - Never named is not the same as never read, and an unread document may still be the right
   document. This is a list for the owner once a phase, not a purge, and accepted ADRs are
   undeletable regardless of what it says.
@@ -173,7 +175,6 @@ load-bearing rather than academic.
 - `docs/development/REPOSITORY_GOVERNANCE.md`
 - `docs/research/MARKET_AND_STANDARDS_2026-08.md`
 - `docs/rfcs/README.md`
-- `docs/security/INCIDENT_RESPONSE.md`
 - `project/README.md`
 - `project/templates/ADR.md`
 - `project/templates/EVIDENCE_PACKET.md`

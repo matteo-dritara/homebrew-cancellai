@@ -813,6 +813,55 @@ mod tests {
     }
 
     #[test]
+    fn a_reissued_incident_cannot_shrink_scope_or_be_replaced_by_another_publisher() {
+        let policy = LocalTrustPolicy::new(vec![
+            TrustedPublisher {
+                publisher_id: "acme".to_string(),
+                public_key: key(1).verifying_key().to_bytes(),
+                tier: TrustedTier::for_tests(ProviderTrust::BuiltinVerified),
+            },
+            TrustedPublisher {
+                publisher_id: "backup".to_string(),
+                public_key: key(2).verifying_key().to_bytes(),
+                tier: TrustedTier::for_tests(ProviderTrust::BuiltinVerified),
+            },
+        ]);
+        let mut ledger = ContainmentLedger::empty();
+
+        let mut wide = entry("INC-1", "codex", "observe");
+        wide["provider_versions"] = serde_json::json!(["2.0.0", "3.0.0"]);
+        ledger
+            .ingest(
+                &bundle(1, "acme", 1, None, &notice(vec![wide])),
+                &policy,
+                NOW,
+                &release(),
+            )
+            .expect("initial containment applies");
+
+        let mut narrowed = entry("INC-1", "codex", "observe");
+        narrowed["provider_versions"] = serde_json::json!(["3.0.0"]);
+        ledger
+            .ingest(
+                &bundle(2, "backup", 1, None, &notice(vec![narrowed])),
+                &policy,
+                NOW,
+                &release(),
+            )
+            .expect("second trusted publisher is independently sequenced");
+
+        assert!(
+            ledger
+                .binding_for(&ContainmentTarget {
+                    provider_version: Some("2.0.0"),
+                    ..target("codex", ActionClass::Delete)
+                })
+                .is_some(),
+            "a second publisher's re-issue must not erase an affected version"
+        );
+    }
+
+    #[test]
     fn rolling_the_knowledge_store_back_does_not_lift_a_containment() {
         let policy = policy(1, "acme");
         let first = bundle(1, "acme", 1, None, "{\"manifest\":\"v1\"}");
