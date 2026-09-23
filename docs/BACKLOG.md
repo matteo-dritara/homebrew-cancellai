@@ -881,7 +881,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S10 - clean accepts --keep-claude-history and --verbose as the reference does
 
-**Status:** `in_progress` | **Change Risk:** `CR3` | **Dependencies:** none | **Safety obligations:** SI-019
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** none | **Safety obligations:** SI-019
 
 **Outcome.** G1 lists disclosed functional gaps. The owner chose to close the two clean flags before cutover, because a script that passes them to the canonical engine would otherwise break, and to accept the rest (--aggressive, status --paths/--coverage/--top) as disclosed divergences stated in the release notes. In the reference, --keep-claude-history does not protect an artifact: it turns off the rewrite of history.jsonl that drops lines tied to deleted Claude sessions. The Rust engine never rewrites history.jsonl - that rewrite is a second kind of mutation the one safety boundary does not have, the same reason E22-S05 declined the Codex native backend - so Rust already behaves as if the flag were always given. Accepting the flag is therefore exact, and the absent trim stays a disclosed divergence rather than being added here as a side effect. --verbose only reports more.
 

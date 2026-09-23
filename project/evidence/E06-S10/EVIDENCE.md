@@ -19,6 +19,12 @@ PASS
 | AC3 - `--verbose` reports each action without changing which run | `clean_verbose_reports_each_action_and_changes_nothing_it_does`: the same tree cleaned with and without `--verbose` deletes the same two artifacts and prints the same totals line; only the verbose run prints one `succeeded` line per action. | PASS |
 | AC4 - the other gaps stay refused and disclosed | `verbose_and_keep_claude_history_are_refused_outside_clean` (exit 2 on `plan`); `status --paths/--coverage/--top` and `--aggressive` are untouched and still refused by clap. `docs/CLI_RUST.md` "Known gaps" lists them as divergences, and `CHANGELOG.md` states the new flags. | PASS |
 
+## Round-3 repair (Codex, `project/evidence/E06-VERIFIER-REVIEW-ROUND3.md`)
+
+| Finding | Repair | Evidence |
+| --- | --- | --- |
+| A stable `clean --yes --json` deleted a Claude session and disclosed the untouched `history.jsonl` on neither stream | The note is emitted on every run that deleted a Claude artifact without `--keep-claude-history`: stdout for human output, stderr for `--json`, so stdout stays one document | `a_json_clean_discloses_the_untouched_history_on_stderr_only`, with and without the flag, parsing stdout as JSON |
+
 ## Safety Evidence
 
 | Invariant | Counterexample tested | Evidence | Result |

@@ -1598,3 +1598,38 @@ fn a_nightly_build_withholds_every_deletion_and_says_why() {
     assert_eq!(clean.status.code(), Some(4), "{}", stdout(&clean));
     assert!(session.exists(), "a nightly build must not delete");
 }
+
+/// E06-S10 (review round 3): a `--json` run discloses the untouched history on stderr, keeps
+/// stdout a single parseable document, and stays silent with `--keep-claude-history`.
+#[test]
+fn a_json_clean_discloses_the_untouched_history_on_stderr_only() {
+    needs_stable_build!();
+    for keep in [false, true] {
+        let home = TempHome::new(if keep { "json-keep" } else { "json-note" });
+        let session =
+            home.write_stale_claude_session("proj-q", "99999999-9999-4999-8999-999999999996");
+        let history = home.path().join(".claude/history.jsonl");
+        std::fs::write(&history, "{\"display\":\"x\"}\n").unwrap();
+        let mut args = vec![
+            "clean",
+            "--yes",
+            "--json",
+            "--allow-running",
+            "--keep-latest",
+            "0",
+            "--tool",
+            "claude",
+        ];
+        if keep {
+            args.push("--keep-claude-history");
+        }
+        let output = run(&home, &args);
+        assert!(output.status.success(), "{}", stderr(&output));
+        assert!(!session.exists());
+        let doc: serde_json::Value =
+            serde_json::from_str(&stdout(&output)).expect("stdout is one JSON document");
+        assert_eq!(doc["document_type"], "result");
+        let noted = stderr(&output).contains("history.jsonl was left unchanged");
+        assert_eq!(noted, !keep, "{}", stderr(&output));
+    }
+}

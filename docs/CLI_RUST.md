@@ -217,8 +217,9 @@ orderings).
   sessions it deleted, and this engine never rewrites `history.jsonl` at all. Rewriting a
   provider file is a second kind of mutation the one safety boundary (SI-019) does not have -
   the same reason the Codex native backend above is not wired - so the absent trim is a
-  disclosed divergence, and a human-readable `clean` that deleted a Claude artifact says so
-  unless `--keep-claude-history` was given (E06-S10).
+  disclosed divergence, and a `clean` that deleted a Claude artifact says so - on stdout, or on
+  stderr for `--json` so stdout stays one document - unless `--keep-claude-history` was given
+  (E06-S10).
 - Windows process-liveness is implemented (E20-S05, `cancellai-platform`'s
   `SystemProcessObserver` calling `cancellai-sealedfs::list_running_process_names`
   (`CreateToolhelp32Snapshot`) rather than shelling out to `ps`); only a genuinely exotic

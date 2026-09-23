@@ -932,15 +932,19 @@ fn execute_clean(resolved: &Resolved, actions: &[Action], flags: &CommonFlags) -
         }
         let succeeded = results.iter().filter(|r| r.status == "succeeded").count();
         println!("{succeeded} artifact(s) deleted, {reclaimed_bytes} bytes reclaimed.");
-        if !flags.keep_claude_history && claude_session_deleted {
-            // E06-S10: the reference rewrites history.jsonl to drop lines tied to the sessions
-            // it deleted; this engine has no mutation primitive that rewrites a provider file,
-            // so it says so rather than leaving the difference silent (docs/CLI_RUST.md).
-            println!(
-                "Claude history.jsonl was left unchanged: this engine never rewrites it, so \
-                 deleted sessions may still be listed there (pass --keep-claude-history to \
-                 silence this note)."
-            );
+    }
+    if !flags.keep_claude_history && claude_session_deleted {
+        // E06-S10: the reference rewrites history.jsonl to drop lines tied to the sessions it
+        // deleted; this engine has no mutation primitive that rewrites a provider file, so it
+        // says so rather than leaving the difference silent (docs/CLI_RUST.md). On a `--json`
+        // run the note goes to stderr so stdout stays one document (E06 review round 3).
+        let note = "Claude history.jsonl was left unchanged: this engine never rewrites it, so \
+                    deleted sessions may still be listed there (pass --keep-claude-history to \
+                    silence this note).";
+        if flags.json {
+            eprintln!("{note}");
+        } else {
+            println!("{note}");
         }
     }
 
