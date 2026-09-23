@@ -111,6 +111,13 @@ E04-S04 implements the split this section describes for `cancellai-inventory`:
 for which of traversal-count/latency/memory/CPU/self-footprint are actually measured today
 versus recorded as forward-looking budgets.
 
+The cutover's self-budget (E06-S08) measures the command a user runs rather than a function the
+command calls: `scripts/cutover_benchmark.py` builds one synthetic corpus, times the release
+`cancellai-cli` and `cancellai.py` on the same four questions (`status`, the full inventory, the
+plan, a dry `clean`), and fails when Rust is slower than the reference beyond a recorded noise
+tolerance or exceeds a 64 MiB peak RSS. It refuses to time a corpus either engine does not see.
+`rust.yml`'s `cutover-budget` job gates it on Linux and reports it on macOS and Windows.
+
 ### Installer/release tests
 
 Fresh-machine/container/VM smoke tests for each tier-1 artifact/package channel where feasible, plus provenance/SBOM verification.

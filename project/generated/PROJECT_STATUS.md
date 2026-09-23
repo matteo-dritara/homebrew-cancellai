@@ -11,8 +11,8 @@ Epics: **34** | Stories: **175**
 - `blocked`: 1
 - `cancelled`: 1
 - `done`: 167
-- `planned`: 5
-- `ready_for_review`: 1
+- `planned`: 4
+- `ready_for_review`: 2
 
 ## Change risk distribution
 
@@ -28,4 +28,5 @@ Epics: **34** | Stories: **175**
 
 ## Awaiting independent review
 
+- **E06-S08** - The Rust CLI stays within a performance self-budget measured against the reference (CR1)
 - **E06-S10** - clean accepts --keep-claude-history and --verbose as the reference does (CR3)
