@@ -249,7 +249,8 @@ def apply_dynamic_mutant(tree: Path, mutant: Mutant) -> None:
     """Apply a state-shaped mutant without tying it to a moving work-item id."""
     if mutant.identifier != "story-status-forged":
         raise SensitivityError(f"{mutant.identifier}: has no dynamic mutation implementation")
-    for path in sorted((tree / mutant.path).glob("*.json")):
+    paths = sorted((tree / mutant.path).glob("*.json"))
+    for path in paths:
         epic = json.loads(path.read_text(encoding="utf-8"))
         for story in epic["stories"]:
             if story["status"] == "planned":
@@ -259,6 +260,24 @@ def apply_dynamic_mutant(tree: Path, mutant: Mutant) -> None:
                 story["dependencies"] = []
                 path.write_text(json.dumps(epic, indent=2) + "\n", encoding="utf-8")
                 return
+    # Once every story has started there is no planned one to forge. Forge a new one instead: a
+    # copy of a non-CR4 story (a CR4 copy would fail the Safety Verdict gate first) under an id no
+    # evidence directory can name, marked done with no dependencies.
+    for path in paths:
+        epic = json.loads(path.read_text(encoding="utf-8"))
+        template = next((story for story in epic["stories"] if story.get("change_risk") not in (None, "CR4")), None)
+        if template is None or "id" not in epic:
+            continue
+        existing = {story["id"] for story in epic["stories"]}
+        forged_id = f"{epic['id']}-S99"
+        if forged_id in existing or (tree / "project" / "evidence" / forged_id).exists():
+            continue
+        forged = json.loads(json.dumps(template))
+        forged.update(id=forged_id, status="done", dependencies=[])
+        forged.pop("blocked_by", None)
+        epic["stories"].append(forged)
+        path.write_text(json.dumps(epic, indent=2) + "\n", encoding="utf-8")
+        return
     raise SensitivityError(
         "story-status-forged: no planned story remains to forge. Add a deliberate fixture or revise "
         "the mutant; do not report this claim as covered"

@@ -98,16 +98,33 @@ class MutantIntegrityTests(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertIn("requires committed evidence", result.stdout + result.stderr)
 
-    def test_story_status_mutant_refuses_when_no_planned_story_exists(self):
+    def test_story_status_mutant_refuses_when_nothing_can_be_forged(self):
+        # No planned story, and no non-CR4 story to copy (a CR4 copy would reach the Safety
+        # Verdict gate before the evidence gate), so there is nothing honest to forge.
         mutant = next(m for m in sensitivity.MUTANTS if m.identifier == "story-status-forged")
         with tempfile.TemporaryDirectory() as tmp:
             tree = Path(tmp)
             epics = tree / "project" / "epics"
             epics.mkdir(parents=True)
-            (epics / "E99.json").write_text(json.dumps({"stories": [{"id": "E99-S01", "status": "done", "dependencies": []}]}), encoding="utf-8")
+            epic = {"id": "E99", "stories": [{"id": "E99-S01", "status": "done", "dependencies": [], "change_risk": "CR4"}]}
+            (epics / "E99.json").write_text(json.dumps(epic), encoding="utf-8")
             with self.assertRaises(sensitivity.SensitivityError) as caught:
                 sensitivity.apply_mutant(tree, mutant)
         self.assertIn("no planned story remains", str(caught.exception))
+
+    def test_story_status_mutant_forges_a_new_story_once_none_is_planned(self):
+        mutant = next(m for m in sensitivity.MUTANTS if m.identifier == "story-status-forged")
+        with tempfile.TemporaryDirectory() as tmp:
+            tree = Path(tmp)
+            epics = tree / "project" / "epics"
+            epics.mkdir(parents=True)
+            story = {"id": "E99-S01", "status": "done", "dependencies": ["E98-S01"], "change_risk": "CR2"}
+            (epics / "E99.json").write_text(json.dumps({"id": "E99", "stories": [story]}), encoding="utf-8")
+            sensitivity.apply_mutant(tree, mutant)
+            forged = json.loads((epics / "E99.json").read_text(encoding="utf-8"))["stories"]
+        self.assertEqual(["E99-S01", "E99-S99"], [s["id"] for s in forged])
+        self.assertEqual("done", forged[1]["status"])
+        self.assertEqual([], forged[1]["dependencies"])
 
     def test_every_named_gate_exists(self):
         for mutant in sensitivity.MUTANTS:
