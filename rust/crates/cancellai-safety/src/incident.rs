@@ -43,8 +43,10 @@ use sha2::{Digest, Sha256};
 
 use crate::build_channel::BuildChannel;
 use crate::knowledge_bundle::{
-    KnowledgeBundle, KnowledgeBundleError, LocalTrustPolicy, parse_bundle, verify_bundle,
+    KnowledgeBundle, KnowledgeBundleError, LocalTrustPolicy, TrustedPublisher,
+    VerifiedKnowledgeBundle, parse_bundle, verify_bundle, verify_bundle_ignoring_expiry,
 };
+use crate::trust_promotion::TrustedTier;
 
 /// The payload schema version this build accepts inside a knowledge bundle.
 pub const CONTAINMENT_SCHEMA_VERSION: u32 = 1;
@@ -56,6 +58,15 @@ pub const CONTAINMENT_KIND: &str = "capability_containment";
 const MAX_IDENTIFIER_LEN: usize = 64;
 const MAX_LIST_LEN: usize = 32;
 const MAX_ENTRIES: usize = 64;
+
+/// The largest notice text [`ContainmentLedger::install`] will parse (E06-S07, closing E17-S07's
+/// round-5 residual). A caller reading a notice from a file or a network response reads at most
+/// one byte more than this, and refuses rather than parses anything larger.
+pub const MAX_NOTICE_BYTES: usize = 256 * 1024;
+
+/// The publisher id of the cancellAI incident-response key a build compiles in (ADR-0039). An
+/// owner-configured publisher may not reuse it.
+pub const PROJECT_INCIDENT_PUBLISHER_ID: &str = "cancellai-incident";
 
 /// The only ceilings a containment can impose. Both sit below
 /// `minimum_authority_for(ActionClass::Quarantine)`, so no containment can leave anything able to
@@ -138,6 +149,10 @@ pub enum ContainmentError {
     /// Recording the notice would exceed [`MAX_ACTIVE_RECORDS`] or [`MAX_TRACKED_PUBLISHERS`].
     /// Nothing was recorded and nothing was removed.
     LedgerFull,
+    /// The notice text is larger than [`MAX_NOTICE_BYTES`]. Checked before any parsing.
+    NoticeTooLarge,
+    /// `lift` named an incident the ledger does not hold.
+    NotContained,
 }
 
 impl fmt::Display for ContainmentError {
@@ -152,6 +167,11 @@ impl fmt::Display for ContainmentError {
             Self::LedgerFull => f.write_str(
                 "containment ledger is at capacity; the update was refused and every existing containment kept",
             ),
+            Self::NoticeTooLarge => write!(
+                f,
+                "containment notice is larger than {MAX_NOTICE_BYTES} bytes; refused before parsing"
+            ),
+            Self::NotContained => f.write_str("no active containment has that incident id"),
         }
     }
 }
@@ -457,6 +477,15 @@ impl ContainmentLedger {
         now_unix: u64,
     ) -> Result<Vec<IncidentEvidence>, ContainmentError> {
         let verified = verify_bundle(bundle, policy, now_unix).map_err(ContainmentError::Bundle)?;
+        self.ingest_verified(verified)
+    }
+
+    /// Everything [`ContainmentLedger::ingest`] does after signature verification - shared with
+    /// [`ContainmentLedger::replay`], whose only difference is that expiry is not re-checked.
+    fn ingest_verified(
+        &mut self,
+        verified: VerifiedKnowledgeBundle,
+    ) -> Result<Vec<IncidentEvidence>, ContainmentError> {
         if self
             .last_sequence
             .get(&verified.publisher_id)
@@ -522,6 +551,61 @@ impl ContainmentLedger {
     /// Removes every record of an incident, whichever publisher issued it. Local code calls this
     /// after the owner-visible closure decision `docs/security/INCIDENT_RESPONSE.md` requires; no
     /// notice field can reach it. Returns the records removed (empty when none was active).
+    /// Installs one notice from its raw text, as `cancellai-cli containment install` does:
+    /// refuses anything over [`MAX_NOTICE_BYTES`] before parsing it, then verifies it in full -
+    /// expiry included - and ingests it. On any error the ledger is unchanged.
+    pub fn install(
+        &mut self,
+        text: &str,
+        policy: &LocalTrustPolicy,
+        now_unix: u64,
+    ) -> Result<Vec<IncidentEvidence>, ContainmentError> {
+        if text.len() > MAX_NOTICE_BYTES {
+            return Err(ContainmentError::NoticeTooLarge);
+        }
+        let bundle = parse_bundle(text).map_err(|_| ContainmentError::MalformedBundle)?;
+        self.ingest(&bundle, policy, now_unix)
+    }
+
+    /// Rebuilds a ledger from its persisted history (E06-S07, ADR-0039). Each install event is
+    /// the raw text of a bundle that passed [`ContainmentLedger::install`]; it is parsed and
+    /// re-verified here - schema, publisher, digest, signature and per-publisher sequence - with
+    /// the single exception of expiry, because expiry never lifts a containment (SI-029). Each
+    /// lift event is a local lift. Evidence therefore still comes only from verified ingestion
+    /// (SI-022): a persisted file cannot describe a containment, only replay bundles the kernel
+    /// verifies again.
+    ///
+    /// Any event that fails makes the whole history unusable and returns the index of the first
+    /// failing event: a ledger that cannot be fully reconstructed is unknown, never partial.
+    pub fn replay(
+        events: &[ContainmentEvent],
+        policy: &LocalTrustPolicy,
+    ) -> Result<Self, (usize, ContainmentError)> {
+        let mut ledger = Self::empty();
+        for (index, event) in events.iter().enumerate() {
+            match event {
+                ContainmentEvent::Install(text) => {
+                    if text.len() > MAX_NOTICE_BYTES {
+                        return Err((index, ContainmentError::NoticeTooLarge));
+                    }
+                    let bundle = parse_bundle(text)
+                        .map_err(|_| (index, ContainmentError::MalformedBundle))?;
+                    let verified = verify_bundle_ignoring_expiry(&bundle, policy)
+                        .map_err(|error| (index, ContainmentError::Bundle(error)))?;
+                    ledger
+                        .ingest_verified(verified)
+                        .map_err(|error| (index, error))?;
+                }
+                ContainmentEvent::Lift(incident_id) => {
+                    if ledger.lift_locally(incident_id).is_empty() {
+                        return Err((index, ContainmentError::NotContained));
+                    }
+                }
+            }
+        }
+        Ok(ledger)
+    }
+
     pub fn lift_locally(&mut self, incident_id: &str) -> Vec<IncidentEvidence> {
         let (lifted, kept) = std::mem::take(&mut self.active)
             .into_iter()
@@ -588,6 +672,76 @@ fn hex_digest(payload: &str) -> String {
 }
 
 /// Parses and validates a containment notice from a verified payload.
+/// One entry in a containment ledger's persisted history (E06-S07). The store keeps these as
+/// opaque text; only [`ContainmentLedger::replay`] gives them meaning.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContainmentEvent {
+    /// The raw text of a notice bundle that was installed.
+    Install(String),
+    /// A local lift of every record with this incident id.
+    Lift(String),
+}
+
+/// Why the containment trust policy could not be built. Every variant is fail-closed: the
+/// caller treats the ledger as unknown.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContainmentTrustError {
+    /// An owner-configured publisher reuses [`PROJECT_INCIDENT_PUBLISHER_ID`].
+    ReservedPublisherId,
+    /// Two owner-configured publishers share an id; lookup would silently take the first.
+    DuplicatePublisherId(String),
+    /// A publisher id is empty or not a bounded identifier.
+    InvalidPublisherId(String),
+}
+
+impl fmt::Display for ContainmentTrustError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ReservedPublisherId => write!(
+                f,
+                "an owner-trusted publisher may not use the reserved id {PROJECT_INCIDENT_PUBLISHER_ID}"
+            ),
+            Self::DuplicatePublisherId(id) => write!(f, "publisher id {id} is trusted twice"),
+            Self::InvalidPublisherId(id) => {
+                write!(f, "publisher id {id:?} is not a valid identifier")
+            }
+        }
+    }
+}
+
+/// The trust policy containment notices are verified against (ADR-0039): the compiled project
+/// key plus the owner's own publishers. Every publisher gets [`TrustedTier::untrusted`], because
+/// containment ingestion does not consult a tier - it can only lower authority - and a tier
+/// granted here would be a tier nothing else ever decided (SI-021).
+pub fn containment_trust_policy(
+    project_key: [u8; 32],
+    owner: Vec<(String, [u8; 32])>,
+) -> Result<LocalTrustPolicy, ContainmentTrustError> {
+    let mut publishers = vec![TrustedPublisher {
+        publisher_id: PROJECT_INCIDENT_PUBLISHER_ID.to_string(),
+        public_key: project_key,
+        tier: TrustedTier::untrusted(),
+    }];
+    let mut seen = std::collections::BTreeSet::new();
+    for (publisher_id, public_key) in owner {
+        if publisher_id == PROJECT_INCIDENT_PUBLISHER_ID {
+            return Err(ContainmentTrustError::ReservedPublisherId);
+        }
+        if identifier(&publisher_id, "publisher_id").is_err() {
+            return Err(ContainmentTrustError::InvalidPublisherId(publisher_id));
+        }
+        if !seen.insert(publisher_id.clone()) {
+            return Err(ContainmentTrustError::DuplicatePublisherId(publisher_id));
+        }
+        publishers.push(TrustedPublisher {
+            publisher_id,
+            public_key,
+            tier: TrustedTier::untrusted(),
+        });
+    }
+    Ok(LocalTrustPolicy::new(publishers))
+}
+
 pub fn parse_notice(payload: &str) -> Result<ContainmentNotice, ContainmentError> {
     let notice: ContainmentNotice = serde_json::from_str(payload)
         .map_err(|error| ContainmentError::MalformedNotice(error.to_string()))?;
@@ -1812,5 +1966,175 @@ mod tests {
         let provenance = ReleaseProvenance::for_channel(BuildChannel::default());
         assert_eq!(provenance.version, env!("CARGO_PKG_VERSION"));
         assert_eq!(provenance.channel, ReleaseChannel::Nightly);
+    }
+    // --- E06-S07: install, replay and the containment trust policy -------------------------
+
+    fn text(bundle: &KnowledgeBundle) -> String {
+        serde_json::to_string(bundle).unwrap()
+    }
+
+    #[test]
+    fn install_refuses_an_oversized_notice_before_parsing() {
+        let mut ledger = ContainmentLedger::empty();
+        let oversized = "x".repeat(MAX_NOTICE_BYTES + 1);
+        assert_eq!(
+            ledger.install(&oversized, &policy(1, "acme"), NOW),
+            Err(ContainmentError::NoticeTooLarge)
+        );
+        assert_eq!(ledger.active().count(), 0);
+    }
+
+    #[test]
+    fn install_checks_expiry_but_replay_does_not_lift_an_expired_containment() {
+        let payload = notice(vec![entry("INC-1", "codex-cli", "observe")]);
+        let expiring = bundle(1, "acme", 1, Some(NOW + 5), &payload);
+        let mut ledger = ContainmentLedger::empty();
+        ledger
+            .install(&text(&expiring), &policy(1, "acme"), NOW)
+            .unwrap();
+
+        // Installed before expiry, replayed long after it: still binds (SI-029).
+        let replayed = ContainmentLedger::replay(
+            &[ContainmentEvent::Install(text(&expiring))],
+            &policy(1, "acme"),
+        )
+        .unwrap();
+        assert!(
+            replayed
+                .binding_for(&target("codex-cli", ActionClass::Delete))
+                .is_some()
+        );
+
+        // A fresh install of an already-expired bundle is still refused.
+        let mut fresh = ContainmentLedger::empty();
+        assert_eq!(
+            fresh.install(&text(&expiring), &policy(1, "acme"), NOW + 10),
+            Err(ContainmentError::Bundle(KnowledgeBundleError::Expired))
+        );
+    }
+
+    #[test]
+    fn replay_re_verifies_every_install_and_fails_whole_on_any_bad_event() {
+        let payload = notice(vec![entry("INC-1", "codex-cli", "observe")]);
+        let good = text(&bundle(1, "acme", 1, None, &payload));
+        let mut forged = bundle(1, "acme", 2, None, &payload);
+        forged.payload = notice(vec![entry("INC-2", "claude-code", "observe")]);
+        let forged = text(&forged);
+
+        assert!(
+            ContainmentLedger::replay(
+                &[ContainmentEvent::Install(good.clone())],
+                &policy(1, "acme")
+            )
+            .is_ok()
+        );
+        for events in [
+            vec![
+                ContainmentEvent::Install(good.clone()),
+                ContainmentEvent::Install(forged.clone()),
+            ],
+            vec![ContainmentEvent::Install("not a bundle".to_string())],
+            // The same install twice is a replay of its sequence.
+            vec![
+                ContainmentEvent::Install(good.clone()),
+                ContainmentEvent::Install(good.clone()),
+            ],
+            // A lift of something never contained.
+            vec![ContainmentEvent::Lift("INC-9".to_string())],
+        ] {
+            assert!(
+                ContainmentLedger::replay(&events, &policy(1, "acme")).is_err(),
+                "{events:?}"
+            );
+        }
+        // Signed by a key the policy does not trust.
+        assert!(
+            ContainmentLedger::replay(&[ContainmentEvent::Install(good)], &policy(2, "acme"))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn replay_applies_a_lift_to_what_came_before_it_and_not_to_a_later_reissue() {
+        let payload = notice(vec![entry("INC-1", "codex-cli", "observe")]);
+        let first = text(&bundle(1, "acme", 1, None, &payload));
+        let reissue = text(&bundle(1, "acme", 2, None, &payload));
+        let lifted = ContainmentLedger::replay(
+            &[
+                ContainmentEvent::Install(first.clone()),
+                ContainmentEvent::Lift("INC-1".into()),
+            ],
+            &policy(1, "acme"),
+        )
+        .unwrap();
+        assert!(
+            lifted
+                .binding_for(&target("codex-cli", ActionClass::Delete))
+                .is_none()
+        );
+        let recontained = ContainmentLedger::replay(
+            &[
+                ContainmentEvent::Install(first),
+                ContainmentEvent::Lift("INC-1".into()),
+                ContainmentEvent::Install(reissue),
+            ],
+            &policy(1, "acme"),
+        )
+        .unwrap();
+        assert!(
+            recontained
+                .binding_for(&target("codex-cli", ActionClass::Delete))
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn the_containment_trust_policy_refuses_a_reserved_duplicate_or_invalid_publisher() {
+        let project = key(9).verifying_key().to_bytes();
+        let owner = key(1).verifying_key().to_bytes();
+        assert!(containment_trust_policy(project, vec![("acme".into(), owner)]).is_ok());
+        assert_eq!(
+            containment_trust_policy(project, vec![(PROJECT_INCIDENT_PUBLISHER_ID.into(), owner)])
+                .err(),
+            Some(ContainmentTrustError::ReservedPublisherId)
+        );
+        assert_eq!(
+            containment_trust_policy(
+                project,
+                vec![("acme".into(), owner), ("acme".into(), owner)]
+            )
+            .err(),
+            Some(ContainmentTrustError::DuplicatePublisherId("acme".into()))
+        );
+        assert!(matches!(
+            containment_trust_policy(project, vec![("../x".into(), owner)]),
+            Err(ContainmentTrustError::InvalidPublisherId(_))
+        ));
+    }
+
+    #[test]
+    fn the_project_key_verifies_a_project_notice_and_nothing_else_does() {
+        let project = key(9).verifying_key().to_bytes();
+        let policy = containment_trust_policy(project, Vec::new()).unwrap();
+        let payload = notice(vec![entry("INC-1", "codex-cli", "observe")]);
+        let mut ledger = ContainmentLedger::empty();
+        ledger
+            .install(
+                &text(&bundle(9, PROJECT_INCIDENT_PUBLISHER_ID, 1, None, &payload)),
+                &policy,
+                NOW,
+            )
+            .unwrap();
+        // Same publisher id, wrong key: refused.
+        let mut other = ContainmentLedger::empty();
+        assert!(
+            other
+                .install(
+                    &text(&bundle(1, PROJECT_INCIDENT_PUBLISHER_ID, 1, None, &payload)),
+                    &policy,
+                    NOW
+                )
+                .is_err()
+        );
     }
 }

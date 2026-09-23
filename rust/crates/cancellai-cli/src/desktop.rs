@@ -54,7 +54,7 @@ impl DocumentSource for EngineDocuments {
                 (inventory_doc(&resolved, now), Vec::new())
             }
             DocumentKind::Plan => {
-                let (actions, withheld) = plan_actions(&resolved);
+                let (actions, withheld, _authority_withheld) = plan_actions(&resolved);
                 (
                     plan_doc(&resolved, now, actions),
                     withheld.into_iter().map(str::to_string).collect(),

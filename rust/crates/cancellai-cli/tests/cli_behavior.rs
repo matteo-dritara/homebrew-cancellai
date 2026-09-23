@@ -126,6 +126,29 @@ fn run_custom_claude_root(claude_root: &Path, unrelated_home: &Path, args: &[&st
         .expect("spawn cancellai-cli")
 }
 
+/// Whether this test build can delete at all. E06-S07 made the release channel a live authority
+/// input: a build compiled without `CANCELLAI_CHANNEL=stable` (or `beta`) is `Nightly`, which
+/// SI-030 caps below deletion. Tests that need a real deletion - or a plan that proposes one -
+/// run in `rust.yml`'s stable-channel job and are skipped, loudly, anywhere else; the nightly
+/// behaviour itself is pinned by `a_nightly_build_withholds_every_deletion_and_says_why`.
+fn stable_build() -> bool {
+    matches!(
+        option_env!("CANCELLAI_CHANNEL")
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("stable" | "beta")
+    )
+}
+
+macro_rules! needs_stable_build {
+    () => {
+        if !stable_build() {
+            eprintln!("skipped: needs a CANCELLAI_CHANNEL=stable build (E06-S07)");
+            return;
+        }
+    };
+}
+
 fn stdout(output: &Output) -> String {
     String::from_utf8_lossy(&output.stdout).into_owned()
 }
@@ -161,6 +184,7 @@ fn no_arguments_defaults_to_read_only_status_and_never_mutates() {
 
 #[test]
 fn plan_is_read_only_and_produces_a_schema_conformant_document() {
+    needs_stable_build!();
     let home = TempHome::new("plan-json");
     let session = home.write_stale_claude_session("proj-a", "22222222-2222-4222-8222-222222222222");
 
@@ -185,6 +209,7 @@ fn plan_is_read_only_and_produces_a_schema_conformant_document() {
 
 #[test]
 fn clean_dry_run_never_deletes_anything() {
+    needs_stable_build!();
     let home = TempHome::new("clean-dry-run");
     let session = home.write_stale_claude_session("proj-a", "33333333-3333-4333-8333-333333333333");
 
@@ -207,6 +232,7 @@ fn clean_dry_run_never_deletes_anything() {
 // E20-S05 built the handle-relative Windows primitive.
 #[test]
 fn clean_yes_deletes_a_stale_unprotected_session_and_reports_it_in_the_result_document() {
+    needs_stable_build!();
     let home = TempHome::new("clean-yes");
     let claude_session =
         home.write_stale_claude_session("proj-a", "44444444-4444-4444-8444-444444444444");
@@ -240,6 +266,7 @@ fn clean_yes_deletes_a_stale_unprotected_session_and_reports_it_in_the_result_do
 
 #[test]
 fn clean_without_confirmation_or_dry_run_declines_and_deletes_nothing() {
+    needs_stable_build!();
     let home = TempHome::new("clean-no-confirm");
     let session = home.write_stale_claude_session("proj-a", "66666666-6666-4666-8666-666666666666");
 
@@ -269,6 +296,7 @@ fn clean_without_confirmation_or_dry_run_declines_and_deletes_nothing() {
 
 #[test]
 fn keep_latest_protects_the_most_recent_session_from_a_json_clean_run() {
+    needs_stable_build!();
     let home = TempHome::new("clean-keep-latest");
     let old = home.write_stale_claude_session("proj-a", "77777777-7777-4777-8777-777777777777");
     let recent = home.write_stale_claude_session("proj-a", "88888888-8888-4888-8888-888888888888");
@@ -1298,6 +1326,7 @@ fn an_irrelevant_flag_before_help_is_still_refused() {
 /// human output says so; with it the note is silenced.
 #[test]
 fn clean_leaves_claude_history_untouched_with_and_without_keep_claude_history() {
+    needs_stable_build!();
     for keep in [false, true] {
         let home = TempHome::new(if keep { "keep-history" } else { "trim-history" });
         let session_id = "66666666-6666-4666-8666-666666666666";
@@ -1340,6 +1369,7 @@ fn clean_leaves_claude_history_untouched_with_and_without_keep_claude_history() 
 /// cleaned with and without it deletes the same artifacts and reports the same totals.
 #[test]
 fn clean_verbose_reports_each_action_and_changes_nothing_it_does() {
+    needs_stable_build!();
     let mut totals = Vec::new();
     for verbose in [false, true] {
         let home = TempHome::new(if verbose { "verbose" } else { "quiet" });
@@ -1398,6 +1428,7 @@ fn clean_json_with_nothing_to_do_prints_a_result_document() {
 
 #[test]
 fn clean_dry_run_json_prints_the_plan_document() {
+    needs_stable_build!();
     let home = TempHome::new("json-dry-run");
     let session = home.write_stale_claude_session("proj-j", "99999999-9999-4999-8999-999999999991");
     let output = run(
@@ -1526,4 +1557,45 @@ fn many_companion_failures_withhold_the_claude_scope_with_an_exact_count() {
     );
     assert_eq!(clean.status.code(), Some(4), "{}", stdout(&clean));
     assert!(stale.exists(), "a withheld scope must not delete anything");
+}
+
+/// E06-S07 / SI-030: a build without a stable or beta channel compiled in proposes no deletion
+/// and deletes nothing, and says it was the release channel that withheld the work.
+#[test]
+fn a_nightly_build_withholds_every_deletion_and_says_why() {
+    if stable_build() {
+        eprintln!("skipped: this is a stable-channel build");
+        return;
+    }
+    let home = TempHome::new("nightly-withholds");
+    let session = home.write_stale_claude_session("proj-n", "99999999-9999-4999-8999-999999999995");
+    let plan = run(
+        &home,
+        &["plan", "--json", "--allow-running", "--keep-latest", "0"],
+    );
+    assert_eq!(plan.status.code(), Some(4), "{}", stdout(&plan));
+    let doc: serde_json::Value = serde_json::from_str(&stdout(&plan)).unwrap();
+    let actions = doc["actions"].as_array().unwrap();
+    assert!(!actions.is_empty());
+    assert!(
+        actions.iter().all(|a| a["action_class"] != "delete"),
+        "{doc}"
+    );
+    assert!(
+        doc.to_string().contains("release_channel_authority"),
+        "the withheld action must name the channel constraint: {doc}"
+    );
+    let clean = run(
+        &home,
+        &[
+            "clean",
+            "--yes",
+            "--json",
+            "--allow-running",
+            "--keep-latest",
+            "0",
+        ],
+    );
+    assert_eq!(clean.status.code(), Some(4), "{}", stdout(&clean));
+    assert!(session.exists(), "a nightly build must not delete");
 }

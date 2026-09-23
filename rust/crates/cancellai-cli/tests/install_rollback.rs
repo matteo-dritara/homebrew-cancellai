@@ -79,6 +79,16 @@ fn run_in(home: &TempHome, cwd: &Path, args: &[&str]) -> Output {
         .expect("spawn cancellai-cli")
 }
 
+/// Whether this build can delete at all (E06-S07, SI-030).
+fn stable_build() -> bool {
+    matches!(
+        option_env!("CANCELLAI_CHANNEL")
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("stable" | "beta")
+    )
+}
+
 fn run(home: &TempHome, args: &[&str]) -> Output {
     run_in(home, home.path(), args)
 }
@@ -160,7 +170,14 @@ fn every_read_only_command_leaves_no_trace_anywhere_under_home() {
         ],
     ] {
         let output = run(&home, &args);
-        assert!(output.status.success(), "{args:?}: {}", stdout(&output));
+        // E06-S07: a nightly build withholds every deletion (SI-030), so `plan` and a dry
+        // `clean` report the withholding with exit 4; this test is about traces, not exit codes.
+        let withheld_by_channel = !stable_build() && output.status.code() == Some(4);
+        assert!(
+            output.status.success() || withheld_by_channel,
+            "{args:?}: {}",
+            stdout(&output)
+        );
     }
 
     let after = snapshot(home.path());
@@ -172,14 +189,14 @@ fn every_read_only_command_leaves_no_trace_anywhere_under_home() {
     assert!(session.exists(), "the session itself must be untouched");
 }
 
-// `cancellai-platform::identity::SystemIdentityObserver` reports `Unsupported` unconditionally
-// on non-Unix platforms today (E03-S01's own disclosed residual risk) - `ApprovedRoot::
-// establish`/`bind` therefore always fails closed on Windows, so a real deletion can never
-// succeed there yet (E20-S01 "Windows native backend" tracks closing this) - see the identical
-// note in `cli_behavior.rs` above its own two real-deletion tests.
-#[cfg(unix)]
 #[test]
 fn a_real_clean_touches_only_the_provider_artifact_it_deletes_nothing_else_anywhere() {
+    // Runs on every platform since E06-S13, and only on a stable-channel build since E06-S07
+    // (a nightly build cannot delete, SI-030).
+    if !stable_build() {
+        eprintln!("skipped: needs a CANCELLAI_CHANNEL=stable build (E06-S07)");
+        return;
+    }
     let home = TempHome::new("clean-no-side-state");
     let session = write_stale_claude_session(&home, "22222222-2222-4222-8222-222222222222");
     let before = snapshot(home.path());

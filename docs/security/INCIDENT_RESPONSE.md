@@ -137,6 +137,37 @@ Rungs 1 and 3 of the hierarchy above are implemented as data, not as a control c
   or weakening a containment. Every string is checked against a
   bounded identifier alphabet on the way in, so no provider payload content can reach the record.
 
-Not yet in place: a shipped distribution channel for containment bundles and a caller on the live
-mutation path. Both belong to the Rust CLI cutover (E06-S04); until then the mechanism is
-implemented and adversarially tested, not deployed.
+## Containment on the live mutation path (E06-S07, ADR-0039)
+
+The Rust CLI obeys the ledger. `plan` and `clean` compute every deletion's authority with
+`effective_authority_under_containment` from the artifact's facts, the build's compiled release
+channel and the persisted ledger; a contained deletion becomes an observation that names the
+incident, and `clean` re-reads the ledger immediately before every deletion, so a notice installed
+while it waits at its prompt still binds.
+
+- **Installing a notice.** `cancellai-cli containment install <file>` reads at most
+  `MAX_NOTICE_BYTES` (256 KiB) before parsing, verifies the bundle in full - expiry included - and
+  appends it to `<state>/containment_log.jsonl` (`$CANCELLAI_HOME/state`, else
+  `$HOME/.cancellai/state`). A refused notice leaves the history byte-identical. `containment
+  list` shows what binds; `containment lift <incident-id> --confirm` is the only lift.
+- **Who can sign.** The binary compiles in the cancellAI incident-response public key (publisher
+  `cancellai-incident`). The owner may add publishers in `<state>/trusted_publishers.json`
+  (`[{"publisher_id": ..., "public_key": "<64 hex>"}]`); none may reuse the project id, none may
+  appear twice, and none gains any tier - containment can only lower authority.
+- **Unknown is not empty.** A missing history is an empty ledger. A history or trust file that
+  exists and cannot be read, parsed or re-verified caps every deletion at `Recommend`, and says
+  why, until the owner repairs or removes it.
+- **What the history resists, and what it does not.** Every event is re-verified on every load, so
+  nothing arriving from outside - a notice, a replayed or expired bundle, a forged signature - can
+  lift a containment. The history is owner state in the owner's account: deleting it, truncating
+  it to an earlier valid prefix, or appending a lift all lift containment, and a process running as
+  the same user can do any of them. The owner accepted this on 2026-09-23; a same-user attacker can
+  delete the provider data directly, so the history adds nothing that attacker lacks.
+- **Signing a notice** (maintainers). The private key lives only encrypted to the owner's GPG key
+  (`~/cancellai-incident.key.gpg`, with an offline copy). Decrypt it into a pipe, never a file:
+  build the bundle's `signing_bytes` as `cancellai-safety::KnowledgeBundle` defines them, sign
+  with `openssl pkeyutl -sign -rawin -inkey <(gpg --decrypt ~/cancellai-incident.key.gpg)`, and
+  write the bundle with publisher `cancellai-incident` and a sequence above every earlier one.
+
+Not yet in place: a distribution channel that delivers notices without an owner running
+`install` (E33).

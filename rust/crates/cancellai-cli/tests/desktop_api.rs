@@ -89,6 +89,18 @@ impl Drop for TempHome {
     }
 }
 
+/// Whether this build can plan a deletion at all (E06-S07, SI-030): only a stable- or
+/// beta-channel build can. Tests that need delete candidates run in `rust.yml`'s
+/// stable-channel job and are skipped, loudly, anywhere else.
+fn stable_build() -> bool {
+    matches!(
+        option_env!("CANCELLAI_CHANNEL")
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("stable" | "beta")
+    )
+}
+
 fn bin() -> String {
     std::env::var("CARGO_BIN_EXE_cancellai-cli").unwrap()
 }
@@ -235,6 +247,10 @@ fn documents_match_the_cli_json_output_for_the_same_tree_and_query() {
 
 #[test]
 fn serving_a_plan_full_of_delete_candidates_mutates_nothing() {
+    if !stable_build() {
+        eprintln!("skipped: needs a CANCELLAI_CHANNEL=stable build (E06-S07)");
+        return;
+    }
     let home = TempHome::populated("no-bypass");
     let before = home.snapshot();
     let (mut child, descriptor) = start_api(&home, 1);
@@ -336,6 +352,10 @@ fn cli_text(home: &TempHome, args: &[&str]) -> String {
 
 #[test]
 fn the_dashboard_view_matches_the_cli_human_summaries() {
+    if !stable_build() {
+        eprintln!("skipped: needs a CANCELLAI_CHANNEL=stable build (E06-S07)");
+        return;
+    }
     let home = TempHome::populated("view-parity");
     // A second, fresh Claude session so the plan holds both deletions and observations.
     let fresh = home

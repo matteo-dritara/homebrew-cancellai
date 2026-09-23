@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `cancellai-cli containment install|list|lift` (E06-S07, ADR-0039): signed incident containment
+  now reaches the live mutation path. A notice signed with the cancellAI incident-response key (or
+  a publisher the owner trusts) caps a provider at observe or recommend, and `plan`/`clean` obey
+  it, re-checking immediately before every deletion. Only `containment lift --confirm` removes one.
+
+- `cancellai-cli clean` accepts `--verbose`, which lists each performed action, and
+  `--keep-claude-history`, for scripts written against the reference CLI (E06-S10). The Rust
+  engine never rewrites Claude's `history.jsonl`, with or without the flag; without it, a
+  human-readable run that deleted a Claude artifact now says so.
+
+### Changed
+
+- The build's release channel now bounds what `cancellai-cli` may do (SI-030): only a
+  stable-channel (or beta) build deletes. A build compiled without `CANCELLAI_CHANNEL=stable` -
+  any local `cargo build` - plans every deletion as an observation and exits 4. Release archives
+  are built as stable and are unaffected.
+
 ### Fixed
 
 - `cancellai-cli clean` now deletes on Windows (E06-S13). The Windows identity-confirmed delete
@@ -23,13 +42,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   planned for deletion.
 - A Claude session companion directory with many unreadable entries no longer buffers every
   failure in memory before the scan's bounded reason log applies (E06-S12).
-
-### Added
-
-- `cancellai-cli clean` accepts `--verbose`, which lists each performed action, and
-  `--keep-claude-history`, for scripts written against the reference CLI (E06-S10). The Rust
-  engine never rewrites Claude's `history.jsonl`, with or without the flag; without it, a
-  human-readable run that deleted a Claude artifact now says so.
 
 ## [1.21.0] - 2026-09-23
 

@@ -12,8 +12,8 @@ Epics: **34** | Stories: **178**
 - `cancelled`: 1
 - `done`: 167
 - `in_progress`: 1
-- `planned`: 3
-- `ready_for_review`: 5
+- `planned`: 1
+- `ready_for_review`: 7
 
 ## Change risk distribution
 
@@ -29,8 +29,10 @@ Epics: **34** | Stories: **178**
 
 ## Awaiting independent review
 
+- **E06-S07** - The CLI's authority passes through the release channel and the local containment ledger (CR4)
 - **E06-S08** - The Rust CLI stays within a performance self-budget measured against the reference (CR1)
 - **E06-S09** - clean survives being killed at every mutation point (CR3)
 - **E06-S10** - clean accepts --keep-claude-history and --verbose as the reference does (CR3)
 - **E06-S11** - clean --json always prints a document (CR2)
 - **E06-S12** - Codex lineage I/O errors and Claude companion error retention fail closed (CR4)
+- **E06-S13** - clean deletes on Windows through the identity-confirmed handle path (CR4)

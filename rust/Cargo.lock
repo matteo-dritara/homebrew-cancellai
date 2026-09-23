@@ -183,8 +183,10 @@ dependencies = [
  "cancellai-sealedfs",
  "cancellai-store",
  "clap",
+ "ed25519-dalek",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
 ]
 
 [[package]]
@@ -313,6 +315,7 @@ version = "0.1.0"
 dependencies = [
  "cancellai-model",
  "rusqlite",
+ "serde",
  "serde_json",
  "sha2 0.11.0",
 ]

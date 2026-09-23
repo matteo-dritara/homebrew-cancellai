@@ -28,6 +28,7 @@ const COMMANDS: &[&str] = &[
     "version",
     "update",
     "desktop-api",
+    "containment",
 ];
 /// Tokens that must reach the *top-level* parser unmodified so `cancellai-cli --help`/`-h`/
 /// `--version` show the overall command overview - matching the reference CLI's own
@@ -65,6 +66,33 @@ enum Commands {
     /// Serve the read-only desktop API on loopback for a desktop client - never mutates (E19-S01)
     #[command(name = "desktop-api")]
     DesktopApi(DesktopApiArgs),
+    /// Install, list or locally lift signed incident containment (E06-S07, ADR-0039)
+    Containment(ContainmentArgs),
+}
+
+#[derive(clap::Args, Debug, Clone)]
+pub struct ContainmentArgs {
+    #[command(subcommand)]
+    pub action: ContainmentAction,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum ContainmentAction {
+    /// Verify a signed containment notice and add it to the local ledger
+    Install {
+        /// The notice file (a signed knowledge bundle)
+        file: std::path::PathBuf,
+    },
+    /// Show every active containment
+    List,
+    /// Lift a containment locally - the only way one is ever removed
+    Lift {
+        /// The incident id to lift
+        incident_id: String,
+        /// Required: lifting restores authority a signed notice took away
+        #[arg(long)]
+        confirm: bool,
+    },
 }
 
 /// Flags shared by `status`/`inspect`/`plan` - every read-only command. A flag another
@@ -169,6 +197,7 @@ pub enum Invocation {
     Version(VersionArgs),
     Update(UpdateArgs),
     DesktopApi(DesktopApiArgs),
+    Containment(ContainmentArgs),
 }
 
 /// No subcommand, or a leading flag with no subcommand, always means `status` - the read-only
@@ -210,6 +239,7 @@ pub fn parse(args: &[String]) -> Invocation {
         Commands::Version(a) => Invocation::Version(a),
         Commands::Update(a) => Invocation::Update(a),
         Commands::DesktopApi(a) => Invocation::DesktopApi(a),
+        Commands::Containment(a) => Invocation::Containment(a),
     }
 }
 

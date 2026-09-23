@@ -17,6 +17,7 @@
 //! serves the read-only documents to a desktop client (`desktop.rs`).
 
 mod cli;
+mod containment;
 mod desktop;
 mod documents;
 mod install_source;
@@ -76,6 +77,43 @@ fn run(args: &[String]) -> i32 {
             a.connections
                 .map(|n| usize::try_from(n).unwrap_or(usize::MAX)),
         ),
+        cli::Invocation::Containment(a) => cmd_containment(a.action),
+    }
+}
+
+/// `containment install|list|lift` (E06-S07, ADR-0039). Exit codes follow the crate's taxonomy:
+/// 0 success, 2 invalid input, 4 refused for safety.
+fn cmd_containment(action: cli::ContainmentAction) -> i32 {
+    let outcome = match action {
+        cli::ContainmentAction::Install { file } => containment::cmd_install(&file),
+        cli::ContainmentAction::List => containment::cmd_list(),
+        cli::ContainmentAction::Lift {
+            incident_id,
+            confirm,
+        } => {
+            if !confirm {
+                return invalid_input(
+                    "containment lift requires --confirm: lifting restores authority a signed notice took away",
+                );
+            }
+            containment::cmd_lift(&incident_id).map(|count| {
+                vec![format!(
+                    "lifted {count} containment record(s) for {incident_id}"
+                )]
+            })
+        }
+    };
+    match outcome {
+        Ok(lines) => {
+            for line in lines {
+                println!("{line}");
+            }
+            0
+        }
+        Err((code, message)) => {
+            eprintln!("[containment] {message}");
+            code
+        }
     }
 }
 
@@ -368,13 +406,30 @@ fn inventory_doc(resolved: &Resolved, now: cancellai_platform::Timestamp) -> ser
 /// The actions a real `clean` would take, after the same root-authority withholding `clean`
 /// applies (SI-007: a preview that disagrees with the real run is itself a safety defect) -
 /// see `withhold_for_root_authority`'s docs. Shared by `plan` and the desktop API.
-fn plan_actions(resolved: &Resolved) -> (Vec<Action>, BTreeSet<&'static str>) {
+///
+/// E06-S07: after the root gate, every remaining `Delete` has its authority computed from the
+/// build's release channel and the persisted containment ledger (`containment::apply_authority`);
+/// the returned flag says whether that withheld anything.
+fn plan_actions(resolved: &Resolved) -> (Vec<Action>, BTreeSet<&'static str>, bool) {
     let provider_by_target = provider_id_by_target(resolved);
-    withhold_for_root_authority(
+    let (mut actions, withheld) = withhold_for_root_authority(
         build_actions(&planning_views(&resolved.resolutions)),
         resolved,
         &provider_by_target,
-    )
+    );
+    let by_id = classified_by_id(resolved);
+    let authority_withheld =
+        containment::apply_authority(&mut actions, &by_id, &containment::LedgerState::load());
+    (actions, withheld, authority_withheld)
+}
+
+fn classified_by_id(resolved: &Resolved) -> HashMap<ArtifactId, &ClassifiedArtifact> {
+    resolved
+        .resolutions
+        .iter()
+        .flat_map(|r| r.observed().iter())
+        .map(|c| (c.artifact.artifact_id.clone(), c))
+        .collect()
 }
 
 /// The plan document `plan --json` prints, for `actions` from [`plan_actions`].
@@ -401,6 +456,7 @@ fn cmd_read_only(flags: CommonFlags, mode: RunMode) -> i32 {
     };
     let now = SystemClock.now();
     let mut withheld_by_root_authority = BTreeSet::new();
+    let mut withheld_by_authority = false;
 
     match mode {
         RunMode::Status | RunMode::Inspect => {
@@ -417,8 +473,9 @@ fn cmd_read_only(flags: CommonFlags, mode: RunMode) -> i32 {
             }
         }
         RunMode::Plan => {
-            let (actions, withheld) = plan_actions(&resolved);
+            let (actions, withheld, authority_withheld) = plan_actions(&resolved);
             withheld_by_root_authority = withheld;
+            withheld_by_authority = authority_withheld;
             if flags.json {
                 let doc = plan_doc(&resolved, now, actions);
                 println!(
@@ -448,6 +505,12 @@ fn cmd_read_only(flags: CommonFlags, mode: RunMode) -> i32 {
                 .copied()
                 .collect::<Vec<_>>()
                 .join(", ")
+        );
+        ErrorCategory::SafetyBlock.exit_code()
+    } else if withheld_by_authority {
+        eprintln!(
+            "[{}] destructive work was withheld by the release channel or signed incident containment; see each action's reason",
+            ErrorCategory::SafetyBlock.code()
         );
         ErrorCategory::SafetyBlock.exit_code()
     } else {
@@ -513,18 +576,13 @@ fn cmd_clean(flags: CommonFlags) -> i32 {
         Ok(r) => r,
         Err(e) => return invalid_input(&e),
     };
-    let provider_by_target = provider_id_by_target(&resolved);
-    let (actions, withheld) = withhold_for_root_authority(
-        build_actions(&planning_views(&resolved.resolutions)),
-        &resolved,
-        &provider_by_target,
-    );
+    let (actions, withheld, authority_withheld) = plan_actions(&resolved);
     // SI-008/SI-009/SI-002: absence-of-evidence and absence-of-ownership both withhold real
     // work, and that must be visible in the exit code every time this command can report it -
     // including `--dry-run` and the "nothing to clean" short-circuit, not only a real run (E06
     // verifier review round 1: an earlier version always exited 0 on those two paths regardless
     // of whether something was actually withheld).
-    let safety_withheld = any_incomplete(&resolved) || !withheld.is_empty();
+    let safety_withheld = any_incomplete(&resolved) || !withheld.is_empty() || authority_withheld;
     let delete_count = actions
         .iter()
         .filter(|a| a.action_class == ActionClass::Delete)
@@ -802,6 +860,20 @@ fn execute_clean(resolved: &Resolved, actions: &[Action], flags: &CommonFlags) -
                         Some(process_names)
                     };
                     kill_points::reached("before-delete", delete_visit);
+                    // E06-S07: the ledger as persisted now, not as it was when the plan was
+                    // built - a notice installed while this run waited at its prompt, or between
+                    // two deletions, binds every deletion after it.
+                    if let Err(reason) = containment::recheck(classified) {
+                        any_blocked = true;
+                        results.push(ActionResultDoc {
+                            action_id: action.action_id.0.clone(),
+                            status: "safely_skipped",
+                            reason_code: reason,
+                            reclaimed_bytes: 0,
+                            post_action_state: "hot",
+                        });
+                        continue;
+                    }
                     let doc = delete_one(
                         approved_root,
                         &resolver,
@@ -968,7 +1040,7 @@ fn delete_one(
         root_fingerprint,
         &bound,
         ActionClass::Delete,
-        AuthorityLevel::Govern,
+        action.authority,
         Reversibility::Irreversible,
         process_guard,
         &SystemProviderLayoutObserver,

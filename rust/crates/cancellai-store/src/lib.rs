@@ -138,6 +138,9 @@ pub mod tombstone;
 /// cancellAI's own local-state root capability (E13-S06) - the one thing every layer's
 /// production `open()` derives its database path from, closing E13-S04's round-3 marker-mimicry
 /// finding. See [`local_state_root`]'s own module doc.
+// E06-S07: the incident containment history and the owner's trusted publishers, stored as
+// opaque text the safety kernel re-verifies on every load (ADR-0039).
+pub mod containment_state;
 mod local_state_root;
 pub use local_state_root::{LocalStateRoot, LocalStateRootError};
 

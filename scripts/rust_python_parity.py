@@ -84,6 +84,7 @@ import contextlib
 import dataclasses
 import importlib.util
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -303,21 +304,30 @@ def python_result(tool: str, provider_root: Path, other_root: Path, days: int, k
     )
 
 
+# E06-S07 made the release channel a live authority input: a build compiled without
+# CANCELLAI_CHANNEL=stable is Nightly and proposes no deletion at all (SI-030), so comparing it
+# with the reference would measure the channel, not the engine. The gate compares the engine as
+# it ships - a stable-channel build - in its own target directory, because `option_env!` gives
+# a shared target directory no reason to rebuild when the variable changes.
+STABLE_TARGET_DIR = RUST_DIR / "target" / "stable-channel"
+
+
 def rust_binary() -> Path:
     cargo = shutil.which("cargo")
     if not cargo:
         raise ParityError("cargo is not available on PATH")
     result = subprocess.run(  # noqa: S603
-        [cargo, "build", "--quiet", "-p", "cancellai-cli"],
+        [cargo, "build", "--quiet", "-p", "cancellai-cli", "--target-dir", str(STABLE_TARGET_DIR)],
         cwd=RUST_DIR,
         capture_output=True,
         text=True,
         check=False,
-        timeout=300,
+        timeout=600,
+        env={**os.environ, "CANCELLAI_CHANNEL": "stable"},
     )
     if result.returncode != 0:
         raise ParityError(f"cargo build -p cancellai-cli failed: {result.stderr.strip()}")
-    binary = RUST_DIR / "target" / "debug" / "cancellai-cli"
+    binary = STABLE_TARGET_DIR / "debug" / "cancellai-cli"
     if not binary.is_file():
         raise ParityError(f"expected built binary at {binary}, not found")
     return binary

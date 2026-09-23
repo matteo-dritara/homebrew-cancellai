@@ -41,7 +41,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 REFERENCE = ROOT / "cancellai.py"
-DEFAULT_RUST_BIN = ROOT / "rust" / "target" / "release" / ("cancellai-cli.exe" if os.name == "nt" else "cancellai-cli")
+# A stable-channel release build: since E06-S07 a build without CANCELLAI_CHANNEL=stable is
+# Nightly and plans no deletion, which the corpus liveness check below refuses to time. Build it
+# with `CANCELLAI_CHANNEL=stable cargo build --release -p cancellai-cli --target-dir
+# target/stable-channel` from rust/.
+DEFAULT_RUST_BIN = ROOT / "rust" / "target" / "stable-channel" / "release" / ("cancellai-cli.exe" if os.name == "nt" else "cancellai-cli")
 
 # Retention flags shared by every measured command. `--keep-latest` protects this many sessions
 # per provider, so the expected deletion count is `2 * (sessions - KEEP_LATEST)`.
@@ -249,7 +253,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.sessions <= KEEP_LATEST:
         parser.error(f"--sessions must exceed --keep-latest ({KEEP_LATEST}), or nothing is a candidate")
     if not args.rust_bin.exists():
-        print(f"error: {args.rust_bin} does not exist; build it with `cargo build --release -p cancellai-cli`", file=sys.stderr)
+        print(
+            f"error: {args.rust_bin} does not exist; from rust/, build it with "
+            "`CANCELLAI_CHANNEL=stable cargo build --release -p cancellai-cli --target-dir target/stable-channel`",
+            file=sys.stderr,
+        )
         return 2
 
     results, errors = measure(args.rust_bin, args.sessions, args.runs)

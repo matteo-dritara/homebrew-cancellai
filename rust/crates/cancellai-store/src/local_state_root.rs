@@ -144,6 +144,33 @@ impl LocalStateRoot {
         Self::resolve(&base.join("state"))
     }
 
+    /// The same root as [`Self::resolve_platform_default`], but only if it already exists:
+    /// `Ok(None)` when it does not, and nothing is created (E06-S07). A read-only command such
+    /// as `plan` consults cancellAI's own state without leaving a directory behind as a side
+    /// effect, and an absent state directory is a known-empty state, not missing evidence.
+    pub fn existing_platform_default() -> Result<Option<Self>, LocalStateRootError> {
+        let base = platform_default_base(
+            std::env::var_os("CANCELLAI_HOME").map(PathBuf::from),
+            std::env::var_os("HOME").map(PathBuf::from),
+        );
+        let Some(base) = base else {
+            return Err(LocalStateRootError(
+                "cannot resolve cancellAI's own local-state directory: neither CANCELLAI_HOME \
+                 nor HOME is set"
+                    .to_string(),
+            ));
+        };
+        let dir = base.join("state");
+        match std::fs::symlink_metadata(&dir) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(LocalStateRootError(format!(
+                "could not observe cancellAI's local-state root at {}: {error}",
+                dir.display()
+            ))),
+            Ok(_) => Self::resolve(&dir).map(Some),
+        }
+    }
+
     /// Establishes `dir` as cancellAI's own local-state root: creates it if it does not already
     /// exist, then canonicalizes it once. `pub(crate)` - round 4 independent review of E13-S06
     /// found this accepting an arbitrary caller-supplied `dir` as its only public constructor

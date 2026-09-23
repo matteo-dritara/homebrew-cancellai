@@ -35,6 +35,20 @@ Read-only. Resolves the current retention policy against discovered sessions and
 proposed actions - a human summary, or (`--json`) a `JSON_CONTRACTS.md` plan document. Never
 mutates anything, regardless of any other flag.
 
+### `containment`
+
+`containment install <file>`, `containment list` and `containment lift <incident-id> --confirm`
+manage signed incident containment (E06-S07, ADR-0039; `docs/security/INCIDENT_RESPONSE.md`). A
+containment caps a provider - optionally narrowed to versions, action classes and platforms - at
+`observe` or `recommend`, which `plan` and `clean` obey: a contained deletion is shown as an
+observation naming the incident. Exit codes: 0 success, 2 invalid input (including `lift` without
+`--confirm` or of an incident that is not contained), 4 refused for safety.
+
+**Release channel.** Since E06-S07 the build's compiled release channel is a live authority input
+(SI-030): only a build compiled with `CANCELLAI_CHANNEL=stable` (or `beta`) can delete. Every
+other build - including a plain `cargo build` - plans every deletion as an observation that names
+`release_channel_authority`, and exits 4.
+
 ### `clean`
 
 The only mutating command. `--dry-run` previews without touching anything; otherwise an

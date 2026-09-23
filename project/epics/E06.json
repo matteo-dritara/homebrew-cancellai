@@ -108,7 +108,7 @@
     {
       "id": "E06-S07",
       "title": "The CLI's authority passes through the release channel and the local containment ledger",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "ADR-0039 puts signed incident containment inside the cutover perimeter, fed by locally installed notices. Today `clean` seals every plan at a constant Govern, so neither the release-channel ceiling (E17-S05) nor containment (E17-S07) can reach a mutation; LocalTrustPolicy is never constructed outside tests; and the ledger lives in memory, so restarting the process would lift every containment. This story makes authority computed rather than asserted, compiles in the project incident-response key, adds the explicit containment install/list/lift commands, persists the ledger, and closes E17-S07's round-5 residual by capping a notice's bytes before parsing. It builds on E17-S07's ledger, which is done before this story starts; the edge is not declared because E17 sits in a later roadmap phase, the same inversion E06-S04's blocker already records.",
       "change_risk": "CR4",
       "dependencies": [],
@@ -271,7 +271,7 @@
     {
       "id": "E06-S13",
       "title": "clean deletes on Windows through the identity-confirmed handle path",
-      "status": "planned",
+      "status": "ready_for_review",
       "outcome": "E06-S09's kill harness, on its first Windows run, showed that `cancellai-cli clean` deletes nothing on Windows: every planned deletion is safely skipped with \"identity-confirmed deletion is only implemented for plain files, not this target's kind\". E20-S05 implemented Windows identity observation and a handle-relative `confirmed_delete_file` in `cancellai-platform`, and closed with an independent PASS, but `cancellai-safety::mutation_executor::delete_operation_for` still maps every `IdentityToken::Windows` to no operation - the second, independent backstop written before the Windows primitive existed, never revisited. The engine is therefore fail-closed on Windows, which is safe, while the cutover checklist reads G3 as ready, which is not true of the one mutating command. This story lets the executor select the delete operation for a Windows identity it can confirm is a regular file, and nothing else.",
       "change_risk": "CR4",
       "dependencies": [],

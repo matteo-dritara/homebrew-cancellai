@@ -225,6 +225,26 @@ pub fn verify_bundle(
     policy: &LocalTrustPolicy,
     now_unix: u64,
 ) -> Result<VerifiedKnowledgeBundle, KnowledgeBundleError> {
+    verify_bundle_inner(bundle, policy, Some(now_unix))
+}
+
+/// [`verify_bundle`] without the expiry check, for one caller only: replaying a containment
+/// ledger's persisted bundles, each of which passed the full check - expiry included - when it
+/// was installed (E06-S07, ADR-0039). Expiry must not lift a containment (SI-029), so a bundle
+/// that has since expired still re-verifies here; every other check - schema, publisher, digest,
+/// signature - runs unchanged. Crate-private so nothing outside the kernel can reach it.
+pub(crate) fn verify_bundle_ignoring_expiry(
+    bundle: &KnowledgeBundle,
+    policy: &LocalTrustPolicy,
+) -> Result<VerifiedKnowledgeBundle, KnowledgeBundleError> {
+    verify_bundle_inner(bundle, policy, None)
+}
+
+fn verify_bundle_inner(
+    bundle: &KnowledgeBundle,
+    policy: &LocalTrustPolicy,
+    now_unix: Option<u64>,
+) -> Result<VerifiedKnowledgeBundle, KnowledgeBundleError> {
     if bundle.schema_version < SUPPORTED_SCHEMA_VERSIONS.0
         || bundle.schema_version > SUPPORTED_SCHEMA_VERSIONS.1
     {
@@ -256,9 +276,10 @@ pub fn verify_bundle(
     // one file where churn is most expensive. The condition is unchanged: absent `expires_at`
     // means no expiry, and the comparison is still `>=`, so expiring exactly at the boundary
     // still rejects.
-    if bundle
-        .expires_at
-        .is_some_and(|expires_at| now_unix >= expires_at)
+    if let Some(now_unix) = now_unix
+        && bundle
+            .expires_at
+            .is_some_and(|expires_at| now_unix >= expires_at)
     {
         return Err(KnowledgeBundleError::Expired);
     }

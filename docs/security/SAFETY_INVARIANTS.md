@@ -365,6 +365,13 @@ containment update - unreachable service, malformed text, bad signature, unknown
 expiry, replay - leaves the containment ledger exactly as it was, and no refusal, rollback or
 expiry can remove a containment already recorded. Only a local lift does.
 
+Since E06-S07 the ledger persists as a history of raw signed bundles and local lifts that the
+kernel re-verifies on every load, skipping only the expiry check (expiry never lifts). The
+guarantee covers every input from outside the owner's account. It does not cover the owner's own
+state: a process running as the same user can delete, truncate or append to the history, and
+each of those lifts containment - an accepted limit (owner decision, 2026-09-23;
+`docs/security/INCIDENT_RESPONSE.md`), not a gap in the verification.
+
 ### SI-030 Release channel bounds default authority
 
 Experimental/nightly builds do not inherit stable-level autonomous destructive defaults merely because user configuration exists from a stable install.

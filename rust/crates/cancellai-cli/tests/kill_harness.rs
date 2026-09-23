@@ -240,6 +240,17 @@ fn cases() -> Vec<(String, usize)> {
 
 #[test]
 fn clean_killed_at_every_mutation_point_leaves_a_safe_state_and_a_rerun_finishes_it() {
+    // E06-S07: a build without a stable channel compiled in cannot delete (SI-030), so there is
+    // no mutation path to kill. `rust.yml`'s kill-harness job builds with CANCELLAI_CHANNEL=stable.
+    if !matches!(
+        option_env!("CANCELLAI_CHANNEL")
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("stable" | "beta")
+    ) {
+        eprintln!("skipped: needs a CANCELLAI_CHANNEL=stable build (E06-S07)");
+        return;
+    }
     for (point, expected_gone) in cases() {
         let home = Home::new("case");
         let tree = build_tree(home.path());
