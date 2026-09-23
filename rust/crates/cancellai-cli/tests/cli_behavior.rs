@@ -59,11 +59,6 @@ impl TempHome {
         path
     }
 
-    // Only used by this file's real-deletion tests, which are `#[cfg(unix)]`-only (see the
-    // note above `clean_yes_deletes_a_stale_unprotected_session_and_reports_it_in_the_result_
-    // document`) - without this, a Windows build sees no caller at all and `-D warnings` turns
-    // that into a hard `dead_code` error.
-    #[cfg(unix)]
     fn write_stale_codex_session(&self, session_id: &str) -> PathBuf {
         let dir = self.0.join(".codex/sessions/2020/01/01");
         std::fs::create_dir_all(&dir).unwrap();
@@ -207,17 +202,9 @@ fn clean_dry_run_never_deletes_anything() {
     assert!(session.exists(), "--dry-run must never delete anything");
 }
 
-// `cancellai-platform::identity::SystemIdentityObserver` reports `Unsupported` unconditionally
-// on non-Unix platforms today (E03-S01's own disclosed residual risk, `#[cfg(not(unix))]` in
-// `identity.rs`) - `ApprovedRoot::establish`/`bind` therefore always fails closed on Windows,
-// so a real deletion can never succeed there yet regardless of anything E06 changed (E20-S01
-// "Windows native backend" tracks closing this - moved from E07 into a dedicated epic once it
-// became clear this work needs a real Windows/WSL environment to verify against, see E07.json's
-// own objective note). First observed as an actual Windows CI failure on 2026-09-01 - not a
-// regression, but the first time this crate's mutation-path integration tests were ever reached
-// on Windows CI (an unrelated pre-existing clippy failure had aborted the job before them on
-// every prior run, the same pattern E07-S05/E20-S04 already document).
-#[cfg(unix)]
+// Real-deletion tests run on every platform. They were Unix-only until E06-S13: the safety
+// executor refused every Windows identity, so `clean` deleted nothing on Windows even after
+// E20-S05 built the handle-relative Windows primitive.
 #[test]
 fn clean_yes_deletes_a_stale_unprotected_session_and_reports_it_in_the_result_document() {
     let home = TempHome::new("clean-yes");
@@ -280,9 +267,6 @@ fn clean_without_confirmation_or_dry_run_declines_and_deletes_nothing() {
     );
 }
 
-// See the identical `#[cfg(unix)]` note above `clean_yes_deletes_a_stale_unprotected_session_
-// and_reports_it_in_the_result_document` - this test also requires a real deletion to succeed.
-#[cfg(unix)]
 #[test]
 fn keep_latest_protects_the_most_recent_session_from_a_json_clean_run() {
     let home = TempHome::new("clean-keep-latest");
@@ -1312,7 +1296,6 @@ fn an_irrelevant_flag_before_help_is_still_refused() {
 /// E06-S10: `--keep-claude-history` is accepted, and `history.jsonl` is byte-identical after a
 /// real clean whether or not it is given - this engine never rewrites it. Without the flag the
 /// human output says so; with it the note is silenced.
-#[cfg(unix)]
 #[test]
 fn clean_leaves_claude_history_untouched_with_and_without_keep_claude_history() {
     for keep in [false, true] {
@@ -1355,7 +1338,6 @@ fn clean_leaves_claude_history_untouched_with_and_without_keep_claude_history() 
 
 /// E06-S10: `--verbose` reports each action without changing which actions run: the same tree
 /// cleaned with and without it deletes the same artifacts and reports the same totals.
-#[cfg(unix)]
 #[test]
 fn clean_verbose_reports_each_action_and_changes_nothing_it_does() {
     let mut totals = Vec::new();

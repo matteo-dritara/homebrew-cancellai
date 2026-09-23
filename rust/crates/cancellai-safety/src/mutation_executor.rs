@@ -296,12 +296,18 @@ fn delete_operation_for(identity: &IdentityToken) -> Option<MutationOperation> {
             FileKind::File => Some(MutationOperation::DeleteFile),
             FileKind::Directory | FileKind::Symlink | FileKind::Other => None,
         },
-        // `cancellai-platform::mutation::confirmed_delete_file` has no verified Windows
-        // implementation yet (E20-S01 implemented Windows identity *observation*, not a
-        // confirmed-delete primitive) - refuse here too, as a second, independent backstop
-        // alongside that function's own `cfg(not(unix))` refusal, rather than relying on
-        // exactly one layer to fail closed (SI-017, SI-019).
-        IdentityToken::Windows { .. } => None,
+        // E06-S13: E20-S05 gave `cancellai-platform::mutation::confirmed_delete_file` a
+        // verified Windows implementation (open-time identity against a retained handle, a
+        // fresh re-check, a handle-relative `NtCreateFile` delete, and delete-pending
+        // corroboration on the same handle). This backstop was written before that primitive
+        // existed and kept refusing every Windows identity, so `clean` deleted nothing on
+        // Windows. It now admits exactly what it admits on Unix: a plain file. A reparse point
+        // is classified `Symlink` by the Windows observer and stays refused, as does every
+        // directory and unknown kind (SI-017, SI-019).
+        IdentityToken::Windows { kind, .. } => match kind {
+            FileKind::File => Some(MutationOperation::DeleteFile),
+            FileKind::Directory | FileKind::Symlink | FileKind::Other => None,
+        },
     }
 }
 
@@ -355,6 +361,39 @@ pub fn execute_with_system_capabilities(plan: &SealedPlan, target: &BoundedPath)
         &cancellai_platform::SystemProcessObserver,
         &cancellai_platform::SystemProviderLayoutObserver,
     )
+}
+
+/// E06-S13: which identities the executor admits for deletion, on every platform's token. Not
+/// under the Unix-only module below, because the question is about the token, not the host.
+#[cfg(test)]
+mod delete_operation_tests {
+    use super::*;
+    use cancellai_platform::Timestamp;
+
+    fn windows(kind: FileKind) -> IdentityToken {
+        IdentityToken::Windows {
+            volume_serial_number: 7,
+            file_index: 42,
+            kind,
+            modified: Timestamp(1),
+            modified_ticks: 10,
+        }
+    }
+
+    #[test]
+    fn a_windows_plain_file_is_deletable() {
+        assert_eq!(
+            delete_operation_for(&windows(FileKind::File)),
+            Some(MutationOperation::DeleteFile)
+        );
+    }
+
+    #[test]
+    fn a_windows_directory_reparse_point_or_unknown_kind_is_refused() {
+        for kind in [FileKind::Directory, FileKind::Symlink, FileKind::Other] {
+            assert_eq!(delete_operation_for(&windows(kind)), None, "{kind:?}");
+        }
+    }
 }
 
 // Unix-only: every test in this module ends up calling `real_bounded_file()`/`ApprovedRoot::

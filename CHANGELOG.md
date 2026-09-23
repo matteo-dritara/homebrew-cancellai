@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `cancellai-cli clean` now deletes on Windows (E06-S13). The Windows identity-confirmed delete
+  primitive existed since E20-S05, but the safety executor still refused every Windows target, so
+  every planned deletion there was safely skipped. Only plain files are admitted, as on Unix;
+  directories and reparse points stay refused.
 - `cancellai-cli clean --json` always prints a JSON document (E06-S11). It used to print a plain
   sentence when no deletion was planned, and a human summary on `--dry-run`, which broke any
   script parsing its output on exactly the runs that did nothing - including the ones where

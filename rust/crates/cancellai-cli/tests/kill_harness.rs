@@ -28,7 +28,6 @@ use std::time::{Duration, Instant};
 
 /// Stale sessions per provider. With `--keep-latest 0` every one of them is planned.
 const STALE_PER_PROVIDER: usize = 2;
-#[cfg(unix)]
 const PLANNED: usize = 2 * STALE_PER_PROVIDER;
 const REACH_TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -229,7 +228,6 @@ fn kill_at(home: &Path, point: &str, plant_partial: Option<&Path>) {
 }
 
 /// Every point, and how many planned artifacts it implies are already gone when it is reached.
-#[cfg(unix)]
 fn cases() -> Vec<(String, usize)> {
     let mut cases = vec![("roots-established".to_string(), 0)];
     for n in 0..PLANNED {
@@ -240,11 +238,6 @@ fn cases() -> Vec<(String, usize)> {
     cases
 }
 
-// Unix only until E06-S13: on Windows the safety executor refuses every deletion
-// (`delete_operation_for` maps `IdentityToken::Windows` to no operation), so `clean` removes
-// nothing there and the kill points after a delete are never meaningfully reached. The first
-// Windows run of this harness is how that was found. The two tests below still run on Windows.
-#[cfg(unix)]
 #[test]
 fn clean_killed_at_every_mutation_point_leaves_a_safe_state_and_a_rerun_finishes_it() {
     for (point, expected_gone) in cases() {

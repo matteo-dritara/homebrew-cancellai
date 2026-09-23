@@ -215,6 +215,12 @@ orderings).
   Windows allocated-size reporting is implemented (E20-S05,
   `cancellai-sealedfs::observe_allocated_size`,
   `GetFileInformationByHandleEx(FileStandardInfo)`).
+- `clean` deletes on Windows since E06-S13. Before it, the safety executor's
+  `delete_operation_for` still mapped every Windows identity to no operation - a backstop
+  written before E20-S05's handle-relative Windows delete existed and never revisited - so every
+  planned deletion there was safely skipped. It now admits a Windows plain file exactly as it
+  admits a Unix one; a directory, a reparse point (classified `Symlink`) or an unknown kind stays
+  refused.
 - A default-named root (`$HOME/.claude`/`$HOME/.codex`, no override) that is itself a link is
   refused as non-default on every platform (E07-S07, `rust/crates/cancellai-cli/src/roots.rs`'s
   `is_symlink`) - proven with real fixtures for a Unix symlink and, since `std` exposes no
