@@ -112,7 +112,9 @@ Rungs 1 and 3 of the hierarchy above are implemented as data, not as a control c
   containment ceiling, because the two constraints are independent.
 - **Nothing remote can undo it.** The ledger is monotonic: a replayed or older bundle is refused,
   a newer bundle that omits an incident does not lift it, rolling the knowledge store back does
-  not lift it, and a bundle's expiry does not lift it. Only `ContainmentLedger::lift_locally`
+  not lift it, and a bundle's expiry does not lift it. Records are append-only, so a re-issue of
+  the same incident - by the same publisher or another - adds to the scope in force and can only
+  keep or tighten its ceiling; it never narrows or relaxes one. Only `ContainmentLedger::lift_locally`
   removes a containment, and it is for local code acting on the owner-visible closure decision
   this runbook requires.
 - **Offline.** An unreachable knowledge service, an unparseable response, a bad signature, an
@@ -122,7 +124,8 @@ Rungs 1 and 3 of the hierarchy above are implemented as data, not as a control c
 - **Evidence.** Each applied containment yields an `IncidentEvidence` record: incident id,
   severity, provider, versions, action classes, platforms, ceiling, Safety Invariant ids, affected
   releases, knowledge provenance (publisher, sequence, issue time, payload digest) and the
-  running build's release provenance (version, channel). Every string is checked against a
+  running build's release provenance (version, channel). The release provenance is read from
+  compile-time metadata inside the safety crate; no caller can supply it. Every string is checked against a
   bounded identifier alphabet on the way in, so no provider payload content can reach the record.
 
 Not yet in place: a shipped distribution channel for containment bundles and a caller on the live

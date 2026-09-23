@@ -166,21 +166,41 @@ pub enum RefreshOutcome {
     Applied(Vec<IncidentEvidence>),
 }
 
-/// The build a containment was ingested under.
+/// The build a containment was ingested under: this crate's compiled package version and the
+/// compiled [`BuildChannel`]. Its fields are private and it has no public constructor, so neither
+/// a caller nor a notice can make an evidence record claim a different release (E17 round 2):
+///
+/// ```compile_fail
+/// let forged = cancellai_safety::ReleaseProvenance {
+///     version: "9.99.9".to_string(),
+///     channel: cancellai_model::ReleaseChannel::Stable,
+/// };
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct ReleaseProvenance {
-    pub version: String,
-    pub channel: cancellai_model::ReleaseChannel,
+    version: String,
+    channel: cancellai_model::ReleaseChannel,
 }
 
 impl ReleaseProvenance {
-    /// The running build: its compiled version and compiled channel, never values a caller or a
-    /// notice supplies.
-    pub fn of_this_build(channel: BuildChannel) -> Self {
+    /// The running build, read from compile-time metadata only.
+    pub(crate) fn of_this_build() -> Self {
+        Self::for_channel(BuildChannel::from_compiled_env())
+    }
+
+    fn for_channel(channel: BuildChannel) -> Self {
         Self {
             version: env!("CARGO_PKG_VERSION").to_string(),
             channel: channel.level(),
         }
+    }
+
+    pub fn version(&self) -> &str {
+        &self.version
+    }
+
+    pub fn channel(&self) -> cancellai_model::ReleaseChannel {
+        self.channel
     }
 }
 
@@ -228,10 +248,23 @@ pub struct ContainmentBinding {
 }
 
 /// Every containment this installation has verified and not locally lifted.
-#[derive(Debug, Clone, Default)]
+///
+/// Records are only ever appended. A re-issue of an incident - by the same publisher at a later
+/// sequence, or by another trusted publisher - adds a record beside the earlier one rather than
+/// replacing it, so the scope in force is the union of every record for that incident and the
+/// ceiling is the strictest of them. Nothing remote can narrow a scope or relax a ceiling
+/// (E17 round 2: a same-id re-issue with fewer versions used to replace the broader record).
+#[derive(Debug, Clone)]
 pub struct ContainmentLedger {
-    active: BTreeMap<String, IncidentEvidence>,
+    active: Vec<IncidentEvidence>,
     last_sequence: BTreeMap<String, u64>,
+    release: ReleaseProvenance,
+}
+
+impl Default for ContainmentLedger {
+    fn default() -> Self {
+        Self::with_release(ReleaseProvenance::of_this_build())
+    }
 }
 
 impl ContainmentLedger {
@@ -239,9 +272,17 @@ impl ContainmentLedger {
         Self::default()
     }
 
-    /// Every active containment, ordered by incident id.
+    fn with_release(release: ReleaseProvenance) -> Self {
+        Self {
+            active: Vec::new(),
+            last_sequence: BTreeMap::new(),
+            release,
+        }
+    }
+
+    /// Every active containment record, in the order it was verified.
     pub fn active(&self) -> impl Iterator<Item = &IncidentEvidence> {
-        self.active.values()
+        self.active.iter()
     }
 
     /// One knowledge-service poll. `fetched` is the raw bundle text, or the fact that the service
@@ -251,14 +292,13 @@ impl ContainmentLedger {
         fetched: Result<&str, KnowledgeUnavailable>,
         policy: &LocalTrustPolicy,
         now_unix: u64,
-        release: &ReleaseProvenance,
     ) -> RefreshOutcome {
         let Ok(text) = fetched else {
             return RefreshOutcome::Offline;
         };
         let applied = parse_bundle(text)
             .map_err(|_| ContainmentError::MalformedBundle)
-            .and_then(|bundle| self.ingest(&bundle, policy, now_unix, release));
+            .and_then(|bundle| self.ingest(&bundle, policy, now_unix));
         match applied {
             Ok(evidence) => RefreshOutcome::Applied(evidence),
             Err(error) => RefreshOutcome::Refused(error),
@@ -272,7 +312,6 @@ impl ContainmentLedger {
         bundle: &KnowledgeBundle,
         policy: &LocalTrustPolicy,
         now_unix: u64,
-        release: &ReleaseProvenance,
     ) -> Result<Vec<IncidentEvidence>, ContainmentError> {
         let verified = verify_bundle(bundle, policy, now_unix).map_err(ContainmentError::Bundle)?;
         if self
@@ -303,36 +342,31 @@ impl ContainmentLedger {
                 invariants: entry.invariants,
                 affected_releases: entry.affected_releases,
                 knowledge: knowledge.clone(),
-                release: release.clone(),
+                release: self.release.clone(),
             })
             .collect();
         self.last_sequence
             .insert(verified.publisher_id, verified.sequence);
-        for record in &evidence {
-            // A re-issued incident keeps the stricter of the two ceilings: the network may
-            // narrow a containment, never relax one.
-            let merged = match self.active.get(&record.incident_id) {
-                Some(existing) if existing.ceiling.level() < record.ceiling.level() => {
-                    existing.clone()
-                }
-                _ => record.clone(),
-            };
-            self.active.insert(record.incident_id.clone(), merged);
-        }
+        self.active.extend(evidence.iter().cloned());
         Ok(evidence)
     }
 
-    /// Removes a containment. Local code calls this after the owner-visible closure decision
-    /// `docs/security/INCIDENT_RESPONSE.md` requires; no notice field can reach it.
-    pub fn lift_locally(&mut self, incident_id: &str) -> Option<IncidentEvidence> {
-        self.active.remove(incident_id)
+    /// Removes every record of an incident, whichever publisher issued it. Local code calls this
+    /// after the owner-visible closure decision `docs/security/INCIDENT_RESPONSE.md` requires; no
+    /// notice field can reach it. Returns the records removed (empty when none was active).
+    pub fn lift_locally(&mut self, incident_id: &str) -> Vec<IncidentEvidence> {
+        let (lifted, kept) = std::mem::take(&mut self.active)
+            .into_iter()
+            .partition(|record| record.incident_id == incident_id);
+        self.active = kept;
+        lifted
     }
 
     /// Whether a trust promotion for `provider_id` must wait: while any containment names the
     /// provider, raising its trust tier is refused ("stop promotion").
     pub fn freezes_promotion_of(&self, provider_id: &str) -> bool {
         self.active
-            .values()
+            .iter()
             .any(|record| record.provider_id == provider_id)
     }
 
@@ -341,16 +375,19 @@ impl ContainmentLedger {
     pub fn binding_for(&self, target: &ContainmentTarget<'_>) -> Option<ContainmentBinding> {
         let matching: Vec<&IncidentEvidence> = self
             .active
-            .values()
+            .iter()
             .filter(|record| applies_to(record, target))
             .collect();
         let ceiling = matching.iter().map(|record| record.ceiling.level()).min()?;
         Some(ContainmentBinding {
             ceiling,
+            // One name per incident, sorted, however many records of it bind.
             incidents: matching
                 .iter()
                 .filter(|record| record.ceiling.level() == ceiling)
                 .map(|record| record.incident_id.clone())
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
                 .collect(),
         })
     }
@@ -501,10 +538,7 @@ mod tests {
     }
 
     fn release() -> ReleaseProvenance {
-        ReleaseProvenance {
-            version: "1.18.0".to_string(),
-            channel: ReleaseChannel::Stable,
-        }
+        ReleaseProvenance::of_this_build()
     }
 
     fn signing_bytes(bundle: &KnowledgeBundle) -> Vec<u8> {
@@ -590,7 +624,6 @@ mod tests {
                 &bundle(1, "acme", sequence, None, payload),
                 &policy(1, "acme"),
                 NOW,
-                &release(),
             )
             .expect("valid containment must apply");
     }
@@ -780,7 +813,7 @@ mod tests {
         for stale in [replay, older] {
             let before: Vec<IncidentEvidence> = ledger.active().cloned().collect();
             assert_eq!(
-                ledger.ingest(&stale, &policy(1, "acme"), NOW, &release()),
+                ledger.ingest(&stale, &policy(1, "acme"), NOW),
                 Err(ContainmentError::Replayed)
             );
             assert_eq!(before, ledger.active().cloned().collect::<Vec<_>>());
@@ -835,7 +868,6 @@ mod tests {
                 &bundle(1, "acme", 1, None, &notice(vec![wide])),
                 &policy,
                 NOW,
-                &release(),
             )
             .expect("initial containment applies");
 
@@ -846,7 +878,6 @@ mod tests {
                 &bundle(2, "backup", 1, None, &notice(vec![narrowed])),
                 &policy,
                 NOW,
-                &release(),
             )
             .expect("second trusted publisher is independently sequenced");
 
@@ -862,6 +893,69 @@ mod tests {
     }
 
     #[test]
+    fn a_same_publisher_reissue_cannot_shrink_scope_or_relax_the_ceiling() {
+        let mut ledger = ContainmentLedger::empty();
+        let mut wide = entry("INC-1", "codex", "observe");
+        wide["provider_versions"] = serde_json::json!(["2.0.0", "3.0.0"]);
+        wide["action_classes"] = serde_json::json!(["delete", "quarantine"]);
+        wide["platforms"] = serde_json::json!(["linux", "macos"]);
+        contained(&mut ledger, &notice(vec![wide]), 1);
+
+        let mut narrow = entry("INC-1", "codex", "recommend");
+        narrow["provider_versions"] = serde_json::json!(["3.0.0"]);
+        narrow["action_classes"] = serde_json::json!(["delete"]);
+        narrow["platforms"] = serde_json::json!(["macos"]);
+        contained(&mut ledger, &notice(vec![narrow]), 2);
+
+        // Every target the first record covered is still contained, at its original ceiling.
+        for version in ["2.0.0", "3.0.0"] {
+            for class in [ActionClass::Delete, ActionClass::Quarantine] {
+                for platform in [IncidentPlatform::Linux, IncidentPlatform::Macos] {
+                    let binding = ledger.binding_for(&ContainmentTarget {
+                        provider_id: "codex",
+                        provider_version: Some(version),
+                        action_class: class,
+                        platform,
+                    });
+                    assert_eq!(
+                        binding.map(|b| (b.ceiling, b.incidents)),
+                        Some((AuthorityLevel::Observe, vec!["INC-1".to_string()])),
+                        "{version} {class:?} {platform:?}"
+                    );
+                }
+            }
+        }
+        assert_eq!(ledger.active().count(), 2);
+    }
+
+    #[test]
+    fn a_second_publisher_cannot_relax_another_publishers_ceiling() {
+        let policy = LocalTrustPolicy::new(vec![
+            TrustedPublisher {
+                publisher_id: "acme".to_string(),
+                public_key: key(1).verifying_key().to_bytes(),
+                tier: TrustedTier::for_tests(ProviderTrust::BuiltinVerified),
+            },
+            TrustedPublisher {
+                publisher_id: "backup".to_string(),
+                public_key: key(2).verifying_key().to_bytes(),
+                tier: TrustedTier::for_tests(ProviderTrust::BuiltinVerified),
+            },
+        ]);
+        let mut ledger = ContainmentLedger::empty();
+        let strict = notice(vec![entry("INC-1", "codex", "observe")]);
+        let lax = notice(vec![entry("INC-1", "codex", "recommend")]);
+        ledger
+            .ingest(&bundle(1, "acme", 1, None, &strict), &policy, NOW)
+            .expect("strict applies");
+        ledger
+            .ingest(&bundle(2, "backup", 1, None, &lax), &policy, NOW)
+            .expect("lax applies beside it");
+        let binding = ledger.binding_for(&target("codex", ActionClass::Delete));
+        assert_eq!(binding.map(|b| b.ceiling), Some(AuthorityLevel::Observe));
+    }
+
+    #[test]
     fn rolling_the_knowledge_store_back_does_not_lift_a_containment() {
         let policy = policy(1, "acme");
         let first = bundle(1, "acme", 1, None, "{\"manifest\":\"v1\"}");
@@ -872,7 +966,7 @@ mod tests {
         store.apply(&first, &policy, NOW).expect("first applies");
         store.apply(&second, &policy, NOW).expect("second applies");
         ledger
-            .ingest(&second, &policy, NOW, &release())
+            .ingest(&second, &policy, NOW)
             .expect("containment applies");
         store
             .rollback(NOW)
@@ -891,14 +985,14 @@ mod tests {
         let payload = notice(vec![entry("INC-1", "codex", "observe")]);
         let expired = bundle(1, "acme", 1, Some(NOW), &payload);
         assert_eq!(
-            ledger.ingest(&expired, &policy(1, "acme"), NOW, &release()),
+            ledger.ingest(&expired, &policy(1, "acme"), NOW),
             Err(ContainmentError::Bundle(KnowledgeBundleError::Expired))
         );
         assert_eq!(ledger.active().count(), 0);
 
         let expiring = bundle(1, "acme", 2, Some(NOW + 1), &payload);
         ledger
-            .ingest(&expiring, &policy(1, "acme"), NOW, &release())
+            .ingest(&expiring, &policy(1, "acme"), NOW)
             .expect("valid until NOW + 1");
         // Time passes beyond the bundle's expiry; the containment stays.
         assert!(
@@ -916,9 +1010,28 @@ mod tests {
             &notice(vec![entry("INC-1", "codex", "observe")]),
             1,
         );
-        assert!(ledger.lift_locally("INC-404").is_none());
-        let lifted = ledger.lift_locally("INC-1").expect("was active");
-        assert_eq!(lifted.incident_id, "INC-1");
+        contained(
+            &mut ledger,
+            &notice(vec![
+                entry("INC-1", "codex", "recommend"),
+                entry("INC-2", "claude", "observe"),
+            ]),
+            2,
+        );
+        assert!(ledger.lift_locally("INC-404").is_empty());
+        let lifted = ledger.lift_locally("INC-1");
+        assert_eq!(
+            lifted.len(),
+            2,
+            "every record of the incident is lifted together"
+        );
+        assert!(lifted.iter().all(|record| record.incident_id == "INC-1"));
+        assert!(
+            ledger
+                .binding_for(&target("claude", ActionClass::Delete))
+                .is_some(),
+            "lifting one incident leaves another in force"
+        );
         assert!(
             ledger
                 .binding_for(&target("codex", ActionClass::Delete))
@@ -944,7 +1057,7 @@ mod tests {
         for (candidate, expected) in cases {
             let mut ledger = ContainmentLedger::empty();
             assert_eq!(
-                ledger.ingest(&candidate, &policy(1, "acme"), NOW, &release()),
+                ledger.ingest(&candidate, &policy(1, "acme"), NOW),
                 Err(ContainmentError::Bundle(expected))
             );
             assert_eq!(ledger.active().count(), 0);
@@ -961,17 +1074,9 @@ mod tests {
             None,
             &notice(vec![entry("INC-1", "codex", "observe")]),
         );
-        assert!(
-            ledger
-                .ingest(&forged, &policy(1, "acme"), NOW, &release())
-                .is_err()
-        );
+        assert!(ledger.ingest(&forged, &policy(1, "acme"), NOW).is_err());
         let malformed = bundle(1, "acme", 8, None, "{\"schema_version\":1}");
-        assert!(
-            ledger
-                .ingest(&malformed, &policy(1, "acme"), NOW, &release())
-                .is_err()
-        );
+        assert!(ledger.ingest(&malformed, &policy(1, "acme"), NOW).is_err());
         contained(
             &mut ledger,
             &notice(vec![entry("INC-1", "codex", "observe")]),
@@ -990,12 +1095,7 @@ mod tests {
             &notice(vec![entry("INC-1", "codex", "observe")]),
             1,
         );
-        let outcome = ledger.refresh(
-            Err(KnowledgeUnavailable),
-            &policy(1, "acme"),
-            NOW,
-            &release(),
-        );
+        let outcome = ledger.refresh(Err(KnowledgeUnavailable), &policy(1, "acme"), NOW);
         assert_eq!(outcome, RefreshOutcome::Offline);
         assert!(
             ledger
@@ -1004,12 +1104,7 @@ mod tests {
         );
 
         let mut fresh = ContainmentLedger::empty();
-        let outcome = fresh.refresh(
-            Err(KnowledgeUnavailable),
-            &policy(1, "acme"),
-            NOW,
-            &release(),
-        );
+        let outcome = fresh.refresh(Err(KnowledgeUnavailable), &policy(1, "acme"), NOW);
         assert_eq!(outcome, RefreshOutcome::Offline);
         assert!(
             fresh
@@ -1022,23 +1117,18 @@ mod tests {
     fn refresh_refuses_garbage_and_applies_a_valid_bundle() {
         let mut ledger = ContainmentLedger::empty();
         assert_eq!(
-            ledger.refresh(
-                Ok("<html>captive portal</html>"),
-                &policy(1, "acme"),
-                NOW,
-                &release()
-            ),
+            ledger.refresh(Ok("<html>captive portal</html>"), &policy(1, "acme"), NOW),
             RefreshOutcome::Refused(ContainmentError::MalformedBundle)
         );
         let payload = notice(vec![entry("INC-1", "codex", "observe")]);
         let text =
             serde_json::to_string(&bundle(1, "acme", 1, None, &payload)).expect("serializes");
-        match ledger.refresh(Ok(&text), &policy(1, "acme"), NOW, &release()) {
+        match ledger.refresh(Ok(&text), &policy(1, "acme"), NOW) {
             RefreshOutcome::Applied(evidence) => assert_eq!(evidence.len(), 1),
             other => panic!("expected Applied, got {other:?}"),
         }
         assert!(matches!(
-            ledger.refresh(Ok(&text), &policy(1, "acme"), NOW, &release()),
+            ledger.refresh(Ok(&text), &policy(1, "acme"), NOW),
             RefreshOutcome::Refused(ContainmentError::Replayed)
         ));
     }
@@ -1059,7 +1149,6 @@ mod tests {
                 &bundle(1, "acme", 3, None, &payload),
                 &policy(1, "acme"),
                 NOW,
-                &release(),
             )
             .expect("applies");
         let record = evidence.first().expect("one record");
@@ -1157,7 +1246,6 @@ mod tests {
                 &bundle(1, "acme", sequence, None, &payload),
                 &policy(1, "acme"),
                 NOW,
-                &release(),
             );
             assert!(
                 matches!(result, Err(ContainmentError::MalformedNotice(_))),
@@ -1178,8 +1266,7 @@ mod tests {
                 .ingest(
                     &bundle(1, "acme", 1, None, &payload),
                     &policy(1, "acme"),
-                    NOW,
-                    &release()
+                    NOW
                 )
                 .is_err()
         );
@@ -1295,7 +1382,7 @@ mod tests {
 
     #[test]
     fn release_provenance_comes_from_the_build_not_the_caller() {
-        let provenance = ReleaseProvenance::of_this_build(BuildChannel::default());
+        let provenance = ReleaseProvenance::for_channel(BuildChannel::default());
         assert_eq!(provenance.version, env!("CARGO_PKG_VERSION"));
         assert_eq!(provenance.channel, ReleaseChannel::Nightly);
     }

@@ -84,6 +84,16 @@ python3 -m pytest tests -q                                                -> all
 - Any publisher in the local trust policy may issue a containment regardless of its tier: listing
   a publisher is the local trust act, and a containment can only reduce authority.
 
+## Round-2 repairs (independent review FAIL, `project/evidence/E17-VERIFIER-REVIEW-ROUND2.md`)
+
+| Finding | Repair | Evidence |
+| --- | --- | --- |
+| A same-id re-issue (same or other trusted publisher) with a narrower scope replaced the broader record, uncontaining affected versions | The ledger is append-only: each verified entry is a record of its own; scope in force is the union, ceiling the strictest; `lift_locally` removes every record of an incident | verifier's `a_reissued_incident_cannot_shrink_scope_or_be_replaced_by_another_publisher`; `a_same_publisher_reissue_cannot_shrink_scope_or_relax_the_ceiling` (versions x action classes x platforms); `a_second_publisher_cannot_relax_another_publishers_ceiling`; `only_a_local_lift_removes_a_containment` (multi-record lift) |
+| `ingest` accepted caller-supplied `ReleaseProvenance` with public fields, so evidence could claim a release the build is not | `ReleaseProvenance` has private fields and no public constructor; the ledger reads it once from compile-time metadata (`CARGO_PKG_VERSION`, `BuildChannel::from_compiled_env`); `ingest`/`refresh` take no release argument | `compile_fail` doctest on `ReleaseProvenance`; `release_provenance_comes_from_the_build_not_the_caller`; `evidence_records_provenance_capability_provider_platform_and_invariants` |
+
+Gates after repair: `cargo test --workspace` 1108 passed; clippy `-D warnings` clean;
+`cancellai-safety` coverage 98.74% (floor 97.78%); pre-commit all hooks passed.
+
 ## Verifier verdict
 
-(pending - independent reviewer; CR4 Safety Verdict required)
+Round 2: FAIL (repaired above). Round 3 pending - independent reviewer; CR4 Safety Verdict required.
