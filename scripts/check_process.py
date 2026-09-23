@@ -139,7 +139,9 @@ REVIEW_ROUND_EXCEPTIONS = {
     "E06": "round 3 is the first independent pass over E06-S07..S13, the cutover stories added "
     "under ADR-0039 on 2026-09-23 with the owner's direction to close the cutover, and the second "
     "for E06-S06; rounds 1 and 2 reviewed different stories (E06-S01..S03) - not a repeated "
-    "attempt at the same work. See E06-VERIFIER-REVIEW-ROUND3.md",
+    "attempt at the same work. See E06-VERIFIER-REVIEW-ROUND3.md. Round 4 re-reviews only the "
+    "three stories round 3 failed (E06-S08, E06-S10, E06-S13) - their second pass, within the "
+    "owner's two-review limit per story",
 }
 # Matches both an epic-scoped record (`E07-VERIFIER-REVIEW.md`) and a story-scoped one
 # (`E07-S07-VERIFIER-REVIEW.md`), counting both against the *epic's* ceiling (captured
