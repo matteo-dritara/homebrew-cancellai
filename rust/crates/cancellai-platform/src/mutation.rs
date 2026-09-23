@@ -361,16 +361,12 @@ fn confirmed_delete_file_inner(
         .map_err(|e| MutationError(format!("delete failed: {e}")))?;
 
     // Final corroboration via the fd opened at the very start: an open fd stays valid after
-    // its directory entry is unlinked (Unix semantics), so if the unlink above really removed a
-    // name of the object this fd holds, that object lost exactly one link. E06-S13 found this
-    // used to demand a link count of 0, which is the same thing only for a file with one name:
-    // a file with a second hard link was unlinked by name and then reported as a failed
-    // deletion of "a different object". Unlinking a name never removes data another link still
-    // reaches, so one link fewer is the whole claim to verify.
+    // its directory entry is unlinked (Unix semantics), so if the unlink above really removed
+    // the object this fd holds, that object's link count is now 0.
     let after = file
         .metadata()
         .map_err(|e| MutationError(format!("could not stat held handle after deletion: {e}")))?;
-    if after.nlink() != before.nlink().saturating_sub(1) {
+    if after.nlink() != 0 {
         return Err(MutationError(
             "deletion removed a different filesystem object than the one confirmed open \
              (post-deletion link-count check failed); the intended target may still exist"
