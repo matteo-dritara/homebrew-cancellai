@@ -102,6 +102,13 @@ pub struct CleanArgs {
     /// Skip interactive confirmation
     #[arg(short = 'y', long)]
     pub yes: bool,
+    /// Leave Claude's history.jsonl untouched. Accepted for the reference CLI's scripts: this
+    /// engine never rewrites history.jsonl, with or without the flag
+    #[arg(long = "keep-claude-history")]
+    pub keep_claude_history: bool,
+    /// Report every performed action, not only the totals; never changes which actions run
+    #[arg(long)]
+    pub verbose: bool,
 }
 
 #[derive(clap::Args, Debug, Clone)]

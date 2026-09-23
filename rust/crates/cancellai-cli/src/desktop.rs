@@ -35,6 +35,8 @@ fn flags_for(query: Query) -> CommonFlags {
         allow_running: query.allow_running,
         dry_run: false,
         yes: false,
+        keep_claude_history: false,
+        verbose: false,
     }
 }
 

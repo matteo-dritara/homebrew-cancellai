@@ -92,6 +92,8 @@ struct CommonFlags {
     allow_running: bool,
     dry_run: bool,
     yes: bool,
+    keep_claude_history: bool,
+    verbose: bool,
 }
 
 impl From<cli::ReadOnlyArgs> for CommonFlags {
@@ -104,6 +106,8 @@ impl From<cli::ReadOnlyArgs> for CommonFlags {
             allow_running: a.allow_running,
             dry_run: false,
             yes: false,
+            keep_claude_history: false,
+            verbose: false,
         }
     }
 }
@@ -113,6 +117,8 @@ impl From<cli::CleanArgs> for CommonFlags {
         CommonFlags {
             dry_run: a.dry_run,
             yes: a.yes,
+            keep_claude_history: a.keep_claude_history,
+            verbose: a.verbose,
             ..a.common.into()
         }
     }
@@ -562,7 +568,7 @@ fn cmd_clean(flags: CommonFlags) -> i32 {
         }
     }
 
-    let exit_code = execute_clean(&resolved, &actions, flags.json, flags.allow_running);
+    let exit_code = execute_clean(&resolved, &actions, &flags);
     if exit_code == 0 && safety_withheld {
         ErrorCategory::SafetyBlock.exit_code()
     } else {
@@ -671,7 +677,8 @@ fn establish_verified_root(
     ApprovedRoot::establish(path, resolver, observer)
 }
 
-fn execute_clean(resolved: &Resolved, actions: &[Action], json: bool, allow_running: bool) -> i32 {
+fn execute_clean(resolved: &Resolved, actions: &[Action], flags: &CommonFlags) -> i32 {
+    let allow_running = flags.allow_running;
     let by_id: HashMap<ArtifactId, &ClassifiedArtifact> = resolved
         .resolutions
         .iter()
@@ -703,6 +710,7 @@ fn execute_clean(resolved: &Resolved, actions: &[Action], json: bool, allow_runn
     let mut any_failed = false;
     let mut any_blocked = false;
     let mut reclaimed_bytes = 0u64;
+    let mut claude_session_deleted = false;
 
     for action in actions {
         // A sealed plan always names at least one target, but a plan is data and this loop is the
@@ -751,7 +759,7 @@ fn execute_clean(resolved: &Resolved, actions: &[Action], json: bool, allow_runn
                     } else {
                         Some(process_names)
                     };
-                    delete_one(
+                    let doc = delete_one(
                         approved_root,
                         &resolver,
                         &observer,
@@ -763,7 +771,11 @@ fn execute_clean(resolved: &Resolved, actions: &[Action], json: bool, allow_runn
                         &mut any_failed,
                         &mut any_blocked,
                         &mut reclaimed_bytes,
-                    )
+                    );
+                    if provider_id == "claude-code" && doc.status == "succeeded" {
+                        claude_session_deleted = true;
+                    }
+                    doc
                 }
             },
             ActionClass::Observe
@@ -781,7 +793,7 @@ fn execute_clean(resolved: &Resolved, actions: &[Action], json: bool, allow_runn
     }
 
     let now = SystemClock.now();
-    if json {
+    if flags.json {
         let doc = documents::result_document("plan-1".to_string(), now, results);
         println!(
             "{}",
@@ -789,8 +801,29 @@ fn execute_clean(resolved: &Resolved, actions: &[Action], json: bool, allow_runn
                 .expect("diagnostic documents are plain owned structs and always serialize")
         );
     } else {
+        if flags.verbose {
+            for r in &results {
+                println!(
+                    "  {status} {id}: {reason} ({bytes} bytes)",
+                    status = r.status,
+                    id = r.action_id,
+                    reason = r.reason_code,
+                    bytes = r.reclaimed_bytes,
+                );
+            }
+        }
         let succeeded = results.iter().filter(|r| r.status == "succeeded").count();
         println!("{succeeded} artifact(s) deleted, {reclaimed_bytes} bytes reclaimed.");
+        if !flags.keep_claude_history && claude_session_deleted {
+            // E06-S10: the reference rewrites history.jsonl to drop lines tied to the sessions
+            // it deleted; this engine has no mutation primitive that rewrites a provider file,
+            // so it says so rather than leaving the difference silent (docs/CLI_RUST.md).
+            println!(
+                "Claude history.jsonl was left unchanged: this engine never rewrites it, so \
+                 deleted sessions may still be listed there (pass --keep-claude-history to \
+                 silence this note)."
+            );
+        }
     }
 
     if any_failed {

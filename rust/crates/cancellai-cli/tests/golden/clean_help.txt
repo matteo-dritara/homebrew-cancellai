@@ -10,4 +10,6 @@ Options:
       --allow-running              Proceed even though a Codex/Claude process appears to be running, or liveness could not be determined
       --dry-run                    Preview only; never mutates
   -y, --yes                        Skip interactive confirmation
+      --keep-claude-history        Leave Claude's history.jsonl untouched. Accepted for the reference CLI's scripts: this engine never rewrites history.jsonl, with or without the flag
+      --verbose                    Report every performed action, not only the totals; never changes which actions run
   -h, --help                       Print help

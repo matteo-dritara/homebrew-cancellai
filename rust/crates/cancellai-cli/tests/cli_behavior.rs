@@ -1308,3 +1308,90 @@ fn an_irrelevant_flag_before_help_is_still_refused() {
     let output = run(&home, &["status", "--dry-run", "--help"]);
     assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
 }
+
+/// E06-S10: `--keep-claude-history` is accepted, and `history.jsonl` is byte-identical after a
+/// real clean whether or not it is given - this engine never rewrites it. Without the flag the
+/// human output says so; with it the note is silenced.
+#[cfg(unix)]
+#[test]
+fn clean_leaves_claude_history_untouched_with_and_without_keep_claude_history() {
+    for keep in [false, true] {
+        let home = TempHome::new(if keep { "keep-history" } else { "trim-history" });
+        let session_id = "66666666-6666-4666-8666-666666666666";
+        let session = home.write_stale_claude_session("proj-h", session_id);
+        let history = home.path().join(".claude/history.jsonl");
+        let history_bytes = format!("{{\"sessionId\":\"{session_id}\",\"display\":\"x\"}}\n");
+        std::fs::write(&history, &history_bytes).unwrap();
+
+        let mut args = vec![
+            "clean",
+            "--yes",
+            "--allow-running",
+            "--keep-latest",
+            "0",
+            "--tool",
+            "claude",
+        ];
+        if keep {
+            args.push("--keep-claude-history");
+        }
+        let output = run(&home, &args);
+        assert!(
+            output.status.success(),
+            "{}{}",
+            stdout(&output),
+            stderr(&output)
+        );
+        assert!(!session.exists(), "the stale session must be deleted");
+        assert_eq!(
+            std::fs::read_to_string(&history).unwrap(),
+            history_bytes,
+            "history.jsonl must never be rewritten (keep={keep})"
+        );
+        let note = stdout(&output).contains("history.jsonl was left unchanged");
+        assert_eq!(note, !keep, "{}", stdout(&output));
+    }
+}
+
+/// E06-S10: `--verbose` reports each action without changing which actions run: the same tree
+/// cleaned with and without it deletes the same artifacts and reports the same totals.
+#[cfg(unix)]
+#[test]
+fn clean_verbose_reports_each_action_and_changes_nothing_it_does() {
+    let mut totals = Vec::new();
+    for verbose in [false, true] {
+        let home = TempHome::new(if verbose { "verbose" } else { "quiet" });
+        let claude =
+            home.write_stale_claude_session("proj-v", "77777777-7777-4777-8777-777777777777");
+        let codex = home.write_stale_codex_session("88888888-8888-4888-8888-888888888888");
+        let mut args = vec!["clean", "--yes", "--allow-running", "--keep-latest", "0"];
+        if verbose {
+            args.push("--verbose");
+        }
+        let output = run(&home, &args);
+        assert!(output.status.success(), "{}", stdout(&output));
+        assert!(!claude.exists() && !codex.exists());
+        let out = stdout(&output);
+        let per_action = out
+            .lines()
+            .filter(|l| l.starts_with("  succeeded "))
+            .count();
+        assert_eq!(per_action, if verbose { 2 } else { 0 }, "{out}");
+        totals.push(
+            out.lines()
+                .find(|l| l.contains("artifact(s) deleted"))
+                .unwrap()
+                .to_string(),
+        );
+    }
+    assert_eq!(totals[0], totals[1]);
+}
+
+#[test]
+fn verbose_and_keep_claude_history_are_refused_outside_clean() {
+    let home = TempHome::new("flags-outside-clean");
+    for flag in ["--verbose", "--keep-claude-history"] {
+        let output = run(&home, &["plan", flag]);
+        assert_eq!(output.status.code(), Some(2), "{flag}");
+    }
+}

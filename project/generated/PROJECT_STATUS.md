@@ -11,7 +11,8 @@ Epics: **34** | Stories: **175**
 - `blocked`: 1
 - `cancelled`: 1
 - `done`: 167
-- `planned`: 6
+- `planned`: 5
+- `ready_for_review`: 1
 
 ## Change risk distribution
 
@@ -27,4 +28,4 @@ Epics: **34** | Stories: **175**
 
 ## Awaiting independent review
 
-- none
+- **E06-S10** - clean accepts --keep-claude-history and --verbose as the reference does (CR3)

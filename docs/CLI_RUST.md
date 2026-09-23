@@ -191,8 +191,16 @@ orderings).
 - `--aggressive` (legacy/cache category widening) is not implemented - `cancellai-policy`
   finds a subset of what `cancellai.py --aggressive` would, never a superset (fail-closed, not
   a safety gap).
-- `status --paths`/`--coverage`/`--top` and `clean --keep-claude-history`/`--verbose` have no
-  Rust equivalent yet.
+- `status --paths`/`--coverage`/`--top` have no Rust equivalent; they are refused as usage
+  errors and stay disclosed divergences at cutover (E06-S10).
+- `clean --verbose` reports each performed action; it never changes which actions run.
+- `clean --keep-claude-history` is accepted and exact, but for a reason worth stating: the
+  reference, *without* the flag, rewrites Claude's `history.jsonl` to drop lines tied to the
+  sessions it deleted, and this engine never rewrites `history.jsonl` at all. Rewriting a
+  provider file is a second kind of mutation the one safety boundary (SI-019) does not have -
+  the same reason the Codex native backend above is not wired - so the absent trim is a
+  disclosed divergence, and a human-readable `clean` that deleted a Claude artifact says so
+  unless `--keep-claude-history` was given (E06-S10).
 - Windows process-liveness is implemented (E20-S05, `cancellai-platform`'s
   `SystemProcessObserver` calling `cancellai-sealedfs::list_running_process_names`
   (`CreateToolhelp32Snapshot`) rather than shelling out to `ps`); only a genuinely exotic

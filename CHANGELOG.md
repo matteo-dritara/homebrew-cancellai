@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `cancellai-cli clean` accepts `--verbose`, which lists each performed action, and
+  `--keep-claude-history`, for scripts written against the reference CLI (E06-S10). The Rust
+  engine never rewrites Claude's `history.jsonl`, with or without the flag; without it, a
+  human-readable run that deleted a Claude artifact now says so.
+
 ## [1.21.0] - 2026-09-23
 
 ### Added

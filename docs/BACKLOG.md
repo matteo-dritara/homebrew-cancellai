@@ -881,21 +881,21 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S10 - clean accepts --keep-claude-history and --verbose as the reference does
 
-**Status:** `planned` | **Change Risk:** `CR3` | **Dependencies:** none | **Safety obligations:** SI-019
+**Status:** `ready_for_review` | **Change Risk:** `CR3` | **Dependencies:** none | **Safety obligations:** SI-019
 
-**Outcome.** G1 lists disclosed functional gaps. The owner chose to close the two clean flags before cutover, because a script that passes them to the canonical engine would otherwise break, and to accept the rest (--aggressive, status --paths/--coverage/--top) as disclosed divergences stated in the release notes. --keep-claude-history narrows what clean may remove; --verbose only reports more.
+**Outcome.** G1 lists disclosed functional gaps. The owner chose to close the two clean flags before cutover, because a script that passes them to the canonical engine would otherwise break, and to accept the rest (--aggressive, status --paths/--coverage/--top) as disclosed divergences stated in the release notes. In the reference, --keep-claude-history does not protect an artifact: it turns off the rewrite of history.jsonl that drops lines tied to deleted Claude sessions. The Rust engine never rewrites history.jsonl - that rewrite is a second kind of mutation the one safety boundary does not have, the same reason E22-S05 declined the Codex native backend - so Rust already behaves as if the flag were always given. Accepting the flag is therefore exact, and the absent trim stays a disclosed divergence rather than being added here as a side effect. --verbose only reports more.
 
 **Acceptance criteria**
 
-- When clean or plan is given --keep-claude-history, the system shall propose no action on any artifact the reference's flag protects, matching the reference on the NORMATIVE corpus.
-- If --keep-claude-history is given and the classification of a history artifact is unknown, then the system shall keep it.
-- When clean is given --verbose, the system shall report per-action detail without changing which actions run.
+- When clean is given --keep-claude-history, the system shall accept it and leave history.jsonl untouched, which is what the reference does with the flag.
+- If clean runs without --keep-claude-history, then the system shall still leave history.jsonl untouched and say so in its output, because rewriting it is a mutation outside the one safety boundary and stays a disclosed divergence.
+- When clean is given --verbose, the system shall report each performed action without changing which actions run.
 - The system shall keep refusing --aggressive and the unsupported status flags as usage errors, and the release notes shall list them as intentional divergences.
 
 **Verification**
 
-- New NORMATIVE fixtures cover --keep-claude-history and pass the differential gate.
-- A test shows the --verbose action set equals the non-verbose one.
+- A CLI test shows --keep-claude-history accepted and history.jsonl byte-identical after clean, with and without the flag.
+- A test shows the --verbose action set and results equal the non-verbose ones.
 
 **Documentation impact**
 
