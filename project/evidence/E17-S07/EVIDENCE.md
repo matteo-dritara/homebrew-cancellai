@@ -108,8 +108,21 @@ round's required repair:
 Gates after repair: `cargo test --workspace` 1160 passed; clippy `-D warnings` clean; `cargo deny
 check` ok; `cancellai-safety` coverage 98.86%.
 
+## Round-4 repairs (owner-authorized final round, FAIL, `project/evidence/E17-VERIFIER-REVIEW-ROUND4.md`)
+
+Round 4 confirmed every round-3 repair and found two defects in the round-3 deduplication:
+
+| Finding | Repair | Evidence |
+| --- | --- | --- |
+| Scope lists compared as ordered vectors, so a permuted or repeated-member re-issue of the same scope consumed capacity | Every scope and evidence list is stored as a canonical set (sorted, deduplicated) when the record is built | `reordered_or_repeated_scope_members_consume_no_capacity` (versions, action classes, platforms, invariants and releases permuted and repeated; one record kept; a new scope still fits at the bound; the bound then refuses); disabling sort or dedup each fails it |
+| Deduplication ignored severity, invariants and affected releases, so a re-issue adding evidence returned it but did not retain it | The redundancy identity includes severity, invariants and affected releases; a re-issue that adds any of them is its own (bounded) record | `a_reissue_that_adds_evidence_keeps_that_evidence`, `each_evidence_field_alone_makes_a_reissue_a_record_of_its_own`; dropping any one of the three fields from the identity fails it |
+
+Gates after repair: `cargo test -p cancellai-safety` 203 passed + 7 doctests; full gates in the
+commit that carries this section.
+
 ## Verifier verdict
 
-Round 2: FAIL. Round 3: FAIL. Both repaired above. These were the two independent reviews the
-owner allowed for this story; the Safety Verdict's latest line is round 3's FAIL, so the story
-cannot close without a further independent verdict, which only the owner can authorize.
+Round 2: FAIL. Round 3: FAIL. Round 4 (the one extra round the owner authorized): FAIL. All three
+rounds' findings are repaired above, but the Safety Verdict's latest line is round 4's FAIL, and
+no further independent round is authorized. E17-S07 therefore stays at `ready_for_review`: it
+cannot close until the owner either authorizes another independent verdict or records one.

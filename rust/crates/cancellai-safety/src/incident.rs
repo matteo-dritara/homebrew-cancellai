@@ -326,15 +326,39 @@ impl IncidentEvidence {
         &self.release
     }
 
-    /// Whether `other` imposes exactly the same containment (same incident, scope and ceiling),
-    /// whatever notice carried it. Such a record adds nothing to the ledger.
-    fn same_containment(&self, other: &Self) -> bool {
+    /// Whether `other` says exactly what this record says - the same containment (incident,
+    /// scope, ceiling) and the same incident evidence (severity, invariants, affected releases) -
+    /// whatever notice carried it. Only such a record is redundant. Lists are canonical sets by
+    /// the time a record exists ([`canonical`]), so order and repetition cannot make two equal
+    /// records look different (E17 round 4), and a re-issue that adds an invariant or an
+    /// affected release is a record of its own, so that evidence is kept (E17 round 4).
+    fn is_redundant_with(&self, other: &Self) -> bool {
         self.incident_id == other.incident_id
             && self.provider_id == other.provider_id
             && self.provider_versions == other.provider_versions
             && self.action_classes == other.action_classes
             && self.platforms == other.platforms
             && self.ceiling == other.ceiling
+            && self.severity == other.severity
+            && self.invariants == other.invariants
+            && self.affected_releases == other.affected_releases
+    }
+}
+
+/// A list as the set it means: sorted by `key`, each member once.
+fn canonical<T, K: Ord>(mut items: Vec<T>, key: impl Fn(&T) -> K) -> Vec<T> {
+    items.sort_by_key(|item| key(item));
+    items.dedup_by(|a, b| key(a) == key(b));
+    items
+}
+
+fn action_class_rank(class: &ActionClass) -> u8 {
+    match class {
+        ActionClass::Observe => 0,
+        ActionClass::Quarantine => 1,
+        ActionClass::Archive => 2,
+        ActionClass::Delete => 3,
+        ActionClass::Restore => 4,
     }
 }
 
@@ -454,25 +478,31 @@ impl ContainmentLedger {
                 incident_id: entry.incident_id,
                 severity: entry.severity,
                 provider_id: entry.provider_id,
-                provider_versions: entry.provider_versions,
-                action_classes: entry.action_classes,
-                platforms: entry.platforms,
+                provider_versions: entry
+                    .provider_versions
+                    .map(|versions| canonical(versions, String::clone)),
+                action_classes: entry
+                    .action_classes
+                    .map(|classes| canonical(classes, action_class_rank)),
+                platforms: entry
+                    .platforms
+                    .map(|platforms| canonical(platforms, |p| *p)),
                 ceiling: entry.ceiling,
-                invariants: entry.invariants,
-                affected_releases: entry.affected_releases,
+                invariants: canonical(entry.invariants, String::clone),
+                affected_releases: canonical(entry.affected_releases, String::clone),
                 knowledge: knowledge.clone(),
                 release: self.release.clone(),
             })
             .collect();
-        // A record identical in incident, scope and ceiling to one already held adds nothing;
-        // only genuinely new containment consumes capacity.
+        // A record identical in containment and evidence to one already held adds nothing; only a
+        // record that says something new consumes capacity.
         let mut fresh: Vec<IncidentEvidence> = Vec::new();
         for record in &evidence {
             let known = self
                 .active
                 .iter()
                 .chain(fresh.iter())
-                .any(|held| held.same_containment(record));
+                .any(|held| held.is_redundant_with(record));
             if !known {
                 fresh.push(record.clone());
             }
@@ -1166,6 +1196,129 @@ mod tests {
     }
 
     #[test]
+    fn reordered_or_repeated_scope_members_consume_no_capacity() {
+        let mut ledger = small_ledger(2, 8);
+        let mut first = entry("INC-1", "codex", "observe");
+        first["provider_versions"] = serde_json::json!(["1.0.0", "2.0.0"]);
+        first["action_classes"] = serde_json::json!(["delete", "archive"]);
+        first["platforms"] = serde_json::json!(["linux", "macos"]);
+        first["invariants"] = serde_json::json!(["SI-029", "SI-022"]);
+        first["affected_releases"] = serde_json::json!(["1.17.4", "1.17.3"]);
+        contained(&mut ledger, &notice(vec![first]), 1);
+
+        let permutations = [
+            (
+                serde_json::json!(["2.0.0", "1.0.0", "2.0.0"]),
+                serde_json::json!(["archive", "delete"]),
+                serde_json::json!(["macos", "linux"]),
+            ),
+            (
+                serde_json::json!(["1.0.0", "2.0.0", "1.0.0"]),
+                serde_json::json!(["delete", "delete", "archive"]),
+                serde_json::json!(["linux", "macos", "linux"]),
+            ),
+        ];
+        for (sequence, (versions, classes, platforms)) in (2..).zip(permutations) {
+            let mut same = entry("INC-1", "codex", "observe");
+            same["provider_versions"] = versions;
+            same["action_classes"] = classes;
+            same["platforms"] = platforms;
+            same["invariants"] = serde_json::json!(["SI-022", "SI-029", "SI-022"]);
+            same["affected_releases"] = serde_json::json!(["1.17.3", "1.17.4"]);
+            contained(&mut ledger, &notice(vec![same]), sequence);
+        }
+        assert_eq!(ledger.active().count(), 1, "permutations are the same set");
+
+        // A genuinely new scope still fits in the one remaining slot, and then the bound holds.
+        contained(
+            &mut ledger,
+            &notice(vec![entry("INC-2", "claude", "observe")]),
+            10,
+        );
+        assert_eq!(ledger.active().count(), 2);
+        assert_eq!(
+            ledger.ingest(
+                &bundle(
+                    1,
+                    "acme",
+                    11,
+                    None,
+                    &notice(vec![entry("INC-3", "claude", "recommend")])
+                ),
+                &policy(1, "acme"),
+                NOW
+            ),
+            Err(ContainmentError::LedgerFull)
+        );
+        let stored = ledger.active().next().expect("first record");
+        assert_eq!(
+            stored.provider_versions(),
+            Some(&["1.0.0".to_string(), "2.0.0".to_string()][..])
+        );
+        assert_eq!(
+            stored.action_classes(),
+            Some(&[ActionClass::Archive, ActionClass::Delete][..])
+        );
+        assert_eq!(
+            stored.platforms(),
+            Some(&[IncidentPlatform::Macos, IncidentPlatform::Linux][..])
+        );
+    }
+
+    #[test]
+    fn a_reissue_that_adds_evidence_keeps_that_evidence() {
+        let mut ledger = ContainmentLedger::empty();
+        contained(
+            &mut ledger,
+            &notice(vec![entry("INC-1", "codex", "observe")]),
+            1,
+        );
+        let mut more = entry("INC-1", "codex", "observe");
+        more["invariants"] = serde_json::json!(["SI-022", "SI-030"]);
+        more["affected_releases"] = serde_json::json!(["1.17.4", "1.18.0"]);
+        more["severity"] = serde_json::json!("S1");
+        contained(&mut ledger, &notice(vec![more]), 2);
+        let records: Vec<&IncidentEvidence> = ledger.active().collect();
+        assert_eq!(
+            records.len(),
+            2,
+            "the added evidence is retained as its own record"
+        );
+        let retained = records.last().expect("second record");
+        assert_eq!(
+            retained.invariants(),
+            ["SI-022".to_string(), "SI-030".to_string()]
+        );
+        assert_eq!(
+            retained.affected_releases(),
+            ["1.17.4".to_string(), "1.18.0".to_string()]
+        );
+        assert_eq!(retained.severity(), IncidentSeverity::S1);
+        assert_eq!(retained.knowledge().sequence(), 2);
+    }
+
+    #[test]
+    fn each_evidence_field_alone_makes_a_reissue_a_record_of_its_own() {
+        let changes = [
+            ("invariants", serde_json::json!(["SI-022", "SI-030"])),
+            ("affected_releases", serde_json::json!(["1.17.4", "1.18.0"])),
+            ("severity", serde_json::json!("S1")),
+        ];
+        for (field, value) in changes {
+            let mut ledger = ContainmentLedger::empty();
+            contained(
+                &mut ledger,
+                &notice(vec![entry("INC-1", "codex", "observe")]),
+                1,
+            );
+            let mut changed = entry("INC-1", "codex", "observe");
+            changed[field] = value;
+            contained(&mut ledger, &notice(vec![changed]), 2);
+            assert_eq!(ledger.active().count(), 2, "{field} alone must be retained");
+        }
+    }
+
+    #[test]
     fn the_publisher_bound_refuses_a_new_publisher_but_not_a_known_one() {
         let policy = LocalTrustPolicy::new(vec![
             TrustedPublisher {
@@ -1431,9 +1584,10 @@ mod tests {
         assert_eq!(record.knowledge.content_digest, hex_digest(&payload));
         assert_eq!(record.release, release());
         assert_eq!(record.provider_versions, Some(vec!["2.0.0".to_string()]));
+        // Stored as the canonical set: order and repetition carry no meaning (E17 round 4).
         assert_eq!(
             record.action_classes,
-            Some(vec![ActionClass::Delete, ActionClass::Archive])
+            Some(vec![ActionClass::Archive, ActionClass::Delete])
         );
         assert_eq!(record.platforms, Some(vec![IncidentPlatform::Windows]));
         assert_eq!(

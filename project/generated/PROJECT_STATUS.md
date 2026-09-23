@@ -11,8 +11,7 @@ Epics: **33** | Stories: **169**
 - `blocked`: 1
 - `cancelled`: 1
 - `done`: 165
-- `in_progress`: 1
-- `ready_for_review`: 1
+- `ready_for_review`: 2
 
 ## Change risk distribution
 
@@ -28,4 +27,5 @@ Epics: **33** | Stories: **169**
 
 ## Awaiting independent review
 
+- **E17-S07** - Safety incident containment and capability downgrade (CR4)
 - **E19-S02** - Cross-platform desktop shell (CR1)

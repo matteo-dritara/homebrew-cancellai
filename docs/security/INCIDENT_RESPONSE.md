@@ -130,9 +130,11 @@ Rungs 1 and 3 of the hierarchy above are implemented as data, not as a control c
   can edit one afterwards.
 - **Bounded.** The ledger holds at most `MAX_ACTIVE_RECORDS` (4096) containment records and
   tracks at most `MAX_TRACKED_PUBLISHERS` (256) publishers. A notice that would exceed either is
-  refused whole (`LedgerFull`) and every existing containment stays; a re-issue identical in
-  incident, scope and ceiling to one already held takes no capacity. Capacity is never made by
-  evicting or weakening a containment. Every string is checked against a
+  refused whole (`LedgerFull`) and every existing containment stays. Scope and evidence lists are
+  stored as canonical sets (sorted, each member once), and a re-issue that says exactly what a
+  held record says - incident, scope, ceiling, severity, invariants, affected releases - takes no
+  capacity; one that adds evidence is kept as its own record. Capacity is never made by evicting
+  or weakening a containment. Every string is checked against a
   bounded identifier alphabet on the way in, so no provider payload content can reach the record.
 
 Not yet in place: a shipped distribution channel for containment bundles and a caller on the live
