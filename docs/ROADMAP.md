@@ -129,5 +129,5 @@ Extend to remote targets/fleet governance and optional desktop UX without moving
 
 **Epics**
 
-- **E18 - Remote Targets and Fleet Boundary** (`planned`): Extend observation/governance to remote development environments without weakening local authority or OSS boundaries.
+- **E18 - Remote Targets and Fleet Boundary** (`done`): Extend observation/governance to remote development environments without weakening local authority or OSS boundaries.
 - **E19 - Desktop Experience** (`in_progress`): Add a cross-platform desktop client only after CLI/TUI/Guardian domain contracts are stable.

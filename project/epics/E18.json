@@ -7,7 +7,7 @@
   "dependencies": [
     "E16"
   ],
-  "status": "planned",
+  "status": "done",
   "stories": [
     {
       "id": "E18-S01",
