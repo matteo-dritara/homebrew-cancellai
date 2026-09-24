@@ -240,3 +240,29 @@ Run native Windows E21-S02 partial-scan cases in both root-origin scenarios with
 PENDING
 
 FAIL
+
+## Round 15 — 2026-09-25
+
+Verifier: Codex
+Brief-Checksum: 41346037461d07abb0cb2d459581a90b1a2015696b662e239eacd4529e6f0dbb
+Review target: `89e319b..e54a63994e70d2ad235b3cf7dad829f21859f996`
+
+### Safety surface and invariant
+
+The proposed 2.0.0 Homebrew switch would install the Rust engine as `cancellai`, which can permanently delete provider files. SI-019 requires that mutation remains inside the independently verified safety boundary. `check_mutation_boundary.py check` passed on 121 Rust source files. The finite cutover checklist is part of the evidence gate for releasing that authority; this round found its C3 claim unproved. Full reproduction and gate results are in `project/evidence/E06-VERIFIER-REVIEW-ROUND15.md`.
+
+| Obligation | Independent evidence | Result |
+| --- | --- | --- |
+| SI-019, one mutation boundary | Static boundary gate passed; no new mutation caller appeared in this review diff. | PASS within examined source |
+| C1, C2, C4-C8 | Dependencies closed; real rehearsal release and asset bytes checked, with authenticated provenance rerun unavailable locally; native partial-scan CI jobs passed; transition, notes and rollback documented; unauthorized finalize refuses. | PASS WITH THE RECORDED S16 RESIDUAL |
+| C3, 2.0.0 candidate installation | The passing Homebrew job derives `version` from `cancellai.py`, which is 1.21.1 at the reviewed commit. Its `render-local-cutover` and `brew test` exercise a 1.21.1 formula, not the specified 2.0.0 formula. | FAIL |
+
+### Adversarial reproduction and exact repair
+
+`python3 cancellai.py version` printed `1.21.1`; `render_formula` with the CI job's version and local-archive inputs emitted `version "1.21.1"`. The successful GitHub `tests` job on `e54a639` therefore cannot prove the 2.0.0 installation claim. Build and install a version-aligned 2.0.0 source and engine candidate in that job and rerun its version checks and `brew test` on the reviewed commit; if the intended claim is only the engine-formula shape at 1.21.1, the owner must change C3 explicitly. Until repaired, keep the Python formula live. This finding does not allege an unsafe deletion.
+
+### Compatibility, residual risk, rollback, owner decision
+
+The v1.21.1 tag still archives `cancellai.py`; the proposed engine formula keeps it as `cancellai-legacy` through 2.1.0. `docs/RELEASING.md` documents signed containment, legacy invocation and formula revert. The reviewer's local `gh` lacks authentication, so the real release's provenance step could not be rerun here; public release CI and independently checked archive bytes are recorded in the round record. There is no `CUTOVER_AUTHORIZATION.md`, and `cutover_authorization_problems('2.0.0')` refuses. Owner acceptance of a migration Safety Verdict: PENDING.
+
+FAIL
