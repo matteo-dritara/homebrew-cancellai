@@ -289,6 +289,10 @@ class ProjectOSTests(unittest.TestCase):
             "## Round 10\n\n## Verdict\n\nPASS\n\n## Verdict\n\nPASS\n": False,
             "## Round 10\n\nFAIL\n\n## Verdict\n\nPASS\n": False,
             "## Round 10\n\nPASS\n\n## Verdict\n\nFAIL\n": False,
+            # E35 review round 2: inside the round's own body the last verdict decides (AC1).
+            "## Round 10\n\nFAIL\n\nRe-evaluated after repair.\n\nPASS\n": True,
+            "## Round 10\n\nPASS\n\nthen a regression was found\n\nFAIL\n": False,
+            "## Round 10\n\nFAIL\n\nPASS\n\n## Verdict\n\nPASS\n": True,
         }
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "SAFETY_VERDICT.md"

@@ -165,23 +165,33 @@ def strip_fenced_code(text: str) -> str:
     return "\n".join(kept)
 
 
-def final_round_text(text: str, start: int) -> str | None:
-    """The part of a Safety Verdict that may decide it: the final round's own body, plus the
-    template's `## Verdict` section only when it is the very next section - at most one. None when
-    any later section, another `## Verdict` included, holds a verdict-shaped line, which would
-    otherwise be read as the decision (E35-S01; E35 review round 1: a `## Verdict` appended after
-    an owner note overrode the round's FAIL)."""
+def last_verdict(text: str) -> bool | None:
+    """Whether the last standalone verdict line in `text` passes, or None when there is none."""
+    verdicts = [(m.start(), True) for m in PASSING_VERDICT_RE.finditer(text)]
+    verdicts += [(m.start(), False) for m in FAILING_VERDICT_RE.finditer(text)]
+    return max(verdicts, key=lambda verdict: verdict[0])[1] if verdicts else None
+
+
+def final_round_verdict(text: str, start: int) -> bool | None:
+    """The final round's decision (E35-S01). Its own body decides by its last standalone verdict
+    line (E32-S01's rule, within the round). The template's `## Verdict` section is attached only
+    when it is the very next section, at most once, and must agree with the body when both carry a
+    verdict. A verdict-shaped line in any other later section - another `## Verdict` included -
+    makes the file undecidable. None means refuse (E35 review rounds 1 and 2)."""
     sections = [*SECTION_HEADING_RE.finditer(text, start), None]
-    admissible = [text[start : sections[0].start() if sections[0] else len(text)]]
+    body = last_verdict(text[start : sections[0].start() if sections[0] else len(text)])
+    attached = None
     for index, (here, following) in enumerate(itertools.pairwise(sections)):
         if here is None:
             break
         section = text[here.start() : following.start() if following else len(text)]
         if index == 0 and VERDICT_HEADING_RE.match(section):
-            admissible.append(section)
+            attached = last_verdict(section)
         elif PASSING_VERDICT_RE.search(section) or FAILING_VERDICT_RE.search(section):
             return None
-    return "\n".join(admissible)
+    if body is not None and attached is not None and body != attached:
+        return None
+    return body if attached is None else attached
 
 
 def safety_verdict_passes(path: Path) -> bool:
@@ -211,18 +221,8 @@ def safety_verdict_passes(path: Path) -> bool:
     # round, say - refuses the file instead of deciding it (E06 review round 10).
     rounds = list(ROUND_HEADING_RE.finditer(text))
     if rounds:
-        decisive = final_round_text(text, rounds[-1].end())
-        # Within the final round a FAIL/REJECT anywhere decides: its own template section cannot
-        # contradict the round into a pass.
-        if decisive is None or FAILING_VERDICT_RE.search(decisive):
-            return False
-        text = decisive
-    verdicts = [(m.start(), True) for m in PASSING_VERDICT_RE.finditer(text)]
-    verdicts += [(m.start(), False) for m in FAILING_VERDICT_RE.finditer(text)]
-    if not verdicts:
-        return False
-    _, most_recent_is_passing = max(verdicts, key=lambda verdict: verdict[0])
-    return most_recent_is_passing
+        return final_round_verdict(text, rounds[-1].end()) is True
+    return last_verdict(text) is True
 
 
 def evidence_states_residual_risk(path: Path) -> bool:

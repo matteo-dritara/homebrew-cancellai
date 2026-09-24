@@ -2,7 +2,7 @@
 
 - Commit/PR: the E35-S01 commit on `main`
 - Executor: Claude
-- Independent verifier: round 1 FAIL (Codex, E35-VERIFIER-REVIEW-ROUND1.md); repaired
+- Independent verifier: round 1 FAIL, round 2 FAIL (Codex, E35-VERIFIER-REVIEW-ROUND1.md, -ROUND2.md); repaired; closes on CEILING_DECISION.md
 - Change Risk: CR2
 - Spec version/commit: `project/epics/E35.json` at this commit
 
@@ -40,6 +40,15 @@ plane cannot disagree on the same file.
 
 `release.py`'s reader follows the same rule (E06-S15).
 
+## Round 2 repair (Codex, `project/evidence/E35-VERIFIER-REVIEW-ROUND2.md`)
+
+| Finding | Repair | Evidence |
+| --- | --- | --- |
+| The round-1 repair let any FAIL in the final round decide, so `## Round 10 ... FAIL ... PASS` (re-evaluated inside the same round) was refused, contrary to AC1 | `final_round_verdict`: the round's own body decides by its last standalone verdict line (E32-S01's rule, within the round); the immediately following `## Verdict` section, when present, must agree with the body or the file refuses; a verdict line in any other later section still refuses. This satisfies both rounds' prescriptions at once | Codex's `test_the_last_standalone_verdict_in_the_final_round_decides` (kept) and three new cases; every committed Safety Verdict still judged as before; removing the agreement check or the "very next section" condition each fails a test |
+
+`release.py` now calls this gate itself instead of carrying a second copy of the rule, so the
+two-implementations residual above no longer applies.
+
 ## Verification Commands
 
 ```text
@@ -51,8 +60,6 @@ python3 -m pytest tests/test_project_os.py tests/test_release.py -q   -> 98 pass
 - **A file without round headings keeps last-line-wins.** A single-round verdict followed by an
   "owner note" with a verdict-shaped line is still decided by that line, as before; every
   multi-round verdict written through the harness uses round headings.
-- **The two readers are two implementations of one rule**, kept in step by tests on both; a later
-  change to one must change the other.
 
 ## Verifier verdict
 
