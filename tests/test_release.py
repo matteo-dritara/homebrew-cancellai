@@ -637,6 +637,9 @@ class CutoverAuthorizationTests(unittest.TestCase):
             "## Round 10\n\nPASS\n\n## Owner note\n\nFAIL\n": False,
             "PASS\n": False,
             "## Round 10\n\nno verdict line\n": False,
+            "## Round 10\n\nFAIL\n\n## Owner note\n\nsee below\n\n## Verdict\n\nPASS\n": False,
+            "## Round 10\n\n## Verdict\n\nPASS\n\n## Verdict\n\nPASS\n": False,
+            "## Round 10\n\nFAIL\n\n## Verdict\n\nPASS\n": False,
             "## Round 2 - operative\n\n## Verdict\n\n`PASS_WITH_RESIDUALS`\n\n## Owner decision\n\naccepted\n": True,
             "## Round 2\n\n## Verdict\n\nPASS\n\n## Owner decision\n\nREJECT\n": False,
         }

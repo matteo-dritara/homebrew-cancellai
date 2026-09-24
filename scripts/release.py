@@ -620,7 +620,8 @@ FENCE_RE = re.compile(r"^```.*?^```\s*$", re.MULTILINE | re.DOTALL)
 
 def safety_verdict_passes(path: Path) -> bool:
     """Whether the migration Safety Verdict's final round passes, read from what may decide it: the
-    last `## Round <n>` heading's own body plus the template's `## Verdict` section if one follows,
+    last `## Round <n>` heading's own body plus the template's `## Verdict` section when it is the
+    very next section, and any FAIL/REJECT there fails;
     fenced blocks excluded. A verdict-shaped line in any other later section - an "owner note",
     say - makes the verdict unreadable, so it fails (E06 review round 10). The same rule as
     `project_os.py`'s gate (E35-S01)."""
@@ -633,16 +634,16 @@ def safety_verdict_passes(path: Path) -> bool:
         return False
     sections = [*SECTION_HEADING_RE.finditer(text, rounds[-1].end()), None]
     admissible = [text[rounds[-1].end() : sections[0].start() if sections[0] else len(text)]]
-    for here, following in itertools.pairwise(sections):
+    for index, (here, following) in enumerate(itertools.pairwise(sections)):
         if here is None:
             break
         section = text[here.start() : following.start() if following else len(text)]
-        if VERDICT_HEADING_RE.match(section):
-            admissible.append(section)
+        if index == 0 and VERDICT_HEADING_RE.match(section):
+            admissible.append(section)  # the template's own section, only right after the round
         elif VERDICT_LINE_RE.search(section):
             return False
-    verdicts = [match.group(1).upper() for match in VERDICT_LINE_RE.finditer("\n".join(admissible))]
-    return bool(verdicts) and verdicts[-1] in {"PASS", "PASS_WITH_RESIDUALS"}
+    verdicts = {match.group(1).upper() for match in VERDICT_LINE_RE.finditer("\n".join(admissible))}
+    return bool(verdicts) and not verdicts & {"FAIL", "REJECT"}
 
 
 CODEOWNERS = ROOT / ".github" / "CODEOWNERS"
