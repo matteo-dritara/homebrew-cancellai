@@ -76,6 +76,15 @@ The round-9 repair above (`engine_sha256s` hashing downloads and consulting the 
 carried into E06-S14, without the sidecar, plus provenance verification and the published
 `cancellai.rb`.
 
+## Ready for the migration verdict (2026-09-24)
+
+E06-S14 (formula from the closed manifest) and E06-S15 (owner authorization) passed independent
+rounds 10-13; E33-S01 and E33-S03 passed rounds 10-11. What this story still needs is the
+independent verifier's migration Safety Verdict and then the owner's acceptance of it, recorded as
+`CUTOVER_AUTHORIZATION.md` (E06-S15). The perimeter ADR-0039 decided is on the live mutation path,
+the parity gate runs natively on macOS and Linux for every change (`rust.yml` `parity`, green on
+`051ae5e`), and Windows withholding is pinned by the stable-channel CLI suite.
+
 ## Verification (native reproduction per platform, E21-S02 partial-scan fixtures)
 
 `rust_python_parity.py check` runs the partial-scan fixtures (`codex-partial-tree`,
