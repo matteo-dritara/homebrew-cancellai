@@ -74,6 +74,29 @@ be byte for byte what `render_formula` produces for its version, and `release.py
 repeats the published-release verification; `tests.yml` installs the engine formula built from
 each commit and runs its `brew test`.
 
+### Verifying a published release, and the v1.21.1 rehearsal (E06-S16)
+
+`python3 scripts/release.py verify-release --version X.Y.Z` applies every check `finalize` applies
+to a published release - the closed manifest, the local and GitHub tag, all four archives' bytes and
+provenance, the release run, and `cancellai.rb` against the formula rendered from them - and writes
+nothing. It works for any version whose release published a manifest, before or after the cutover.
+v1.21.1 is the rehearsal: a fix release that changes nothing Homebrew installs and exists to run
+the new pipeline for real before 2.0.0 depends on it.
+
+### Rolling back the cutover
+
+Documented, not rehearsed (owner decision 2026-09-25). Three levers, fastest first:
+
+1. **A safety defect in the engine** - sign and publish a containment notice with the incident
+   key (`docs/security/INCIDENT_RESPONSE.md`). Every installation that installs it, or picks it up
+   with `cancellai-cli containment refresh`, caps the affected provider at `Observe`/`Recommend`
+   and stops deleting. No release is needed, and nothing but a local `containment lift` undoes it.
+2. **A user who needs the previous behaviour** - `cancellai-legacy`, the frozen Python reference,
+   is installed beside the engine through 2.1.0 and behaves exactly as `cancellai` did before 2.0.0.
+3. **The formula itself** - revert the `finalize` commit on `main`, so the tap serves the v1.21.1
+   Python formula again. `release.py check` then reports the version drift on purpose, because the
+   tap no longer matches the source; it clears when a repaired 2.0.x is finalized.
+
 ### When a release fails
 
 A tag is immutable history here, so a failed release is not undone - it is recorded, and the fix

@@ -301,8 +301,8 @@
     {
       "id": "E06-S04",
       "title": "Canonical engine switch",
-      "status": "ready_for_review",
-      "outcome": "Promote Rust to stable only after functional, safety, compatibility, and operability gates pass. ADR-0040 (2026-09-24) moved the release mechanics out of this story: E06-S14 makes the formula a function of the release manifest rendered where the bytes are built, and E06-S15 adopts the cutover on the owner's explicit authorization. What stays here is the owner's: accepting the migration Safety Verdict, the transition window and the release notes.",
+      "status": "in_progress",
+      "outcome": "Promote Rust to stable only after functional, safety, compatibility, and operability gates pass. ADR-0040 moved the release mechanics into E06-S14 and E06-S15. Owner decision 2026-09-25, after 14 rounds: this story is judged against a finite checklist - its verification list - on evidence that already exists, including a real rehearsal release (E06-S16). Re-judging the mechanisms of stories already closed by their own independent rounds is out of its scope; a defect found there is filed against that story. The owner's acceptance of the passing verdict follows the review (AC1).",
       "change_risk": "CR4",
       "dependencies": [
         "E06-S03",
@@ -329,8 +329,14 @@
         "SI-019"
       ],
       "verification": [
-        "Full release evidence packet and independent verifier sign-off.",
-        "A native reproduction on each platform inside the decided cutover perimeter, using the E21-S02 partial-scan fixtures, showing the engine withholds where the frozen reference withholds."
+        "C1 - every dependency story is done (project_os check), E06-S14 and E06-S15 by their own independent rounds.",
+        "C2 - the rehearsal release v1.21.1 was published by release.yml, and `release.py verify-release --version 1.21.1` passes on its real assets (E06-S16).",
+        "C3 - on the reviewed commit, tests.yml's cutover job installs the 2.0.0 engine formula rendered from that commit's archives and its brew test passes.",
+        "C4 - native partial-scan reproduction on the reviewed commit: rust.yml parity (macOS, Linux) and windows_partial_scan (Windows) green.",
+        "C5 - the 2.0.0 formula keeps the Python reference as cancellai-legacy through 2.1.0, and the Python source stays in the release tags.",
+        "C6 - CHANGELOG.md Unreleased states every intentional contract change, checked against docs/CLI_RUST.md and project/cli_inventory.json.",
+        "C7 - docs/RELEASING.md documents the rollback: the signed containment kill-switch, cancellai-legacy, and reverting the formula.",
+        "C8 - finalize refuses the cutover without the owner's CUTOVER_AUTHORIZATION.md bound to the passing verdict (E06-S15, already verified)."
       ],
       "documentation_impact": [
         "CHANGELOG.md",
@@ -408,6 +414,30 @@
       ],
       "documentation_impact": [
         "docs/development/RELEASE_GATES.md"
+      ]
+    },
+    {
+      "id": "E06-S16",
+      "title": "A rehearsal release runs the real pipeline and is verified on its published assets",
+      "status": "in_progress",
+      "outcome": "The release mechanism E06-S14 built had only ever been verified on simulations; every review of E06-S04 recorded that as a residual, and the real release could only follow the story it was meant to prove (owner decision 2026-09-25). A non-cutover fix release, v1.21.1, runs release.yml end to end, and `release.py verify-release` checks its published assets exactly as finalize would - without changing what Homebrew installs.",
+      "change_risk": "CR3",
+      "dependencies": [
+        "E06-S14"
+      ],
+      "acceptance_criteria": [
+        "The system shall provide `release.py verify-release --version <v>`, which applies every check finalize applies to a published release - closed manifest, local and remote tag, all four archives' bytes and provenance, the release run, and cancellai.rb against the rendered formula - and writes nothing.",
+        "When v1.21.1 is published by release.yml, the system shall verify it with verify-release on its real assets, and the result shall be recorded in its release evidence.",
+        "If verify-release finds any published asset that differs from what finalize would accept, then it shall refuse and name the asset, and the cutover shall not proceed until the difference is repaired."
+      ],
+      "safety_obligations": [
+        "SI-019"
+      ],
+      "verification": [
+        "Unit tests for verify-release on an engine and a pre-cutover release; the real v1.21.1 verify-release output recorded in project/evidence/RELEASE-v1.21.1.md."
+      ],
+      "documentation_impact": [
+        "docs/RELEASING.md"
       ]
     }
   ]

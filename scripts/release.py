@@ -694,6 +694,26 @@ def render_release_formula(version: str, manifest: Path, source_sha: str) -> str
     return render_formula(version, source_sha, engines)
 
 
+def verify_release(version: str) -> list[str]:
+    """Everything `finalize` checks about a published release, for any version, without writing
+    anything (E06-S16): the closed manifest, both tags, all four archives' bytes and provenance, the
+    release run, and `cancellai.rb` byte-identical to the formula rendered from them. Run after a
+    release publishes - the rehearsal before the cutover, and again before relying on an old one."""
+    digests = engine_sha256s(version)
+    source = archive_sha256(version)
+    engines = published_engines(version, digests) if parse(version) >= CUTOVER_VERSION else None
+    expected = render_formula(version, source, engines)
+    url = FORMULA_ASSET.format(repo=REPO, version=version)
+    if download(url, MAX_MANIFEST_BYTES) != expected.encode("utf-8"):
+        raise ReleaseError(f"{url} is not the formula release.py renders for v{version} from its verified release")
+    shape = "the engine formula" if engines else "the Python-only formula"
+    return [
+        f"release-manifest.json: exactly what release.yml writes for v{version}",
+        f"archives: {len(RELEASE_ARCHIVES)} downloaded, hashed and provenance-verified, one run, the tag's successful release run",
+        f"cancellai.rb: byte-identical to {shape} rendered from them",
+    ]
+
+
 def adoptable_formula(version: str) -> str:
     """The formula `finalize` may write for an engine-carrying `version`: the published
     `cancellai.rb`, accepted only if it is byte-identical to the formula rendered from the published
@@ -1078,6 +1098,8 @@ def build_parser() -> argparse.ArgumentParser:
     render_cmd.add_argument("--manifest", required=True, type=Path)
     render_cmd.add_argument("--source-sha", required=True)
     render_cmd.add_argument("--out", required=True, type=Path)
+    verify_release_cmd = sub.add_parser("verify-release", help="verify a published release as finalize would, writing nothing")
+    verify_release_cmd.add_argument("--version", required=True)
     sub.add_parser("verify-formula", help="compare the live formula's engine digests with the published ones")
     verify_cmd = sub.add_parser("verify-installed", help="assert an installed cutover formula reports its version")
     verify_cmd.add_argument("--version", required=True)
@@ -1102,6 +1124,9 @@ def main(argv: list[str] | None = None) -> int:
         elif command == "render-release-formula":
             args.out.write_text(render_release_formula(args.version, args.manifest, args.source_sha), encoding="utf-8")
             print(f"rendered {args.out} for v{args.version} from {args.manifest}")
+        elif command == "verify-release":
+            for line in verify_release(args.version):
+                print(f"verified {line}")
         elif command == "verify-formula":
             versions = current_versions()
             found = live_formula_problems(read(FORMULA), versions.formula) or published_digest_problems(read(FORMULA), versions.formula)

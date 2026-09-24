@@ -4,21 +4,21 @@
 
 Current phase: **P1**
 
-Epics: **36** | Stories: **190**
+Epics: **36** | Stories: **191**
 
 ## Story status
 
 - `cancelled`: 1
 - `done`: 186
+- `in_progress`: 2
 - `planned`: 2
-- `ready_for_review`: 1
 
 ## Change risk distribution
 
 - `CR0`: 14
 - `CR1`: 43
 - `CR2`: 55
-- `CR3`: 33
+- `CR3`: 34
 - `CR4`: 45
 
 ## Explicitly ready work
@@ -27,4 +27,4 @@ Epics: **36** | Stories: **190**
 
 ## Awaiting independent review
 
-- **E06-S04** - Canonical engine switch (CR4)
+- none

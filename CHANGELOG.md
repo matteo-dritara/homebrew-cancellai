@@ -33,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Every release publishes `cancellai.rb`, the Homebrew formula rendered from its release manifest,
+  and `release.py verify-release` checks a published release - manifest, tag, archives, provenance
+  and formula - exactly as `finalize` does, without writing anything (E06-S14, E06-S16).
 - `cancellai-cli containment install|list|lift` (E06-S07, ADR-0039): signed incident containment
   now reaches the live mutation path. A notice signed with the cancellAI incident-response key (or
   a publisher the owner trusts) caps a provider at observe or recommend, and `plan`/`clean` obey

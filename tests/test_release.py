@@ -440,7 +440,7 @@ class PublishedEngineEvidenceTests(unittest.TestCase):
         }
 
         def gh_json(*args):
-            if args[1].endswith(f"/commits/v{self.VERSION}"):
+            if "/commits/v" in args[1]:
                 return {"sha": remote}
             if "/actions/runs/" in args[1]:
                 return record
@@ -628,6 +628,42 @@ class PublishedEngineEvidenceTests(unittest.TestCase):
         self.assertEqual(release.attested_run_ids([entry(good), entry(good.replace("4242", "7"))]), {"4242", "7"})
         self.assertEqual(release.attested_run_ids([entry("https://github.com/someone/else/actions/runs/4242/attempts/1")]), {""})
         self.assertEqual(release.attested_run_ids([{}]), set())
+
+    # E06-S16: the rehearsal's check, read-only, for the engine formula and the Python-only one.
+    def test_verify_release_accepts_a_verified_release_and_refuses_a_wrong_formula_asset(self) -> None:
+        assets, formula = self.published()
+        with self.network(assets):
+            self.assertEqual(len(release.verify_release(self.VERSION)), 3)
+        assets[release.FORMULA_ASSET.format(repo=release.REPO, version=self.VERSION)] = (formula + "\n").encode()
+        self.refused_by(release.verify_release, assets)
+
+    def test_verify_release_checks_a_pre_cutover_release_against_the_python_formula(self) -> None:
+        version = "1.21.1"
+        archives = {target: f"engine {target}".encode() for target, _ in release.RELEASE_ARCHIVES}
+        digests = self.digests_of(archives)
+        assets = {
+            release.RELEASE_MANIFEST_ASSET.format(repo=release.REPO, version=version): release.expected_manifest_text(
+                version, self.COMMIT, self.RUN, digests
+            ).encode(),
+            release.FORMULA_ASSET.format(repo=release.REPO, version=version): release.render_formula(version, self.SOURCE, None).encode(),
+        }
+        for target, extension in release.RELEASE_ARCHIVES:
+            assets[release.ARCHIVE_ASSET.format(repo=release.REPO, version=version, target=target, ext=extension)] = archives[target]
+        record = {
+            "path": ".github/workflows/release.yml",
+            "head_sha": self.COMMIT,
+            "head_branch": "v1.21.1",
+            "event": "push",
+            "conclusion": "success",
+        }
+        with self.network(assets, run_record=record):
+            self.assertIn("Python-only", release.verify_release(version)[-1])
+        with self.network(assets, run_record={**record, "conclusion": "failure"}), self.assertRaises(release.ReleaseError):
+            release.verify_release(version)
+
+    def refused_by(self, check, assets, **network) -> None:
+        with self.network(assets, **network), self.assertRaises(release.ReleaseError):
+            check(self.VERSION)
 
     def test_verify_provenance_refuses_without_gh(self) -> None:
         with mock.patch.object(release.shutil, "which", return_value=None), self.assertRaisesRegex(release.ReleaseError, "gh"):
