@@ -56,7 +56,8 @@ EVIDENCE_RESIDUAL_TERMS = ("residual", "known risk")
 FAILING_VERDICT_RE = re.compile(r"^\s*`?(FAIL|REJECT)`?\s*$", re.MULTILINE | re.IGNORECASE)
 PASSING_VERDICT_RE = re.compile(r"^\s*`?(PASS|PASS_WITH_RESIDUALS)`?\s*$", re.MULTILINE | re.IGNORECASE)
 ROUND_HEADING_RE = re.compile(r"^## Round \d+\b", re.MULTILINE)
-SECTION_HEADING_RE = re.compile(r"^## ", re.MULTILINE)
+ATX_SECTION_RE = re.compile(r" {0,3}#{1,2}(?:[ \t]|$)")
+SETEXT_UNDERLINE_RE = re.compile(r" {0,3}(?:=+|-+)[ \t]*")
 VERDICT_HEADING_RE = re.compile(r"## Verdict\s*$", re.MULTILINE)
 # A verdict word inside a fenced example (an illustration of the convention, a reproduction
 # transcript) is not a verdict - E32-S01's own round-1 independent review found the naive scan
@@ -172,19 +173,41 @@ def last_verdict(text: str) -> bool | None:
     return max(verdicts, key=lambda verdict: verdict[0])[1] if verdicts else None
 
 
+def section_starts(text: str, start: int) -> list[int]:
+    """Where every level-1 or level-2 heading after `start` begins, as Markdown renders them: ATX
+    (`#`/`##`, up to three leading spaces) and setext (a paragraph line underlined with `=` or `-`).
+    Any of them ends the final round's section; recognising `## ` alone let `# Owner note`, an
+    indented heading or an underlined one reopen the owner-note bypass (E35 self-review)."""
+    starts = []
+    offset = start
+    previous: tuple[int, str] | None = None
+    for line in text[start:].splitlines(keepends=True):
+        bare = line.rstrip("\r\n")
+        if ATX_SECTION_RE.match(bare):
+            starts.append(offset)
+            previous = None
+        elif SETEXT_UNDERLINE_RE.fullmatch(bare) and previous is not None and previous[1].strip():
+            starts.append(previous[0])
+            previous = None
+        else:
+            previous = (offset, bare)
+        offset += len(line)
+    return starts
+
+
 def final_round_verdict(text: str, start: int) -> bool | None:
     """The final round's decision (E35-S01). Its own body decides by its last standalone verdict
     line (E32-S01's rule, within the round). The template's `## Verdict` section is attached only
     when it is the very next section, at most once, and must agree with the body when both carry a
     verdict. A verdict-shaped line in any other later section - another `## Verdict` included -
     makes the file undecidable. None means refuse (E35 review rounds 1 and 2)."""
-    sections = [*SECTION_HEADING_RE.finditer(text, start), None]
-    body = last_verdict(text[start : sections[0].start() if sections[0] else len(text)])
+    sections = [*section_starts(text, start), None]
+    body = last_verdict(text[start : sections[0] if sections[0] is not None else len(text)])
     attached = None
     for index, (here, following) in enumerate(itertools.pairwise(sections)):
         if here is None:
             break
-        section = text[here.start() : following.start() if following else len(text)]
+        section = text[here : following if following is not None else len(text)]
         if index == 0 and VERDICT_HEADING_RE.match(section):
             attached = last_verdict(section)
         elif PASSING_VERDICT_RE.search(section) or FAILING_VERDICT_RE.search(section):
@@ -221,7 +244,10 @@ def safety_verdict_passes(path: Path) -> bool:
     # round, say - refuses the file instead of deciding it (E06 review round 10).
     rounds = list(ROUND_HEADING_RE.finditer(text))
     if rounds:
-        return final_round_verdict(text, rounds[-1].end()) is True
+        # The round's body starts on the line after its heading: the heading's own text is not a
+        # verdict line (E35 self-review: `## Round 10 PASS` alone used to pass).
+        line_end = text.find("\n", rounds[-1].start())
+        return final_round_verdict(text, len(text) if line_end == -1 else line_end + 1) is True
     return last_verdict(text) is True
 
 

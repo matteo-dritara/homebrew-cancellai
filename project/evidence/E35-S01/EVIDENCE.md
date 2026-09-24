@@ -22,7 +22,7 @@ This story repairs that gate.
 
 | AC | Evidence | Result |
 | --- | --- | --- |
-| AC1 - with `## Round <n>` headings, the final round decides | `project_os.final_round_text`: the last round's body plus the template's `## Verdict` section that follows it; the last standalone verdict line there decides. `test_the_final_round_decides_and_a_later_section_cannot` | PASS |
+| AC1 - with `## Round <n>` headings, the final round decides | `project_os.final_round_verdict`: the last round's body (from the line after its heading) decides by its last standalone verdict line; the template's `## Verdict` section is attached only when it is the very next section and must agree. `test_the_final_round_decides_and_a_later_section_cannot` | PASS |
 | AC2 - a verdict-shaped line in a later section refuses | Same function returns None; the owner-note counterexample and a later `REJECT` after a passing `## Verdict` both refuse | PASS |
 | AC3 - no round headings: E32-S01's rule; every committed verdict judged as before | Files without round headings take the unchanged path; E32-S01's tests pass unchanged. All 50 committed `*VERDICT*.md` files were judged before and after the change: identical (40 pass, 10 do not). A first draft refused E14-S04's and E14-S05's closed verdicts, whose decision sits in a `## Verdict` section after the round heading; `test_every_committed_safety_verdict_keeps_its_judgement` pins both | PASS |
 
@@ -48,6 +48,19 @@ plane cannot disagree on the same file.
 
 `release.py` now calls this gate itself instead of carrying a second copy of the rule, so the
 two-implementations residual above no longer applies.
+
+## Repairs after the forked self-review (`project/evidence/E35-SELF-REVIEW.md`, not independent)
+
+| Finding | Repair | Evidence |
+| --- | --- | --- |
+| Only `## ` ended the final round, so `# Owner note`, an indented `## Owner note` or a setext-underlined heading followed by `PASS` reopened the owner-note bypass - in the gate and in the release reader | `section_starts`: every level-1 or level-2 heading as Markdown renders it - ATX with up to three leading spaces, setext `=`/`-` underlines under a paragraph line - ends the round; a thematic break and `###` subsections stay inside it (AC1) | Four heading shapes added to `test_the_final_round_decides_and_a_later_section_cannot`, plus `---` and `###` staying in the round; dropping the setext branch or narrowing ATX back to `## ` each fails two tests |
+| The round's body started right after the `## Round <n>` match, so the heading's own tail was read as a verdict: `## Round 10 PASS` alone passed | The body starts on the line after the heading | Regression case; reverting fails it |
+| (E06-S15) the release reader's round precheck ran on raw text, so a `## Round` only inside a fence satisfied it | The precheck reads the fence-stripped text the gate reads; undecodable bytes refuse | `test_release.py` case; reverting fails it |
+
+The self-review's residual 2 - four ways the reader, unchanged since E32-S01, differs from how
+Markdown renders the file (HTML comments, inline triple backticks, indented code, form feed and
+U+2028) - is not this story's change and is filed as **E35-S02**. Its residual 1 (a `###`
+subsection inside the final round decides, as AC1 literally says) is kept as the contract states.
 
 ## Verification Commands
 

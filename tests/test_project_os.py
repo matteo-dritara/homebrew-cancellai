@@ -293,6 +293,15 @@ class ProjectOSTests(unittest.TestCase):
             "## Round 10\n\nFAIL\n\nRe-evaluated after repair.\n\nPASS\n": True,
             "## Round 10\n\nPASS\n\nthen a regression was found\n\nFAIL\n": False,
             "## Round 10\n\nFAIL\n\nPASS\n\n## Verdict\n\nPASS\n": True,
+            # E35 self-review: every level-1/2 heading ends the final round, not `## ` alone.
+            "## Round 10\n\nFAIL\n\n# Owner note\n\nPASS\n": False,
+            "## Round 10\n\nFAIL\n\n ## Owner note\n\nPASS\n": False,
+            "## Round 10\n\nFAIL\n\nOwner note\n----------\n\nPASS\n": False,
+            "## Round 10\n\nFAIL\n\nOwner note\n==========\n\nPASS\n": False,
+            "## Round 10 PASS\n\nno verdict in the body\n": False,
+            # A thematic break and a level-3 subsection stay inside the round (AC1).
+            "## Round 10\n\nFAIL\n\n---\n\nPASS\n": True,
+            "## Round 10\n\nFAIL\n\n### Re-evaluation\n\nPASS\n": True,
         }
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "SAFETY_VERDICT.md"

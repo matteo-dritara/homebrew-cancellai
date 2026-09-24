@@ -95,6 +95,7 @@ distinguished by the next round, which is why the ceiling matters.
 | E34 | 2 | **self** | 3 | 0 | 0 | 0% |
 | E34 | 2 | independent | 5 | 4 | 4 | 80% |
 | E34 | 3 | independent | 5 | 2 | 2 | 40% |
+| E35 | 1 | **self** | 1 | 1 | 1 | 100% |
 | E35 | 1 | independent | 1 | 1 | 1 | 100% |
 | E35 | 2 | independent | 1 | 1 | 1 | 100% |
 
@@ -104,7 +105,7 @@ The gap between *every gate passed* and *the work is right*. Each rejected story
 already been declared `ready_for_review` by an executor who ran the full gate set green.
 
 - **Independent reviewer:** 55 of 113 round-1 verdicts were `FAIL` - **49%**.
-- **Self-review (same agent as executor):** 6 of 17 round-1 verdicts were `FAIL` - **35%**.
+- **Self-review (same agent as executor):** 7 of 18 round-1 verdicts were `FAIL` - **39%**.
 
 - **Round-1 records excluded as unreadable:** 2. Their verdicts are in neither denominator above, so both rates are computed over the subset of records that use a machine-readable verdict table.
 
@@ -165,9 +166,9 @@ independent samples, and the population estimate collapses to what one round alr
 
 | CR0 | CR1 | CR2 | CR3 | CR4 |
 | --- | --- | --- | --- | --- |
-| 14 | 43 | 54 | 33 | 45 |
+| 14 | 43 | 55 | 33 | 45 |
 
-78 of 189 stories are CR3 or CR4, the levels whose gates require
+78 of 190 stories are CR3 or CR4, the levels whose gates require
 independent verification. That share is what makes the reviewer-independence question above
 load-bearing rather than academic.
 
@@ -177,7 +178,7 @@ load-bearing rather than academic.
 
 ## Requirements shape
 
-- Acceptance criteria describing **unwanted behaviour**: **111 of 609** (18%).
+- Acceptance criteria describing **unwanted behaviour**: **113 of 613** (18%).
 - Epics whose requirements describe the feature and not the hazard:
   - `E00` - 0 of 29
   - `E01` - 0 of 13

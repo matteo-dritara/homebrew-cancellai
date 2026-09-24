@@ -20,5 +20,9 @@ verdict line (AC1, round 2), and the template section attached right after it mu
 body or the file refuses (round 1). Both rounds' counterexamples are kept as regression tests, the
 repair was mutation-checked, and every committed Safety Verdict is judged as before.
 
+The forked self-review (`E35-SELF-REVIEW.md`) then failed the story on heading shapes other than
+`## ` and on the round heading's own tail; both are repaired and pinned (evidence packet, "Repairs
+after the forked self-review"), and the pre-existing parser differences it found are E35-S02.
+
 The story is CR2: it closes on this decision plus a forked self-review, not a third independent
 round.
