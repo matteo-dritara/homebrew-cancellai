@@ -33,6 +33,16 @@ behaviour - but the configuration audit that followed found three things the run
 | OpenCode loaded the owner's personal `~/.claude/skills` (unmanaged prompt content) into the reviewer | `reviewer_env` sets `OPENCODE_DISABLE_CLAUDE_CODE=1`; `opencode.json` loads back only `.claude/skills` | `opencode debug skill` under that environment lists the built-in skill and the eight repository skills only |
 | A reviewer allowed `python3` could reach the owner's git and `gh` credentials | `reviewer_env`: no credential helper, `core.sshCommand=false`, invalid `origin` push URL, empty `GH_CONFIG_DIR`, no `SSH_AUTH_SOCK`/tokens, no auto-update or LSP download | `test_a_reviewer_cannot_push_to_origin` (a real push to a local bare remote fails) |
 
+## Method defect
+
+`test_the_prompt_quotes_each_committed_brief_by_checksum` read the real repository's `HEAD` via
+`git show`. It passed locally and in `pytest` CI, and failed `gate_sensitivity.py check` in CI,
+whose control run executes the suite on a copy without `.git`. The pre-commit hook for that gate
+is scoped to its own script, so it never ran for this change locally. The test now supplies the
+committed brief through a mock; `gate_sensitivity.py check` passes locally (11/11). Lesson: a test
+that shells out to git against the real repository is not hermetic here - build a temporary repo
+(as `AppendOnlyTests` does) or mock `git`.
+
 ## Verification Commands
 
 ```text

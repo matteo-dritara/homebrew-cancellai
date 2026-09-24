@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from scripts import review_round as rr
 
@@ -159,8 +160,13 @@ class BriefTests(unittest.TestCase):
             rr.committed_brief("E99-S99")
 
     def test_the_prompt_quotes_each_committed_brief_by_checksum(self) -> None:
-        _text, checksum = rr.committed_brief("E06-S04")
-        prompt = rr.render_prompt("E06", ["E06-S04"], "pre", "E06-PRE-REVIEW-1.md", "OpenCode/x", 1)
+        # Hermetic: gate_sensitivity runs this suite on a copy with no `.git`, so the committed
+        # brief is supplied here rather than read from the real repository's HEAD.
+        checksum = "ab" * 32
+        brief = f"# Verifier brief - E06-S04\n\nBrief-Checksum: {checksum}\n"
+        with mock.patch.object(rr, "git", return_value=brief):
+            self.assertEqual(rr.committed_brief("E06-S04")[1], checksum)
+            prompt = rr.render_prompt("E06", ["E06-S04"], "pre", "E06-PRE-REVIEW-1.md", "OpenCode/x", 1)
         self.assertIn(checksum, prompt)
         self.assertIn("ADVISORY PRE-REVIEW", prompt)
         self.assertIn("Pre-Review: advisory", prompt)
