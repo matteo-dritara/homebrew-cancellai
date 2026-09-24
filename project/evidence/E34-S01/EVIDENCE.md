@@ -110,4 +110,4 @@ python3 -m ruff check / format --check              -> clean
 
 ## Verifier verdict
 
-pending
+closed by owner decision at the ceiling, see E34-CLOSURE.md

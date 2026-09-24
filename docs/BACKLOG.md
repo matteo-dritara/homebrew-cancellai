@@ -4172,13 +4172,13 @@ ADR-0039 kept the network out of the Rust cutover: a signed containment notice r
 
 ## E34 - Reviewer Pool and Advisory Pre-Review
 
-**Phase:** `P1` | **Status:** `in_progress` | **Epic dependencies:** none
+**Phase:** `P1` | **Status:** `done_no_release` | **Epic dependencies:** none
 
 Independent review is this repository's central method and it has depended on one reviewer with one quota: when Codex's five-hour budget ran out in the middle of E06's cutover, independent verification stopped. Three consecutive rounds (E06 rounds 6-8) also spent that budget on defects a cheaper adversarial pass would have found first. This epic makes review a harnessed act with a named pool of reviewers from different model families - Codex, and OpenCode driving a pinned non-Anthropic model through OpenRouter - adds an advisory pre-review tier that runs on free models and never counts as a verdict, and makes the harness prove, rather than assert, which model reviewed and what it was allowed to change. Owner decision 2026-09-24 (design accepted, retrospective at project end).
 
 ### E34-S01 - A review round is run by a harness that proves who reviewed and what they changed
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** Rounds were run by hand: a prompt paraphrased by the executor, a worktree created ad hoc, and records imported by copying files - which is how one reviewer overwrote a 2026-09-01 record. scripts/review_round.py runs a round from the committed briefs for Codex or OpenCode, names the record so it can never overwrite one, and after the reviewer exits checks that every model the session streamed from is the declared, non-Anthropic model and that every changed path is one the tier allows.
 
@@ -4201,7 +4201,7 @@ Independent review is this repository's central method and it has depended on on
 
 ### E34-S02 - OpenCode reviewer agents with tool-enforced permissions and a pinned model
 
-**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** OpenCode loads this repository's skill pack natively from .claude/skills and can enforce per-agent permissions. Two agents - verifier and pre-reviewer - are defined in .opencode/agents with edits allowed only under project/evidence and the story statuses, dangerous shell commands denied, no web access, and one pinned model with no fallback; opencode.json pins the small model too, so no second model enters a session, and disables sharing and autoupdate.
 
@@ -4221,7 +4221,7 @@ Independent review is this repository's central method and it has depended on on
 
 ### E34-S03 - Advisory pre-review is recorded and never counted; the reviewer pool is a decision
 
-**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E34-S01 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** E34-S01 | **Safety obligations:** none
 
 **Outcome.** A pre-review on a free model is useful exactly because it is cheap, and harmful if it can pass for the independent verdict. Pre-review records are named <EPIC>-PRE-REVIEW-<n>.md, never count as a round or against the owner's two-review limit, and cannot close a story; process metrics report them separately and break independent rounds down by reviewer family. PD-028 names the reviewer pool and the rule.
 
@@ -4242,7 +4242,7 @@ Independent review is this repository's central method and it has depended on on
 
 ### E34-S04 - The toolchain gate sees what OpenCode would load
 
-**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E34-S02 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR1` | **Dependencies:** E34-S02 | **Safety obligations:** none
 
 **Outcome.** scripts/check_agent_toolchain.py enumerates .opencode/ and opencode.json as it enumerates .claude/, so a component the second reviewer runtime carries is managed or fails the gate.
 
@@ -4282,7 +4282,7 @@ Independent review is this repository's central method and it has depended on on
 
 ### E34-S06 - The OpenCode reviewer runs inside an OS sandbox confined to its worktree
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** E34-S01 | **Safety obligations:** none
+**Status:** `done` | **Change Risk:** `CR2` | **Dependencies:** E34-S01 | **Safety obligations:** none
 
 **Outcome.** The forked self-review of E34 showed that OpenCode, unlike Codex, ran as the owner's user with no sandbox, so a command or a test the reviewer wrote could write the main tree, the run record or another repository's .git while the harness judged only the worktree's diff. The owner chose on 2026-09-24 to confine it: scripts/review_round.py runs OpenCode under macOS sandbox-exec, writable only in its worktree, that worktree's git directory and OpenCode's own data, state and cache.
 

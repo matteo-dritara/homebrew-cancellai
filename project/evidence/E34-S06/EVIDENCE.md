@@ -29,6 +29,13 @@ chose an OS sandbox over recording the boundary as advisory.
 
 Mutation check: replacing the profile's `(deny file-write*)` with an allow fails both sandbox tests.
 
+## Observed in use (2026-09-24)
+
+Three sandboxed OpenCode runs of a design consultation: the sandbox refused OpenCode's own
+background `npm install` of `@opencode-ai/plugin` into `~/.npm` (`EPERM`) and the session carried
+on; no other write was refused. All three ended on the free model's `503 Service temporarily
+overloaded` before producing output.
+
 ## Verification Commands
 
 ```text
@@ -51,4 +58,4 @@ python3 -m pytest tests/test_review_round.py -q   -> 32 passed
 
 ## Verifier verdict
 
-pending
+self-review PASS (E34-SELF-REVIEW-ROUND2.md, not independent); closed by owner decision, see E34-CLOSURE.md

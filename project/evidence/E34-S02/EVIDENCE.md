@@ -91,4 +91,4 @@ opencode agent list   -> verifier, pre-reviewer listed with the pinned model
 
 ## Verifier verdict
 
-pending
+closed by owner decision at the ceiling, see E34-CLOSURE.md

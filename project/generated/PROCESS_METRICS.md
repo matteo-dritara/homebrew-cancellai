@@ -91,6 +91,7 @@ distinguished by the next round, which is why the ceiling matters.
 | E29 | 1 | independent | 7 | 6 | 1 | 86% |
 | E34 | 1 | **self** | 4 | 3 | 3 | 75% |
 | E34 | 1 | independent | 4 | 3 | 3 | 75% |
+| E34 | 2 | **self** | 3 | 0 | 0 | 0% |
 | E34 | 2 | independent | 5 | 4 | 4 | 80% |
 | E34 | 3 | independent | 5 | 2 | 2 | 40% |
 
