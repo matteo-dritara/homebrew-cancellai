@@ -28,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `cancellai-cli`, the engine's own name; `cancellai-legacy --version` prints the Python one;
   - Windows is supported natively.
   The full, checked inventory of every shared flag is `project/cli_inventory.json`.
+
+## [1.21.1] - 2026-09-25
+
+### Changed
+
 - The Rust engine now reports the release version it ships in (it reported `0.1.0` through
   1.21.0).
 

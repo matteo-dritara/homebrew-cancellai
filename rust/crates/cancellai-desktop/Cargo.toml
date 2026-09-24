@@ -16,5 +16,5 @@ workspace = true
 # executor. No UI toolkit: the dashboard is HTML served on loopback to the system browser
 # (ADR-0038 records why Tauri and eframe were not adopted).
 [dependencies]
-cancellai-desktop-api = { path = "../cancellai-desktop-api", version = "1.21.0" }
+cancellai-desktop-api = { path = "../cancellai-desktop-api", version = "1.21.1" }
 serde_json = { workspace = true }

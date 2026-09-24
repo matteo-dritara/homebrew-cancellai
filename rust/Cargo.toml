@@ -8,7 +8,7 @@ resolver = "3"
 members = ["crates/*"]
 
 [workspace.package]
-version = "1.21.0"
+version = "1.21.1"
 edition = "2024"
 # Raised from 1.85.0 by ADR-0026 (E17-S08). 1.85 was the minimum edition 2024 requires and was
 # never chosen on its own merits; holding it kept `ratatui 0.29` and with it an open advisory in
