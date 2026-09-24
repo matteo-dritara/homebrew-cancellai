@@ -10,15 +10,16 @@
     {
       "id": "E33-S01",
       "title": "Signed containment notices are fetched from a published feed",
-      "status": "ready_for_review",
+      "status": "blocked",
       "outcome": "Fetch signed containment notices from a published feed and ingest them through the same path as containment install, so an incident reaches installations without a manual step, while an unreachable, oversized, stale or forged feed leaves the ledger exactly as it was. Owner decisions (2026-09-23): fetch with the system curl, no HTTP client in the binary; publish one cumulative signed notice as containment/notice.json in the canonical repository, fetched by an explicit containment refresh.",
       "change_risk": "CR4",
       "dependencies": [
-        "E06-S07"
+        "E06-S07",
+        "E33-S03"
       ],
       "acceptance_criteria": [
         "When the feed is reachable, the system shall ingest every new notice through the same verification and persistence path as containment install.",
-        "If the feed is unreachable, oversized, malformed, replayed, rolled back or signed by an untrusted publisher, then the ledger shall stay byte-identical and authority shall keep being computed from local state.",
+        "If the feed is unreachable, oversized, malformed, replayed, rolled back or signed by an untrusted publisher, then the ledger's ordered event rows and their raw signed payloads shall stay identical and authority shall keep being computed from local state.",
         "The system shall never lift, narrow or loosen a containment from feed content."
       ],
       "safety_obligations": [
@@ -32,7 +33,14 @@
       "documentation_impact": [
         "docs/security/INCIDENT_RESPONSE.md",
         "docs/security/SUPPLY_CHAIN.md"
-      ]
+      ],
+      "blocked_by": {
+        "summary": "ADR-0040 moved this story's mechanism into E33-S03, which must pass first",
+        "argument": "docs/adrs/0040-release-integrity-by-construction-and-a-transactional-containment-ledger.md",
+        "waiting_on": [
+          "E33-S03"
+        ]
+      }
     },
     {
       "id": "E33-S02",
@@ -67,6 +75,33 @@
       "documentation_impact": [
         "docs/security/INCIDENT_RESPONSE.md",
         "docs/architecture/GUARDIAN_MODEL.md"
+      ]
+    },
+    {
+      "id": "E33-S03",
+      "title": "The containment ledger is a SQLite table decided and appended in one transaction",
+      "status": "in_progress",
+      "outcome": "The JSONL history decided from one read and appended in a separate write; rounds 8 and 9 found concurrent refreshes writing duplicate or losing lines, and a crash inside the write could leave a torn line (ADR-0040). The ledger is now a SQLite table: install, refresh and lift read, replay through cancellai-safety, decide and insert at most one row inside one BEGIN IMMEDIATE transaction.",
+      "change_risk": "CR4",
+      "dependencies": [
+        "E06-S07"
+      ],
+      "acceptance_criteria": [
+        "When containment is installed, refreshed or lifted, the system shall read the history, decide and insert at most one event row inside one database transaction.",
+        "If a decision refuses, finds the notice already current, or loses to a concurrent change, then the system shall insert no row.",
+        "If the process is interrupted before the transaction commits, then the history shall contain no part of the interrupted event.",
+        "If the ledger database exists but cannot be opened, read or replayed, then authority shall be capped as for an unreadable ledger and nothing shall be written."
+      ],
+      "safety_obligations": [
+        "SI-022",
+        "SI-029"
+      ],
+      "verification": [
+        "Store tests for commit/rollback and concurrent transactions; the 16-process refresh and 8-process install CLI tests assert one row per accepted event; a kill-point test kills the process inside the transaction and asserts the history replays with no partial event; a corrupt database caps authority."
+      ],
+      "documentation_impact": [
+        "docs/adrs/0039-the-cutover-perimeter-binds-cli-authority-to-a-local-containment-ledger.md",
+        "docs/security/INCIDENT_RESPONSE.md"
       ]
     }
   ]

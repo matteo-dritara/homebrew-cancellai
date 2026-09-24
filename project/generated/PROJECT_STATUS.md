@@ -4,14 +4,14 @@
 
 Current phase: **P1**
 
-Epics: **35** | Stories: **185**
+Epics: **35** | Stories: **188**
 
 ## Story status
 
-- `blocked`: 1
+- `blocked`: 3
 - `cancelled`: 1
 - `done`: 181
-- `ready_for_review`: 2
+- `in_progress`: 3
 
 ## Change risk distribution
 
@@ -19,7 +19,7 @@ Epics: **35** | Stories: **185**
 - `CR1`: 43
 - `CR2`: 53
 - `CR3`: 33
-- `CR4`: 42
+- `CR4`: 45
 
 ## Explicitly ready work
 
@@ -27,5 +27,4 @@ Epics: **35** | Stories: **185**
 
 ## Awaiting independent review
 
-- **E06-S04** - Canonical engine switch (CR4)
-- **E33-S01** - Signed containment notices are fetched from a published feed (CR4)
+- none

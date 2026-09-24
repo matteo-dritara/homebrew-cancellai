@@ -976,9 +976,9 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S04 - Canonical engine switch
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E06-S03, E21, E22-S01, E06-S06, E06-S07, E06-S08, E06-S09, E06-S10, E06-S11, E06-S12, E06-S13 | **Safety obligations:** SI-019
+**Status:** `blocked` | **Change Risk:** `CR4` | **Dependencies:** E06-S03, E21, E22-S01, E06-S06, E06-S07, E06-S08, E06-S09, E06-S10, E06-S11, E06-S12, E06-S13, E06-S14, E06-S15 | **Safety obligations:** SI-019
 
-**Outcome.** Promote Rust to stable only after functional, safety, compatibility, and operability gates pass.
+**Outcome.** Promote Rust to stable only after functional, safety, compatibility, and operability gates pass. ADR-0040 (2026-09-24) moved the release mechanics out of this story: E06-S14 makes the formula a function of the release manifest rendered where the bytes are built, and E06-S15 adopts the cutover on the owner's explicit authorization. What stays here is the owner's: accepting the migration Safety Verdict, the transition window and the release notes.
 
 **Acceptance criteria**
 
@@ -1022,6 +1022,47 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 - `CHANGELOG.md`
 - `project/risk_floors.json`
+
+### E06-S14 - The release formula is a function of the release manifest, rendered where the bytes are built
+
+**Status:** `in_progress` | **Change Risk:** `CR4` | **Dependencies:** E22-S01 | **Safety obligations:** SI-019
+
+**Outcome.** Nine review rounds found holes in release.py's post-hoc reconstruction of what the formula installs (ADR-0040). The release workflow now renders the Homebrew formula from the verified release manifest and the tag archive's digest and publishes it as the release asset cancellai.rb; finalize adopts that asset only if it is exactly what render_formula produces from the published manifest, after downloading every engine archive it names, hashing it to the manifest's digest and verifying its build provenance.
+
+**Acceptance criteria**
+
+- When a release is published, the system shall render the formula from the release manifest after the manifest's checksums have been verified against the built archives, and publish it as the release asset cancellai.rb.
+- The system shall adopt a published formula only if it is byte-identical to the formula rendered from the published release manifest and the tag archive's digest.
+- If any engine archive the formula names does not hash to the manifest's digest, fails build-provenance verification, or cannot be downloaded, or if the manifest names another version or a target more or less than once, then finalize shall refuse and leave the live formula unchanged.
+
+**Verification**
+
+- Adversarial tests with a simulated release: altered archive, altered manifest, formula asset differing by one byte, manifest for another version, duplicated or missing target, provenance failure, each missing asset; each refuses and leaves the formula byte-identical.
+
+**Documentation impact**
+
+- `docs/development/RELEASE_GATES.md`
+- `docs/security/SUPPLY_CHAIN.md`
+
+### E06-S15 - The cutover is adopted on the owner's explicit authorization, bound to the Safety Verdict it accepts
+
+**Status:** `in_progress` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-019
+
+**Outcome.** finalize --adopt-cutover read E06-S04's done status as the owner's acceptance of the migration, so a status edit stood in for a decision (ADR-0040). It now requires project/evidence/E06-S04/CUTOVER_AUTHORIZATION.md naming the version and the SHA-256 of the SAFETY_VERDICT.md the owner accepted, whose final round must pass.
+
+**Acceptance criteria**
+
+- When finalize adopts the cutover, the system shall require an owner authorization that names the version being adopted and the SHA-256 of the migration Safety Verdict the owner accepted.
+- If the Safety Verdict has changed since it was authorized, or its final round does not pass, or the authorization names another version, then the system shall refuse the adoption and leave the live formula unchanged.
+- The system shall not treat any story status as the owner's authorization.
+
+**Verification**
+
+- Tests: a valid authorization adopts; a missing one, one for another version, one whose Safety Verdict was edited afterwards, and one whose final round fails each refuse with the formula unchanged.
+
+**Documentation impact**
+
+- `docs/development/RELEASE_GATES.md`
 
 ## E07 - Unix Cross-Platform Hardening
 
@@ -4130,14 +4171,14 @@ ADR-0039 kept the network out of the Rust cutover: a signed containment notice r
 
 ### E33-S01 - Signed containment notices are fetched from a published feed
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E06-S07 | **Safety obligations:** SI-022, SI-029, SI-030
+**Status:** `blocked` | **Change Risk:** `CR4` | **Dependencies:** E06-S07, E33-S03 | **Safety obligations:** SI-022, SI-029, SI-030
 
 **Outcome.** Fetch signed containment notices from a published feed and ingest them through the same path as containment install, so an incident reaches installations without a manual step, while an unreachable, oversized, stale or forged feed leaves the ledger exactly as it was. Owner decisions (2026-09-23): fetch with the system curl, no HTTP client in the binary; publish one cumulative signed notice as containment/notice.json in the canonical repository, fetched by an explicit containment refresh.
 
 **Acceptance criteria**
 
 - When the feed is reachable, the system shall ingest every new notice through the same verification and persistence path as containment install.
-- If the feed is unreachable, oversized, malformed, replayed, rolled back or signed by an untrusted publisher, then the ledger shall stay byte-identical and authority shall keep being computed from local state.
+- If the feed is unreachable, oversized, malformed, replayed, rolled back or signed by an untrusted publisher, then the ledger's ordered event rows and their raw signed payloads shall stay identical and authority shall keep being computed from local state.
 - The system shall never lift, narrow or loosen a containment from feed content.
 
 **Verification**
@@ -4169,6 +4210,28 @@ ADR-0039 kept the network out of the Rust cutover: a signed containment notice r
 
 - `docs/security/INCIDENT_RESPONSE.md`
 - `docs/architecture/GUARDIAN_MODEL.md`
+
+### E33-S03 - The containment ledger is a SQLite table decided and appended in one transaction
+
+**Status:** `in_progress` | **Change Risk:** `CR4` | **Dependencies:** E06-S07 | **Safety obligations:** SI-022, SI-029
+
+**Outcome.** The JSONL history decided from one read and appended in a separate write; rounds 8 and 9 found concurrent refreshes writing duplicate or losing lines, and a crash inside the write could leave a torn line (ADR-0040). The ledger is now a SQLite table: install, refresh and lift read, replay through cancellai-safety, decide and insert at most one row inside one BEGIN IMMEDIATE transaction.
+
+**Acceptance criteria**
+
+- When containment is installed, refreshed or lifted, the system shall read the history, decide and insert at most one event row inside one database transaction.
+- If a decision refuses, finds the notice already current, or loses to a concurrent change, then the system shall insert no row.
+- If the process is interrupted before the transaction commits, then the history shall contain no part of the interrupted event.
+- If the ledger database exists but cannot be opened, read or replayed, then authority shall be capped as for an unreadable ledger and nothing shall be written.
+
+**Verification**
+
+- Store tests for commit/rollback and concurrent transactions; the 16-process refresh and 8-process install CLI tests assert one row per accepted event; a kill-point test kills the process inside the transaction and asserts the history replays with no partial event; a corrupt database caps authority.
+
+**Documentation impact**
+
+- `docs/adrs/0039-the-cutover-perimeter-binds-cli-authority-to-a-local-containment-ledger.md`
+- `docs/security/INCIDENT_RESPONSE.md`
 
 ## E34 - Reviewer Pool and Advisory Pre-Review
 

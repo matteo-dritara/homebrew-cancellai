@@ -301,8 +301,8 @@
     {
       "id": "E06-S04",
       "title": "Canonical engine switch",
-      "status": "ready_for_review",
-      "outcome": "Promote Rust to stable only after functional, safety, compatibility, and operability gates pass.",
+      "status": "blocked",
+      "outcome": "Promote Rust to stable only after functional, safety, compatibility, and operability gates pass. ADR-0040 (2026-09-24) moved the release mechanics out of this story: E06-S14 makes the formula a function of the release manifest rendered where the bytes are built, and E06-S15 adopts the cutover on the owner's explicit authorization. What stays here is the owner's: accepting the migration Safety Verdict, the transition window and the release notes.",
       "change_risk": "CR4",
       "dependencies": [
         "E06-S03",
@@ -315,7 +315,9 @@
         "E06-S10",
         "E06-S11",
         "E06-S12",
-        "E06-S13"
+        "E06-S13",
+        "E06-S14",
+        "E06-S15"
       ],
       "acceptance_criteria": [
         "Owner-visible migration Safety Verdict is accepted.",
@@ -333,7 +335,15 @@
       "documentation_impact": [
         "CHANGELOG.md",
         "docs/development/RELEASE_GATES.md"
-      ]
+      ],
+      "blocked_by": {
+        "summary": "ADR-0040 moved this story's mechanism into E06-S14, E06-S15, which must pass first",
+        "argument": "docs/adrs/0040-release-integrity-by-construction-and-a-transactional-containment-ledger.md",
+        "waiting_on": [
+          "E06-S14",
+          "E06-S15"
+        ]
+      }
     },
     {
       "id": "E06-S05",
@@ -359,6 +369,53 @@
       "documentation_impact": [
         "CHANGELOG.md",
         "project/risk_floors.json"
+      ]
+    },
+    {
+      "id": "E06-S14",
+      "title": "The release formula is a function of the release manifest, rendered where the bytes are built",
+      "status": "in_progress",
+      "outcome": "Nine review rounds found holes in release.py's post-hoc reconstruction of what the formula installs (ADR-0040). The release workflow now renders the Homebrew formula from the verified release manifest and the tag archive's digest and publishes it as the release asset cancellai.rb; finalize adopts that asset only if it is exactly what render_formula produces from the published manifest, after downloading every engine archive it names, hashing it to the manifest's digest and verifying its build provenance.",
+      "change_risk": "CR4",
+      "dependencies": [
+        "E22-S01"
+      ],
+      "acceptance_criteria": [
+        "When a release is published, the system shall render the formula from the release manifest after the manifest's checksums have been verified against the built archives, and publish it as the release asset cancellai.rb.",
+        "The system shall adopt a published formula only if it is byte-identical to the formula rendered from the published release manifest and the tag archive's digest.",
+        "If any engine archive the formula names does not hash to the manifest's digest, fails build-provenance verification, or cannot be downloaded, or if the manifest names another version or a target more or less than once, then finalize shall refuse and leave the live formula unchanged."
+      ],
+      "safety_obligations": [
+        "SI-019"
+      ],
+      "verification": [
+        "Adversarial tests with a simulated release: altered archive, altered manifest, formula asset differing by one byte, manifest for another version, duplicated or missing target, provenance failure, each missing asset; each refuses and leaves the formula byte-identical."
+      ],
+      "documentation_impact": [
+        "docs/development/RELEASE_GATES.md",
+        "docs/security/SUPPLY_CHAIN.md"
+      ]
+    },
+    {
+      "id": "E06-S15",
+      "title": "The cutover is adopted on the owner's explicit authorization, bound to the Safety Verdict it accepts",
+      "status": "in_progress",
+      "outcome": "finalize --adopt-cutover read E06-S04's done status as the owner's acceptance of the migration, so a status edit stood in for a decision (ADR-0040). It now requires project/evidence/E06-S04/CUTOVER_AUTHORIZATION.md naming the version and the SHA-256 of the SAFETY_VERDICT.md the owner accepted, whose final round must pass.",
+      "change_risk": "CR4",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "When finalize adopts the cutover, the system shall require an owner authorization that names the version being adopted and the SHA-256 of the migration Safety Verdict the owner accepted.",
+        "If the Safety Verdict has changed since it was authorized, or its final round does not pass, or the authorization names another version, then the system shall refuse the adoption and leave the live formula unchanged.",
+        "The system shall not treat any story status as the owner's authorization."
+      ],
+      "safety_obligations": [
+        "SI-019"
+      ],
+      "verification": [
+        "Tests: a valid authorization adopts; a missing one, one for another version, one whose Safety Verdict was edited afterwards, and one whose final round fails each refuse with the formula unchanged."
+      ],
+      "documentation_impact": [
+        "docs/development/RELEASE_GATES.md"
       ]
     }
   ]
