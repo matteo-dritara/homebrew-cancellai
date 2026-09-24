@@ -24,7 +24,6 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import hashlib
-import importlib.util
 import json
 import os
 import re
@@ -444,6 +443,8 @@ def archive_sha256(version: str) -> str:
 RELEASE_MANIFEST_ASSET = "https://github.com/{repo}/releases/download/v{version}/release-manifest.json"
 # E06-S14: the formula the release workflow rendered from the manifest, published beside it.
 FORMULA_ASSET = "https://github.com/{repo}/releases/download/v{version}/cancellai.rb"
+# The workflow that builds, attests and publishes a release; the manifest names it as build identity.
+RELEASE_WORKFLOW = "release.yml"
 # Bounds on what a verification download may read: an engine archive, the manifest or formula.
 MAX_ENGINE_ARCHIVE_BYTES = 256 * 1024 * 1024
 MAX_MANIFEST_BYTES = 1024 * 1024
@@ -466,6 +467,9 @@ def manifest_digests(doc: object, version: str, where: str) -> dict[str, str]:
     document is the manifest for `version` and names each target's archive exactly once."""
     if not isinstance(doc, dict) or doc.get("document_type") != "release_manifest" or doc.get("version") != version:
         raise ReleaseError(f"{where} is not the release manifest for v{version}")
+    identity = doc.get("build_identity")
+    if not isinstance(identity, dict) or identity.get("repository") != REPO or identity.get("workflow") != RELEASE_WORKFLOW:
+        raise ReleaseError(f"{where} was not built by {REPO}'s {RELEASE_WORKFLOW}")
     artifacts = doc.get("artifacts")
     if not isinstance(artifacts, list):
         raise ReleaseError(f"{where} lists no artifacts")
@@ -493,16 +497,27 @@ def manifest_sha256s(version: str) -> dict[str, str]:
     return manifest_digests(doc, version, url)
 
 
-def verify_provenance(data: bytes, name: str) -> None:
+def provenance_command(gh: str, path: Path, version: str) -> list[str]:
+    """`gh attestation verify` bound to the exact release: this repository, signed by its release
+    workflow, from the version's tag - not merely "some workflow in this repository" (E06 review
+    round 10)."""
+    return [
+        gh, "attestation", "verify", str(path), "--repo", REPO,
+        "--signer-workflow", f"{REPO}/.github/workflows/{RELEASE_WORKFLOW}",
+        "--source-ref", f"refs/tags/v{version}",
+    ]  # fmt: skip
+
+
+def verify_provenance(data: bytes, name: str, version: str) -> None:
     """`gh attestation verify` over exactly these bytes: they were built by this repository's
-    release workflow. Unavailable `gh` or a failed verification refuses."""
+    release workflow from the `v<version>` tag. Unavailable `gh` or a failed verification refuses."""
     gh = shutil.which("gh")
     if gh is None:
         raise ReleaseError(f"cannot verify {name}'s build provenance: `gh` is not installed")
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / name
         path.write_bytes(data)
-        result = subprocess.run([gh, "attestation", "verify", str(path), "--repo", REPO], capture_output=True, text=True, check=False)  # noqa: S603
+        result = subprocess.run(provenance_command(gh, path, version), capture_output=True, text=True, check=False)  # noqa: S603
     if result.returncode != 0:
         raise ReleaseError(f"{name} failed build-provenance verification: {(result.stderr or result.stdout).strip()}")
 
@@ -521,7 +536,7 @@ def engine_sha256s(version: str) -> dict[str, str]:
         if actual != recorded[target]:
             problems.append(f"{target}: archive {actual}, manifest {recorded[target]}")
             continue
-        verify_provenance(data, url.rsplit("/", 1)[-1])
+        verify_provenance(data, url.rsplit("/", 1)[-1], version)
     if problems:
         raise ReleaseError(f"v{version}'s engine archives disagree with the release manifest:\n" + "\n".join(f"- {p}" for p in problems))
     return recorded
@@ -568,16 +583,48 @@ CUTOVER_SAFETY_VERDICT = CUTOVER_EVIDENCE / "SAFETY_VERDICT.md"
 AUTHORIZATION_FIELD_RE = re.compile(r"^(Authorized-by|Version|Safety-Verdict-SHA256):[ \t]*(\S.*?)[ \t]*$", re.MULTILINE)
 
 
+ROUND_HEADING_RE = re.compile(r"^## Round \d+\b", re.MULTILINE)
+SECTION_HEADING_RE = re.compile(r"^## ", re.MULTILINE)
+VERDICT_LINE_RE = re.compile(r"^\s*`?(PASS_WITH_RESIDUALS|PASS|FAIL|REJECT)`?\s*$", re.MULTILINE | re.IGNORECASE)
+FENCE_RE = re.compile(r"^```.*?^```\s*$", re.MULTILINE | re.DOTALL)
+
+
 def safety_verdict_passes(path: Path) -> bool:
-    """`project_os.py`'s own reading of a Safety Verdict's most recent round, loaded by file
-    location like the other scripts do, so the release and the control plane cannot disagree."""
-    spec = importlib.util.spec_from_file_location("cancellai_project_os_release", ROOT / "scripts" / "project_os.py")
-    if spec is None or spec.loader is None:
-        raise ReleaseError("cannot load scripts/project_os.py")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module  # its dataclasses resolve their module through sys.modules
-    spec.loader.exec_module(module)
-    return bool(module.safety_verdict_passes(path))
+    """Whether the migration Safety Verdict's final round passes, read from that round's own
+    section: the last `## Round <n>` heading's standalone verdict lines, fenced blocks excluded.
+    A verdict-shaped line anywhere after that section - an "owner note", say - makes the verdict
+    unreadable, so it fails; nothing outside the final round can turn it into a pass (E06 review
+    round 10)."""
+    try:
+        text = FENCE_RE.sub("", path.read_text(encoding="utf-8"))
+    except OSError:
+        return False
+    rounds = list(ROUND_HEADING_RE.finditer(text))
+    if not rounds:
+        return False
+    start = rounds[-1].end()
+    later = SECTION_HEADING_RE.search(text, start)
+    section = text[start : later.start() if later else len(text)]
+    if later and VERDICT_LINE_RE.search(text, later.start()):
+        return False
+    verdicts = [match.group(1).upper() for match in VERDICT_LINE_RE.finditer(section)]
+    return bool(verdicts) and verdicts[-1] in {"PASS", "PASS_WITH_RESIDUALS"}
+
+
+CODEOWNERS = ROOT / ".github" / "CODEOWNERS"
+
+
+def repository_owner() -> str | None:
+    """The owner `.github/CODEOWNERS` assigns to every path (`* @owner`), or None."""
+    try:
+        text = CODEOWNERS.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        fields = line.split()
+        if len(fields) == 2 and fields[0] == "*":
+            return fields[1]
+    return None
 
 
 def cutover_authorization_problems(version: str) -> list[str]:
@@ -586,7 +633,12 @@ def cutover_authorization_problems(version: str) -> list[str]:
     The authorization is a committed file naming who authorized, the version, and the SHA-256 of
     the migration Safety Verdict they accepted. It is void if the verdict changed since, if the
     verdict's final round does not pass, or if it names another version. No story status stands
-    in for it: a status is an edit anyone can make, not the owner's decision."""
+    in for it: a status is an edit anyone can make, not the owner's decision.
+
+    `Authorized-by` must be the owner `.github/CODEOWNERS` names. That is an identity claim, not
+    an authentication: every commit here, an agent's included, is signed with the owner's key, so
+    nothing in the repository can tell the owner from a process acting as the owner. The owner
+    accepted that same-user limit on 2026-09-24, as ADR-0039 did for the containment ledger."""
     try:
         text = CUTOVER_AUTHORIZATION.read_text(encoding="utf-8")
     except OSError:
@@ -601,6 +653,11 @@ def cutover_authorization_problems(version: str) -> list[str]:
     ]
     if problems:
         return problems
+    owner = repository_owner()
+    if owner is None or fields["Authorized-by"][0] != owner:
+        problems.append(
+            f"the authorization must be by the repository owner ({owner or 'none in .github/CODEOWNERS'}), not {fields['Authorized-by'][0]!r}"
+        )
     if fields["Version"][0] != version:
         problems.append(f"the authorization is for v{fields['Version'][0]}, not v{version}")
     try:

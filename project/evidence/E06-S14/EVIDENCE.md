@@ -31,6 +31,12 @@ No `.sha256` sidecar is read any more; the sidecars are still published for peop
 Mutation checks, each killed: skipping the published-asset comparison; skipping provenance
 verification; skipping the archive-to-manifest comparison.
 
+## Round 10 repair (Codex; refused by the harness, `ROUND10_FINDINGS.md`)
+
+| Finding | Repair | Evidence |
+| --- | --- | --- |
+| `gh attestation verify --repo` alone accepted an attestation from any workflow or ref of this repository | `provenance_command` adds `--signer-workflow matteo-dritara/homebrew-cancellai/.github/workflows/release.yml` and `--source-ref refs/tags/v<version>`; `manifest_digests` refuses a manifest whose `build_identity` is not this repository's `release.yml` | `test_provenance_is_bound_to_the_release_workflow_and_the_tag`, `test_a_manifest_built_by_another_workflow_is_refused`; mutating the ref to `refs/heads/main` or dropping the identity check each fails a test |
+
 ## Verification Commands
 
 ```text

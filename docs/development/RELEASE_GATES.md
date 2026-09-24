@@ -373,7 +373,11 @@ the mechanics left E06-S04:
   sidecar is consulted, `--sha256` cannot stand in for any of it, and a missing piece refuses.
 - **E06-S15 - the owner authorizes the cutover explicitly.** `finalize --adopt-cutover` requires
   `project/evidence/E06-S04/CUTOVER_AUTHORIZATION.md`, bound to the version and to the
-  Safety Verdict the owner accepted; no story status stands in for it.
+  Safety Verdict the owner accepted; no story status stands in for it. The file carries three
+  lines - `Authorized-by: @matteo-dritara` (the `.github/CODEOWNERS` owner), `Version: 2.0.0`, and
+  `Safety-Verdict-SHA256: <sha256 of SAFETY_VERDICT.md>` - and the verdict's final `## Round <n>`
+  section must pass. It is written by the owner after an independent PASS; it is an identity claim,
+  not an authentication (ADR-0040).
 
 ## Epic closure
 

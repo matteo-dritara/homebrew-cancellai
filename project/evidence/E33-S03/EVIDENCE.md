@@ -40,6 +40,12 @@ uncommitted test fail); a deferred instead of an immediate transaction (the 16-t
 - **SI-019:** no file is removed by this code. SQLite's rollback journal is created and removed
   by SQLite itself, as it is for the existing `cancellai-store` ledger.
 
+## Round 10 repair (Codex; refused by the harness, `project/evidence/E06-S14/ROUND10_FINDINGS.md`)
+
+| Finding | Repair | Evidence |
+| --- | --- | --- |
+| `transact` ran `CREATE TABLE IF NOT EXISTS` before deciding, so an existing database without an `events` table - unreadable to `load_events` - was silently initialized by the next install | The table is created only in a ledger that is no database yet (a zero-byte file: the one `transact` itself creates, or one a crash left), inside the `IMMEDIATE` transaction; a first decision that keeps the history commits only the table. Any existing database without the table is refused and left byte-identical. `load_events` treats a zero-byte file as missing, consistently | Codex's `an_existing_database_without_events_must_not_be_initialized_on_install` (kept, now also asserting the bytes are unchanged), `a_zero_byte_ledger_is_no_database_and_starts_empty`; the 16-thread and 16-process concurrency tests still pass |
+
 ## Verification Commands
 
 ```text

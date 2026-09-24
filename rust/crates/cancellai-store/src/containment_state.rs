@@ -144,6 +144,9 @@ pub fn load_events(root: &LocalStateRoot) -> Load<Vec<StoredEvent>> {
     match std::fs::symlink_metadata(&path) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Load::Missing,
         Err(error) => return Load::Unreadable(format!("{}: {error}", path.display())),
+        // Zero bytes is no database at all: the file `transact` creates before its first
+        // transaction commits. It holds no event, exactly like a missing file.
+        Ok(meta) if meta.is_file() && meta.len() == 0 => return Load::Missing,
         Ok(_) => {}
     }
     if let Some(reason) = too_large(&path) {
@@ -185,15 +188,27 @@ pub fn transact<T>(
     )
     .map_err(describe)?;
     conn.busy_timeout(BUSY_WAIT).map_err(describe)?;
-    // Committed on its own, so every ledger this module ever created has its table, whatever a
-    // decision later does.
-    conn.execute(CREATE_TABLE, []).map_err(describe)?;
     let transaction = conn
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(describe)?;
+    // Only a ledger that is no database yet - the file just created, or one a crash left empty -
+    // gets its table, inside this transaction. An existing database without the table is an
+    // unreadable ledger and is refused unchanged, never initialized (E06 review round 10).
+    let fresh = std::fs::metadata(&path)
+        .map(|meta| meta.len() == 0)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    if fresh {
+        transaction.execute(CREATE_TABLE, []).map_err(describe)?;
+    }
     let events = read_rows(&transaction, &path)?;
     match decide(&events) {
-        Decision::Keep(result) => Ok(result), // dropping the transaction rolls it back
+        Decision::Keep(result) => {
+            if fresh {
+                // The table, and nothing else, so the ledger this created stays readable.
+                transaction.commit().map_err(describe)?;
+            }
+            Ok(result) // otherwise dropping the transaction rolls it back
+        }
         Decision::Append(event, result) => {
             let (kind, payload) = match event {
                 StoredEvent::Install(text) => ("install", text),
@@ -402,6 +417,43 @@ mod tests {
             .is_err()
         );
         assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+
+    // E06 review round 10 (Codex's counterexample, kept): an existing database with no events
+    // table was initialized by the next install instead of being refused as unreadable.
+    #[test]
+    fn an_existing_database_without_events_must_not_be_initialized_on_install() {
+        let (_guard, root) = TempRoot::new("missing-events-table");
+        let path = root.path_for(LEDGER_FILENAME).unwrap();
+        let conn = Connection::open(&path).unwrap();
+        conn.execute("CREATE TABLE other (value TEXT)", []).unwrap();
+        drop(conn);
+        assert!(matches!(load_events(&root), Load::Unreadable(_)));
+        let before = std::fs::read(&path).unwrap();
+        let result = transact(
+            &root,
+            |_| Decision::Append(StoredEvent::Lift("INC-1".to_string()), ()),
+            || {},
+        );
+        assert!(
+            result.is_err(),
+            "unreadable existing history was accepted: {result:?}"
+        );
+        assert!(matches!(load_events(&root), Load::Unreadable(_)));
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+
+    #[test]
+    fn a_zero_byte_ledger_is_no_database_and_starts_empty() {
+        let (_guard, root) = TempRoot::new("zero-byte");
+        let path = root.path_for(LEDGER_FILENAME).unwrap();
+        std::fs::write(&path, b"").unwrap();
+        assert_eq!(load_events(&root), Load::Missing);
+        append(&root, StoredEvent::Lift("INC-1".to_string()));
+        assert_eq!(
+            load_events(&root),
+            Load::Found(vec![StoredEvent::Lift("INC-1".to_string())])
+        );
     }
 
     #[test]

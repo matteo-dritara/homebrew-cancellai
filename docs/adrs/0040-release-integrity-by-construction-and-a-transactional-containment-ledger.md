@@ -62,6 +62,12 @@ model was overloaded for every attempt.
   download the tag archive. A release that cannot verify provenance cannot be finalized.
 - The same-user limit ADR-0039 recorded is unchanged: a process running as the owner can still
   delete or edit the database, as it could the JSONL file.
+- **The cutover authorization is an identity claim, not an authentication** (owner decision,
+  2026-09-24, after round 10 asked for one). `Authorized-by` must be the owner `.github/CODEOWNERS`
+  names, and the file is bound to the version and the Safety Verdict's bytes; but every commit
+  here, an agent's included, is signed with the owner's key, so a process acting as the owner can
+  write it. A dedicated signing key was judged too much complexity for what it adds. This is the
+  same same-user limit as above.
 
 ## Alternatives considered
 

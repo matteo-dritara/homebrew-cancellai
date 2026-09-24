@@ -21,6 +21,24 @@ PASS
 Mutation checks, each killed: dropping the verdict digest comparison, the version comparison, or
 the final-round check.
 
+## Round 10 repair (Codex; refused by the harness, `project/evidence/E06-S14/ROUND10_FINDINGS.md`)
+
+| Finding | Repair | Evidence |
+| --- | --- | --- |
+| A verdict `## Round 10 ... FAIL` followed by `## Owner note ... PASS` read as passing through `project_os.safety_verdict_passes` (last verdict-shaped line wins) | `release.py safety_verdict_passes` reads the last `## Round <n>` section's own standalone verdict lines, fenced blocks excluded, and fails when any verdict-shaped line follows that section | `test_a_later_note_cannot_reverse_a_failed_final_round` (Codex's case, now through the real reader), `test_the_final_round_section_decides` (8 cases); mutations reading the first round or ignoring later sections each fail |
+| `Authorized-by: stranger` was accepted | `Authorized-by` must equal the owner `.github/CODEOWNERS` assigns to `*` (`@matteo-dritara`) | `test_only_the_repository_owner_can_authorize` |
+
+**Owner decision on authentication (2026-09-24).** Codex asked for an *authenticated* owner decision.
+Every commit here, an agent's included, is signed with the owner's GPG key, so nothing in the
+repository can tell the owner from a process acting as the owner; a dedicated signing key would
+add, in the owner's words, too much complexity. The owner accepted the same-user limit - the one
+ADR-0039 already accepts for the containment ledger - with the identity check above closing the
+reproduced case.
+
+**Flagged, not fixed:** `scripts/project_os.py safety_verdict_passes`, which gates CR4 story
+closure, has the same last-line-wins weakness. It belongs to E32-S01's mechanism and is outside
+this story; recorded here as a backlog candidate.
+
 ## Verification Commands
 
 ```text

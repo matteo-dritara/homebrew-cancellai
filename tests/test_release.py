@@ -398,7 +398,15 @@ class PublishedEngineEvidenceTests(unittest.TestCase):
     VERSION = "2.0.0"
     SOURCE = "f" * 64
 
-    def published(self, *, archive: bytes = b"engine", manifest_digest: str | None = None, manifest_version: str = VERSION, artifacts=None):
+    def published(
+        self,
+        *,
+        archive: bytes = b"engine",
+        manifest_digest: str | None = None,
+        manifest_version: str = VERSION,
+        artifacts=None,
+        workflow: str | None = None,
+    ):
         import hashlib
         import json
 
@@ -412,6 +420,7 @@ class PublishedEngineEvidenceTests(unittest.TestCase):
         doc = {
             "document_type": "release_manifest",
             "version": manifest_version,
+            "build_identity": {"repository": release.REPO, "workflow": workflow or release.RELEASE_WORKFLOW, "run_id": "1"},
             "artifacts": entries if artifacts is None else artifacts(entries),
         }
         assets[release.RELEASE_MANIFEST_ASSET.format(repo=release.REPO, version=self.VERSION)] = json.dumps(doc).encode()
@@ -429,7 +438,7 @@ class PublishedEngineEvidenceTests(unittest.TestCase):
                 raise release.ReleaseError(f"could not download {url}")
             return assets[url]
 
-        def verify_provenance(data, name):
+        def verify_provenance(data, name, version):
             if provenance_fails:
                 raise release.ReleaseError(f"{name} failed build-provenance verification")
 
@@ -504,9 +513,22 @@ class PublishedEngineEvidenceTests(unittest.TestCase):
         with self.network(assets):
             self.assertTrue(release.published_digest_problems(formula.replace("f" * 64, "e" * 64, 1), self.VERSION))
 
+    # E06 review round 10: provenance from any workflow or ref of this repository satisfied the check.
+    def test_provenance_is_bound_to_the_release_workflow_and_the_tag(self) -> None:
+        from pathlib import Path
+
+        command = release.provenance_command("gh", Path("a.tar.gz"), "2.0.0")
+        self.assertEqual(command[command.index("--signer-workflow") + 1], f"{release.REPO}/.github/workflows/release.yml")
+        self.assertEqual(command[command.index("--source-ref") + 1], "refs/tags/v2.0.0")
+
+    def test_a_manifest_built_by_another_workflow_is_refused(self) -> None:
+        assets, _, _ = self.published(workflow="experiment.yml")
+        with self.network(assets), self.assertRaisesRegex(release.ReleaseError, "was not built by"):
+            release.adoptable_formula(self.VERSION)
+
     def test_verify_provenance_refuses_without_gh(self) -> None:
         with mock.patch.object(release.shutil, "which", return_value=None), self.assertRaisesRegex(release.ReleaseError, "gh"):
-            release.verify_provenance(b"x", "a.tar.gz")
+            release.verify_provenance(b"x", "a.tar.gz", "2.0.0")
 
 
 class CutoverAuthorizationTests(unittest.TestCase):
@@ -530,15 +552,12 @@ class CutoverAuthorizationTests(unittest.TestCase):
             if authorization is not None:
                 if authorization == "":
                     digest = hashlib.sha256((verdict or "").encode()).hexdigest()
-                    authorization = f"Authorized-by: project owner\nVersion: 2.0.0\nSafety-Verdict-SHA256: {digest}\n"
+                    authorization = f"Authorized-by: @matteo-dritara\nVersion: 2.0.0\nSafety-Verdict-SHA256: {digest}\n"
                 authorization_path.write_text(authorization, encoding="utf-8")
             with (
                 mock.patch.object(release, "ROOT", root),
                 mock.patch.object(release, "CUTOVER_AUTHORIZATION", authorization_path),
                 mock.patch.object(release, "CUTOVER_SAFETY_VERDICT", verdict_path),
-                mock.patch.object(
-                    release, "safety_verdict_passes", side_effect=lambda path: path.read_text(encoding="utf-8").rstrip().endswith("PASS")
-                ),
             ):
                 return release.cutover_authorization_problems(version)
 
@@ -555,13 +574,22 @@ class CutoverAuthorizationTests(unittest.TestCase):
         import hashlib
 
         digest = hashlib.sha256(self.PASSING.encode()).hexdigest()
-        authorization = f"Authorized-by: project owner\nVersion: 2.0.0\nSafety-Verdict-SHA256: {digest}\n"
+        authorization = f"Authorized-by: @matteo-dritara\nVersion: 2.0.0\nSafety-Verdict-SHA256: {digest}\n"
         problems = self.check(verdict=self.PASSING + "\n## Round 11\n\nPASS\n", authorization=authorization)
         self.assertTrue(any("changed after" in p for p in problems), problems)
 
     def test_a_failing_final_round_is_refused_even_when_authorized(self) -> None:
         problems = self.check(verdict="## Round 10\n\nFAIL\n")
         self.assertTrue(any("does not pass" in p for p in problems), problems)
+
+    # E06 review round 10: any `Authorized-by` value was accepted.
+    def test_only_the_repository_owner_can_authorize(self) -> None:
+        import hashlib
+
+        digest = hashlib.sha256(self.PASSING.encode()).hexdigest()
+        stranger = f"Authorized-by: stranger\nVersion: 2.0.0\nSafety-Verdict-SHA256: {digest}\n"
+        self.assertTrue(any("repository owner" in p for p in self.check(authorization=stranger)))
+        self.assertEqual(release.repository_owner(), "@matteo-dritara")
 
     def test_every_field_is_required_exactly_once(self) -> None:
         for authorization in ("Version: 2.0.0\n", "Authorized-by: a\nAuthorized-by: b\nVersion: 2.0.0\nSafety-Verdict-SHA256: x\n"):
@@ -573,13 +601,29 @@ class CutoverAuthorizationTests(unittest.TestCase):
         self.assertFalse(hasattr(release, "cutover_story_status"))
         self.assertTrue(self.check(authorization=None))
 
-    def test_the_real_safety_verdict_reader_is_project_os(self) -> None:
+    # E06 review round 10 (Codex's counterexample, kept): a verdict-shaped line in a later,
+    # non-round section turned a failing final round into a pass.
+    def test_a_later_note_cannot_reverse_a_failed_final_round(self) -> None:
+        verdict = "## Round 10\nVerifier: Codex\n\nFAIL\n\n## Owner note\n\nPASS\n"
+        self.assertTrue(any("does not pass" in p for p in self.check(verdict=verdict)))
+
+    def test_the_final_round_section_decides(self) -> None:
         import tempfile
         from pathlib import Path
 
+        cases = {
+            "## Round 9\n\nFAIL\n\n## Round 10\n\nPASS\n": True,
+            "## Round 9 — 2026-09-24\n\nPASS\n\n## Round 10 — 2026-09-25\n\nFAIL\n": False,
+            "## Round 10\n\nPASS_WITH_RESIDUALS\n\n### Residuals\n\nnone blocking\n": True,
+            "## Round 10\n\n```\nPASS\n```\n\nFAIL\n": False,
+            "## Round 10\n\nFAIL\n\n```\nPASS\n```\n": False,
+            "## Round 10\n\nPASS\n\n## Owner note\n\nFAIL\n": False,
+            "PASS\n": False,
+            "## Round 10\n\nno verdict line\n": False,
+        }
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "SAFETY_VERDICT.md"
-            path.write_text("## Round 1\n\nFAIL\n\n## Round 2\n\nPASS\n", encoding="utf-8")
-            self.assertTrue(release.safety_verdict_passes(path))
-            path.write_text("## Round 1\n\nPASS\n\n## Round 2\n\nFAIL\n", encoding="utf-8")
-            self.assertFalse(release.safety_verdict_passes(path))
+            for text, passes in cases.items():
+                path.write_text(text, encoding="utf-8")
+                with self.subTest(text=text):
+                    self.assertEqual(release.safety_verdict_passes(path), passes)
