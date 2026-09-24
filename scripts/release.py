@@ -621,18 +621,19 @@ def safety_verdict_passes(path: Path) -> bool:
     refuses), loaded by file location like the other scripts do, so the release and the control
     plane apply one rule, not two copies of it. The cutover also requires the verdict to record its
     rounds under `## Round <n>` headings."""
-    try:
-        if not ROUND_HEADING_RE.search(path.read_text(encoding="utf-8")):
-            return False
-    except OSError:
-        return False
     spec = importlib.util.spec_from_file_location("cancellai_project_os_release", Path(__file__).resolve().parent / "project_os.py")
     if spec is None or spec.loader is None:
         raise ReleaseError("cannot load scripts/project_os.py")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module  # its dataclasses resolve their module through sys.modules
     spec.loader.exec_module(module)
-    return bool(module.safety_verdict_passes(path))
+    # The round precheck reads the text the gate reads - fenced blocks stripped - so a `## Round`
+    # that exists only inside a fence cannot satisfy it (E35 self-review). Undecodable bytes refuse.
+    try:
+        text = module.strip_fenced_code(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError):
+        return False
+    return bool(ROUND_HEADING_RE.search(text)) and bool(module.safety_verdict_passes(path))
 
 
 CODEOWNERS = ROOT / ".github" / "CODEOWNERS"

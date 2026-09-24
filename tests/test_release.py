@@ -637,6 +637,9 @@ class CutoverAuthorizationTests(unittest.TestCase):
             "## Round 10\n\nPASS\n\n## Owner note\n\nFAIL\n": False,
             "PASS\n": False,
             "## Round 10\n\nno verdict line\n": False,
+            # E35 self-review: a round heading only inside a fence does not make the file a
+            # round history, so its later owner note cannot decide it.
+            "```\n## Round 1\n```\n\n## Verdict\n\nFAIL\n\n## Owner note\n\nPASS\n": False,
             "## Round 10\n\nFAIL\n\n## Owner note\n\nsee below\n\n## Verdict\n\nPASS\n": False,
             "## Round 10\n\n## Verdict\n\nPASS\n\n## Verdict\n\nPASS\n": False,
             "## Round 10\n\nFAIL\n\n## Verdict\n\nPASS\n": False,
