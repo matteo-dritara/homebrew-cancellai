@@ -8,9 +8,8 @@ Epics: **36** | Stories: **190**
 
 ## Story status
 
-- `blocked`: 1
 - `cancelled`: 1
-- `done`: 185
+- `done`: 186
 - `planned`: 2
 - `ready_for_review`: 1
 
@@ -28,4 +27,4 @@ Epics: **36** | Stories: **190**
 
 ## Awaiting independent review
 
-- **E06-S14** - The release formula is a function of the release manifest, rendered where the bytes are built (CR4)
+- **E06-S04** - Canonical engine switch (CR4)

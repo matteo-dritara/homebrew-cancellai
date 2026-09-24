@@ -110,3 +110,35 @@ acceptance of this failed CR4 round is recorded.
 Full reproduction and gate details: `project/evidence/E06-VERIFIER-REVIEW-ROUND12.md`.
 
 FAIL
+
+## Round 13 — 2026-09-24
+
+Verifier: Codex
+Brief-Checksum: fa4a751b449e2ed74da03c05db7ca490cf6c54f8bf5e6cdf05089a7c0eabcbda
+Review target: `b36ce198943233b5f08760b581f7441c2db61bad..2ac50ebaeafae6a8e576f1ee43aaa99ada0c1c4c`
+Risk: CR4
+
+### Safety surface changed
+
+`finalize` may replace the live Homebrew formula only after the published formula, closed manifest, tag source archive, and four release archives agree with verified build provenance and the successful tag release run. This is release authority over the binary Homebrew will install; no provider filesystem mutation code changed.
+
+### Invariants and adversarial cases
+
+| Invariant / obligation | Required property | Evidence | Result |
+| --- | --- | --- | --- |
+| E06-S14 AC1, C-16 | Publish renders the formula from a verified manifest and the tag archive digest. | Release workflow order inspected; an independent temporary-directory CLI simulation generated and verified the manifest from four archive files, rendered the formula, then altered an archive and observed checksum refusal before publication. Latest main release prerequisites, including lint, were green. | PASS |
+| E06-S14 AC2–AC3, SI-019 | Adoption requires byte-identical formula text, matching archive bytes and provenance, exact version and target set; refusal leaves the live formula unchanged. | `tests/test_round12_adversarial.py` positive control and 15 fault subtests passed; `tests/test_release.py` and round-11 adversarial tests passed. All asset downloads and attestation/run checks precede `write_atomically`; the formula byte mutation and every missing/altered asset refused with original bytes intact. `check_mutation_boundary.py check` passed. | PASS |
+
+### Differential / compatibility evidence
+
+No Rust source changed in this story. Rust/Python parity and platform checks passed locally; the latest main Rust quality and MSRV jobs passed on macOS, Linux and Windows. The release workflow itself executes only on a tag, so no live cutover release was claimed.
+
+### Known residual risks and recovery
+
+The first tagged cutover remains an integration event: re-run `verify-formula` if release assets or the tag change after finalization. If any evidence is unavailable or disagrees, `finalize` refuses before replacing the Python formula. This review's full local docs suite was contaminated by the untracked `.opencode-run/prompt.md`; origin/main's committed-tree tests and lint were green.
+
+### Owner decision
+
+Pending. This verdict closes E06-S14's implementation review; E06-S04 returns to the review queue. It does not authorize E06-S04's cutover or close the epic.
+
+PASS_WITH_RESIDUALS
