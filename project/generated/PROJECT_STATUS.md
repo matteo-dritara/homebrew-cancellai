@@ -10,8 +10,7 @@ Epics: **36** | Stories: **190**
 
 - `blocked`: 2
 - `cancelled`: 1
-- `done`: 183
-- `in_progress`: 1
+- `done`: 184
 - `planned`: 1
 - `ready_for_review`: 2
 

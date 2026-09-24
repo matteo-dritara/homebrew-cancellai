@@ -28,3 +28,11 @@ are repaired and pinned too.
 
 The story is CR2: it closes on this decision plus a forked self-review, not a third independent
 round.
+
+## Owner decision (2026-09-24)
+
+The owner closed E35-S01 on this decision with the residuals accepted: no independent review
+confirmed the repairs made after round 2 and after both self-reviews. Accepted residuals: a `###`
+subsection inside the final round decides, as AC1 states; the AC3 standing test pins two files
+(the full comparison - 54 files, 95 historical blobs - was a one-time measurement); the reader
+differences from rendered Markdown inherited from E32-S01 are E35-S02, in backlog.
