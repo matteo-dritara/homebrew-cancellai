@@ -4371,7 +4371,7 @@ E06 review round 10 showed that a Safety Verdict ending `## Round 10 ... FAIL` f
 
 ### E35-S01 - safety_verdict_passes reads the final round's own verdict
 
-**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `in_progress` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** When a Safety Verdict records rounds under `## Round <n>` headings, the gate reads the verdict from the final round's own section, and a verdict-shaped line in any later section makes the file refuse rather than decide. A file with no round headings keeps E32-S01's rule.
 

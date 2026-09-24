@@ -291,6 +291,17 @@ class ProjectOSTests(unittest.TestCase):
                 with self.subTest(text=text):
                     self.assertEqual(project_os.safety_verdict_passes(path), passes)
 
+    def test_an_owner_note_cannot_add_a_later_verdict_section(self) -> None:
+        # A second Verdict heading after an owner note is not the template's verdict
+        # section belonging to the final round. It must not override that round's FAIL.
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "SAFETY_VERDICT.md"
+            path.write_text(
+                "## Round 10\n\nFAIL\n\n## Owner note\n\nNo decision here.\n\n## Verdict\n\nPASS\n",
+                encoding="utf-8",
+            )
+            self.assertFalse(project_os.safety_verdict_passes(path))
+
     def test_every_committed_safety_verdict_keeps_its_judgement(self) -> None:
         # E35-S01 AC3: the change must not re-judge any Safety Verdict already committed. These two
         # closed CR4 stories put their verdict in the template's `## Verdict` section after a

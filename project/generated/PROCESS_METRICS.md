@@ -95,13 +95,14 @@ distinguished by the next round, which is why the ceiling matters.
 | E34 | 2 | **self** | 3 | 0 | 0 | 0% |
 | E34 | 2 | independent | 5 | 4 | 4 | 80% |
 | E34 | 3 | independent | 5 | 2 | 2 | 40% |
+| E35 | 1 | independent | 1 | 1 | 1 | 100% |
 
 ## First-pass rejection rate
 
 The gap between *every gate passed* and *the work is right*. Each rejected story below had
 already been declared `ready_for_review` by an executor who ran the full gate set green.
 
-- **Independent reviewer:** 54 of 112 round-1 verdicts were `FAIL` - **48%**.
+- **Independent reviewer:** 55 of 113 round-1 verdicts were `FAIL` - **49%**.
 - **Self-review (same agent as executor):** 6 of 17 round-1 verdicts were `FAIL` - **35%**.
 
 - **Round-1 records excluded as unreadable:** 2. Their verdicts are in neither denominator above, so both rates are computed over the subset of records that use a machine-readable verdict table.
@@ -140,7 +141,7 @@ independent samples, and the population estimate collapses to what one round alr
 
 ## Evidence-ledger integrity
 
-- **171 of 186** story packets past `ready_for_review` carry a row per acceptance criterion.
+- **170 of 185** story packets past `ready_for_review` carry a row per acceptance criterion.
 - Packets that do not:
   - E00-S01 (CR4): 0 rows for 3 criteria
   - E00-S02 (CR4): 0 rows for 3 criteria
@@ -215,7 +216,7 @@ no reviewer is shown as `unnamed`, not credited to anyone.
 
 | Reviewer | Rounds | Stories judged | Found |
 | --- | --- | --- | --- |
-| Codex | 40 | 100 | 65 |
+| Codex | 41 | 101 | 66 |
 | unnamed | 29 | 118 | 53 |
 
 ## Advisory pre-reviews (never rounds, never verdicts)
