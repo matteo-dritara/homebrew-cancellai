@@ -167,20 +167,19 @@ def strip_fenced_code(text: str) -> str:
 
 def final_round_text(text: str, start: int) -> str | None:
     """The part of a Safety Verdict that may decide it: the final round's own body, plus the
-    template's `## Verdict` section if one follows. None when any other later `## ` section holds a
-    verdict-shaped line, which would otherwise be read as the decision (E35-S01)."""
-    admissible = []
+    template's `## Verdict` section only when it is the very next section - at most one. None when
+    any later section, another `## Verdict` included, holds a verdict-shaped line, which would
+    otherwise be read as the decision (E35-S01; E35 review round 1: a `## Verdict` appended after
+    an owner note overrode the round's FAIL)."""
     sections = [*SECTION_HEADING_RE.finditer(text, start), None]
-    body_end = sections[0].start() if sections[0] else len(text)
-    admissible.append(text[start:body_end])
-    for here, following in itertools.pairwise(sections):
+    admissible = [text[start : sections[0].start() if sections[0] else len(text)]]
+    for index, (here, following) in enumerate(itertools.pairwise(sections)):
         if here is None:
             break
         section = text[here.start() : following.start() if following else len(text)]
-        holds_verdict = PASSING_VERDICT_RE.search(section) or FAILING_VERDICT_RE.search(section)
-        if VERDICT_HEADING_RE.match(section):
+        if index == 0 and VERDICT_HEADING_RE.match(section):
             admissible.append(section)
-        elif holds_verdict:
+        elif PASSING_VERDICT_RE.search(section) or FAILING_VERDICT_RE.search(section):
             return None
     return "\n".join(admissible)
 
@@ -213,7 +212,9 @@ def safety_verdict_passes(path: Path) -> bool:
     rounds = list(ROUND_HEADING_RE.finditer(text))
     if rounds:
         decisive = final_round_text(text, rounds[-1].end())
-        if decisive is None:
+        # Within the final round a FAIL/REJECT anywhere decides: its own template section cannot
+        # contradict the round into a pass.
+        if decisive is None or FAILING_VERDICT_RE.search(decisive):
             return False
         text = decisive
     verdicts = [(m.start(), True) for m in PASSING_VERDICT_RE.finditer(text)]

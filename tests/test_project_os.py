@@ -283,6 +283,12 @@ class ProjectOSTests(unittest.TestCase):
             "## Round 2 - operative verdict\n\n## Verdict\n\n`PASS_WITH_RESIDUALS`\n\n## Owner decision\n\naccepted\n": True,
             "## Round 2\n\n## Verdict\n\n`PASS`\n\n## Owner decision\n\n`REJECT`\n": False,
             "## Round 2\n\nno verdict yet\n": False,
+            # E35 review round 1: a `## Verdict` is attached only when it immediately follows the
+            # final round, at most once, and never outvotes the round's own FAIL.
+            "## Round 10\n\nFAIL\n\n## Owner note\n\nsee below\n\n## Verdict\n\nPASS\n": False,
+            "## Round 10\n\n## Verdict\n\nPASS\n\n## Verdict\n\nPASS\n": False,
+            "## Round 10\n\nFAIL\n\n## Verdict\n\nPASS\n": False,
+            "## Round 10\n\nPASS\n\n## Verdict\n\nFAIL\n": False,
         }
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "SAFETY_VERDICT.md"

@@ -2,7 +2,7 @@
 
 - Commit/PR: the E35-S01 commit on `main`
 - Executor: Claude
-- Independent verifier: pending
+- Independent verifier: round 1 FAIL (Codex, E35-VERIFIER-REVIEW-ROUND1.md); repaired
 - Change Risk: CR2
 - Spec version/commit: `project/epics/E35.json` at this commit
 
@@ -31,6 +31,14 @@ admitting the `## Verdict` section (7 tests fail).
 
 `scripts/release.py`'s reader (E06-S15) now uses the same rule, so the release and the control
 plane cannot disagree on the same file.
+
+## Round 1 repair (Codex, `project/evidence/E35-VERIFIER-REVIEW-ROUND1.md`)
+
+| Finding | Repair | Evidence |
+| --- | --- | --- |
+| `## Round 10 ... FAIL`, then `## Owner note`, then a newly appended `## Verdict ... PASS` read as passing: any later `## Verdict` section was admitted | A `## Verdict` section is attached to the final round only when it is the very next section, at most once; a verdict-shaped line in any other later section - a second `## Verdict` included - refuses; and a FAIL/REJECT anywhere in the final round's body or its attached section fails the file, so the template section cannot contradict the round into a pass | Codex's `test_an_owner_note_cannot_add_a_later_verdict_section` (kept); four new cases in `test_the_final_round_decides_and_a_later_section_cannot` (verdict after a note, duplicate verdict sections, body FAIL with section PASS, body PASS with section FAIL); every committed Safety Verdict still judged as before. Mutations admitting any `## Verdict` or letting the round's FAIL be outvoted each fail a test |
+
+`release.py`'s reader follows the same rule (E06-S15).
 
 ## Verification Commands
 

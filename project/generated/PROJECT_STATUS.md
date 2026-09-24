@@ -11,8 +11,7 @@ Epics: **36** | Stories: **189**
 - `blocked`: 2
 - `cancelled`: 1
 - `done`: 183
-- `in_progress`: 1
-- `ready_for_review`: 2
+- `ready_for_review`: 3
 
 ## Change risk distribution
 
@@ -30,3 +29,4 @@ Epics: **36** | Stories: **189**
 
 - **E06-S14** - The release formula is a function of the release manifest, rendered where the bytes are built (CR4)
 - **E33-S01** - Signed containment notices are fetched from a published feed (CR4)
+- **E35-S01** - safety_verdict_passes reads the final round's own verdict (CR2)
