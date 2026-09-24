@@ -83,6 +83,11 @@ AC_ROW = re.compile(r"^\|\s*AC\s*(\d+)", re.MULTILINE | re.IGNORECASE)
 # epic round would invent rounds that never happened and corrupt every number below it.
 REVIEW_FILE = re.compile(r"^(E\d{2})(?P<story>-S\d{2})?-(?:VERIFIER|SELF)-REVIEW(?:-ROUND(?P<round>\d+))?\.md$", re.IGNORECASE)
 SELF_REVIEW = re.compile(r"SELF-REVIEW", re.IGNORECASE)
+# E34-S03 / PD-028: an advisory pre-review is never a round and never a verdict. It is listed,
+# not counted, so a cheap pass can never inflate or stand in for the independent measurement.
+PRE_REVIEW_FILE = re.compile(r"^(E\d{2})-PRE-REVIEW-(\d+)\.md$")
+VERIFIER_NAME = re.compile(r"^Verifier:\s*(.+?)\s*$", re.MULTILINE)
+ADVISORY: list[str] = []
 # Two different questions, deliberately not one. `REJECTING` is "the story was sent back", which
 # is what the first-pass rejection rate measures. `FINDING` is "the round found something",
 # which is what ADR-0025's yield threshold is actually about: whether another round is worth
@@ -112,6 +117,8 @@ class Round:
     path: Path
     independent: bool
     verdicts: dict[str, str] = field(default_factory=dict)
+    # The `Verifier:` line's family (E34-S03): "Codex", "OpenCode/<model>", ... or "unnamed".
+    reviewer: str = "unnamed"
 
     @property
     def rejected(self) -> set[str]:
@@ -155,6 +162,17 @@ def parse_verdicts(text: str) -> dict[str, str]:
     return verdicts
 
 
+def reviewer_family(text: str) -> str:
+    """The reviewer a record names, reduced to its family: `Codex`, `OpenCode/<model>`, or a
+    bracketed `Codex (/root)`-style note stripped. A record that names nobody is `unnamed`, never
+    attributed to a default."""
+    match = VERIFIER_NAME.search(prose_only(text))
+    if not match:
+        return "unnamed"
+    name = match.group(1).strip().strip("`")
+    return name.split(" ", 1)[0] if name.lower().startswith("codex") else name
+
+
 def load_rounds() -> dict[str, list[Round]]:
     """Review records per epic, ordered by round.
 
@@ -165,7 +183,11 @@ def load_rounds() -> dict[str, list[Round]]:
     rounds: dict[str, list[Round]] = {}
     unclassifiable: list[str] = []
     not_counted: list[str] = []
+    advisory: list[str] = []
     for path in sorted(EVIDENCE.rglob("*REVIEW*.md")):
+        if PRE_REVIEW_FILE.match(path.name):
+            advisory.append(str(path.relative_to(ROOT)))
+            continue
         match = REVIEW_FILE.match(path.name)
         if not match:
             # Dropped silently, this hid a review record entirely - including a self-review named
@@ -188,10 +210,13 @@ def load_rounds() -> dict[str, list[Round]]:
             path=path,
             independent=not SELF_REVIEW.search(path.name),
             verdicts=parse_verdicts(text),
+            reviewer=reviewer_family(text),
         )
         rounds.setdefault(match.group(1), []).append(record)
     for records in rounds.values():
         records.sort(key=lambda record: record.number)
+    ADVISORY.clear()
+    ADVISORY.extend(advisory)
     UNCLASSIFIABLE.clear()
     UNCLASSIFIABLE.extend(sorted(unclassifiable))
     NOT_COUNTED.clear()
@@ -367,6 +392,19 @@ def _readership_lines() -> list[str]:
     return lines
 
 
+def _reviewer_lines(rounds: dict[str, list[Round]]) -> list[str]:
+    totals: dict[str, list[int]] = {}
+    for records in rounds.values():
+        for record in records:
+            if not record.independent:
+                continue
+            row = totals.setdefault(record.reviewer, [0, 0, 0])
+            row[0] += 1
+            row[1] += len(record.verdicts)
+            row[2] += len(record.found)
+    return [f"| {name} | {n} | {judged} | {found} |" for name, (n, judged, found) in sorted(totals.items())] or ["| - | 0 | 0 | 0 |"]
+
+
 def render(stories: dict[str, dict[str, Any]], rounds: dict[str, list[Round]]) -> str:
     """The committed report.
 
@@ -498,6 +536,19 @@ def render(stories: dict[str, dict[str, Any]], rounds: dict[str, list[Round]]) -
         "## Documentation readership",
         "",
         *_readership_lines(),
+        "",
+        "## Independent rounds per reviewer",
+        "",
+        "Which model families the independent review actually rests on (E34-S03). A record that names",
+        "no reviewer is shown as `unnamed`, not credited to anyone.",
+        "",
+        "| Reviewer | Rounds | Stories judged | Found |",
+        "| --- | --- | --- | --- |",
+        *_reviewer_lines(rounds),
+        "",
+        "## Advisory pre-reviews (never rounds, never verdicts)",
+        "",
+        *([f"- `{path}`" for path in ADVISORY] or ["- none"]),
         "",
         "## Review records this tool could not classify",
         "",

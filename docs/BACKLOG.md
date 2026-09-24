@@ -4169,3 +4169,73 @@ ADR-0039 kept the network out of the Rust cutover: a signed containment notice r
 
 - `docs/security/INCIDENT_RESPONSE.md`
 - `docs/architecture/GUARDIAN_MODEL.md`
+
+## E34 - Reviewer Pool and Advisory Pre-Review
+
+**Phase:** `P1` | **Status:** `in_progress` | **Epic dependencies:** none
+
+Independent review is this repository's central method and it has depended on one reviewer with one quota: when Codex's five-hour budget ran out in the middle of E06's cutover, independent verification stopped. Three consecutive rounds (E06 rounds 6-8) also spent that budget on defects a cheaper adversarial pass would have found first. This epic makes review a harnessed act with a named pool of reviewers from different model families - Codex, and OpenCode driving a pinned non-Anthropic model through OpenRouter - adds an advisory pre-review tier that runs on free models and never counts as a verdict, and makes the harness prove, rather than assert, which model reviewed and what it was allowed to change. Owner decision 2026-09-24 (design accepted, retrospective at project end).
+
+### E34-S01 - A review round is run by a harness that proves who reviewed and what they changed
+
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
+
+**Outcome.** Rounds were run by hand: a prompt paraphrased by the executor, a worktree created ad hoc, and records imported by copying files - which is how one reviewer overwrote a 2026-09-01 record. scripts/review_round.py runs a round from the committed briefs for Codex or OpenCode, names the record so it can never overwrite one, and after the reviewer exits checks that every model the session streamed from is the declared, non-Anthropic model and that every changed path is one the tier allows.
+
+**Acceptance criteria**
+
+- The system shall build the reviewer's prompt from the committed verifier briefs of the named stories and refuse to start when a story has no committed brief.
+- The system shall choose the record's filename itself and refuse to start when that file already exists.
+- If the reviewer's session streamed from any model other than the declared one, or from an Anthropic model, then the round shall be reported as not independent and its record shall not be importable.
+- If the reviewer changed any path outside the tier's allowed set, then the round shall be refused and nothing shall be imported.
+- When a round passes its checks, the system shall import exactly the changed allowed paths into the working tree and nothing else.
+
+**Verification**
+
+- Unit tests cover prompt rendering from briefs, record naming, stream-model parsing, the Anthropic refusal, the path allow-list and import.
+- A real OpenCode pre-review round runs through the harness.
+
+**Documentation impact**
+
+- `docs/development/AGENT_PROTOCOL.md`
+
+### E34-S02 - OpenCode reviewer agents with tool-enforced permissions and a pinned model
+
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
+
+**Outcome.** OpenCode loads this repository's skill pack natively from .claude/skills and can enforce per-agent permissions. Two agents - verifier and pre-reviewer - are defined in .opencode/agents with edits allowed only under project/evidence and the story statuses, dangerous shell commands denied, no web access, and one pinned model with no fallback; opencode.json pins the small model too, so no second model enters a session, and disables sharing and autoupdate.
+
+**Acceptance criteria**
+
+- The system shall define verifier and pre-reviewer agents whose permissions deny git commit, push, tag and reset, package installation, file removal and web access.
+- The system shall pin one model for every agent and for the small model, so a session streams from exactly one model.
+- If a permission is not explicitly allowed, then the agent shall be denied rather than prompted, because a non-interactive run cannot answer a prompt.
+
+**Verification**
+
+- A smoke run shows one streamed model and a denied commit attempt.
+
+**Documentation impact**
+
+- `docs/development/AGENT_PROTOCOL.md`
+
+### E34-S03 - Advisory pre-review is recorded and never counted; the reviewer pool is a decision
+
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E34-S01 | **Safety obligations:** none
+
+**Outcome.** A pre-review on a free model is useful exactly because it is cheap, and harmful if it can pass for the independent verdict. Pre-review records are named <EPIC>-PRE-REVIEW-<n>.md, never count as a round or against the owner's two-review limit, and cannot close a story; process metrics report them separately and break independent rounds down by reviewer family. PD-028 names the reviewer pool and the rule.
+
+**Acceptance criteria**
+
+- The system shall never count a pre-review record as a review round or as a verdict.
+- The system shall report independent rounds per reviewer family from each record's Verifier line.
+- If a record names no reviewer, then it shall be reported rather than attributed to a default.
+
+**Verification**
+
+- process_metrics tests with a pre-review record and records from two reviewers.
+
+**Documentation impact**
+
+- `docs/development/AGENT_PROTOCOL.md`
+- `project/decisions.json`

@@ -4,20 +4,20 @@
 
 Current phase: **P1**
 
-Epics: **34** | Stories: **179**
+Epics: **35** | Stories: **182**
 
 ## Story status
 
 - `cancelled`: 1
 - `done`: 175
 - `planned`: 1
-- `ready_for_review`: 2
+- `ready_for_review`: 5
 
 ## Change risk distribution
 
 - `CR0`: 14
-- `CR1`: 39
-- `CR2`: 51
+- `CR1`: 41
+- `CR2`: 52
 - `CR3`: 33
 - `CR4`: 42
 
@@ -29,3 +29,6 @@ Epics: **34** | Stories: **179**
 
 - **E06-S04** - Canonical engine switch (CR4)
 - **E33-S01** - Signed containment notices are fetched from a published feed (CR4)
+- **E34-S01** - A review round is run by a harness that proves who reviewed and what they changed (CR2)
+- **E34-S02** - OpenCode reviewer agents with tool-enforced permissions and a pinned model (CR1)
+- **E34-S03** - Advisory pre-review is recorded and never counted; the reviewer pool is a decision (CR1)

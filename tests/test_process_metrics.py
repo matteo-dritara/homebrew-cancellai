@@ -86,6 +86,27 @@ class ReviewRecordClassificationTests(unittest.TestCase):
         self.assertIsNone(self.parse("E00-EXECUTOR-SUMMARY.md"))
 
 
+class PreReviewAndReviewerTests(unittest.TestCase):
+    # E34-S03 / PD-028: an advisory pre-review is never a round, and the independent rounds are
+    # reported per reviewer family so a cheaper second reviewer cannot hide inside Codex's yield.
+    def test_a_pre_review_is_not_a_round(self):
+        self.assertIsNone(metrics.REVIEW_FILE.match("E06-PRE-REVIEW-1.md"))
+        self.assertTrue(metrics.PRE_REVIEW_FILE.match("E06-PRE-REVIEW-1.md"))
+        self.assertIsNone(metrics.PRE_REVIEW_FILE.match("E06-VERIFIER-REVIEW-ROUND9.md"))
+
+    def test_the_reviewer_family_is_read_from_the_verifier_line(self):
+        self.assertEqual("Codex", metrics.reviewer_family("# R\n\nVerifier: Codex (gpt-5.5, /root)\n"))
+        self.assertEqual("OpenCode/nvidia/x:free", metrics.reviewer_family("Verifier: OpenCode/nvidia/x:free\n"))
+
+    def test_a_record_naming_nobody_is_not_credited_to_anyone(self):
+        self.assertEqual("unnamed", metrics.reviewer_family("# Round\n\nNo name here.\n"))
+
+    def test_the_report_lists_pre_reviews_apart_from_rounds(self):
+        text = metrics.render(metrics.load_stories(), metrics.load_rounds())
+        self.assertIn("## Advisory pre-reviews (never rounds, never verdicts)", text)
+        self.assertIn("## Independent rounds per reviewer", text)
+
+
 class RealRepositoryTests(unittest.TestCase):
     def test_the_committed_report_is_current(self):
         self.assertEqual(0, metrics.main(["check"]))

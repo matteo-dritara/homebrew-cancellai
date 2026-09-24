@@ -370,3 +370,18 @@ E18 ("Remote Targets and Fleet Boundary") declared epic-level dependencies on E1
 - E18 may close and cut its release now that its own stories are done and reviewed.
 - E17 stays open until E17-S07 has an independent Safety Verdict or the owner decides otherwise; nothing in E18 changes that.
 - A future fleet story that distributes containment notices (E17-S07's wire format) must declare its dependency on E17-S07 explicitly at story level.
+
+## PD-028 - The independent-review pool is Codex or OpenCode on a pinned non-Anthropic model; pre-review never counts
+
+**Status:** accepted
+
+Codex credit limits stopped independent review for hours at a time. The owner accepted (2026-09-24) a second reviewer: OpenCode driving one pinned non-Anthropic model through OpenRouter, preferring free models. Every review, from either reviewer, runs through scripts/review_round.py, which reviews committed HEAD in a fresh worktree, names the record, attributes the model from the session's stream log rather than from the record, refuses Anthropic models as self-review, and limits and imports only the paths a reviewer may change. A second tier, the advisory pre-review (<EPIC>-PRE-REVIEW-<n>.md), lets a cheap model read work before a formal round; it is never a round, never a verdict, never counted toward the per-story cap or ADR-0025's yield rule, and cannot move a story.
+
+**Rationale.** Independence here is the first IEC 61508 rung: a different model family from the executor. Any non-Anthropic family satisfies it; the risk a second reviewer adds is attribution (which model actually reviewed) and scope (what it changed), and the harness makes both mechanical instead of trusting the reviewer's own record. Free models trade quality and availability for cost, so a pre-review tier spends them where a miss is cheap.
+
+**Implications**
+
+- A record whose stream log names a second model or any Anthropic model is not an independent round.
+- scripts/process_metrics.py reports independent rounds per reviewer family and lists pre-reviews apart from rounds.
+- The owner's cap of two independent reviews per story counts formal rounds from either reviewer; pre-reviews do not count.
+- The end-of-project retrospective revisits the pool with measured per-family yield.

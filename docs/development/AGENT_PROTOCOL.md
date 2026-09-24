@@ -19,7 +19,8 @@ Attempts to falsify the implementation from the story, acceptance criteria, inva
 Roles may rotate between Claude and Codex across stories/sprints to reduce systematic bias.
 
 **Current standing assignment:** Claude is the executor and hands work over at
-`ready_for_review`; Codex performs the independent review, once the whole epic is ready. How
+`ready_for_review`; Codex - or, when Codex is unavailable, OpenCode on a pinned non-Anthropic
+model (PD-028, below) - performs the independent review, once the whole epic is ready. How
 many rounds that takes is decided by what the rounds find, not by a constant
 ([ADR-0025](../adrs/0025-review-stops-on-yield-and-a-shippable-nothing-does-not-cut-a-release.md)).
 
@@ -37,6 +38,44 @@ review, because Claude and Codex are different model families with different fai
 the measured 47% first-round rejection rate is evidence that the separation does real work. It is
 not an independent department and it is not an independent organisation, and a CR4 gate that says
 "independent verification" should be read as the first rung and no further.
+
+### The reviewer pool and the pre-review tier
+
+PD-028 names who may perform a counted review: **Codex**, or **OpenCode driving one pinned
+non-Anthropic model** (by default `openrouter/nvidia/nemotron-3-ultra-550b-a55b:free`, set in
+`opencode.json` and the agent files [`verifier.md`](../../.opencode/agents/verifier.md) and
+[`pre-reviewer.md`](../../.opencode/agents/pre-reviewer.md), whose tool permissions deny commit,
+push, installs, removal and web access). Either is a different model family from the
+executor, which is what the first rung above requires; nothing else in the pool changes that rung.
+
+Every review runs through `scripts/review_round.py`, which decides what a record cannot be trusted
+to say about itself:
+
+```sh
+python3 scripts/review_round.py run --epic E06 --stories E06-S04,E33-S01 \
+    --reviewer opencode --model openrouter/nvidia/nemotron-3-ultra-550b-a55b:free \
+    --tier formal --workdir ../review-worktrees
+python3 scripts/review_round.py import ../review-worktrees/E06-formal-9
+```
+
+- It reviews in a fresh worktree of committed `HEAD`, quoting each story's *committed* verifier
+  brief by checksum; an uncommitted brief is refused.
+- It names the record itself (`<EPIC>-VERIFIER-REVIEW-ROUND<n>.md`, or `<EPIC>-PRE-REVIEW-<n>.md`)
+  and refuses any change to an existing review record.
+- It attributes the model from OpenCode's stream log, not from the record: a session that
+  streamed from a second model, or from any Anthropic model, fails, and the latter is a
+  self-review whatever the record claims.
+- It limits which paths the reviewer may change (a formal round: its record, appended Safety
+  Verdicts, story status, generated docs and new tests; a pre-review: its own record only), and
+  `import` copies only those paths into the main tree.
+
+A **pre-review** (`--tier pre`) is an advisory pass by a cheap model before a formal round, meant
+to spend the scarce formal reviewer on work that has already survived a first reading. It is
+**never a round and never a verdict**: it cannot move a story, cannot write a Safety Verdict, does
+not count toward the owner's cap or ADR-0025's yield rule, and `scripts/process_metrics.py` lists
+it apart from the rounds. Its findings enter the executor's work like any other defect report.
+The metrics report the independent rounds per reviewer family, so a second reviewer's yield is
+never averaged into the first's.
 
 ### Self-review
 

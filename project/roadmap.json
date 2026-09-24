@@ -44,7 +44,8 @@
         "E29",
         "E30",
         "E31",
-        "E32"
+        "E32",
+        "E34"
       ]
     },
     {
@@ -157,6 +158,7 @@
     "project/epics/E30.json",
     "project/epics/E31.json",
     "project/epics/E32.json",
-    "project/epics/E33.json"
+    "project/epics/E33.json",
+    "project/epics/E34.json"
   ]
 }
