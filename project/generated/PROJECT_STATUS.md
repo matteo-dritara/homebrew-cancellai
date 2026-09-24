@@ -8,12 +8,10 @@ Epics: **35** | Stories: **184**
 
 ## Story status
 
-- `blocked`: 2
+- `blocked`: 3
 - `cancelled`: 1
 - `done`: 175
-- `in_progress`: 3
-- `planned`: 1
-- `ready_for_review`: 2
+- `in_progress`: 5
 
 ## Change risk distribution
 
@@ -29,5 +27,4 @@ Epics: **35** | Stories: **184**
 
 ## Awaiting independent review
 
-- **E06-S04** - Canonical engine switch (CR4)
-- **E33-S01** - Signed containment notices are fetched from a published feed (CR4)
+- none

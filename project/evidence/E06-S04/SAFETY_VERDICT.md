@@ -188,3 +188,25 @@ Owner-authorized independent pass over `351295d`. Full findings and eleven-axis 
 PENDING
 
 FAIL
+
+## Round 9 — 2026-09-24
+
+Verifier: Codex
+Brief-Checksum: 76f63bf3b664b057b00bc82b00b7377d819011f07f9aa96bda0d4b81cedcc642
+Review target: `351295d..7e35a2a`
+
+| Invariant / obligation | Independent evidence | Result |
+| --- | --- | --- |
+| SI-019, C-16, release identity | A generated 2.0.0 formula passed both shape and published-digest checks when its engine SHA matched synthetic sidecars but differed from the engine archive bytes; the verifier probe made zero archive requests. The release manifest was not consulted. | FAIL |
+| Cutover control and rollback | The live formula remains Python-only; generated 2.0.0 formula retains `cancellai-legacy`. The owner migration Safety Verdict is pending, so AC1 is not met. | INCOMPLETE |
+| G1/G2/G3/G4 local gates | Host Rust fmt/Clippy/check/tests, Windows-target Clippy, parity and governance gates passed. Native 2.0.0 artifact installation and per-platform partial-scan reproduction were not observed; CI status was unavailable. | INCOMPLETE |
+
+### Adversarial case and exact repair
+
+`published_digest_problems` returned no problem when the formula and `.sha256` sidecar both named `aa…aa` for all three engine assets while the simulated archive bytes hashed to `0d12c9f388630a692893dc73f48aa392bed36bef50b822c3c3c067198d337a8b`. Download and hash each engine asset, verify its version/target and manifest identity, and compare all digests before formula acceptance. The full reproduction and gate results are in `project/evidence/E06-VERIFIER-REVIEW-ROUND9.md`.
+
+### Known residuals, rollback and owner decision
+
+Existing Unix leaf-name and late-link residuals remain recorded from prior rounds. The Python source remains tag-archiveable and the proposed engine formula installs it as `cancellai-legacy`; no cutover release was made. Owner acceptance of the migration Safety Verdict: PENDING. This round rejects the story and does not accept a new residual.
+
+FAIL

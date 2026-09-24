@@ -31,6 +31,7 @@ distinguished by the next round, which is why the ceiling matters.
 | E06 | 6 | independent | 2 | 2 | 2 | 100% |
 | E06 | 7 | independent | 2 | 2 | 2 | 100% |
 | E06 | 8 | independent | 2 | 2 | 2 | 100% |
+| E06 | 9 | independent | 2 | 2 | 2 | 100% |
 | E07 | 1 | independent | - | - | - | **not machine-readable** |
 | E08 | 1 | independent | 4 | 1 | 1 | 25% |
 | E09 | 1 | **self** | 4 | 0 | 0 | 0% |
@@ -135,7 +136,7 @@ independent samples, and the population estimate collapses to what one round alr
 
 ## Evidence-ledger integrity
 
-- **162 of 177** story packets past `ready_for_review` carry a row per acceptance criterion.
+- **160 of 175** story packets past `ready_for_review` carry a row per acceptance criterion.
 - Packets that do not:
   - E00-S01 (CR4): 0 rows for 3 criteria
   - E00-S02 (CR4): 0 rows for 3 criteria
@@ -179,7 +180,7 @@ load-bearing rather than academic.
 
 ## Documentation readership
 
-- Documents a committed review record has named: **33**. Never named: **15**.
+- Documents a committed review record has named: **34**. Never named: **14**.
 - Never named is not the same as never read, and an unread document may still be the right
   document. This is a list for the owner once a phase, not a purge, and accepted ADRs are
   undeletable regardless of what it says.
@@ -190,7 +191,6 @@ load-bearing rather than academic.
 - `docs/ROADMAP.md`
 - `docs/architecture/AS_IS.md`
 - `docs/audits/2026-08-27-CODE_REVIEW.md`
-- `docs/development/MIGRATION_PYTHON_RUST.md`
 - `docs/development/REPOSITORY_GOVERNANCE.md`
 - `docs/research/MARKET_AND_STANDARDS_2026-08.md`
 - `docs/rfcs/README.md`
@@ -211,7 +211,7 @@ no reviewer is shown as `unnamed`, not credited to anyone.
 
 | Reviewer | Rounds | Stories judged | Found |
 | --- | --- | --- | --- |
-| Codex | 37 | 90 | 60 |
+| Codex | 38 | 92 | 62 |
 | unnamed | 29 | 118 | 53 |
 
 ## Advisory pre-reviews (never rounds, never verdicts)

@@ -116,3 +116,25 @@ Owner-authorized independent pass over `351295d`. Full findings and eleven-axis 
 PENDING
 
 FAIL
+
+## Round 9 — 2026-09-24
+
+Verifier: Codex
+Brief-Checksum: bb614fb4de0d31b814e7497488c4e83eac0c298b389fc899b433a3d92b1854a9
+Review target: `351295d..7e35a2a`
+
+| Invariant / obligation | Independent evidence | Result |
+| --- | --- | --- |
+| SI-022, SI-030 | Signed notices still enter through the shared install verification path; the fixed system curl, HTTPS protocol restrictions, byte cap and compiled release-channel authority were inspected, and the stable-channel containment suite passed. | PASS within local scope |
+| SI-029, byte-identical refusal/current state | Sixteen concurrent refresh processes produced two physical log lines for one signed notice. One containment was accepted and replayable, but a process told `already current` left an extra line. A deterministic stale-head append also changed raw bytes. | FAIL |
+| Crash/retry and platform coverage | A lost-race line consumes the 16 MiB cap even when skipped. No native Linux/Windows feed runtime or crash injection for the new append protocol was observed. | INCOMPLETE |
+
+### Adversarial case and exact repair
+
+A temporary raw-line-count assertion in the existing 16-process integration test failed `left: 2, right: 1`; the original replay assertions passed. A temporary store test comparing bytes before and after a stale second append also failed. Both temporary edits were removed. Serialize the replay/current decision with the durable append, or implement equivalent compare-and-append that writes no losing line, then test physical bytes, line count, replay and crash/retry. Full reproduction and gates: `project/evidence/E06-VERIFIER-REVIEW-ROUND9.md`.
+
+### Known residuals, rollback and owner decision
+
+Unknown/corrupt history caps authority at Recommend, but a valid concurrent refresh should not create ignored physical history. No release or user-data mutation occurred. Owner decision: PENDING. This round rejects the story and accepts no new residual.
+
+FAIL
