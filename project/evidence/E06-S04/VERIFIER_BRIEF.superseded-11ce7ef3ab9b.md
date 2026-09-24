@@ -4,14 +4,14 @@ verifier was given this document or a paraphrase of it. -->
 
 Story: E06-S04
 Rendered-by: Claude
-Rendered-on: 2026-09-25
-Brief-Checksum: 41346037461d07abb0cb2d459581a90b1a2015696b662e239eacd4529e6f0dbb
+Rendered-on: 2026-09-24
+Brief-Checksum: 11ce7ef3ab9b4803f9c1b4872960d5c466faef7cbfed0e13e3969de8020280ea
 
 <!-- end handoff header -->
 # Verifier Brief - E06-S04 - Canonical engine switch
 
 Status: ready_for_review | Change Risk: CR4
-Outcome: Promote Rust to stable only after functional, safety, compatibility, and operability gates pass. ADR-0040 moved the release mechanics into E06-S14 and E06-S15. Owner decision 2026-09-25, after 14 rounds: this story is judged against a finite checklist - its verification list - on evidence that already exists, including a real rehearsal release (E06-S16). Re-judging the mechanisms of stories already closed by their own independent rounds is out of its scope; a defect found there is filed against that story. The owner's acceptance of the passing verdict follows the review (AC1).
+Outcome: Promote Rust to stable only after functional, safety, compatibility, and operability gates pass. ADR-0040 (2026-09-24) moved the release mechanics out of this story: E06-S14 makes the formula a function of the release manifest rendered where the bytes are built, and E06-S15 adopts the cutover on the owner's explicit authorization. What stays here is the owner's: accepting the migration Safety Verdict, the transition window and the release notes.
 Dependencies: E06-S03, E21, E22-S01, E06-S06, E06-S07, E06-S08, E06-S09, E06-S10, E06-S11, E06-S12, E06-S13, E06-S14, E06-S15
 
 ## Acceptance Criteria
@@ -21,14 +21,8 @@ Dependencies: E06-S03, E21, E22-S01, E06-S06, E06-S07, E06-S08, E06-S09, E06-S10
 - The blockers recorded in docs/development/RELEASE_GATES.md's cutover checklist are closed or explicitly accepted by the owner: E21 (target-engine scan-completeness authority), E22-S01 (a release workflow that actually verifies the Rust engine), and the platform/packaging prerequisites E20-S01 and E17 - or a scoped cutover perimeter decided by ADR.
 
 ## Verification Contract
-- C1 - every dependency story is done (project_os check), E06-S14 and E06-S15 by their own independent rounds.
-- C2 - the rehearsal release v1.21.1 was published by release.yml, and `release.py verify-release --version 1.21.1` passes on its real assets (E06-S16).
-- C3 - on the reviewed commit, tests.yml's cutover job installs the 2.0.0 engine formula rendered from that commit's archives and its brew test passes.
-- C4 - native partial-scan reproduction on the reviewed commit: rust.yml parity (macOS, Linux) and windows_partial_scan (Windows) green.
-- C5 - the 2.0.0 formula keeps the Python reference as cancellai-legacy through 2.1.0, and the Python source stays in the release tags.
-- C6 - CHANGELOG.md Unreleased states every intentional contract change, checked against docs/CLI_RUST.md and project/cli_inventory.json.
-- C7 - docs/RELEASING.md documents the rollback: the signed containment kill-switch, cancellai-legacy, and reverting the formula.
-- C8 - finalize refuses the cutover without the owner's CUTOVER_AUTHORIZATION.md bound to the passing verdict (E06-S15, already verified).
+- Full release evidence packet and independent verifier sign-off.
+- A native reproduction on each platform inside the decided cutover perimeter, using the E21-S02 partial-scan fixtures, showing the engine withholds where the frozen reference withholds.
 
 ## Safety Obligations
 

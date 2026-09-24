@@ -10,8 +10,8 @@ Epics: **36** | Stories: **191**
 
 - `cancelled`: 1
 - `done`: 186
-- `in_progress`: 2
 - `planned`: 2
+- `ready_for_review`: 2
 
 ## Change risk distribution
 
@@ -27,4 +27,5 @@ Epics: **36** | Stories: **191**
 
 ## Awaiting independent review
 
-- none
+- **E06-S04** - Canonical engine switch (CR4)
+- **E06-S16** - A rehearsal release runs the real pipeline and is verified on its published assets (CR3)

@@ -6,7 +6,7 @@
 - Commit: recorded by the release workflow at the tag
 - Channel: stable
 - Date: 2026-09-25
-- Published: pending
+- Published: yes
 
 ## Included work
 
@@ -121,3 +121,22 @@ Carried from the epic's closure packet. See `project/evidence/` for the story-le
 Point the Homebrew formula back at the previous tag and its checksum; the tool keeps no
 persistent state, so there is nothing to migrate back. Published tags are immutable history
 and are never deleted.
+
+## Rehearsal verification (E06-S16)
+
+Release workflow run `36069385676` on tag `v1.21.1` (commit `db58705`): all eleven jobs succeeded -
+`verify`, `verify-rust` on three platforms, `build-artifacts` on four targets,
+`attestation-verify`, `release-manifest-generate`, `publish` - and published `cancellai.rb` with the
+four archives, their sidecars and SBOMs, and `release-manifest.json`.
+
+`python3 scripts/release.py verify-release --version 1.21.1`, run on 2026-09-25 against the
+published assets, on the first attempt:
+
+```text
+verified release-manifest.json: exactly what release.yml writes for v1.21.1
+verified archives: 4 downloaded, hashed and provenance-verified, one run, the tag's successful release run
+verified cancellai.rb: byte-identical to the Python-only formula rendered from them
+```
+
+`finalize --version 1.21.1` then wrote `Formula/cancellai.rb`, byte-identical to the published
+`cancellai.rb` asset (`cmp`).
