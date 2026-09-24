@@ -611,9 +611,6 @@ CUTOVER_SAFETY_VERDICT = CUTOVER_EVIDENCE / "SAFETY_VERDICT.md"
 AUTHORIZATION_FIELD_RE = re.compile(r"^(Authorized-by|Version|Safety-Verdict-SHA256):[ \t]*(\S.*?)[ \t]*$", re.MULTILINE)
 
 
-ROUND_HEADING_RE = re.compile(r"^## Round \d+\b", re.MULTILINE)
-
-
 def safety_verdict_passes(path: Path) -> bool:
     """Whether the migration Safety Verdict's final round passes: `project_os.py`'s own gate
     (E35-S01 - the final round's body decides by its last verdict line, the template's `## Verdict`
@@ -633,7 +630,7 @@ def safety_verdict_passes(path: Path) -> bool:
         text = module.strip_fenced_code(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError):
         return False
-    return bool(ROUND_HEADING_RE.search(text)) and bool(module.safety_verdict_passes(path))
+    return bool(module.ROUND_HEADING_RE.search(text)) and bool(module.safety_verdict_passes(path))
 
 
 CODEOWNERS = ROOT / ".github" / "CODEOWNERS"
