@@ -37,6 +37,15 @@ PASS
 | --- | --- | --- |
 | Sixteen concurrent refreshes of one notice appended duplicate sequences and broke replay | Optimistic concurrency without a lock file (removing one would be a mutation outside the boundary): every history line names the chain digest of the history it was decided on (`prev`) and a nonce; readers accept only lines that continue the chain, so of concurrent appends exactly one takes effect; the appender re-reads, and a loser is told to retry - or, for a refresh whose identical notice the winner installed, told it is current. The decision and the append use one snapshot of the history, so a decision made on a stale history is never applied. | `concurrent_refreshes_of_one_notice_leave_one_accepted_install_and_a_replayable_history` (16 processes, stress-run 10 times), `concurrent_installs_of_different_notices_never_break_the_history` (8 processes), `a_line_that_lost_a_concurrent_append_is_skipped_and_its_nonce_is_not_accepted` (store) |
 
+## Round-9 repair (Codex, `project/evidence/E06-VERIFIER-REVIEW-ROUND9.md`)
+
+| Finding | Repair | Evidence |
+| --- | --- | --- |
+| A losing append wrote its line before learning it had lost: sixteen concurrent refreshes left two physical lines for one accepted notice, a refresh that reported `already current` had changed the ledger's bytes, and stale lines consumed the 16 MiB history budget | `append_event` is a compare-and-append: it takes an exclusive SQLite transaction on `containment_lock.sqlite3` in the state root (created once, never written or removed; released by the OS if the holder dies), re-reads the chain head, and writes only if it is still the head the caller decided on; otherwise it returns `None` and writes nothing. Waiting is bounded (30 s); a timeout is an error with nothing written | `a_stale_append_writes_nothing` (byte identity), `concurrent_appends_decided_on_one_history_write_exactly_one_line` (16 threads, one physical line; fails 2 of 3 runs with the lock removed); the 16-process `concurrent_refreshes_of_one_notice_...` and 8-process `concurrent_installs_...` CLI tests now also assert the physical line count |
+
+The chain digest and nonce stay as a second barrier: a line that does not continue the chain is
+still skipped on load.
+
 ## Safety Evidence
 
 | Invariant | Counterexample tested | Evidence | Result |
@@ -58,6 +67,8 @@ cargo clippy --workspace (host + x86_64-pc-windows-gnu) -D warnings  -> clean
   refusal test. The real network path is not tested in CI (no network dependence in tests).
 - **`curl` is resolved from `PATH`**: a hostile `curl` can only return bytes, which are signature-verified.
 - **No scheduled refresh** until the Guardian loop exists (E33-S02).
+- **A crash in the middle of the one `write`** can still leave a torn last line, which makes the
+  history unreadable - fail closed, as before; the lock does not change that.
 
 ## Verifier verdict
 

@@ -438,22 +438,73 @@ def archive_sha256(version: str) -> str:
     return digest.hexdigest()
 
 
-def engine_sha256s(version: str) -> dict[str, str]:
-    """Each engine archive's digest, from the `.sha256` file the release workflow published beside
-    it (E17-S03 computed it on the build runner). Downloaded, not recomputed from a second
-    download: the formula must name the bytes the release manifest describes."""
+RELEASE_MANIFEST_ASSET = "https://github.com/{repo}/releases/download/v{version}/release-manifest.json"
+# Bounds on what a verification download may read: an engine archive, a sidecar, the manifest.
+MAX_ENGINE_ARCHIVE_BYTES = 256 * 1024 * 1024
+MAX_SIDECAR_BYTES = 4096
+MAX_MANIFEST_BYTES = 1024 * 1024
+
+
+def download(url: str, cap: int) -> bytes:
+    """The bytes at `url`, at most `cap` of them; anything larger or unreachable is refused."""
+    try:
+        with urllib.request.urlopen(url, timeout=120) as response:  # noqa: S310 - fixed https host
+            data = response.read(cap + 1)
+    except OSError as exc:
+        raise ReleaseError(f"could not download {url}: {exc}. Did the release publish?") from exc
+    if len(data) > cap:
+        raise ReleaseError(f"{url} is larger than {cap} bytes")
+    return bytes(data)
+
+
+def manifest_sha256s(version: str) -> dict[str, str]:
+    """Each engine archive's digest as the published release manifest (E17-S01) records it, after
+    checking that the manifest is for this version and names each target's archive exactly once."""
+    url = RELEASE_MANIFEST_ASSET.format(repo=REPO, version=version)
+    try:
+        doc = json.loads(download(url, MAX_MANIFEST_BYTES))
+    except ValueError as exc:
+        raise ReleaseError(f"{url} is not JSON: {exc}") from exc
+    if not isinstance(doc, dict) or doc.get("document_type") != "release_manifest" or doc.get("version") != version:
+        raise ReleaseError(f"{url} is not the release manifest for v{version}")
+    artifacts = doc.get("artifacts")
+    if not isinstance(artifacts, list):
+        raise ReleaseError(f"{url} lists no artifacts")
     digests = {}
     for target in ENGINE_TARGETS:
-        url = ENGINE_ASSET.format(repo=REPO, version=version, target=target) + ".sha256"
-        try:
-            with urllib.request.urlopen(url, timeout=60) as response:  # noqa: S310 - fixed https host
-                line = response.read(4096).decode("utf-8", errors="replace").strip()
-        except OSError as exc:
-            raise ReleaseError(f"could not download {url}: {exc}. Did the release publish?") from exc
-        digest = line.split()[0] if line else ""
-        if not re.fullmatch(r"[0-9a-f]{64}", digest):
-            raise ReleaseError(f"{url} does not hold a SHA-256 digest: {line!r}")
+        name = f"cancellai-cli-{version}-{target}"
+        entries = [a for a in artifacts if isinstance(a, dict) and a.get("name") == name]
+        if len(entries) != 1:
+            raise ReleaseError(f"{url} names {name} {len(entries)} times, not once")
+        entry = entries[0]
+        digest = entry.get("sha256")
+        if entry.get("target_triple") != target or not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise ReleaseError(f"{url}: {name} does not carry target {target} and a SHA-256 digest")
         digests[target] = digest
+    return digests
+
+
+def engine_sha256s(version: str) -> dict[str, str]:
+    """Each engine archive's digest, established three ways that must agree (E06 review round 9):
+    the archive itself, downloaded and hashed; the `.sha256` sidecar the release workflow published
+    beside it (E17-S03); and the published release manifest. A sidecar alone could name bytes the
+    formula would never install, so a disagreement - or any of the three being unavailable - is a
+    refusal, never a choice between them."""
+    recorded = manifest_sha256s(version)
+    digests = {}
+    problems = []
+    for target in ENGINE_TARGETS:
+        url = ENGINE_ASSET.format(repo=REPO, version=version, target=target)
+        actual = hashlib.sha256(download(url, MAX_ENGINE_ARCHIVE_BYTES)).hexdigest()
+        line = download(url + ".sha256", MAX_SIDECAR_BYTES).decode("utf-8", errors="replace").strip()
+        sidecar = line.split()[0] if line else ""
+        if not re.fullmatch(r"[0-9a-f]{64}", sidecar):
+            raise ReleaseError(f"{url}.sha256 does not hold a SHA-256 digest: {line!r}")
+        if not actual == sidecar == recorded[target]:
+            problems.append(f"{target}: archive {actual}, sidecar {sidecar}, manifest {recorded[target]}")
+        digests[target] = actual
+    if problems:
+        raise ReleaseError(f"v{version}'s engine archives disagree with their published digests:\n" + "\n".join(f"- {p}" for p in problems))
     return digests
 
 
@@ -591,7 +642,8 @@ def live_formula_problems(text: str, version: str) -> list[str]:
 
 def published_digest_problems(text: str, version: str) -> list[str]:
     """Every digest in the formula against the bytes the release published: the tag archive,
-    downloaded and hashed, and each engine archive's published `.sha256` (E06 review rounds 7-8).
+    downloaded and hashed, and each engine archive, downloaded and hashed and agreeing with its
+    sidecar and the release manifest (E06 review rounds 7-9).
     Needs the network, so it runs in `finalize` and CI, not in the offline `check`."""
     digests = FORMULA_ALL_SHA_RE.findall(text)
     problems = []

@@ -8,12 +8,15 @@
 //! forbids.
 //!
 //! **Append-only, one line per event, one `write` per line, opened with `O_APPEND`.** There is no
-//! temporary file, no rename and no lock file: a lock file would have to be removed, which is a
-//! mutation outside the one safety boundary (SI-019), and a read-modify-rename cycle can lose a
-//! concurrent writer's event. Two concurrent appends each land whole. What this does not do is
-//! serialize the *decision*: two installs from one publisher racing each other can land out of
-//! sequence order, and a crash mid-write can leave a torn last line. Both make the history fail
-//! to replay, which the caller treats as an unknown ledger - fail closed, never a silently
+//! temporary file and no rename: a read-modify-rename cycle can lose a concurrent writer's event.
+//! Appends are serialized by an exclusive SQLite transaction on `containment_lock.sqlite3` beside
+//! the history - a file that is created once and never removed or written, so taking the lock is
+//! not a mutation outside the one safety boundary (SI-019), and the operating system releases it
+//! when its holder exits or crashes. Under that lock [`append_event`] re-reads the chain head and
+//! writes only when it is still the head the caller decided on: of concurrent appends decided on
+//! one history exactly one writes, and every other leaves the file byte for byte as it was (E06
+//! review round 9). A crash mid-write can still leave a torn last line, which makes the history
+//! fail to replay; the caller treats that as an unknown ledger - fail closed, never a silently
 //! weaker one.
 //!
 //! **What the history guarantees, and what it does not (owner decision, 2026-09-23).** The
@@ -32,6 +35,9 @@ use sha2::{Digest, Sha256};
 use crate::LocalStateRoot;
 
 const LOG_FILENAME: &str = "containment_log.jsonl";
+const LOCK_FILENAME: &str = "containment_lock.sqlite3";
+/// How long an append waits for a concurrent one before giving up without writing.
+const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
 const TRUST_FILENAME: &str = "trusted_publishers.json";
 /// The largest history this module will read. A larger file is unreadable, not truncated.
 pub const MAX_LOG_BYTES: u64 = 16 * 1024 * 1024;
@@ -199,18 +205,46 @@ fn fresh_nonce() -> String {
         .to_string()
 }
 
-/// Appends one event as a single line with a single `write`, creating the file (and the state
-/// root, which the caller established) if needed. On an error the caller must reload: a partial
-/// write is detected by [`load_log`] as an incomplete last event.
 /// Appends `event` as a continuation of the history whose chain head is `head` - the history the
-/// caller read and decided on. If anything was accepted after that read, this line's `prev` no
-/// longer matches, readers skip it, and the caller learns so from the returned nonce: a decision
-/// made on a stale history is never applied (E06 review round 8).
+/// caller read and decided on - as one line with one `write`, creating the file if needed.
+///
+/// Compare-and-append: under the exclusive append lock the history is re-read, and if anything
+/// was accepted after the caller's read the event is not written at all and `Ok(None)` says so;
+/// a decision made on a stale history is never applied and never leaves a line behind (E06 review
+/// rounds 8-9). `Ok(Some(nonce))` names the line written. On an error nothing was decided; the
+/// caller must reload, because a partial write is detected by [`load_log`] as an incomplete last
+/// event.
 pub fn append_event(
     root: &LocalStateRoot,
     event: &StoredEvent,
     head: &str,
-) -> Result<String, String> {
+) -> Result<Option<String>, String> {
+    let lock_path = root.path_for(LOCK_FILENAME).map_err(|e| e.to_string())?;
+    let lock = rusqlite::Connection::open(&lock_path)
+        .and_then(|conn| conn.busy_timeout(LOCK_WAIT).map(|()| conn))
+        .and_then(|conn| conn.execute_batch("BEGIN EXCLUSIVE").map(|()| conn))
+        .map_err(|e| {
+            format!(
+                "{}: could not take the append lock: {e}",
+                lock_path.display()
+            )
+        })?;
+    let current = match load_history(root) {
+        Load::Found(history) => history.head,
+        Load::Missing => empty_head(),
+        Load::Unreadable(reason) => return Err(reason),
+    };
+    if current != head {
+        return Ok(None);
+    }
+    let written = write_line(root, event, head);
+    // Nothing was written through the connection; ending the transaction only releases the lock,
+    // which dropping the connection would also do.
+    drop(lock.execute_batch("COMMIT"));
+    written.map(Some)
+}
+
+fn write_line(root: &LocalStateRoot, event: &StoredEvent, head: &str) -> Result<String, String> {
     let path = root.path_for(LOG_FILENAME).map_err(|e| e.to_string())?;
     let nonce = fresh_nonce();
     let (install, lift) = match event {
@@ -315,7 +349,9 @@ mod tests {
             StoredEvent::Lift("INC-1".to_string()),
         ];
         for event in &events {
-            append_event(&root, event, &current_head(&root)).unwrap();
+            append_event(&root, event, &current_head(&root))
+                .unwrap()
+                .unwrap();
         }
         assert_eq!(load_log(&root), Load::Found(events));
     }
@@ -349,6 +385,7 @@ mod tests {
             &StoredEvent::Lift("INC-1".to_string()),
             &current_head(&root),
         )
+        .unwrap()
         .unwrap();
         // A second writer that read the history before the first append landed: its `prev` is
         // the digest of the empty history.
@@ -376,12 +413,49 @@ mod tests {
             &StoredEvent::Lift("INC-3".to_string()),
             &current_head(&root),
         )
+        .unwrap()
         .unwrap();
         let Load::Found(history) = load_history(&root) else {
             panic!("history must load");
         };
         assert_eq!(history.events.len(), 2);
         assert_eq!(history.nonces.last(), Some(&next));
+    }
+
+    // E06 review round 9: a stale append wrote its line before learning it had lost, changing
+    // the bytes of a history it then reported as current.
+    #[test]
+    fn a_stale_append_writes_nothing() {
+        let (_guard, root) = TempRoot::new("stale-writes-nothing");
+        let event = StoredEvent::Install("{\"notice\":1}".to_string());
+        let decided_on = empty_head();
+        assert!(append_event(&root, &event, &decided_on).unwrap().is_some());
+        let path = root.path_for(LOG_FILENAME).unwrap();
+        let before = std::fs::read(&path).unwrap();
+        assert_eq!(append_event(&root, &event, &decided_on).unwrap(), None);
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+
+    #[test]
+    fn concurrent_appends_decided_on_one_history_write_exactly_one_line() {
+        let (_guard, root) = TempRoot::new("concurrent-appends");
+        let decided_on = empty_head();
+        let outcomes: Vec<Option<String>> = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..16)
+                .map(|n| {
+                    let root = &root;
+                    let decided_on = &decided_on;
+                    scope.spawn(move || {
+                        let event = StoredEvent::Lift(format!("INC-{n}"));
+                        append_event(root, &event, decided_on).unwrap()
+                    })
+                })
+                .collect();
+            handles.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        assert_eq!(outcomes.iter().filter(|o| o.is_some()).count(), 1);
+        let text = std::fs::read_to_string(root.path_for(LOG_FILENAME).unwrap()).unwrap();
+        assert_eq!(text.lines().count(), 1);
     }
 
     #[test]

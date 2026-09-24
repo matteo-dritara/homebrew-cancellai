@@ -302,8 +302,9 @@ fn install_text(
         }
         Err(error) => return Err((4, error.to_string())),
     };
-    let nonce = containment_state::append_event(root, &StoredEvent::Install(text.clone()), &head)
-        .map_err(|e| (4, format!("could not persist the containment: {e}")))?;
+    let appended =
+        containment_state::append_event(root, &StoredEvent::Install(text.clone()), &head)
+            .map_err(|e| (4, format!("could not persist the containment: {e}")))?;
     // Read it back: the persisted history, not the in-memory ledger, is what later runs obey.
     match replay_at(root) {
         LedgerState::Known(_) => {}
@@ -314,9 +315,9 @@ fn install_text(
             ));
         }
     }
-    // A concurrent change may have been appended first, in which case this line is not part of
-    // the history (E06 review round 8). The same notice installed by the winner is current.
-    if !appended(root, &nonce) {
+    // A concurrent change was appended first, so nothing was written (E06 review rounds 8-9).
+    // The same notice installed by the winner is current.
+    if !appended.is_some_and(|nonce| accepted(root, &nonce)) {
         if installed(root, &text) {
             return Ok(vec![
                 "already current: the same notice was installed concurrently".to_string(),
@@ -379,10 +380,10 @@ pub fn cmd_lift(incident_id: &str) -> Result<usize, (i32, String)> {
             format!("no active containment has incident id {incident_id}"),
         ));
     }
-    let nonce =
+    let appended =
         containment_state::append_event(&root, &StoredEvent::Lift(incident_id.to_string()), &head)
             .map_err(|e| (4, format!("could not persist the lift: {e}")))?;
-    if !appended(&root, &nonce) {
+    if !appended.is_some_and(|nonce| accepted(&root, &nonce)) {
         return Err((
             4,
             "a concurrent containment change was recorded first; the lift was not applied - retry"
@@ -393,7 +394,7 @@ pub fn cmd_lift(incident_id: &str) -> Result<usize, (i32, String)> {
 }
 
 /// Whether the append that returned `nonce` is part of the accepted history.
-fn appended(root: &LocalStateRoot, nonce: &str) -> bool {
+fn accepted(root: &LocalStateRoot, nonce: &str) -> bool {
     matches!(containment_state::load_history(root), Load::Found(history) if history.nonces.iter().any(|n| n == nonce))
 }
 

@@ -56,12 +56,26 @@ through. The owner chose to change the mechanism rather than patch it a fourth t
 | A Python-only 2.0.0 formula, a resource outside its CPU block, a wrong source digest and a template without the engine install line passed | The template and every regex edit are gone. `render_formula` generates the whole formula in code; `check` requires the live formula to be byte for byte the rendering for its version (the engine formula from 2.0.0, Python-only before it); `finalize` renders instead of editing and verifies every digest - the tag archive's own hash and each engine archive's published `.sha256` - before an atomic write; `verify-formula` repeats that against the release in CI | `test_round_eight_counterexamples_are_refused` (all four shapes plus an engine formula at a pre-cutover version), `test_the_live_formula_is_exactly_the_rendered_one`, `verify-formula` on the live 1.21.0 formula: OK |
 | `--days 0`: Python refuses it, Rust accepted it and planned deletions | Rust requires `--days` >= 1 on every command, as the reference does, and the desktop API refuses a query the CLI would refuse | `days_zero_is_refused_on_every_command_that_takes_it` |
 
+## Round-9 repair (Codex, `project/evidence/E06-VERIFIER-REVIEW-ROUND9.md`)
+
+| Finding | Repair | Evidence |
+| --- | --- | --- |
+| A formula whose engine digests matched the `.sha256` sidecars passed while the archives' own bytes hashed to something else; no archive was downloaded and the release manifest was not consulted | `engine_sha256s` establishes each engine digest three ways that must agree - the archive downloaded (bounded at 256 MiB) and hashed, its published sidecar, and the published `release-manifest.json` (checked for document type, version, and exactly one `cancellai-cli-<version>-<target>` entry per target with that target triple). Any disagreement or unavailable piece is a `ReleaseError`; `finalize` and `verify-formula` both go through it | `tests/test_release.py::PublishedEngineEvidenceTests` (8 cases: agreement; round 9's altered archive with matching sidecar and manifest; disagreeing sidecar; disagreeing manifest; manifest for another version; each missing asset; a formula naming other bytes; `finalize`'s digests are the archives'). Mutation: comparing only sidecar to manifest fails the round-9 case |
+| Native per-platform partial-scan reproduction not observed | The `parity` CI job above; the evidence claim that it already ran in CI is corrected | `.github/workflows/rust.yml` `parity` |
+
+Still open, and not the executor's to close: AC1 (the owner's acceptance of the migration Safety
+Verdict, which follows an independent PASS), and the first CI run of `parity`.
+
 ## Verification (native reproduction per platform, E21-S02 partial-scan fixtures)
 
 `rust_python_parity.py check` runs the partial-scan fixtures (`codex-partial-tree`,
 `claude-partial-project`, `claude-partial-tree`, `codex-unreadable-rollout`) in both root-origin
-scenarios on every change, on the stable-channel build; Linux and macOS in CI, Windows through the
-stable-channel CLI suite (E06-S13).
+scenarios on the stable-channel build. **Correction (round 9 repairs):** this section used to say
+it ran on Linux and macOS in CI on every change; it ran only in `release.yml` at a tag, on one
+runner, and locally. `rust.yml` now carries a `parity` job on `macos-latest` and `ubuntu-latest`
+for every change; Windows withholding is pinned by the stable-channel CLI suite (E06-S13), which
+already runs there. The first CI run of that job is the native evidence and is cited once it
+exists.
 
 ## Residual risks
 

@@ -710,6 +710,10 @@ fn concurrent_refreshes_of_one_notice_leave_one_accepted_install_and_a_replayabl
             .count(),
         1
     );
+    // E06 review round 9: the losers must not have written anything - one physical line, not
+    // merely one accepted event.
+    let history = std::fs::read_to_string(tree.log()).unwrap();
+    assert_eq!(history.lines().count(), 1, "{history}");
 }
 
 /// E06 review round 8, the general case: many concurrent installs of different newer notices.
@@ -770,4 +774,7 @@ fn concurrent_installs_of_different_notices_never_break_the_history() {
         String::from_utf8_lossy(&listed.stdout).lines().count(),
         accepted
     );
+    // Every line in the history is an accepted install: a refused one wrote nothing.
+    let history = std::fs::read_to_string(tree.log()).unwrap();
+    assert_eq!(history.lines().count(), accepted, "{history}");
 }

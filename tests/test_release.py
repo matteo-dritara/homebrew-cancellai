@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import unittest
 from typing import ClassVar
+from unittest import mock
 
 from scripts import release
 
@@ -340,3 +341,85 @@ class EngineCutoverTests(unittest.TestCase):
                 release.verify_installed("2.0.0", Path(tmp))
             (bin_dir / "cancellai-legacy").write_text("#!/bin/sh\necho 'cancellai 2.0.0'\n", encoding="utf-8")
             self.assertEqual(len(release.verify_installed("2.0.0", Path(tmp))), 2)
+
+
+class PublishedEngineEvidenceTests(unittest.TestCase):
+    """E06 review round 9: a formula whose engine digests matched the `.sha256` sidecars was
+    accepted while the archives' own bytes hashed to something else, and no archive was ever
+    downloaded. The archive, its sidecar and the release manifest must now agree."""
+
+    VERSION = "2.0.0"
+
+    def published(self, *, archive: bytes = b"engine", sidecar: str | None = None, manifest: str | None = None, manifest_version: str = VERSION):
+        import hashlib
+        import json
+
+        real = hashlib.sha256(b"engine").hexdigest()
+        assets = {}
+        artifacts = []
+        for target in release.ENGINE_TARGETS:
+            url = release.ENGINE_ASSET.format(repo=release.REPO, version=self.VERSION, target=target)
+            assets[url] = archive
+            assets[url + ".sha256"] = f"{sidecar or real}  cancellai-cli-{self.VERSION}-{target}.tar.gz\n".encode()
+            artifacts.append({"name": f"cancellai-cli-{self.VERSION}-{target}", "target_triple": target, "sha256": manifest or real})
+        doc = {"document_type": "release_manifest", "version": manifest_version, "artifacts": artifacts}
+        assets[release.RELEASE_MANIFEST_ASSET.format(repo=release.REPO, version=self.VERSION)] = json.dumps(doc).encode()
+        return assets, real
+
+    def fetch(self, assets):
+        def download(url, cap):
+            if url not in assets:
+                raise release.ReleaseError(f"could not download {url}")
+            return assets[url]
+
+        return mock.patch.object(release, "download", side_effect=download)
+
+    def formula(self, digest: str) -> str:
+        return release.render_formula(
+            self.VERSION, "f" * 64, release.published_engines(self.VERSION, dict.fromkeys(release.ENGINE_TARGETS, digest))
+        )
+
+    def problems(self, assets, digest: str):
+        with self.fetch(assets), mock.patch.object(release, "archive_sha256", return_value="f" * 64):
+            return release.published_digest_problems(self.formula(digest), self.VERSION)
+
+    def test_agreeing_evidence_passes(self) -> None:
+        assets, real = self.published()
+        self.assertEqual(self.problems(assets, real), [])
+
+    def test_an_archive_whose_bytes_differ_from_sidecar_and_manifest_is_refused(self) -> None:
+        # Round 9's probe: sidecar and manifest both say `aa…`, the archive is other bytes.
+        assets, _ = self.published(archive=b"other bytes", sidecar="a" * 64, manifest="a" * 64)
+        with self.assertRaisesRegex(release.ReleaseError, "disagree"):
+            self.problems(assets, "a" * 64)
+
+    def test_a_sidecar_that_disagrees_is_refused(self) -> None:
+        assets, real = self.published(sidecar="b" * 64)
+        with self.assertRaisesRegex(release.ReleaseError, "disagree"):
+            self.problems(assets, real)
+
+    def test_a_manifest_that_disagrees_is_refused(self) -> None:
+        assets, real = self.published(manifest="c" * 64)
+        with self.assertRaisesRegex(release.ReleaseError, "disagree"):
+            self.problems(assets, real)
+
+    def test_a_manifest_for_another_version_is_refused(self) -> None:
+        assets, real = self.published(manifest_version="1.99.0")
+        with self.assertRaisesRegex(release.ReleaseError, "not the release manifest"):
+            self.problems(assets, real)
+
+    def test_missing_evidence_is_refused_not_skipped(self) -> None:
+        for missing in ("release-manifest.json", ".sha256", ".tar.gz"):
+            assets, real = self.published()
+            assets = {url: data for url, data in assets.items() if not url.endswith(missing)}
+            with self.subTest(missing=missing), self.assertRaises(release.ReleaseError):
+                self.problems(assets, real)
+
+    def test_a_formula_naming_other_bytes_than_the_agreed_archive_is_reported(self) -> None:
+        assets, _ = self.published()
+        self.assertTrue(self.problems(assets, "d" * 64))
+
+    def test_finalize_takes_its_digests_from_the_archives(self) -> None:
+        assets, real = self.published()
+        with self.fetch(assets):
+            self.assertEqual(release.engine_sha256s(self.VERSION), dict.fromkeys(release.ENGINE_TARGETS, real))
