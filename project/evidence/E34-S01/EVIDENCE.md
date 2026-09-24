@@ -2,7 +2,7 @@
 
 - Commit/PR: the E34 commit on `main`
 - Executor: Claude
-- Independent verifier: round 1 FAIL (Codex, E34-VERIFIER-REVIEW-ROUND1.md); round 2 FAIL (Codex, E34-VERIFIER-REVIEW-ROUND2.md); repaired
+- Independent verifier: round 1 FAIL (Codex, E34-VERIFIER-REVIEW-ROUND1.md); round 2 FAIL (Codex, E34-VERIFIER-REVIEW-ROUND2.md); round 3 FAIL (Codex, E34-VERIFIER-REVIEW-ROUND3.md); repaired
 - Change Risk: CR2
 - Spec version/commit: `project/epics/E34.json` at this commit; owner decision 2026-09-24 (OpenCode + OpenRouter reviewer, PD-028)
 
@@ -71,6 +71,24 @@ record check nor the model attribution.
 | `import` re-runs `check_record` and, for OpenCode, the stream attribution on the bytes it is about to copy, so a run file rewritten to match forged output still fails | `test_a_forged_record_fails_even_when_the_run_file_is_rewritten_to_match`, `test_an_opencode_run_is_reattributed_from_its_log_at_import` |
 
 Mutation check: dropping the digest comparison fails two tests; dropping the record re-check fails one.
+
+## Repairs after the forked self-review (`E34-SELF-REVIEW.md`, 2026-09-24)
+
+The self-review (not independent) failed this story again on two routes round 2 had not tried.
+
+| Finding | Repair | Evidence |
+| --- | --- | --- |
+| `import` took tier, record, reviewer, model and digests from `.review-run.json`, which sat in the reviewer-writable worktree: rewriting it relabelled an Anthropic-model round, a pre-review as formal, or an OpenCode run as Codex | The run record is written beside the worktree (`<worktree>.review-run.json`), out of reach of a reviewer confined to its worktree; a run refuses to start when one already exists there | `test_the_run_record_is_outside_the_worktree` |
+| A background job the reviewer started could outlive it and change the tree after the check | The reviewer runs as the leader of its own process group, which the harness kills when the reviewer exits, before any check | `test_nothing_the_reviewer_started_outlives_it` (fails with the kill removed) |
+| Writes outside the worktree were never seen (OpenCode ran unsandboxed) | Owner decision 2026-09-24: an OS sandbox, carried by E34-S06 | E34-S06 |
+
+## Round 3 (Codex, `E34-VERIFIER-REVIEW-ROUND3.md`)
+
+Round 3 failed this story on the same route as the self-review: a `.review-run.json` rewritten to
+say `reviewer: codex` with matching digests skipped the model check. The repair above - the run
+record beside the worktree, not in it - is the one it requires; the round ran on the commit before
+it. `test_the_run_record_is_outside_the_worktree` pins it, and E34-S06's sandbox keeps an OpenCode
+reviewer from writing beside its worktree at all.
 
 ## Verification Commands
 

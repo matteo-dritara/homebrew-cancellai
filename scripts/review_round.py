@@ -28,12 +28,14 @@ Stdlib-only, like every other script here.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import fnmatch
 import hashlib
 import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -44,7 +46,9 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent.parent
 EVIDENCE = ROOT / "project" / "evidence"
 PROMPT_TEMPLATE = ROOT / "project" / "templates" / "VERIFIER_PROMPT.md"
-RUN_FILE = ".review-run.json"
+# The run record lives beside the worktree, not in it: a record the reviewer could rewrite would
+# let `import` be told a different tier, reviewer or model than the run checked (E34 self-review).
+RUN_SUFFIX = ".review-run.json"
 LOG_DIR = ".opencode-run"
 STREAM_LOG = f"{LOG_DIR}/opencode.log"
 
@@ -207,7 +211,7 @@ def changed_paths(worktree: Path) -> list[str]:
     source is judged like any other deletion; `-z` gives paths unquoted, whatever they contain."""
     out = git("status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all", cwd=worktree)
     paths = [entry[3:] for entry in out.split("\0") if entry]
-    return sorted(p for p in paths if p != RUN_FILE and not p.startswith(f"{LOG_DIR}/"))
+    return sorted(p for p in paths if not p.startswith(f"{LOG_DIR}/"))
 
 
 def render_prompt(epic: str, stories: list[str], tier: str, record: str, label: str, number: int) -> str:
@@ -274,6 +278,60 @@ def reviewer_env(log_dir: Path) -> dict[str, str]:
     return env
 
 
+def run_file(worktree: Path) -> Path:
+    return worktree.parent / f"{worktree.name}{RUN_SUFFIX}"
+
+
+def run_in_own_group(command: list[str], **kwargs: Any) -> int:
+    """Runs the reviewer as the leader of a new process group and, once it exits, kills whatever
+    it left behind in that group, so nothing it started can change the worktree after the check."""
+    process = subprocess.Popen(command, start_new_session=True, **kwargs)  # noqa: S603
+    code = process.wait()
+    with contextlib.suppress(ProcessLookupError, PermissionError):  # the group is already empty
+        os.killpg(process.pid, signal.SIGKILL)
+    return code
+
+
+# E34-S06: OpenCode, unlike Codex, brings no sandbox of its own, and ran as the owner's user - an
+# allowed command or a test the reviewer wrote could write anywhere the owner can, including the
+# main working tree, and nothing in the worktree's diff would show it. The harness therefore runs it
+# under macOS's `sandbox-exec`: it may read anything, and write only its worktree, that worktree's
+# own git administrative directory, and OpenCode's per-user data, state and cache (its session store
+# and dependency cache). Not writable: the main tree, the run record beside the worktree, OpenCode's
+# configuration directory (where a global plugin would persist into later sessions), `~/.cargo`,
+# and every other path. The network stays open: the model provider is reached through it.
+SANDBOX_PROFILE = """(version 1)
+(allow default)
+(deny file-write*)
+(allow file-write*
+    (subpath (param "WORKTREE"))
+    (subpath (param "GITDIR"))
+    (subpath (param "OC_SHARE"))
+    (subpath (param "OC_STATE"))
+    (subpath (param "OC_CACHE"))
+    (literal "/dev/null") (literal "/dev/zero") (literal "/dev/tty")
+    (regex #"^/dev/fd/") (regex #"^/dev/ttys"))
+"""
+
+
+def sandboxed(command: list[str], worktree: Path) -> list[str]:
+    """`command` under the reviewer sandbox. There is no sandbox here for any platform but macOS,
+    and an OpenCode review without one is refused rather than run unconfined."""
+    if sys.platform != "darwin" or shutil.which("sandbox-exec") is None:
+        raise ReviewError("an OpenCode review runs only under the macOS reviewer sandbox (E34-S06); none is available here")
+    home = Path.home()
+    gitdir = git("rev-parse", "--absolute-git-dir", cwd=worktree).strip()
+    params = {
+        "WORKTREE": str(worktree.resolve()),
+        "GITDIR": str(Path(gitdir).resolve()),
+        "OC_SHARE": str(home / ".local" / "share" / "opencode"),
+        "OC_STATE": str(home / ".local" / "state" / "opencode"),
+        "OC_CACHE": str(home / ".cache" / "opencode"),
+    }
+    flags = [item for key, value in params.items() for item in ("-D", f"{key}={value}")]
+    return ["sandbox-exec", *flags, "-p", SANDBOX_PROFILE, *command]
+
+
 def run_reviewer(reviewer: str, model: str | None, tier: str, worktree: Path, prompt: str, log_dir: Path) -> tuple[int, str]:
     log_dir.mkdir(parents=True, exist_ok=True)
     prompt_file = log_dir / "prompt.md"
@@ -286,17 +344,20 @@ def run_reviewer(reviewer: str, model: str | None, tier: str, worktree: Path, pr
             "-C", str(worktree), "-o", str(log_dir / "final.md"), "-",
         ]  # fmt: skip
         with prompt_file.open("rb") as stdin, (log_dir / "events.log").open("wb") as out:
-            result = subprocess.run(command, stdin=stdin, stdout=out, stderr=subprocess.STDOUT, env=env, check=False)  # noqa: S603
-        return result.returncode, ""
+            code = run_in_own_group(command, stdin=stdin, stdout=out, stderr=subprocess.STDOUT, env=env)
+        return code, ""
     agent = "verifier" if tier == "formal" else "pre-reviewer"
     command = [
         "opencode", "run", "--agent", agent, "--model", str(model), "--format", "json",
         "--print-logs", "--log-level", "INFO", "--title", f"review {tier}",
         "Follow the attached instructions exactly.", "--file", str(prompt_file),
     ]  # fmt: skip
+    command = sandboxed(command, worktree)
+    env["TMPDIR"] = str(log_dir / "tmp")
+    (log_dir / "tmp").mkdir(exist_ok=True)
     with (log_dir / "events.jsonl").open("wb") as out, (log_dir / "opencode.log").open("wb") as err:
-        result = subprocess.run(command, cwd=worktree, stdout=out, stderr=err, env=env, check=False)  # noqa: S603
-    return result.returncode, (log_dir / "opencode.log").read_text(encoding="utf-8", errors="replace")
+        code = run_in_own_group(command, cwd=worktree, stdout=out, stderr=err, env=env)
+    return code, (log_dir / "opencode.log").read_text(encoding="utf-8", errors="replace")
 
 
 ERROR_RE = re.compile(r'level=ERROR .*?(?:error\.error\.message|error)="([^"]*)"')
@@ -339,8 +400,8 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     base = git("rev-parse", "HEAD").strip()
     worktree = Path(args.workdir).resolve() / f"{epic.lower()}-{tier}-{number}"
-    if worktree.exists():
-        raise ReviewError(f"{worktree} already exists")
+    if worktree.exists() or run_file(worktree).exists():
+        raise ReviewError(f"{worktree} or its run record already exists")
     branch = f"review/{epic.lower()}-{tier}-{number}-{int(time.time())}"
     git("worktree", "add", "-q", "-b", branch, str(worktree), "HEAD")
     run = RunRecord(epic, stories, tier, reviewer, model, label, record, str(worktree), base)
@@ -359,7 +420,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     run.problems += append_only_problems(worktree, run.changed, base)
     run.problems += check_record(worktree, record, label, tier)
     run.digests = output_digests(worktree, run.changed)
-    (worktree / RUN_FILE).write_text(json.dumps(asdict(run), indent=2) + "\n", encoding="utf-8")
+    run_file(worktree).write_text(json.dumps(asdict(run), indent=2) + "\n", encoding="utf-8")
     print(json.dumps({"passed": run.passed, **asdict(run)}, indent=2))
     return 0 if run.passed else 1
 
@@ -419,7 +480,7 @@ def cmd_import(args: argparse.Namespace) -> int:
     """Copies a passing run's allowed changes into the main working tree - nothing else, and
     nothing at all unless every path passes `import_problems`."""
     worktree = Path(args.worktree).resolve()
-    data = json.loads((worktree / RUN_FILE).read_text(encoding="utf-8"))
+    data = json.loads(run_file(worktree).read_text(encoding="utf-8"))
     problems = import_problems(worktree, data)
     if problems:
         raise ReviewError("nothing is imported:\n" + "\n".join(problems))

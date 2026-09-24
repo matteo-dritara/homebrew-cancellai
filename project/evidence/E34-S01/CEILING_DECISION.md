@@ -27,6 +27,12 @@ Both repairs were made to their prescription and every counterexample is pinned 
 
 Each repair was mutation-checked: reverting it fails its regression.
 
+The forked self-review that was to close this story (`E34-SELF-REVIEW.md`) failed it again on
+routes the rounds had not tried; each is repaired and pinned in the evidence packet's
+"Repairs after the forked self-review" section. The part no repair inside this story can reach -
+an unsandboxed OpenCode writing outside its worktree - the owner assigned on 2026-09-24 to a new
+story, E34-S06 (an OS sandbox for the reviewer).
+
 The story is CR2: it closes on this decision plus a forked self-review
 (`E34-SELF-REVIEW.md`), not a third independent round. The independent reviewer may still reopen it
 if a later round over E34 or a story that uses the harness finds the repair unsound.

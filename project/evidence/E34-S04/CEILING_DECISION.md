@@ -17,6 +17,12 @@
 
 The round-2 repair was made to its prescription: only `.DS_Store` is skipped as local state, every other entry is judged, and a hidden one is never a recognised component. `test_unknown_entries_inside_component_directories_are_reported` pins nested, empty, stray, skill-without-`SKILL.md` and hidden entries, and a `.DS_Store` that stays silent.
 
+The forked self-review that was to close this story (`E34-SELF-REVIEW.md`) failed it again on
+routes the rounds had not tried; each is repaired and pinned in the evidence packet's
+"Repairs after the forked self-review" section. The part no repair inside this story can reach -
+an unsandboxed OpenCode writing outside its worktree - the owner assigned on 2026-09-24 to a new
+story, E34-S06 (an OS sandbox for the reviewer).
+
 The story is CR1: it closes on this decision plus a forked self-review
 (`E34-SELF-REVIEW.md`), not a third independent round. The independent reviewer may still reopen it
 if a later round over E34 or a story that uses the harness finds the repair unsound.

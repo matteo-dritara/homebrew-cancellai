@@ -521,6 +521,9 @@ class OpenCodeComponentsAreEnumerated(unittest.TestCase):
                 ".opencode/agents/.hidden.md",
                 ".opencode/skills/.hidden/SKILL.md",
                 ".opencode/agents/.DS_Store",
+                # Self-review of round 2: a directory named like Finder's file, holding an agent.
+                ".opencode/plugins/.DS_Store/sneaky.md",
+                ".opencode/skills/.DS_Store/SKILL.md",
             ):
                 (root / relative).parent.mkdir(parents=True, exist_ok=True)
                 (root / relative).write_text("x", encoding="utf-8")
@@ -540,6 +543,8 @@ class OpenCodeComponentsAreEnumerated(unittest.TestCase):
             "skills/no-skill-file",
             "agents/.hidden.md",
             "skills/.hidden",
+            "plugins/.DS_Store",
+            "skills/.DS_Store",
         ):
             self.assertIn(f"unrecognised:.opencode/{entry}", found)
         self.assertNotIn("subagent:opencode/inner", found)

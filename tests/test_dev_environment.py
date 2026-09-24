@@ -112,7 +112,9 @@ class NoGateNeedsAnUndocumentedBinary(unittest.TestCase):
     # `git` is the repository itself; `cargo` and `gh` are documented in AGENTS.md and both degrade
     # truthfully when absent, which was verified by running each gate with them off PATH. Only
     # `skillspector` refuses, and it is the one this file exists to keep installable.
-    PERMITTED: ClassVar[frozenset[str]] = frozenset({"git", "gh", "cargo", "skillspector", "pre-commit"})
+    # `sandbox-exec` ships with macOS and is no gate: `review_round.py` needs it only to confine an
+    # OpenCode reviewer (E34-S06), and without it refuses that review rather than run it unconfined.
+    PERMITTED: ClassVar[frozenset[str]] = frozenset({"git", "gh", "cargo", "skillspector", "pre-commit", "sandbox-exec"})
 
     def test_no_script_shells_out_to_an_undeclared_binary(self) -> None:
         pattern = re.compile(r'shutil\.which\(\s*"([\w.-]+)"\s*\)')

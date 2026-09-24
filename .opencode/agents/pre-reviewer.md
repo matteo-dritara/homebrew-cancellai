@@ -4,6 +4,9 @@ mode: primary
 model: openrouter/nvidia/nemotron-3-ultra-550b-a55b:free
 temperature: 0.2
 permission:
+  # First, so OpenCode's default `"*": allow` never reaches a permission category this file does
+  # not name (round 3); every rule below is applied after it.
+  "*": deny
   read: allow
   glob: allow
   grep: allow
@@ -76,14 +79,7 @@ permission:
     "grep *": allow
     "rg *": allow
     "find *": allow
-    "sed -n *": allow
     "diff *": allow
-    "mktemp*": allow
-    "mkdir *": allow
-    "chmod *": allow
-    "touch *": allow
-    "sort *": allow
-    "uniq *": allow
     "git commit*": deny
     "git push*": deny
     "git tag*": deny
@@ -123,6 +119,14 @@ permission:
     "*--config*": deny
     "*net.offline*": deny
     "*CARGO_NET*": deny
+    # Self-review of round 2: commands that write a file named in their arguments, wherever it is,
+    # and a background job that outlives the session. Reading needs none of them.
+    "*&*": deny
+    "*--output*": deny
+    "*--pre*": deny
+    "*-fprint*": deny
+    "*-fls*": deny
+    "*-ok *": deny
 ---
 You are an advisory pre-reviewer for the cancellAI repository, running under
 `scripts/review_round.py` (E34). Your job is to find defects before the formal independent review

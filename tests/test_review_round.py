@@ -7,7 +7,9 @@ that no existing record can be overwritten.
 
 from __future__ import annotations
 
+import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -268,6 +270,86 @@ class ImportTests(unittest.TestCase):
             root, worktree, data = self._setup(tmp)
             data["problems"] = ["the reviewer exited 1"]
             self.assertTrue(rr.import_problems(worktree, data, root))
+
+
+class ReviewerReachTests(unittest.TestCase):
+    # E34 self-review of round 2: the run record sat inside the reviewer-writable worktree, and a
+    # background job the reviewer started could outlive it and change the tree after the check.
+    def test_the_run_record_is_outside_the_worktree(self) -> None:
+        worktree = Path("/reviews/e34-formal-3")
+        self.assertEqual(rr.run_file(worktree), Path("/reviews/e34-formal-3.review-run.json"))
+        self.assertNotIn(worktree, rr.run_file(worktree).parents)
+
+    def test_nothing_the_reviewer_started_outlives_it(self) -> None:
+        import os
+        import time
+
+        with tempfile.TemporaryDirectory() as tmp:
+            pidfile = Path(tmp) / "pid"
+            code = rr.run_in_own_group(["sh", "-c", f"sleep 30 & echo $! > {pidfile}"])
+            self.assertEqual(code, 0)
+            pid = int(pidfile.read_text(encoding="utf-8"))
+            for _ in range(50):
+                try:
+                    os.kill(pid, 0)
+                except ProcessLookupError:
+                    break
+                time.sleep(0.05)
+            else:
+                self.fail(f"the reviewer's background job {pid} survived it")
+
+
+def _sandbox_applies() -> bool:
+    """macOS with `sandbox-exec`, and not already inside a sandbox (Codex's own), which refuses a
+    nested one."""
+    if sys.platform != "darwin" or not shutil.which("sandbox-exec"):
+        return False
+    probe = subprocess.run(["sandbox-exec", "-p", "(version 1)(allow default)", "true"], capture_output=True, check=False)  # noqa: S607
+    return probe.returncode == 0
+
+
+@unittest.skipUnless(_sandbox_applies(), "needs macOS sandbox-exec outside another sandbox")
+class ReviewerSandboxTests(unittest.TestCase):
+    # E34-S06: the self-review of round 2 wrote into the main tree and another repository's `.git`
+    # from an unsandboxed OpenCode reviewer. Under the harness's sandbox the same writes fail.
+    def test_the_sandbox_confines_writes_to_the_worktree(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            main = root / "main"
+            main.mkdir()
+            subprocess.run(["git", "init", "-q"], cwd=main, check=True)  # noqa: S607
+            (main / "README.md").write_text("main\n", encoding="utf-8")
+            _commit_all(main, "base")
+            worktree = root / "review"
+            rr.git("worktree", "add", "-q", "-b", "review", str(worktree), "HEAD", cwd=main)
+            script = (
+                f"echo inside > {worktree}/inside.txt && echo INSIDE; "
+                f"echo outside > {main}/README.md && echo MAIN; "
+                f"echo outside > {root}/review{rr.RUN_SUFFIX} && echo RUNFILE; "
+                f"git -C {worktree} status --porcelain >/dev/null && echo GIT"
+            )
+            result = subprocess.run(rr.sandboxed(["sh", "-c", script], worktree), capture_output=True, text=True, check=False)  # noqa: S603
+            self.assertIn("INSIDE", result.stdout)
+            self.assertIn("GIT", result.stdout)
+            self.assertNotIn("MAIN", result.stdout)
+            self.assertNotIn("RUNFILE", result.stdout)
+            self.assertEqual((main / "README.md").read_text(encoding="utf-8"), "main\n")
+            self.assertFalse((root / f"review{rr.RUN_SUFFIX}").exists())
+
+    def test_opencode_configuration_is_not_writable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            worktree = Path(tmp).resolve()
+            subprocess.run(["git", "init", "-q"], cwd=worktree, check=True)  # noqa: S607
+            target = Path.home() / ".config" / "opencode" / "sandbox-probe.json"
+            result = subprocess.run(rr.sandboxed(["sh", "-c", f"echo x > {target}"], worktree), capture_output=True, check=False)  # noqa: S603
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse(target.exists())
+
+
+class UnsandboxedPlatformTests(unittest.TestCase):
+    def test_no_sandbox_means_no_opencode_review(self) -> None:
+        with mock.patch.object(rr.sys, "platform", "linux"), self.assertRaisesRegex(rr.ReviewError, "sandbox"):
+            rr.sandboxed(["opencode"], Path("."))
 
 
 class ReviewerEnvironmentTests(unittest.TestCase):

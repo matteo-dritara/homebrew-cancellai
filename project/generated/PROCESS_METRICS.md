@@ -89,6 +89,7 @@ distinguished by the next round, which is why the ceiling matters.
 | E24 | 1 | **self** | 3 | 2 | 2 | 67% |
 | E28 | 2 | independent | 5 | 0 | 0 | 0% |
 | E29 | 1 | independent | 7 | 6 | 1 | 86% |
+| E34 | 1 | **self** | 4 | 3 | 3 | 75% |
 | E34 | 1 | independent | 4 | 3 | 3 | 75% |
 | E34 | 2 | independent | 5 | 4 | 4 | 80% |
 | E34 | 3 | independent | 5 | 2 | 2 | 40% |
@@ -99,7 +100,7 @@ The gap between *every gate passed* and *the work is right*. Each rejected story
 already been declared `ready_for_review` by an executor who ran the full gate set green.
 
 - **Independent reviewer:** 54 of 112 round-1 verdicts were `FAIL` - **48%**.
-- **Self-review (same agent as executor):** 3 of 13 round-1 verdicts were `FAIL` - **23%**.
+- **Self-review (same agent as executor):** 6 of 17 round-1 verdicts were `FAIL` - **35%**.
 
 - **Round-1 records excluded as unreadable:** 2. Their verdicts are in neither denominator above, so both rates are computed over the subset of records that use a machine-readable verdict table.
 
@@ -133,11 +134,11 @@ independent samples, and the population estimate collapses to what one round alr
 | E18 | 2 | 2 | 2 | 2.0 | 0.0 |
 | E19 | 1 | 1 | 1 | 1.0 | 0.0 |
 | E20 | 1 and 2 | 3 | 0 | 0 | undefined - disjoint findings | at least 3 were present |
-| E34 | 3 | 4 | 3 | 4.0 | 0.0 |
+| E34 | 3 | 3 | 3 | 3.0 | 0.0 |
 
 ## Evidence-ledger integrity
 
-- **163 of 178** story packets past `ready_for_review` carry a row per acceptance criterion.
+- **168 of 183** story packets past `ready_for_review` carry a row per acceptance criterion.
 - Packets that do not:
   - E00-S01 (CR4): 0 rows for 3 criteria
   - E00-S02 (CR4): 0 rows for 3 criteria
@@ -159,9 +160,9 @@ independent samples, and the population estimate collapses to what one round alr
 
 | CR0 | CR1 | CR2 | CR3 | CR4 |
 | --- | --- | --- | --- | --- |
-| 14 | 43 | 52 | 33 | 42 |
+| 14 | 43 | 53 | 33 | 42 |
 
-75 of 184 stories are CR3 or CR4, the levels whose gates require
+75 of 185 stories are CR3 or CR4, the levels whose gates require
 independent verification. That share is what makes the reviewer-independence question above
 load-bearing rather than academic.
 
@@ -171,7 +172,7 @@ load-bearing rather than academic.
 
 ## Requirements shape
 
-- Acceptance criteria describing **unwanted behaviour**: **103 of 593** (17%).
+- Acceptance criteria describing **unwanted behaviour**: **104 of 596** (17%).
 - Epics whose requirements describe the feature and not the hazard:
   - `E00` - 0 of 29
   - `E01` - 0 of 13

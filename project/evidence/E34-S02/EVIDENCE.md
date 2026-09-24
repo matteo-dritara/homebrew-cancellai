@@ -2,7 +2,7 @@
 
 - Commit/PR: the E34 commit on `main`
 - Executor: Claude
-- Independent verifier: round 1 FAIL (Codex, E34-VERIFIER-REVIEW-ROUND1.md); round 2 FAIL (Codex, E34-VERIFIER-REVIEW-ROUND2.md); repaired
+- Independent verifier: round 1 FAIL (Codex, E34-VERIFIER-REVIEW-ROUND1.md); round 2 FAIL (Codex, E34-VERIFIER-REVIEW-ROUND2.md); round 3 FAIL (Codex, E34-VERIFIER-REVIEW-ROUND3.md); repaired
 - Change Risk: CR1
 - Spec version/commit: `project/epics/E34.json` at this commit; PD-028
 
@@ -57,6 +57,23 @@ code run by a test the reviewer wrote is bounded by the worktree and the harness
 | --- | --- |
 | `python3 scripts/*` is replaced by exact, reviewed script/subcommand pairs; `check_platforms.py check` (probes CI through `gh`), `check_agent_toolchain.py updates` and every `release.py` command but `check` are left out, so denied | `test_every_allowed_script_is_an_exact_reviewed_subcommand`: every allowed script rule has no wildcard, and a script containing a network marker (`urllib.request`, `which("gh")`, `"curl"`, `socket.`, `http.client`) must be listed with the reason its allowed subcommand never reaches it |
 | Every cargo a reviewer runs - directly, or inside an allowed script such as `check_provider_compatibility.py check` - is offline: the harness sets `CARGO_NET_OFFLINE=true`, and `--config`, `net.offline` and `CARGO_NET` overrides are denied | `test_cargo_runs_offline_in_the_reviewer_environment`; `DENIED` gains round 2's command and seven more |
+
+## Repairs after the forked self-review (`E34-SELF-REVIEW.md`, 2026-09-24)
+
+The self-review showed, through OpenCode's own permission engine, that allowed read commands could
+write: `sed -n w<path>` moved another repository's `refs/heads/main` back one commit and truncated a
+file, and `sort -o`, `uniq in out` and `git diff --output=` wrote outside the worktree.
+
+| Repair | Evidence |
+| --- | --- |
+| `sed -n`, `sort`, `uniq`, `mkdir`, `touch`, `chmod` and `mktemp` are no longer allowed (`cat`/`head`/`tail`/`grep` and the read tool cover reading); `--output`, `--pre` (`rg` preprocessor), `find -fprint/-fls/-ok` and any `&` (background jobs) are denied last | `DENIED` gains the self-review's probes and six more; `ALLOWED` reads with `head` |
+| What no command rule can bound - code a reviewer-written test runs - is confined by the OS sandbox (E34-S06) | E34-S06 |
+
+## Round 3 (Codex, `E34-VERIFIER-REVIEW-ROUND3.md`)
+
+| Finding | Repair | Evidence |
+| --- | --- | --- |
+| OpenCode's own defaults begin with `"*": allow`, so a permission category neither agent names resolved to allow; the bash-only test could not see it | Each agent's `permission` map now starts with `"*": deny`, applied after OpenCode's defaults and before every named rule | `test_every_unnamed_permission_category_is_denied_first`; `test_opencode_itself_denies_what_the_file_does_not_name` asks OpenCode 1.18.30's engine (`opencode debug agent`) and gets deny for an unnamed category, `webfetch` and `task`, allow for `read`; both fail against the round-3 agents |
 
 ## Verification Commands
 

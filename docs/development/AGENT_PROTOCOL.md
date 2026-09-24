@@ -85,9 +85,18 @@ python3 scripts/review_round.py import ../review-worktrees/E06-formal-9
   shell rules with denials -
   OpenCode applies the last matching rule - so `python3 -c`, `pip`, installs, network clients,
   removal, chaining, substitution and redirection are refused even inside an allowed command
-  (`tests/test_opencode_agents.py`). This is defence in depth, not a sandbox: a reviewer may write
-  an adversarial test and `pytest` will run it, which is arbitrary code, so the worktree, the path
-  check and `import` remain the boundary.
+  (`tests/test_opencode_agents.py`), and commands that write a file named in their arguments
+  (`sed w`, `sort -o`, `--output`, ...) or start background jobs are not allowed at all. Those
+  rules are defence in depth: a reviewer may write an adversarial test and `pytest` will run it,
+  which is arbitrary code.
+- The boundary is enforced below the agent. Codex runs in its own workspace sandbox. OpenCode,
+  which has none, runs under macOS `sandbox-exec` (E34-S06): it reads anything and writes only its
+  worktree, that worktree's git administrative directory and OpenCode's own data, state and cache
+  directories - not the main tree, not the run record, not OpenCode's configuration directory.
+  With no sandbox available (any other platform) an OpenCode review is refused, not run
+  unconfined. The network stays open, because the model provider is reached through it. The run
+  record is kept beside the worktree, out of the reviewer's reach, and when the reviewer exits
+  the harness kills its whole process group before checking anything.
 - A failed run says why (`the reviewer exited N: <last logged error>`), so a provider outage is
   not mistaken for a finding.
 

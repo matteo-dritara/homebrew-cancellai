@@ -2,7 +2,7 @@
 
 - Commit/PR: the E34 follow-up commit on `main`
 - Executor: Claude
-- Independent verifier: round 1 FAIL (Codex, E34-VERIFIER-REVIEW-ROUND1.md); round 2 FAIL (Codex, E34-VERIFIER-REVIEW-ROUND2.md); repaired
+- Independent verifier: round 1 FAIL (Codex, E34-VERIFIER-REVIEW-ROUND1.md); round 2 FAIL (Codex, E34-VERIFIER-REVIEW-ROUND2.md); round 3 PASS (Codex, E34-VERIFIER-REVIEW-ROUND3.md)
 - Change Risk: CR1
 - Spec version/commit: `project/epics/E34.json` at this commit; PD-028
 
@@ -37,6 +37,15 @@ it was judged, because the walk skipped every dot-name.
 | Repair | Evidence |
 | --- | --- |
 | Only `.DS_Store` (Finder metadata) is skipped; every other entry is judged, and a hidden one is never a recognised component, so it is reported as unrecognised | `test_unknown_entries_inside_component_directories_are_reported` gains `agents/.hidden.md`, `skills/.hidden/` and a `.DS_Store` that stays silent |
+
+## Repair after the forked self-review (`E34-SELF-REVIEW.md`, 2026-09-24)
+
+A *directory* named `.DS_Store` under `.opencode/agents/`, holding an `.md` with `bash: allow`, was
+loaded by OpenCode as a primary agent while the walk skipped it by name.
+
+| Repair | Evidence |
+| --- | --- |
+| `.DS_Store` is skipped only when it is a regular file (not a directory, not a link); anything else of that name is judged like any other entry | `test_unknown_entries_inside_component_directories_are_reported` gains `.DS_Store` directories under `plugins/` and `skills/` |
 
 ## Verification Commands
 

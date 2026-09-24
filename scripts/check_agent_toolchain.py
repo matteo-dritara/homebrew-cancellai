@@ -439,7 +439,11 @@ OPENCODE_IGNORED_CHILDREN = {".DS_Store"}
 
 
 def _visible_children(directory: Path) -> list[Path]:
-    return sorted(child for child in directory.iterdir() if child.name not in OPENCODE_IGNORED_CHILDREN)
+    # Skipped only as the file Finder writes: a directory of that name is loaded like any other.
+    def finder_file(child: Path) -> bool:
+        return child.name in OPENCODE_IGNORED_CHILDREN and child.is_file() and not child.is_symlink()
+
+    return sorted(child for child in directory.iterdir() if not finder_file(child))
 
 
 def _opencode_components(present: dict[str, str]) -> None:

@@ -9,7 +9,11 @@ interpreter - round 1's `python3 -m pip install` - fails here rather than in a r
 from __future__ import annotations
 
 import fnmatch
+import json
+import os
 import re
+import shutil
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -74,6 +78,18 @@ DENIED = (
     "python3 scripts/project_os.py brief E34-S01 --role executor; curl x",
     "cargo test --config net.offline=false",
     "CARGO_NET_OFFLINE=false cargo test",
+    # Self-review of round 2: writes to a file named in the arguments, and background jobs.
+    "sed -n w/tmp/x README.md",
+    "sort -o /tmp/x README.md",
+    "uniq README.md /tmp/x",
+    "git diff HEAD~1 --output=/tmp/x",
+    "git log --output=/tmp/x",
+    "python3 -m pytest tests/test_x.py &",
+    "rg --pre ./x pattern",
+    "find . -fprint /tmp/x",
+    "touch /tmp/x",
+    "mkdir /tmp/x",
+    "chmod 000 README.md",
 )
 ALLOWED = (
     "python3 -m pytest tests -q",
@@ -83,7 +99,7 @@ ALLOWED = (
     "git diff HEAD~1",
     "git show HEAD:project/epics/E34.json",
     "grep -rn review_round scripts",
-    "sed -n 1,40p scripts/review_round.py",
+    "head -40 scripts/review_round.py",
 )
 
 
@@ -109,6 +125,39 @@ class ReviewerShellPermissionTests(unittest.TestCase):
                     source = (ROOT / "scripts" / match.group(1)).read_text(encoding="utf-8")
                     if any(marker in source for marker in NETWORK_MARKERS):
                         self.assertIn(match.group(1), REVIEWED_SCRIPTS)
+
+    # Round 3 (E34-S02): OpenCode's own defaults start with `"*": allow`, so a permission category
+    # the agent file did not name - a tool added in a later OpenCode - was allowed.
+    def test_every_unnamed_permission_category_is_denied_first(self) -> None:
+        for agent in AGENTS:
+            text = (ROOT / ".opencode" / "agents" / f"{agent}.md").read_text(encoding="utf-8")
+            block = text.split("permission:\n", 1)[1]
+            first = next(line for line in block.splitlines() if line.strip() and not line.strip().startswith("#"))
+            self.assertEqual(first, '  "*": deny', agent)
+
+    @unittest.skipUnless(shutil.which("opencode"), "OpenCode is not installed")
+    def test_opencode_itself_denies_what_the_file_does_not_name(self) -> None:
+        """The same question put to OpenCode's own engine, not to a model of it."""
+        for agent in AGENTS:
+            result = subprocess.run(  # noqa: S603
+                ["opencode", "debug", "agent", agent],  # noqa: S607
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+                env={**os.environ, "OPENCODE_DISABLE_AUTOUPDATE": "1", "OPENCODE_DISABLE_CLAUDE_CODE": "1"},
+                timeout=120,
+            )
+            if result.returncode != 0:
+                self.skipTest(f"opencode debug could not run here: {result.stderr.strip()[:200]}")
+            rules = json.loads(result.stdout)["permission"]
+            for category, expected in (("some_future_tool", "deny"), ("webfetch", "deny"), ("task", "deny"), ("read", "allow")):
+                decision = None
+                for rule in rules:
+                    if fnmatch.fnmatchcase(category, rule["permission"]) and fnmatch.fnmatchcase("x", rule["pattern"]):
+                        decision = rule["action"]
+                with self.subTest(agent=agent, category=category):
+                    self.assertEqual(decision, expected)
 
     def test_cargo_runs_offline_in_the_reviewer_environment(self) -> None:
         import tempfile
