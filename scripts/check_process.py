@@ -163,7 +163,8 @@ REVIEW_ROUND_EXCEPTIONS = {
     "E06-S14 alone, because Codex refused to judge the still-blocked E06-S04 with it. Rounds 13 "
     "and 14 are the owner's 2026-09-24 authorization to confirm round 12's two documentation "
     "repairs on E06-S14 and then, only if it passes, to judge E06-S04 and write its migration "
-    "Safety Verdict",
+    "Safety Verdict. Round 15 is the single round the owner chose on 2026-09-25 after round 14: "
+    "E06-S16's rehearsal release and E06-S04 judged against its finite eight-item checklist",
 }
 # Matches both an epic-scoped record (`E07-VERIFIER-REVIEW.md`) and a story-scoped one
 # (`E07-S07-VERIFIER-REVIEW.md`), counting both against the *epic's* ceiling (captured

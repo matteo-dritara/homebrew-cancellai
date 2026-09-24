@@ -85,6 +85,23 @@ independent verifier's migration Safety Verdict and then the owner's acceptance 
 the parity gate runs natively on macOS and Linux for every change (`rust.yml` `parity`, green on
 `051ae5e`), and Windows withholding is pinned by the stable-channel CLI suite.
 
+## Checklist (owner decision 2026-09-25) - evidence for each item
+
+The story is judged on these eight items; re-judging stories closed by their own rounds is out of
+scope. CI results are recorded here because the reviewer's sandbox cannot reach GitHub: every run
+below is on `50b023e`, whose code the review reads (later commits change evidence files only).
+
+| # | Check | Evidence |
+| --- | --- | --- |
+| C1 | Every dependency done; E06-S14 and E06-S15 by their own rounds | `project_os.py check`; E06-S14 PASS_WITH_RESIDUALS round 13, E06-S15 PASS rounds 10-11 (`E06-VERIFIER-REVIEW-ROUND10/11/13.md`) |
+| C2 | Rehearsal v1.21.1 published and verified on its real assets | Release run `36069385676` (all 11 jobs green); `verify-release --version 1.21.1` passed first time; `project/evidence/RELEASE-v1.21.1.md` |
+| C3 | The 2.0.0 engine formula from this commit installs and `brew test`s | `tests` run `36070653690`, job `homebrew` ("the cutover formula installs and runs this commit's engine") success |
+| C4 | Native partial-scan reproduction on three platforms | `rust` run `36070653682`: `parity (macos-latest)`, `parity (ubuntu-latest)` success; `cli-stable-channel (windows-latest)` - `tests\windows_partial_scan.rs: 1 passed` |
+| C5 | `cancellai-legacy` through 2.1.0; Python source in the tags | `release.py render_formula` (`_ENGINE_BODY` installs `cancellai.py` as `cancellai-legacy`); `test_a_rendered_engine_formula_is_accepted_and_names_each_archive_in_its_platform_block`; every `v*` tag carries `cancellai.py` |
+| C6 | Unreleased states every intentional contract change | `CHANGELOG.md` `[Unreleased]` cutover entry, against `docs/CLI_RUST.md` and `project/cli_inventory.json` |
+| C7 | Rollback documented | `docs/RELEASING.md` "Rolling back the cutover" (containment kill-switch, `cancellai-legacy`, formula revert) |
+| C8 | `finalize` refuses the cutover without the owner's authorization | E06-S15 (independently passed); `CutoverAuthorizationTests` |
+
 ## Round 14 repairs (Codex, `project/evidence/E06-VERIFIER-REVIEW-ROUND14.md`)
 
 | Finding | Repair | Evidence |
