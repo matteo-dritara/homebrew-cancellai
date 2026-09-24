@@ -159,7 +159,11 @@ REVIEW_ROUND_EXCEPTIONS = {
     "E33-S03's PASS; the owner authorized it on 2026-09-24, with a redesign consultation in "
     "place of a further round if it fails. Round 12 judges E06-S14's closed-manifest redesign - the "
     "one that consultation produced after round 11 failed it - together with E06-S04, whose migration "
-    "Safety Verdict can only follow it; the owner authorized it on 2026-09-24",
+    "Safety Verdict can only follow it; the owner authorized it on 2026-09-24. Round 12 ran on "
+    "E06-S14 alone, because Codex refused to judge the still-blocked E06-S04 with it. Rounds 13 "
+    "and 14 are the owner's 2026-09-24 authorization to confirm round 12's two documentation "
+    "repairs on E06-S14 and then, only if it passes, to judge E06-S04 and write its migration "
+    "Safety Verdict",
 }
 # Matches both an epic-scoped record (`E07-VERIFIER-REVIEW.md`) and a story-scoped one
 # (`E07-S07-VERIFIER-REVIEW.md`), counting both against the *epic's* ceiling (captured
