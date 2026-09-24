@@ -85,6 +85,13 @@ independent verifier's migration Safety Verdict and then the owner's acceptance 
 the parity gate runs natively on macOS and Linux for every change (`rust.yml` `parity`, green on
 `051ae5e`), and Windows withholding is pinned by the stable-channel CLI suite.
 
+## Round 14 repairs (Codex, `project/evidence/E06-VERIFIER-REVIEW-ROUND14.md`)
+
+| Finding | Repair | Evidence |
+| --- | --- | --- |
+| The verification contract's native reproduction was missing on Windows: the differential gate runs only on macOS and Linux (the reference's recipes lock with `chmod`), and the Windows stable-channel suite did not run the E21-S02 fixtures | `rust/crates/cancellai-cli/tests/windows_partial_scan.rs` builds the four E21-S02 fixtures natively, locks each with an NTFS deny ACE (`icacls /deny`, refusing to proceed if the lock does not hold), and runs `inspect` and `clean --yes` in both root-origin scenarios, asserting what the frozen reference's characterization records - scope incomplete, exit 4, nothing deleted; unlocked, the same default-root tree must delete on the stable build, so the refusal comes from the lock | `rust` run 36054797678 (PR #20, commit `4e23344`): `cli-stable-channel (windows-latest)` - `tests\windows_partial_scan.rs ... 1 passed` |
+| AC1 was circular: the owner's acceptance can only follow an independent PASS, which the round withheld for want of it | Owner decision 2026-09-24: AC1 now asks for the independent migration Safety Verdict to pass; the owner's acceptance follows as `CUTOVER_AUTHORIZATION.md`, bound to that verdict's SHA-256, before the story is done and before `finalize --adopt-cutover` (which refuses without it, E06-S15) | `project/epics/E06.json` |
+
 ## Verification (native reproduction per platform, E21-S02 partial-scan fixtures)
 
 `rust_python_parity.py check` runs the partial-scan fixtures (`codex-partial-tree`,
