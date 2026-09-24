@@ -151,7 +151,10 @@ REVIEW_ROUND_EXCEPTIONS = {
     "one extra round because a CR4 story cannot close without an independent verdict. Round 9 "
     "reviews the same two stories after round 8 failed them and the owner chose to replace the "
     "mechanisms rather than patch them (ccd56ff): the owner authorized it on 2026-09-24, so it "
-    "judges new code rather than repeating a pass over code already judged",
+    "judges new code rather than repeating a pass over code already judged. Round 10 is the single "
+    "independent round over ADR-0040's redesign (E06-S14, E06-S15, E33-S03, and the reduced E06-S04 "
+    "and E33-S01), which the owner chose on 2026-09-24 after round 9 instead of a tenth patch, and "
+    "approved reviewing once at the end",
 }
 # Matches both an epic-scoped record (`E07-VERIFIER-REVIEW.md`) and a story-scoped one
 # (`E07-S07-VERIFIER-REVIEW.md`), counting both against the *epic's* ceiling (captured
