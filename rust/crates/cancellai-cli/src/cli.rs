@@ -104,8 +104,9 @@ pub enum ContainmentAction {
 /// the pre-`clap` parser accepted `--dry-run status`.
 #[derive(clap::Args, Debug, Clone)]
 pub struct ReadOnlyArgs {
-    /// Retention cutoff in days
-    #[arg(long, default_value_t = 7)]
+    /// Retention cutoff in days - at least 1, as in the reference (E06 review round 8: `--days 0`
+    /// was accepted and planned every stale-looking session for deletion)
+    #[arg(long, default_value_t = 7, value_parser = clap::value_parser!(u32).range(1..))]
     pub days: u32,
     /// Always protect the N most-recently-modified sessions per tool, independent of age
     #[arg(long = "keep-latest", default_value_t = 2)]

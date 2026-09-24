@@ -53,14 +53,14 @@ cutover release with the switch stated explicitly:
 python3 scripts/release.py finalize --version 2.0.0 --adopt-cutover
 ```
 
-`--adopt-cutover` replaces the live formula with `packaging/cancellai.rb.template` only when E06-S04
-is `done`, the version is 2.0.0 or later, and the live formula is the untouched pre-cutover one; it
-points the source URL and the three engine resources - each in its own platform block - at the tag,
-with the digests the release published, validates the whole text, and writes it atomically,
-restoring the original if the post-write check fails. Every release from 2.0.0 on must carry the
-engine: `finalize` refuses one that would not. `release.py verify-formula` re-checks the live
-formula's digests against the published ones, and `tests.yml` installs the cutover formula built
-from each commit and runs its `brew test`.
+`finalize` never edits the formula: `render_formula` generates it whole for the tag - Python-only
+before 2.0.0, the engine formula from 2.0.0 - with the digests the release published (the tag
+archive's own hash and each engine archive's `.sha256`), writes it atomically, and restores the
+original if the post-write check fails. `--adopt-cutover` is required for the one release that
+first carries the engine and is refused unless E06-S04 is `done`. `release.py check` requires the
+live formula to be byte for byte what `render_formula` produces for its version, and
+`release.py verify-formula` re-checks its digests against the published release; `tests.yml`
+installs the engine formula built from each commit and runs its `brew test`.
 
 ### When a release fails
 

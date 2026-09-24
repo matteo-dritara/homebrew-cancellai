@@ -96,21 +96,29 @@ fn events_of(stored: Vec<StoredEvent>) -> Vec<ContainmentEvent> {
         .collect()
 }
 
+/// The ledger replayed from one read of the history, and that history's chain head - the head an
+/// append decided on this ledger must name (E06 review round 8).
+fn snapshot(root: &LocalStateRoot) -> Result<(ContainmentLedger, String), String> {
+    let policy = trust_policy(root)?;
+    match containment_state::load_history(root) {
+        Load::Missing => Ok((ContainmentLedger::empty(), containment_state::empty_head())),
+        Load::Unreadable(reason) => Err(format!("containment history: {reason}")),
+        Load::Found(history) => {
+            match ContainmentLedger::replay(&events_of(history.events), &policy) {
+                Ok(ledger) => Ok((ledger, history.head)),
+                Err((index, error)) => Err(format!(
+                    "containment history event {} does not re-verify: {error}",
+                    index + 1
+                )),
+            }
+        }
+    }
+}
+
 fn replay_at(root: &LocalStateRoot) -> LedgerState {
-    let policy = match trust_policy(root) {
-        Ok(policy) => policy,
-        Err(reason) => return LedgerState::Unknown(reason),
-    };
-    match containment_state::load_log(root) {
-        Load::Missing => LedgerState::Known(ContainmentLedger::empty()),
-        Load::Unreadable(reason) => LedgerState::Unknown(format!("containment history: {reason}")),
-        Load::Found(stored) => match ContainmentLedger::replay(&events_of(stored), &policy) {
-            Ok(ledger) => LedgerState::Known(ledger),
-            Err((index, error)) => LedgerState::Unknown(format!(
-                "containment history event {} does not re-verify: {error}",
-                index + 1
-            )),
-        },
+    match snapshot(root) {
+        Ok((ledger, _head)) => LedgerState::Known(ledger),
+        Err(reason) => LedgerState::Unknown(reason),
     }
 }
 
@@ -263,26 +271,38 @@ fn read_notice(path: &std::path::Path) -> Result<String, String> {
 pub fn cmd_install(path: &std::path::Path) -> Result<Vec<String>, (i32, String)> {
     let text = read_notice(path).map_err(|e| (4, e))?;
     let root = LocalStateRoot::resolve_platform_default().map_err(|e| (4, e.to_string()))?;
-    install_text(&root, text)
+    install_text(&root, text, false)
 }
 
 /// Verifies `text` against the current history and trust, and appends it on success - the one
 /// path both `install` and `refresh` use.
-fn install_text(root: &LocalStateRoot, text: String) -> Result<Vec<String>, (i32, String)> {
-    let mut ledger = match replay_at(root) {
-        LedgerState::Known(ledger) => ledger,
-        LedgerState::Unknown(reason) => {
-            return Err((
-                4,
-                format!("refusing to install into an unusable ledger: {reason}"),
-            ));
-        }
-    };
+fn install_text(
+    root: &LocalStateRoot,
+    text: String,
+    from_feed: bool,
+) -> Result<Vec<String>, (i32, String)> {
+    let (mut ledger, head) = snapshot(root).map_err(|reason| {
+        (
+            4,
+            format!("refusing to install into an unusable ledger: {reason}"),
+        )
+    })?;
     let policy = trust_policy(root).map_err(|e| (4, e))?;
-    let evidence = ledger
-        .install(&text, &policy, now_unix())
-        .map_err(|e| (4, e.to_string()))?;
-    containment_state::append_event(root, &StoredEvent::Install(text))
+    let evidence = match ledger.install(&text, &policy, now_unix()) {
+        Ok(evidence) => evidence,
+        // A refresh racing another refresh of the same feed may read the history after the
+        // other one installed this very notice: that is current, not a replay (E06 review
+        // round 8). An explicit `install` of an installed notice stays a refused replay.
+        Err(cancellai_safety::ContainmentError::Replayed)
+            if from_feed && installed(root, &text) =>
+        {
+            return Ok(vec![
+                "already current: the same notice is installed".to_string(),
+            ]);
+        }
+        Err(error) => return Err((4, error.to_string())),
+    };
+    let nonce = containment_state::append_event(root, &StoredEvent::Install(text.clone()), &head)
         .map_err(|e| (4, format!("could not persist the containment: {e}")))?;
     // Read it back: the persisted history, not the in-memory ledger, is what later runs obey.
     match replay_at(root) {
@@ -293,6 +313,20 @@ fn install_text(root: &LocalStateRoot, text: String) -> Result<Vec<String>, (i32
                 format!("the containment was written but the history no longer replays: {reason}"),
             ));
         }
+    }
+    // A concurrent change may have been appended first, in which case this line is not part of
+    // the history (E06 review round 8). The same notice installed by the winner is current.
+    if !appended(root, &nonce) {
+        if installed(root, &text) {
+            return Ok(vec![
+                "already current: the same notice was installed concurrently".to_string(),
+            ]);
+        }
+        return Err((
+            4,
+            "a concurrent containment change was recorded first; this install was not applied - retry"
+                .to_string(),
+        ));
     }
     Ok(evidence
         .iter()
@@ -332,15 +366,12 @@ pub fn cmd_list() -> Result<Vec<String>, (i32, String)> {
 
 pub fn cmd_lift(incident_id: &str) -> Result<usize, (i32, String)> {
     let root = LocalStateRoot::resolve_platform_default().map_err(|e| (4, e.to_string()))?;
-    let mut ledger = match replay_at(&root) {
-        LedgerState::Known(ledger) => ledger,
-        LedgerState::Unknown(reason) => {
-            return Err((
-                4,
-                format!("refusing to lift from an unusable ledger: {reason}"),
-            ));
-        }
-    };
+    let (mut ledger, head) = snapshot(&root).map_err(|reason| {
+        (
+            4,
+            format!("refusing to lift from an unusable ledger: {reason}"),
+        )
+    })?;
     let lifted = ledger.lift_locally(incident_id);
     if lifted.is_empty() {
         return Err((
@@ -348,9 +379,27 @@ pub fn cmd_lift(incident_id: &str) -> Result<usize, (i32, String)> {
             format!("no active containment has incident id {incident_id}"),
         ));
     }
-    containment_state::append_event(&root, &StoredEvent::Lift(incident_id.to_string()))
-        .map_err(|e| (4, format!("could not persist the lift: {e}")))?;
+    let nonce =
+        containment_state::append_event(&root, &StoredEvent::Lift(incident_id.to_string()), &head)
+            .map_err(|e| (4, format!("could not persist the lift: {e}")))?;
+    if !appended(&root, &nonce) {
+        return Err((
+            4,
+            "a concurrent containment change was recorded first; the lift was not applied - retry"
+                .to_string(),
+        ));
+    }
     Ok(lifted.len())
+}
+
+/// Whether the append that returned `nonce` is part of the accepted history.
+fn appended(root: &LocalStateRoot, nonce: &str) -> bool {
+    matches!(containment_state::load_history(root), Load::Found(history) if history.nonces.iter().any(|n| n == nonce))
+}
+
+/// Whether exactly `text` is an accepted install in the history.
+fn installed(root: &LocalStateRoot, text: &str) -> bool {
+    matches!(containment_state::load_log(root), Load::Found(events) if events.contains(&StoredEvent::Install(text.to_string())))
 }
 
 /// Where the cancellAI incident-response feed is published (E33-S01): the latest cumulative
@@ -537,7 +586,7 @@ pub fn cmd_refresh() -> Result<Vec<String>, (i32, String)> {
             return Ok(vec![format!("already current with {url}")]);
         }
     }
-    install_text(&root, text)
+    install_text(&root, text, true)
 }
 
 #[cfg(test)]

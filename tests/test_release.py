@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import unittest
+from typing import ClassVar
 
 from scripts import release
 
@@ -221,32 +222,17 @@ if __name__ == "__main__":
 
 
 class EngineCutoverTests(unittest.TestCase):
-    """E06-S04: the Rust engine's version moves with the release, and the formula's engine
-    resources are rewritten to the release's own archives."""
+    """E06-S04: the Rust engine's version moves with the release, and the formula is generated whole
+    by release.render_formula and compared byte for byte (the answer to review rounds 6-8)."""
+
+    DIGESTS: ClassVar[dict[str, str]] = {target: f"{index:064x}" for index, target in enumerate(release.ENGINE_TARGETS, 1)}
+
+    def _engine_formula(self, version: str = "2.0.0") -> str:
+        return release.render_formula(version, "f" * 64, release.published_engines(version, self.DIGESTS))
 
     def test_the_engine_version_agrees_with_the_source(self) -> None:
         versions = release.current_versions()
         self.assertEqual(versions.engine, versions.source)
-
-    def test_the_cutover_template_carries_one_engine_resource_per_target(self) -> None:
-        text = release.read(release.CUTOVER_FORMULA)
-        digests = {target: f"{index:064x}" for index, target in enumerate(release.ENGINE_TARGETS, 1)}
-        pointed = release.point_engine_resources(text, "2.0.0", digests)
-        for target, digest in digests.items():
-            self.assertIn(f"/releases/download/v2.0.0/cancellai-cli-2.0.0-{target}.tar.gz", pointed)
-            self.assertIn(f'sha256 "{digest}"', pointed)
-        self.assertNotIn("v0.0.0/cancellai-cli", pointed)
-
-    def test_a_formula_missing_an_engine_target_is_refused(self) -> None:
-        text = release.read(release.CUTOVER_FORMULA)
-        broken = text.replace("x86_64-unknown-linux-gnu", "riscv64-unknown-linux-gnu")
-        with self.assertRaises(release.ReleaseError):
-            release.point_engine_resources(broken, "2.0.0", dict.fromkeys(release.ENGINE_TARGETS, "0" * 64))
-
-    def test_the_live_formula_has_no_engine_yet(self) -> None:
-        # The tap reads `main`: until the cutover release is finalized, the live formula must not
-        # install the Rust engine as `cancellai`.
-        self.assertIsNone(release.FORMULA_ENGINE_RE.search(release.read(release.FORMULA)))
 
     def test_internal_path_dependencies_require_the_workspace_version(self) -> None:
         engine = release.current_versions().engine
@@ -254,35 +240,39 @@ class EngineCutoverTests(unittest.TestCase):
             for match in release.RUST_PATH_DEP_RE.finditer(release.read(manifest)):
                 self.assertIn(f'version = "{engine}"', match.group(0), manifest)
 
+    def test_the_live_formula_is_exactly_the_rendered_one(self) -> None:
+        versions = release.current_versions()
+        self.assertEqual(release.live_formula_problems(release.read(release.FORMULA), versions.formula), [])
 
-class CutoverFormulaValidationTests(unittest.TestCase):
-    """E06 review round 6: the release check must validate the engine resources themselves, and
-    finalize must not adopt the cutover by accident or leave a half-written formula."""
+    def test_a_rendered_engine_formula_is_accepted_and_names_each_archive_in_its_platform_block(self) -> None:
+        text = self._engine_formula()
+        self.assertEqual(release.live_formula_problems(text, "2.0.0"), [])
+        arm = text.index("aarch64-apple-darwin.tar.gz")
+        self.assertLess(text.index("on_arm do"), arm)
+        self.assertLess(arm, text.index("on_intel do"))
+        self.assertIn('bin.install "cancellai-cli" => "cancellai"', text)
+        self.assertIn('bin.install "cancellai.py" => "cancellai-legacy"', text)
 
-    def _rendered(self, version: str = "2.0.0") -> str:
-        digests = {target: f"{index:064x}" for index, target in enumerate(release.ENGINE_TARGETS, 1)}
-        return release.point_engine_resources(release.read(release.CUTOVER_FORMULA), version, digests)
+    def test_round_eight_counterexamples_are_refused(self) -> None:
+        text = self._engine_formula()
+        cases = {
+            "python-only formula at 2.0.0": release.render_formula("2.0.0", "f" * 64, None),
+            "resource moved out of its CPU block": text.replace("    on_intel do\n      resource", "    resource", 1),
+            "engine install line removed": text.replace('    resource("engine").stage { bin.install "cancellai-cli" => "cancellai" }\n', ""),
+            "archives swapped between platforms": text.replace("aarch64-apple-darwin", "@@")
+            .replace("x86_64-apple-darwin", "aarch64-apple-darwin")
+            .replace("@@", "x86_64-apple-darwin"),
+            "engine at a pre-cutover version": self._engine_formula("1.22.0"),
+        }
+        for label, candidate in cases.items():
+            version = "1.22.0" if "pre-cutover" in label else "2.0.0"
+            self.assertTrue(release.live_formula_problems(candidate, version), label)
 
-    def test_a_consistent_rendering_has_no_problems(self) -> None:
-        self.assertEqual(release.formula_engine_problems(self._rendered(), "2.0.0"), [])
+    def test_render_formula_refuses_a_wrong_set_of_targets(self) -> None:
+        with self.assertRaises(release.ReleaseError):
+            release.render_formula("2.0.0", "f" * 64, {"riscv64-unknown-linux-gnu": ("u", "0" * 64)})
 
-    def test_a_resource_for_another_version_is_reported(self) -> None:
-        text = self._rendered().replace("v2.0.0/cancellai-cli-2.0.0-x86_64-apple-darwin", "v1.9.0/cancellai-cli-1.9.0-x86_64-apple-darwin")
-        self.assertTrue(release.formula_engine_problems(text, "2.0.0"))
-
-    def test_a_malformed_digest_or_an_extra_resource_is_reported(self) -> None:
-        corrupted = re.sub(r'sha256 "0{63}1"', 'sha256 "not-a-digest"', self._rendered(), count=1)
-        self.assertTrue(release.formula_engine_problems(corrupted, "2.0.0"))
-        extra = self._rendered().replace(
-            "  def install",
-            '  resource "engine" do\n    url "https://example.invalid/releases/download/x/y.tar.gz"\n  end\n\n  def install',
-        )
-        self.assertTrue(release.formula_engine_problems(extra, "2.0.0"))
-
-    def test_the_pre_cutover_formula_has_nothing_to_validate(self) -> None:
-        self.assertEqual(release.formula_engine_problems(release.read(release.FORMULA), "1.21.0"), [])
-
-    def test_finalize_never_adopts_the_cutover_without_being_told_or_for_an_unversioned_engine(self) -> None:
+    def _finalize_as(self, version: str, *, adopt: bool, story_status: str = "in_progress") -> str:
         import tempfile
         from pathlib import Path
         from unittest import mock
@@ -290,15 +280,32 @@ class CutoverFormulaValidationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             formula = Path(tmp) / "cancellai.rb"
             formula.write_text(release.read(release.FORMULA), encoding="utf-8")
-            before = formula.read_text(encoding="utf-8")
-            version = release.current_versions().source
-            with mock.patch.object(release, "FORMULA", formula), mock.patch.object(release, "check", return_value=[]):
-                release.finalize(version, sha256="0" * 64, engine_digests={})
-                self.assertNotIn('resource "engine"', formula.read_text(encoding="utf-8"))
-                with self.assertRaises(release.ReleaseError):
-                    release.finalize(version, sha256="0" * 64, engine_digests={}, adopt_cutover=True)
-            self.assertNotIn('resource "engine"', formula.read_text(encoding="utf-8"))
-            self.assertIn('url "https://github.com/', before)
+            evidence = Path(tmp) / "RELEASE.md"
+            evidence.write_text("x", encoding="utf-8")
+            versions = release.Versions(source=version, packaging=version, formula=version, engine=version)
+            with (
+                mock.patch.object(release, "FORMULA", formula),
+                mock.patch.object(release, "current_versions", return_value=versions),
+                mock.patch.object(release, "release_evidence_path", return_value=evidence),
+                mock.patch.object(release, "cutover_story_status", return_value=story_status),
+                mock.patch.object(release, "check", return_value=[]),
+            ):
+                release.finalize(version, sha256="b" * 64, engine_digests=self.DIGESTS, adopt_cutover=adopt)
+            return formula.read_text(encoding="utf-8")
+
+    def test_a_release_at_or_after_the_cutover_cannot_skip_the_engine(self) -> None:
+        with self.assertRaises(release.ReleaseError):
+            self._finalize_as("2.0.0", adopt=False)
+
+    def test_adoption_needs_the_owner_accepted_cutover_story(self) -> None:
+        with self.assertRaises(release.ReleaseError):
+            self._finalize_as("2.0.0", adopt=True, story_status="verification")
+        adopted = self._finalize_as("2.0.0", adopt=True, story_status="done")
+        self.assertEqual(release.live_formula_problems(adopted, "2.0.0"), [])
+
+    def test_adopt_cutover_is_refused_before_the_cutover_version(self) -> None:
+        with self.assertRaises(release.ReleaseError):
+            self._finalize_as("1.22.0", adopt=True, story_status="done")
 
     def test_a_failed_post_write_check_restores_the_formula(self) -> None:
         import tempfile
@@ -315,62 +322,8 @@ class CutoverFormulaValidationTests(unittest.TestCase):
                 mock.patch.object(release, "check", return_value=["drift"]),
                 self.assertRaises(release.ReleaseError),
             ):
-                release.finalize(version, sha256="f" * 64, engine_digests={})
+                release.finalize(version, sha256="f" * 64)
             self.assertEqual(formula.read_text(encoding="utf-8"), before)
-
-
-class CutoverRoundSevenTests(unittest.TestCase):
-    """E06 review round 7's counterexamples, pinned."""
-
-    def _rendered(self) -> str:
-        digests = {target: f"{index:064x}" for index, target in enumerate(release.ENGINE_TARGETS, 1)}
-        return release.point_engine_resources(release.read(release.CUTOVER_FORMULA), "2.0.0", digests)
-
-    def test_archives_swapped_between_platform_blocks_are_reported(self) -> None:
-        text = self._rendered()
-        arm = "cancellai-cli-2.0.0-aarch64-apple-darwin.tar.gz"
-        intel = "cancellai-cli-2.0.0-x86_64-apple-darwin.tar.gz"
-        swapped = text.replace(arm, "@@").replace(intel, arm).replace("@@", intel)
-        problems = release.formula_engine_problems(swapped, "2.0.0")
-        self.assertTrue(any("sits in" in p for p in problems), problems)
-
-    def _finalize_as(self, version: str, formula_text: str, *, adopt: bool, story_status: str = "in_progress") -> str:
-        import tempfile
-        from pathlib import Path
-        from unittest import mock
-
-        with tempfile.TemporaryDirectory() as tmp:
-            formula = Path(tmp) / "cancellai.rb"
-            formula.write_text(formula_text, encoding="utf-8")
-            evidence = Path(tmp) / "RELEASE.md"
-            evidence.write_text("x", encoding="utf-8")
-            versions = release.Versions(source=version, packaging=version, formula=version, engine=version)
-            digests = dict.fromkeys(release.ENGINE_TARGETS, "a" * 64)
-            with (
-                mock.patch.object(release, "FORMULA", formula),
-                mock.patch.object(release, "current_versions", return_value=versions),
-                mock.patch.object(release, "release_evidence_path", return_value=evidence),
-                mock.patch.object(release, "cutover_story_status", return_value=story_status),
-                mock.patch.object(release, "check", return_value=[]),
-            ):
-                release.finalize(version, sha256="b" * 64, engine_digests=digests, adopt_cutover=adopt)
-            return formula.read_text(encoding="utf-8")
-
-    def test_a_release_at_or_after_the_cutover_cannot_skip_the_engine(self) -> None:
-        with self.assertRaises(release.ReleaseError):
-            self._finalize_as("2.0.0", release.read(release.FORMULA), adopt=False)
-
-    def test_adoption_needs_the_owner_accepted_cutover_story(self) -> None:
-        with self.assertRaises(release.ReleaseError):
-            self._finalize_as("2.0.0", release.read(release.FORMULA), adopt=True, story_status="verification")
-        adopted = self._finalize_as("2.0.0", release.read(release.FORMULA), adopt=True, story_status="done")
-        self.assertIn('resource "engine"', adopted)
-        self.assertEqual(release.formula_engine_problems(adopted, "2.0.0"), [])
-
-    def test_a_partly_converted_formula_is_refused(self) -> None:
-        partial = release.read(release.FORMULA).replace("  def install", "  on_macos do\n  end\n\n  def install")
-        with self.assertRaises(release.ReleaseError):
-            self._finalize_as("2.0.0", partial, adopt=True, story_status="done")
 
     def test_verify_installed_demands_exact_versions(self) -> None:
         import tempfile

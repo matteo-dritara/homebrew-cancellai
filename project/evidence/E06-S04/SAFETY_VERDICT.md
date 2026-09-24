@@ -149,3 +149,42 @@ Second and final owner-authorized independent pass, over repair commit `23bb14e`
 PENDING
 
 FAIL
+
+## Round 8
+
+Verifier: Codex
+Brief-Checksum: 76f63bf3b664b057b00bc82b00b7377d819011f07f9aa96bda0d4b81cedcc642
+
+Owner-authorized independent pass over `351295d`. Full findings and eleven-axis audit: `project/evidence/E06-VERIFIER-REVIEW-ROUND8.md`.
+
+| Invariant / obligation | Adversarial evidence | Result |
+| --- | --- | --- |
+| SI-019, C-16, release identity | A 2.0.0 formula without engine resources passed `release.check`; an arm resource outside its CPU block also passed; source digest and archive bytes are not independently checked against the manifest. | FAIL |
+| M8, controlled formula adoption | `finalize` adopted a temporary template whose engine installation line was removed and its final `check()` passed. Candidate validation remains after atomic replacement. Story `done` status, v1.21.0 guard, partial-marker refusal and a normal same-version retry were confirmed. | FAIL |
+| G1-G4, installed version | Exact legacy version spoof was refused. CI now builds a stable-channel candidate, checks exact installed versions and invokes `brew test`; no published 2.0.0 artifact exists yet. | PASS within tested scope |
+| Release-note contract | Python refuses `--days 0` on status and clean; Rust accepts it and proposed a Delete in a synthetic plan. The inventory calls the flag `same` and Unreleased omits the changed range. | FAIL |
+| Rollback | The current live formula is Python-only; template carries `cancellai-legacy` through 2.1.0, but candidate adoption does not validate the mapping. | CONDITIONAL |
+
+### Adversarial cases
+
+- Isolated `formula_engine_problems` and `release.check` probes accepted a 2.0.0 Python-only formula, an engine resource after `on_arm`'s closing `end`, a changed source SHA, and a formula without an engine installation command.
+- Isolated `finalize("2.0.0", adopt_cutover=True)` with a modified template succeeded; its post-write check returned no problems. Repeating finalize without adoption preserved identical bytes. The live formula was not edited.
+- Python `status --days 0` and `clean --days 0 --dry-run` exited 2. A stable-channel Rust `status --days 0` exited 0; `plan --days 0 --keep-latest 0` proposed one Delete for an old synthetic session. No real user data was touched.
+- v1.21.0 rendered formula passed `ruby -c`. No Homebrew installation, tag, push or publication occurred.
+
+### Gates
+
+| Gate | Result |
+| --- | --- |
+| Rust fmt, workspace Clippy, Windows-target Clippy, workspace tests, stable-channel CLI with `kill-points,test-curl` | PASS locally |
+| Python pytest | PASS: 719 passed, 3 skipped |
+| `release.py check`, `project_os.py check`, `verifier_handoff.py check`, `check_process.py check` | PASS at baseline; release check has reproduced false negatives |
+| Render v1.21.0 and Ruby syntax | PASS; brew style/audit NOT RUN in round 8 |
+| Native 2.0.0 Homebrew, Linux and Windows install | NOT RUN: no published candidate or native hosts here |
+| Post-evidence governance gates | Recorded in the round 8 epic review |
+
+### Owner decision
+
+PENDING
+
+FAIL

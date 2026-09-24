@@ -27,6 +27,8 @@
 use std::io::{Read, Write};
 use std::path::Path;
 
+use sha2::{Digest, Sha256};
+
 use crate::LocalStateRoot;
 
 const LOG_FILENAME: &str = "containment_log.jsonl";
@@ -43,11 +45,39 @@ pub enum StoredEvent {
     Lift(String),
 }
 
+/// One persisted line: exactly one of `install`/`lift`, the digest of every line accepted before
+/// it (`prev`), and a nonce naming this append. A line whose `prev` is not the digest of the lines
+/// accepted before it lost a race with a concurrent append and is skipped, never applied (E06
+/// review round 8: concurrent refreshes wrote duplicate sequences and broke replay). The appender
+/// re-reads and learns from its nonce whether it won.
 #[derive(serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "snake_case")]
-enum Line {
-    Install(String),
-    Lift(String),
+#[serde(deny_unknown_fields)]
+struct Line {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    install: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    lift: Option<String>,
+    prev: String,
+    nonce: String,
+}
+
+/// The accepted history: the events, and the nonce of the append that wrote each.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct History {
+    pub events: Vec<StoredEvent>,
+    pub nonces: Vec<String>,
+    /// The chain digest after the last accepted line: what an append decided on this history
+    /// must name as its `prev`.
+    pub head: String,
+}
+
+/// The chain head of an empty (or missing) history.
+pub fn empty_head() -> String {
+    hex(&Sha256::new().finalize())
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// What reading a persisted file found. `Missing` and `Unreadable` are deliberately distinct:
@@ -88,9 +118,9 @@ fn read_bounded(path: &Path, cap: u64) -> Load<String> {
     }
 }
 
-/// The containment history, in order. Any line that is not exactly one well-formed event -
-/// including a torn last line - makes the whole history unreadable.
-pub fn load_log(root: &LocalStateRoot) -> Load<Vec<StoredEvent>> {
+/// The containment history, in order - only the lines that continue the digest chain. Any line
+/// that is not one well-formed event, including a torn last line, makes the history unreadable.
+pub fn load_history(root: &LocalStateRoot) -> Load<History> {
     let path = match root.path_for(LOG_FILENAME) {
         Ok(path) => path,
         Err(error) => return Load::Unreadable(error.to_string()),
@@ -106,11 +136,11 @@ pub fn load_log(root: &LocalStateRoot) -> Load<Vec<StoredEvent>> {
             path.display()
         ));
     }
-    let mut events = Vec::new();
+    let mut chain = Sha256::new();
+    let mut history = History::default();
     for (number, line) in text.lines().enumerate() {
-        match serde_json::from_str::<Line>(line) {
-            Ok(Line::Install(bundle)) => events.push(StoredEvent::Install(bundle)),
-            Ok(Line::Lift(incident)) => events.push(StoredEvent::Lift(incident)),
+        let parsed: Line = match serde_json::from_str(line) {
+            Ok(parsed) => parsed,
             Err(error) => {
                 return Load::Unreadable(format!(
                     "{} line {}: {error}",
@@ -118,19 +148,80 @@ pub fn load_log(root: &LocalStateRoot) -> Load<Vec<StoredEvent>> {
                     number + 1
                 ));
             }
+        };
+        let event = match (parsed.install, parsed.lift) {
+            (Some(bundle), None) => StoredEvent::Install(bundle),
+            (None, Some(incident)) => StoredEvent::Lift(incident),
+            _ => {
+                return Load::Unreadable(format!(
+                    "{} line {}: exactly one of install/lift is required",
+                    path.display(),
+                    number + 1
+                ));
+            }
+        };
+        if parsed.prev != hex(&chain.clone().finalize()) {
+            // Lost a race with a concurrent append: not part of the history.
+            continue;
         }
+        chain.update(line.as_bytes());
+        chain.update(b"\n");
+        history.events.push(event);
+        history.nonces.push(parsed.nonce);
     }
-    Load::Found(events)
+    history.head = hex(&chain.finalize());
+    Load::Found(history)
+}
+
+/// The accepted events alone. See [`load_history`].
+pub fn load_log(root: &LocalStateRoot) -> Load<Vec<StoredEvent>> {
+    match load_history(root) {
+        Load::Found(history) => Load::Found(history.events),
+        Load::Missing => Load::Missing,
+        Load::Unreadable(reason) => Load::Unreadable(reason),
+    }
+}
+
+fn fresh_nonce() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let mut digest = Sha256::new();
+    digest.update(std::process::id().to_le_bytes());
+    digest.update(COUNTER.fetch_add(1, Ordering::Relaxed).to_le_bytes());
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    digest.update(nanos.to_le_bytes());
+    hex(&digest.finalize())
+        .get(..32)
+        .unwrap_or_default()
+        .to_string()
 }
 
 /// Appends one event as a single line with a single `write`, creating the file (and the state
 /// root, which the caller established) if needed. On an error the caller must reload: a partial
 /// write is detected by [`load_log`] as an incomplete last event.
-pub fn append_event(root: &LocalStateRoot, event: &StoredEvent) -> Result<(), String> {
+/// Appends `event` as a continuation of the history whose chain head is `head` - the history the
+/// caller read and decided on. If anything was accepted after that read, this line's `prev` no
+/// longer matches, readers skip it, and the caller learns so from the returned nonce: a decision
+/// made on a stale history is never applied (E06 review round 8).
+pub fn append_event(
+    root: &LocalStateRoot,
+    event: &StoredEvent,
+    head: &str,
+) -> Result<String, String> {
     let path = root.path_for(LOG_FILENAME).map_err(|e| e.to_string())?;
-    let line = match event {
-        StoredEvent::Install(text) => Line::Install(text.clone()),
-        StoredEvent::Lift(incident) => Line::Lift(incident.clone()),
+    let nonce = fresh_nonce();
+    let (install, lift) = match event {
+        StoredEvent::Install(text) => (Some(text.clone()), None),
+        StoredEvent::Lift(incident) => (None, Some(incident.clone())),
+    };
+    let line = Line {
+        install,
+        lift,
+        prev: head.to_string(),
+        nonce: nonce.clone(),
     };
     let mut bytes = serde_json::to_vec(&line).map_err(|e| e.to_string())?;
     bytes.push(b'\n');
@@ -146,7 +237,8 @@ pub fn append_event(root: &LocalStateRoot, event: &StoredEvent) -> Result<(), St
         .map_err(|e| format!("{}: {e}", path.display()))?;
     file.write_all(&bytes)
         .and_then(|()| file.sync_all())
-        .map_err(|e| format!("{}: {e}", path.display()))
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(nonce)
 }
 
 const FEED_OVERRIDE_FILENAME: &str = "containment_feed_url";
@@ -184,6 +276,13 @@ mod tests {
 
     struct TempRoot(PathBuf);
 
+    fn current_head(root: &LocalStateRoot) -> String {
+        match load_history(root) {
+            Load::Found(history) => history.head,
+            _ => empty_head(),
+        }
+    }
+
     impl TempRoot {
         fn new(label: &str) -> (Self, LocalStateRoot) {
             let dir = std::env::temp_dir().join(format!(
@@ -216,7 +315,7 @@ mod tests {
             StoredEvent::Lift("INC-1".to_string()),
         ];
         for event in &events {
-            append_event(&root, event).unwrap();
+            append_event(&root, event, &current_head(&root)).unwrap();
         }
         assert_eq!(load_log(&root), Load::Found(events));
     }
@@ -224,7 +323,12 @@ mod tests {
     #[test]
     fn a_torn_last_line_or_a_malformed_line_makes_the_log_unreadable() {
         let (_guard, root) = TempRoot::new("torn");
-        append_event(&root, &StoredEvent::Lift("INC-1".to_string())).unwrap();
+        append_event(
+            &root,
+            &StoredEvent::Lift("INC-1".to_string()),
+            &current_head(&root),
+        )
+        .unwrap();
         let path = root.path_for(LOG_FILENAME).unwrap();
         let mut file = std::fs::OpenOptions::new()
             .append(true)
@@ -235,6 +339,49 @@ mod tests {
         file.write_all(b"2\"}\n{\"grant\":\"everything\"}\n")
             .unwrap();
         assert!(matches!(load_log(&root), Load::Unreadable(_)));
+    }
+
+    #[test]
+    fn a_line_that_lost_a_concurrent_append_is_skipped_and_its_nonce_is_not_accepted() {
+        let (_guard, root) = TempRoot::new("stale-append");
+        let won = append_event(
+            &root,
+            &StoredEvent::Lift("INC-1".to_string()),
+            &current_head(&root),
+        )
+        .unwrap();
+        // A second writer that read the history before the first append landed: its `prev` is
+        // the digest of the empty history.
+        let path = root.path_for(LOG_FILENAME).unwrap();
+        let stale = Line {
+            install: None,
+            lift: Some("INC-2".to_string()),
+            prev: hex(&Sha256::new().finalize()),
+            nonce: "lost".to_string(),
+        };
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap();
+        file.write_all(format!("{}\n", serde_json::to_string(&stale).unwrap()).as_bytes())
+            .unwrap();
+        let Load::Found(history) = load_history(&root) else {
+            panic!("history must load");
+        };
+        assert_eq!(history.events, vec![StoredEvent::Lift("INC-1".to_string())]);
+        assert_eq!(history.nonces, vec![won]);
+        // A later append continues the accepted chain, not the skipped line.
+        let next = append_event(
+            &root,
+            &StoredEvent::Lift("INC-3".to_string()),
+            &current_head(&root),
+        )
+        .unwrap();
+        let Load::Found(history) = load_history(&root) else {
+            panic!("history must load");
+        };
+        assert_eq!(history.events.len(), 2);
+        assert_eq!(history.nonces.last(), Some(&next));
     }
 
     #[test]

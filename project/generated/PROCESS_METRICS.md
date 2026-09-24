@@ -30,6 +30,7 @@ distinguished by the next round, which is why the ceiling matters.
 | E06 | 5 | independent | 1 | 0 | 0 | 0% |
 | E06 | 6 | independent | 2 | 2 | 2 | 100% |
 | E06 | 7 | independent | 2 | 2 | 2 | 100% |
+| E06 | 8 | independent | 2 | 2 | 2 | 100% |
 | E07 | 1 | independent | - | - | - | **not machine-readable** |
 | E08 | 1 | independent | 4 | 1 | 1 | 25% |
 | E09 | 1 | **self** | 4 | 0 | 0 | 0% |

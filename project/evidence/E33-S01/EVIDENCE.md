@@ -31,6 +31,12 @@ PASS
 | --- | --- | --- |
 | After sequences 1 and 2, a feed serving the older sequence 1 was "already current" | Refresh compares the feed's sequence with the ledger's last verified sequence from that publisher: older is refused as a rollback (exit 4, history unchanged); only the newest installed notice is current | `a_feed_serving_an_older_installed_notice_is_refused_as_a_rollback` |
 
+## Round-8 redesign (owner decision 2026-09-24)
+
+| Finding | Repair | Evidence |
+| --- | --- | --- |
+| Sixteen concurrent refreshes of one notice appended duplicate sequences and broke replay | Optimistic concurrency without a lock file (removing one would be a mutation outside the boundary): every history line names the chain digest of the history it was decided on (`prev`) and a nonce; readers accept only lines that continue the chain, so of concurrent appends exactly one takes effect; the appender re-reads, and a loser is told to retry - or, for a refresh whose identical notice the winner installed, told it is current. The decision and the append use one snapshot of the history, so a decision made on a stale history is never applied. | `concurrent_refreshes_of_one_notice_leave_one_accepted_install_and_a_replayable_history` (16 processes, stress-run 10 times), `concurrent_installs_of_different_notices_never_break_the_history` (8 processes), `a_line_that_lost_a_concurrent_append_is_skipped_and_its_nonce_is_not_accepted` (store) |
+
 ## Safety Evidence
 
 | Invariant | Counterexample tested | Evidence | Result |

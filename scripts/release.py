@@ -41,10 +41,6 @@ FORMULA = ROOT / "Formula" / "cancellai.rb"
 RUST = ROOT / "rust"
 RUST_WORKSPACE = RUST / "Cargo.toml"
 RUST_LOCK = RUST / "Cargo.lock"
-# E06-S04: the formula that makes the Rust engine `cancellai`. Kept outside Formula/ until the
-# release that carries the cutover, because the tap reads `main` and a formula committed there
-# ships to users immediately. `finalize` adopts it when the live formula has no engine resources.
-CUTOVER_FORMULA = ROOT / "packaging" / "cancellai.rb.template"
 EVIDENCE = ROOT / "project" / "evidence"
 PROJECT = ROOT / "project"
 
@@ -60,10 +56,7 @@ FORMULA_SHA_RE = re.compile(r'^  sha256 "([0-9a-f]{64})"$', re.MULTILINE)
 # supported Homebrew platform, each followed by its checksum line.
 ENGINE_TARGETS = ("aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu")
 ENGINE_ASSET = "https://github.com/{repo}/releases/download/v{version}/cancellai-cli-{version}-{target}.tar.gz"
-FORMULA_ENGINE_RE = re.compile(
-    r'(?P<indent> +)url "https://github\.com/[^/]+/[^/]+/releases/download/v[^/]+/cancellai-cli-[^-]+-(?P<target>[a-z0-9_-]+)\.tar\.gz"\n'
-    r'(?P=indent)sha256 "[0-9a-f]{64}"'
-)
+FORMULA_ALL_SHA_RE = re.compile(r'^ *sha256 "([0-9a-f]{64})"$', re.MULTILINE)
 # E06-S04: the Rust engine's own version. Until the cutover it was never bumped and every release
 # binary reported `cancellai-cli 0.1.0` whatever the tag; it now moves with the source version.
 RUST_WORKSPACE_VERSION_RE = re.compile(r'^version = "([^"]+)"$', re.MULTILINE)
@@ -226,7 +219,7 @@ def check() -> list[str]:
         problems.append(f"cancellai.py VERSION {versions.source} != pyproject version {versions.packaging}")
     if versions.engine != versions.source:
         problems.append(f"the Rust engine's version {versions.engine} != source version {versions.source}")
-    problems.extend(formula_engine_problems(read(FORMULA), versions.formula))
+    problems.extend(live_formula_problems(read(FORMULA), versions.formula))
     if versions.formula != versions.source:
         # Between `prepare` and `finalize` the formula legitimately lags by exactly one
         # release: the archive checksum cannot exist until the tag does. Anything else -
@@ -464,23 +457,8 @@ def engine_sha256s(version: str) -> dict[str, str]:
     return digests
 
 
-def point_engine_resources(text: str, version: str, digests: dict[str, str]) -> str:
-    """Rewrites every engine resource in the formula to `version`'s archive and digest. Refuses a
-    formula whose engine resources are not exactly the supported targets, once each."""
-    found = [match.group("target") for match in FORMULA_ENGINE_RE.finditer(text)]
-    if sorted(found) != sorted(ENGINE_TARGETS):
-        raise ReleaseError(f"the formula's engine resources are {found}, expected one each of {list(ENGINE_TARGETS)}")
-
-    def replace(match: re.Match[str]) -> str:
-        indent, target = match.group("indent"), match.group("target")
-        url = ENGINE_ASSET.format(repo=REPO, version=version, target=target)
-        return f'{indent}url "{url}"\n{indent}sha256 "{digests[target]}"'
-
-    return FORMULA_ENGINE_RE.sub(replace, text)
-
-
 # Engine archives released before the engine carried its own version (E06-S04): their binaries
-# report `cancellai-cli 0.1.0` whatever the tag says. Nothing may be added to this list.
+# report `cancellai-cli 0.1.0` whatever the tag says. None of them may be the cutover release.
 UNVERSIONED_ENGINE_RELEASES = frozenset({"1.21.0"})
 CUTOVER_VERSION = (2, 0, 0)
 
@@ -496,68 +474,134 @@ def cutover_story_status() -> str:
     return "missing"
 
 
-ENGINE_RESOURCE_BLOCK_RE = re.compile(r'resource "engine" do')
-RELEASE_DOWNLOAD_URL_RE = re.compile(r'url "[^"]*/releases/download/[^"]*"')
+# E06-S04 after review round 8: the formula is generated whole by `render_formula` and compared
+# byte for byte, never edited in place. Rounds 6-8 each found another hand-made shape a regex
+# check let through (a resource outside its CPU block, a missing install line, a Python-only
+# formula at 2.0.0); a formula that is not exactly what this function renders is refused, which
+# closes the whole class instead of the next instance of it.
+_FORMULA_HEAD = """class Cancellai < Formula
+  desc "Safely reclaim disk space from old Codex CLI and Claude Code session data"
+  homepage "https://github.com/matteo-dritara/homebrew-cancellai"
+  url "{source_url}"
+{version_line}  sha256 "{source_sha}"
+  license "MIT"
+
+  depends_on "python3"
+"""
+_LEGACY_BODY = """
+  def install
+    bin.install "cancellai.py" => "cancellai"
+  end
+
+  test do
+    assert_match version.to_s, shell_output("#{{bin}}/cancellai --version")
+    assert_match "cancellAI status", shell_output("#{{bin}}/cancellai status")
+  end
+end
+"""
+_ENGINE_BODY = """
+  on_macos do
+    on_arm do
+      resource "engine" do
+        url "{aarch64_apple_darwin_url}"
+        sha256 "{aarch64_apple_darwin_sha}"
+      end
+    end
+    on_intel do
+      resource "engine" do
+        url "{x86_64_apple_darwin_url}"
+        sha256 "{x86_64_apple_darwin_sha}"
+      end
+    end
+  end
+
+  on_linux do
+    on_intel do
+      resource "engine" do
+        url "{x86_64_unknown_linux_gnu_url}"
+        sha256 "{x86_64_unknown_linux_gnu_sha}"
+      end
+    end
+  end
+
+  def install
+    # The Rust engine is `cancellai` (E06-S04, ADR-0039's cutover). The frozen Python reference
+    # stays installed as `cancellai-legacy` through 2.1.0, as the immediate rollback.
+    resource("engine").stage {{ bin.install "cancellai-cli" => "cancellai" }}
+    bin.install "cancellai.py" => "cancellai-legacy"
+  end
+
+  test do
+    assert_match version.to_s, shell_output("#{{bin}}/cancellai version")
+    assert_match version.to_s, shell_output("#{{bin}}/cancellai-legacy --version")
+    assert_match "action(s) proposed", shell_output("#{{bin}}/cancellai plan")
+  end
+end
+"""
 
 
-def formula_engine_problems(text: str, version: str) -> list[str]:
-    """Everything wrong with a formula's engine resources for `version` (E06 review round 6: a
-    wrong-version URL, a corrupted digest and an extra malformed resource all passed). A formula
-    with no engine resources at all is the pre-cutover formula and has none to check."""
-    blocks = len(ENGINE_RESOURCE_BLOCK_RE.findall(text))
-    downloads = len(RELEASE_DOWNLOAD_URL_RE.findall(text))
-    matches = list(FORMULA_ENGINE_RE.finditer(text))
-    if blocks == 0 and downloads == 0:
-        return []
-    problems = []
-    targets = [m.group("target") for m in matches]
-    if sorted(targets) != sorted(ENGINE_TARGETS) or blocks != len(ENGINE_TARGETS) or downloads != len(ENGINE_TARGETS):
-        problems.append(
-            f"the formula's engine resources are {targets} in {blocks} block(s) with {downloads} release URL(s); "
-            f"expected exactly one well-formed resource for each of {list(ENGINE_TARGETS)}"
-        )
-    for match in matches:
-        target = match.group("target")
-        expected = ENGINE_ASSET.format(repo=REPO, version=version, target=target)
-        if f'url "{expected}"' not in match.group(0):
-            problems.append(f"the {target} engine resource does not point at v{version}'s archive")
-        platform = enclosing_platform(text, match.start())
-        if ENGINE_PLATFORMS.get(target) != platform:
-            problems.append(f"the {target} engine resource sits in {platform}, not {ENGINE_PLATFORMS.get(target)}")
-    return problems
+def render_formula(
+    version: str,
+    source_sha: str,
+    engines: dict[str, tuple[str, str]] | None,
+    source_url: str | None = None,
+) -> str:
+    """The formula for `version`: Python-only when `engines` is None, otherwise the Rust engine as
+    `cancellai` with one `(url, sha256)` per target. `source_url` defaults to the tag archive; an
+    explicit one (a local archive, for CI) also states the version, which Homebrew cannot infer."""
+    url = source_url or TARBALL.format(repo=REPO, version=version)
+    version_line = f'  version "{version}"\n' if source_url else ""
+    text = _FORMULA_HEAD.format(source_url=url, version_line=version_line, source_sha=source_sha)
+    if engines is None:
+        return text + _LEGACY_BODY.format()
+    if sorted(engines) != sorted(ENGINE_TARGETS):
+        raise ReleaseError(f"engine archives for {sorted(engines)}, expected {list(ENGINE_TARGETS)}")
+    fields = {}
+    for target, (engine_url, digest) in engines.items():
+        key = target.replace("-", "_")
+        fields[f"{key}_url"] = engine_url
+        fields[f"{key}_sha"] = digest
+    return text + _ENGINE_BODY.format(**fields)
 
 
-# E06 review round 7: each archive must sit in the Homebrew platform block that runs it, or an
-# arm64 Mac would install the Intel engine (or the reverse) with a perfectly valid digest.
-ENGINE_PLATFORMS = {
-    "aarch64-apple-darwin": ("on_macos", "on_arm"),
-    "x86_64-apple-darwin": ("on_macos", "on_intel"),
-    "x86_64-unknown-linux-gnu": ("on_linux", "on_intel"),
-}
+def published_engines(version: str, digests: dict[str, str]) -> dict[str, tuple[str, str]]:
+    return {target: (ENGINE_ASSET.format(repo=REPO, version=version, target=target), digests[target]) for target in ENGINE_TARGETS}
 
 
-def enclosing_platform(text: str, position: int) -> tuple[str, str] | None:
-    """The `(os, cpu)` blocks enclosing `position`, from the nearest opening of each before it."""
-    before = text[:position]
-    os_block = max(("on_macos", "on_linux"), key=lambda name: before.rfind(f"{name} do"))
-    cpu_block = max(("on_arm", "on_intel"), key=lambda name: before.rfind(f"{name} do"))
-    if before.rfind(f"{os_block} do") < 0 or before.rfind(f"{cpu_block} do") < before.rfind(f"{os_block} do"):
-        return None
-    return (os_block, cpu_block)
+def live_formula_problems(text: str, version: str) -> list[str]:
+    """Whether `text` is exactly what `render_formula` produces for `version` with the digests it
+    names - offline, so `check` can run it. From the cutover version on it must carry the engine;
+    before it, it must not."""
+    digests = FORMULA_ALL_SHA_RE.findall(text)
+    if not digests:
+        return ["the formula names no sha256"]
+    carries_engine = len(digests) == 1 + len(ENGINE_TARGETS)
+    if parse(version) >= CUTOVER_VERSION and not carries_engine:
+        return [f"v{version} is at or after the cutover but the formula does not carry the engine"]
+    if parse(version) < CUTOVER_VERSION and carries_engine:
+        return [f"v{version} is before the cutover but the formula carries the engine"]
+    if carries_engine:
+        expected = render_formula(version, digests[0], published_engines(version, dict(zip(ENGINE_TARGETS, digests[1:], strict=True))))
+    else:
+        expected = render_formula(version, digests[0], None)
+    if text != expected:
+        return [f"the formula is not the one release.py renders for v{version}; regenerate it with finalize"]
+    return []
 
 
 def published_digest_problems(text: str, version: str) -> list[str]:
-    """Each engine resource's digest against the digest the release published beside its archive
-    (E06 review round 7: a fabricated but well-formed digest passed). Needs the network, so it
-    runs in CI and in `finalize`, not in the offline `check`."""
-    if not FORMULA_ENGINE_RE.search(text):
-        return []
-    published = engine_sha256s(version)
+    """Every digest in the formula against the bytes the release published: the tag archive,
+    downloaded and hashed, and each engine archive's published `.sha256` (E06 review rounds 7-8).
+    Needs the network, so it runs in `finalize` and CI, not in the offline `check`."""
+    digests = FORMULA_ALL_SHA_RE.findall(text)
     problems = []
-    for match in FORMULA_ENGINE_RE.finditer(text):
-        target = match.group("target")
-        if f'sha256 "{published.get(target, "")}"' not in match.group(0):
-            problems.append(f"the {target} engine digest is not the one v{version} published")
+    if not digests or digests[0] != archive_sha256(version):
+        problems.append(f"the source digest is not the sha256 of the v{version} tag archive")
+    if len(digests) == 1 + len(ENGINE_TARGETS):
+        published = engine_sha256s(version)
+        for target, digest in zip(ENGINE_TARGETS, digests[1:], strict=True):
+            if digest != published[target]:
+                problems.append(f"the {target} engine digest is not the one v{version} published")
     return problems
 
 
@@ -574,29 +618,13 @@ def verify_installed(version: str, prefix: Path) -> list[str]:
 
 
 def render_local_cutover(version: str, source_archive: Path, engine_archive: Path) -> str:
-    """The cutover formula pointed at archives built from this commit - for CI to install and
-    `brew test` the engine candidate itself rather than an older published one (round 7). Every
-    platform's resource names the local engine archive: only the runner's own is ever fetched."""
-    text = read(CUTOVER_FORMULA)
+    """The engine formula over archives built from this commit, for CI to install and `brew test`
+    the engine candidate itself. Every target names the local engine archive: only the runner's
+    own is ever fetched."""
     source_sha = hashlib.sha256(source_archive.read_bytes()).hexdigest()
     engine_sha = hashlib.sha256(engine_archive.read_bytes()).hexdigest()
-    text = FORMULA_URL_RE.sub(f'  url "file://{source_archive}"\n  version "{version}"', text, count=1)
-    text = FORMULA_SHA_RE.sub(f'  sha256 "{source_sha}"', text, count=1)
-
-    def replace(match: re.Match[str]) -> str:
-        indent = match.group("indent")
-        return f'{indent}url "file://{engine_archive}"\n{indent}sha256 "{engine_sha}"'
-
-    return FORMULA_ENGINE_RE.sub(replace, text)
-
-
-def render_cutover_formula(version: str) -> str:
-    """The cutover formula pointed at an already published `version` - for CI to install it before
-    the release that adopts it exists (E06-S04)."""
-    text = read(CUTOVER_FORMULA)
-    text = FORMULA_URL_RE.sub(f'  url "https://github.com/{REPO}/archive/refs/tags/v{version}.tar.gz"', text, count=1)
-    text = FORMULA_SHA_RE.sub(f'  sha256 "{archive_sha256(version)}"', text, count=1)
-    return point_engine_resources(text, version, engine_sha256s(version))
+    engines = dict.fromkeys(ENGINE_TARGETS, (f"file://{engine_archive}", engine_sha))
+    return render_formula(version, source_sha, engines, source_url=f"file://{source_archive}")
 
 
 def write_atomically(path: Path, text: str) -> None:
@@ -611,49 +639,45 @@ def finalize(
     engine_digests: dict[str, str] | None = None,
     adopt_cutover: bool = False,
 ) -> None:
+    """Regenerate the formula for the pushed `version` from `render_formula`, never by editing.
+
+    From the cutover version on the formula carries the engine; the release that first does so
+    must say `--adopt-cutover`, which is only accepted once E06-S04 is `done` (the owner accepted
+    the migration Safety Verdict). Digests are the published ones (`sha256`/`engine_digests`
+    override them for tests); the text is written atomically and restored if `check` then fails.
+    """
     versions = current_versions()
     if versions.source != version:
         raise ReleaseError(f"cancellai.py says {versions.source}, not {version}; run `prepare` first")
     if not release_evidence_path(version).exists():
         raise ReleaseError(f"missing {release_evidence_path(version).relative_to(ROOT)}; run `prepare` first")
 
-    checksum = sha256 or archive_sha256(version)
-    if not re.fullmatch(r"[0-9a-f]{64}", checksum):
-        raise ReleaseError(f"not a SHA-256 digest: {checksum!r}")
-
     original = read(FORMULA)
-    text = original
-    carries_engine = FORMULA_ENGINE_RE.search(text) is not None
-    touched = any(marker in text for marker in ('resource "engine"', "/releases/download/", "on_macos do", "on_linux do"))
-    if not carries_engine:
-        # The switch is a deliberate act of one release, never a side effect of re-running
-        # finalize (round 6), never skipped by a release that comes after it and never applied
-        # over a hand-edited formula (round 7), and only once the owner accepted the migration
-        # Safety Verdict - which is what E06-S04 being `done` records.
-        if touched:
-            raise ReleaseError("the formula is partly converted to the engine layout; restore it before finalizing")
-        if parse(version) >= CUTOVER_VERSION and not adopt_cutover:
+    live_carries_engine = len(FORMULA_ALL_SHA_RE.findall(original)) == 1 + len(ENGINE_TARGETS)
+    carries_engine = parse(version) >= CUTOVER_VERSION
+    if carries_engine and not live_carries_engine:
+        if not adopt_cutover:
             raise ReleaseError(f"v{version} is at or after the cutover and must carry the engine: pass --adopt-cutover")
-        if adopt_cutover:
-            if not CUTOVER_FORMULA.exists():
-                raise ReleaseError("--adopt-cutover given but there is no cutover template to adopt")
-            if version in UNVERSIONED_ENGINE_RELEASES or parse(version) < CUTOVER_VERSION:
-                raise ReleaseError(f"v{version} cannot be the cutover release: its engine does not carry its own version")
-            if cutover_story_status() != "done":
-                raise ReleaseError("E06-S04 is not done: the owner has not accepted the migration Safety Verdict")
-            text = read(CUTOVER_FORMULA)
-            print(f"adopting {CUTOVER_FORMULA.relative_to(ROOT)}: the Rust engine becomes `cancellai` (E06-S04)")
+        if version in UNVERSIONED_ENGINE_RELEASES:
+            raise ReleaseError(f"v{version} cannot be the cutover release: its engine does not carry its own version")
+        if cutover_story_status() != "done":
+            raise ReleaseError("E06-S04 is not done: the owner has not accepted the migration Safety Verdict")
+        print("adopting the engine formula: the Rust engine becomes `cancellai` (E06-S04)")
     elif adopt_cutover:
-        raise ReleaseError("--adopt-cutover given but the formula already carries the engine")
-    text = FORMULA_URL_RE.sub(f'  url "https://github.com/{REPO}/archive/refs/tags/v{version}.tar.gz"', text, count=1)
-    text = FORMULA_SHA_RE.sub(f'  sha256 "{checksum}"', text, count=1)
-    if FORMULA_ENGINE_RE.search(text):
-        text = point_engine_resources(text, version, engine_sha256s(version) if engine_digests is None else engine_digests)
-    problems = formula_engine_problems(text, version)
-    if engine_digests is None:
-        problems.extend(published_digest_problems(text, version))
-    if problems:
-        raise ReleaseError("the finalized formula would be inconsistent:\n" + "\n".join(f"- {p}" for p in problems))
+        raise ReleaseError("--adopt-cutover is for the one release that first carries the engine")
+
+    source_sha = sha256 or archive_sha256(version)
+    if not re.fullmatch(r"[0-9a-f]{64}", source_sha):
+        raise ReleaseError(f"not a SHA-256 digest: {source_sha!r}")
+    engines = None
+    if carries_engine:
+        digests = engine_sha256s(version) if engine_digests is None else engine_digests
+        engines = published_engines(version, digests)
+    text = render_formula(version, source_sha, engines)
+    if sha256 is None and engine_digests is None:
+        problems = published_digest_problems(text, version)
+        if problems:
+            raise ReleaseError("the rendered formula does not match the published release:\n" + "\n".join(f"- {p}" for p in problems))
     write_atomically(FORMULA, text)
 
     problems = check()
@@ -661,7 +685,7 @@ def finalize(
         write_atomically(FORMULA, original)
         raise ReleaseError("release is still inconsistent; the formula was restored:\n" + "\n".join(f"- {p}" for p in problems))
     print(f"finalized v{version}")
-    print(f"  Formula/cancellai.rb -> v{version} sha256 {checksum}")
+    print(f"  Formula/cancellai.rb -> v{version} sha256 {source_sha}")
     print()
     print("Next:")
     print(f"  git commit -am 'chore(release): point formula at the v{version} tarball' && git push")
@@ -725,8 +749,6 @@ def build_parser() -> argparse.ArgumentParser:
     verify_cmd = sub.add_parser("verify-installed", help="assert an installed cutover formula reports its version")
     verify_cmd.add_argument("--version", required=True)
     verify_cmd.add_argument("--prefix", required=True, type=Path)
-    render_cmd = sub.add_parser("render-cutover", help="print the cutover formula pointed at a published version")
-    render_cmd.add_argument("--version", required=True)
     outcome_cmd = sub.add_parser("outcome", help="Record whether a cut version's release actually published.")
     outcome_cmd.add_argument("--version", required=True)
     outcome_cmd.add_argument("--state", required=True, choices=list(PUBLISHED_STATES))
@@ -746,17 +768,15 @@ def main(argv: list[str] | None = None) -> int:
             print(render_local_cutover(args.version, args.source_archive.resolve(), args.engine_archive.resolve()), end="")
         elif command == "verify-formula":
             versions = current_versions()
-            found = published_digest_problems(read(FORMULA), versions.formula)
+            found = live_formula_problems(read(FORMULA), versions.formula) or published_digest_problems(read(FORMULA), versions.formula)
             if found:
                 raise ReleaseError("\n".join(found))
-            print("formula OK: every engine digest is the one its release published (or the formula carries no engine yet)")
+            print(f"formula OK: v{versions.formula} is exactly what release.py renders, with the digests the release published")
         elif command == "verify-installed":
             for line in verify_installed(args.version, args.prefix):
                 print(line)
         elif command == "outcome":
             record_outcome(args.version, args.state, args.reason)
-        elif command == "render-cutover":
-            print(render_cutover_formula(args.version), end="")
         else:
             problems = check()
             if problems:

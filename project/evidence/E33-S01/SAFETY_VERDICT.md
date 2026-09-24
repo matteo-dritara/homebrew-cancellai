@@ -80,3 +80,39 @@ Second and final owner-authorized independent pass over repair commit `23bb14e`.
 PENDING
 
 FAIL
+
+## Round 8
+
+Verifier: Codex
+Brief-Checksum: bb614fb4de0d31b814e7497488c4e83eac0c298b389fc899b433a3d92b1854a9
+
+Owner-authorized independent pass over `351295d`. Full findings and eleven-axis audit: `project/evidence/E06-VERIFIER-REVIEW-ROUND8.md`.
+
+| Invariant / obligation | Adversarial evidence | Result |
+| --- | --- | --- |
+| SI-022, verified notice only | A separate temporary integration test installed valid signed sequences 11 and 12. Exact old 11 refused; exact current 12 said `already current`; corrupt trust refused. Production curl remains fixed-path with HTTPS-only switches. | PASS within tested scope |
+| SI-029, rollback and available local ledger | Sixteen concurrent refreshes of the same valid sequence 1 wrote two install events. Replay refused event 2, `containment list` exited 4, and subsequent refreshes refused the unusable history. Authority fails closed, but a valid feed action can persistently corrupt the ledger. | FAIL |
+| SI-030, channel bounds deletion | Stable-channel suite passed with `kill-points,test-curl`; no fetched notice raised local destructive authority. | PASS within tested scope |
+| Feed refusal contract | HTTP override, malformed/untrusted notice, oversized body, failed curl, corrupt trust and exact old sequence refuse in tests. Concurrent identical valid input remains unsafe for ledger availability. | FAIL |
+
+### Adversarial cases
+
+- Independently installed signed publisher sequences 11 and 12 in a synthetic home; fake curl served exact 11. Refresh exited 4, called it older, and kept history byte-identical. Serving 12 returned `already current`. Corrupting the owner trust file then made refresh exit 4 with unchanged history.
+- Independently launched sixteen refresh processes against one synthetic fake curl serving the same signed sequence 1. The resulting ledger had two install lines; replay and `containment list` exited 4. The temporary regression failed as intended and was removed without changing tracked test code.
+- Source and stable-suite inspection confirmed `/usr/bin/curl` or `/bin/curl` on Unix, a fixed Windows system path, `--proto =https`, `--proto-redir =https`, and a `MAX_NOTICE_BYTES + 1` read. PATH hijack, HTTP override and over-cap cases passed the stable suite.
+
+### Gates
+
+| Gate | Result |
+| --- | --- |
+| Rust fmt, workspace Clippy, Windows-target Clippy, workspace tests, stable-channel CLI with `kill-points,test-curl` | PASS locally; separate race test FAILED as expected |
+| Python pytest | PASS: 719 passed, 3 skipped |
+| `release.py check`, `project_os.py check`, `verifier_handoff.py check`, `check_process.py check` | PASS at baseline |
+| Native Linux/Windows refresh | NOT RUN: macOS verifier host only |
+| Post-evidence governance gates | Recorded in the round 8 epic review |
+
+### Owner decision
+
+PENDING
+
+FAIL

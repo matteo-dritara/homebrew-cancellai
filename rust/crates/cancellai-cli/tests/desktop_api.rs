@@ -256,7 +256,7 @@ fn serving_a_plan_full_of_delete_candidates_mutates_nothing() {
     let (mut child, descriptor) = start_api(&home, 1);
     let mut client = Client::connect(&descriptor).unwrap();
     let aggressive = Query {
-        days: 0,
+        days: 1,
         keep_latest: 0,
         tool: ToolScope::All,
         allow_running: true,
@@ -321,7 +321,7 @@ fn a_custom_root_plan_reports_the_same_withholding_the_cli_reports() {
         .document(
             DocumentKind::Plan,
             Query {
-                days: 0,
+                days: 1,
                 keep_latest: 0,
                 tool: ToolScope::All,
                 allow_running: true,

@@ -665,3 +665,109 @@ fn a_feed_serving_an_older_installed_notice_is_refused_as_a_rollback() {
     assert_eq!(output.status.code(), Some(0));
     assert!(String::from_utf8_lossy(&output.stdout).contains("already current"));
 }
+
+/// E06 review round 8: sixteen simultaneous refreshes of one valid notice. Exactly one install
+/// is accepted, every process succeeds, and the history still replays.
+#[cfg(all(unix, feature = "test-curl"))]
+#[test]
+fn concurrent_refreshes_of_one_notice_leave_one_accepted_install_and_a_replayable_history() {
+    let tree = Tree::new("concurrent-refresh");
+    tree.trust_test_publisher();
+    let text = signed(7, PUBLISHER, 1, None, &notice("INC-1", "claude-code"));
+    let bin = fake_curl(&tree, &text, "200", 0);
+    let handles: Vec<_> = (0..16)
+        .map(|_| {
+            Command::new(env!("CARGO_BIN_EXE_cancellai-cli"))
+                .args(["containment", "refresh"])
+                .env("HOME", &tree.0)
+                .env("CANCELLAI_HOME", tree.0.join("cancellai-home"))
+                .env("CANCELLAI_TEST_CURL", bin.join("curl"))
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .unwrap()
+        })
+        .collect();
+    for child in handles {
+        let output = child.wait_with_output().unwrap();
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let listed = tree.run(&["containment", "list"]);
+    assert_eq!(
+        listed.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&listed.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&listed.stdout)
+            .matches("INC-1")
+            .count(),
+        1
+    );
+}
+
+/// E06 review round 8, the general case: many concurrent installs of different newer notices.
+/// Whatever wins, the history replays, every accepted install is listed, and every loser was told
+/// to retry rather than silently dropped.
+#[test]
+fn concurrent_installs_of_different_notices_never_break_the_history() {
+    let tree = Tree::new("concurrent-install");
+    tree.trust_test_publisher();
+    let paths: Vec<_> = (1..=8)
+        .map(|sequence| {
+            tree.write_notice(
+                &format!("n{sequence}.json"),
+                &signed(
+                    7,
+                    PUBLISHER,
+                    sequence,
+                    None,
+                    &notice(&format!("INC-{sequence}"), "claude-code"),
+                ),
+            )
+        })
+        .collect();
+    let children: Vec<_> = paths
+        .iter()
+        .map(|path| {
+            Command::new(env!("CARGO_BIN_EXE_cancellai-cli"))
+                .args(["containment", "install", path.to_str().unwrap()])
+                .env("HOME", &tree.0)
+                .env("CANCELLAI_HOME", tree.0.join("cancellai-home"))
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .unwrap()
+        })
+        .collect();
+    let mut accepted = 0;
+    for child in children {
+        let output = child.wait_with_output().unwrap();
+        match output.status.code() {
+            Some(0) => accepted += 1,
+            Some(4) => {}
+            other => panic!(
+                "unexpected exit {other:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ),
+        }
+    }
+    let listed = tree.run(&["containment", "list"]);
+    assert_eq!(
+        listed.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&listed.stderr)
+    );
+    assert!(accepted >= 1);
+    assert_eq!(
+        String::from_utf8_lossy(&listed.stdout).lines().count(),
+        accepted
+    );
+}

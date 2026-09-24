@@ -55,6 +55,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `cancellai-cli` refuses `--days 0` as a usage error, as the reference does; it used to accept it
+  and plan every session for deletion.
 - `cancellai-cli clean` now deletes on Windows (E06-S13). The Windows identity-confirmed delete
   primitive existed since E20-S05, but the safety executor still refused every Windows target, so
   every planned deletion there was safely skipped. Only plain files are admitted, as on Unix;

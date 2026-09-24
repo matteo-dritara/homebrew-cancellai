@@ -46,6 +46,11 @@ impl DocumentSource for EngineDocuments {
     }
 
     fn document(&self, kind: DocumentKind, query: Query) -> Result<DocumentEnvelope, String> {
+        // The same floor the CLI enforces (E06 review round 8): a query the CLI would refuse is
+        // not previewed either.
+        if query.days < 1 {
+            return Err("days must be at least 1".to_string());
+        }
         let resolved = resolve_all(&flags_for(query))?;
         let now = SystemClock.now();
         let scan_incomplete = any_incomplete(&resolved);

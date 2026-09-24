@@ -3,7 +3,7 @@ Show disk usage and cleanup candidates (default command)
 Usage: cancellai-cli status [OPTIONS]
 
 Options:
-      --days <DAYS>                Retention cutoff in days [default: 7]
+      --days <DAYS>                Retention cutoff in days - at least 1, as in the reference (E06 review round 8: `--days 0` was accepted and planned every stale-looking session for deletion) [default: 7]
       --keep-latest <KEEP_LATEST>  Always protect the N most-recently-modified sessions per tool, independent of age [default: 2]
       --tool <TOOL>                Restrict to one provider [default: all] [possible values: all, codex, claude]
       --json                       Machine-readable output

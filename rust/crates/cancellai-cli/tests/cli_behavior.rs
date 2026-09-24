@@ -1662,3 +1662,25 @@ fn a_hard_linked_session_is_refused_and_both_names_survive() {
     assert_eq!(std::fs::read_to_string(&session).unwrap(), "{}");
     assert_eq!(std::fs::read_to_string(&outside).unwrap(), "{}");
 }
+
+/// E06 review round 8: `--days 0` is refused as a usage error, as the reference refuses it, and
+/// nothing is planned or deleted.
+#[test]
+fn days_zero_is_refused_on_every_command_that_takes_it() {
+    let home = TempHome::new("days-zero");
+    let session = home.write_stale_claude_session("proj-z", "99999999-9999-4999-8999-999999999998");
+    for command in ["status", "inspect", "plan", "clean"] {
+        let mut args = vec![command, "--days", "0", "--allow-running"];
+        if command == "clean" {
+            args.push("--yes");
+        }
+        let output = run(&home, &args);
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "{command}: {}",
+            stdout(&output)
+        );
+    }
+    assert!(session.exists());
+}
