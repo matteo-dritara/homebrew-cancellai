@@ -637,6 +637,8 @@ class CutoverAuthorizationTests(unittest.TestCase):
             "## Round 10\n\nPASS\n\n## Owner note\n\nFAIL\n": False,
             "PASS\n": False,
             "## Round 10\n\nno verdict line\n": False,
+            "## Round 2 - operative\n\n## Verdict\n\n`PASS_WITH_RESIDUALS`\n\n## Owner decision\n\naccepted\n": True,
+            "## Round 2\n\n## Verdict\n\nPASS\n\n## Owner decision\n\nREJECT\n": False,
         }
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "SAFETY_VERDICT.md"

@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import hashlib
+import itertools
 import json
 import os
 import re
@@ -612,16 +613,17 @@ AUTHORIZATION_FIELD_RE = re.compile(r"^(Authorized-by|Version|Safety-Verdict-SHA
 
 ROUND_HEADING_RE = re.compile(r"^## Round \d+\b", re.MULTILINE)
 SECTION_HEADING_RE = re.compile(r"^## ", re.MULTILINE)
+VERDICT_HEADING_RE = re.compile(r"## Verdict\s*$", re.MULTILINE)
 VERDICT_LINE_RE = re.compile(r"^\s*`?(PASS_WITH_RESIDUALS|PASS|FAIL|REJECT)`?\s*$", re.MULTILINE | re.IGNORECASE)
 FENCE_RE = re.compile(r"^```.*?^```\s*$", re.MULTILINE | re.DOTALL)
 
 
 def safety_verdict_passes(path: Path) -> bool:
-    """Whether the migration Safety Verdict's final round passes, read from that round's own
-    section: the last `## Round <n>` heading's standalone verdict lines, fenced blocks excluded.
-    A verdict-shaped line anywhere after that section - an "owner note", say - makes the verdict
-    unreadable, so it fails; nothing outside the final round can turn it into a pass (E06 review
-    round 10)."""
+    """Whether the migration Safety Verdict's final round passes, read from what may decide it: the
+    last `## Round <n>` heading's own body plus the template's `## Verdict` section if one follows,
+    fenced blocks excluded. A verdict-shaped line in any other later section - an "owner note",
+    say - makes the verdict unreadable, so it fails (E06 review round 10). The same rule as
+    `project_os.py`'s gate (E35-S01)."""
     try:
         text = FENCE_RE.sub("", path.read_text(encoding="utf-8"))
     except OSError:
@@ -629,12 +631,17 @@ def safety_verdict_passes(path: Path) -> bool:
     rounds = list(ROUND_HEADING_RE.finditer(text))
     if not rounds:
         return False
-    start = rounds[-1].end()
-    later = SECTION_HEADING_RE.search(text, start)
-    section = text[start : later.start() if later else len(text)]
-    if later and VERDICT_LINE_RE.search(text, later.start()):
-        return False
-    verdicts = [match.group(1).upper() for match in VERDICT_LINE_RE.finditer(section)]
+    sections = [*SECTION_HEADING_RE.finditer(text, rounds[-1].end()), None]
+    admissible = [text[rounds[-1].end() : sections[0].start() if sections[0] else len(text)]]
+    for here, following in itertools.pairwise(sections):
+        if here is None:
+            break
+        section = text[here.start() : following.start() if following else len(text)]
+        if VERDICT_HEADING_RE.match(section):
+            admissible.append(section)
+        elif VERDICT_LINE_RE.search(section):
+            return False
+    verdicts = [match.group(1).upper() for match in VERDICT_LINE_RE.finditer("\n".join(admissible))]
     return bool(verdicts) and verdicts[-1] in {"PASS", "PASS_WITH_RESIDUALS"}
 
 
