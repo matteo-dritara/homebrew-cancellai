@@ -68,13 +68,21 @@ python3 scripts/review_round.py import ../review-worktrees/E06-formal-9
   self-review whatever the record claims.
 - It limits which paths the reviewer may change (a formal round: its record, appended Safety
   Verdicts, story status, generated docs and new tests; a pre-review: its own record only), and
-  `import` copies only those paths into the main tree.
+  `import` copies only those paths into the main tree. A rename counts as its deleted source plus
+  its destination, so moving production code into `tests/` is refused. `import` re-runs these
+  checks rather than trusting the run file, and refuses - before copying anything - a target that
+  changed or appeared in the main tree after the run's base, so it never overwrites a record.
 - It runs the reviewer in an environment that cannot publish - no git credential helper, no ssh,
   an invalid push URL for `origin`, an empty `gh` configuration - and, for OpenCode, with
   `~/.claude` loading, auto-update and language-server downloads disabled; `opencode.json` loads
-  back only this repository's skill pack and turns formatters and language servers off. This is
-  defence in depth, not a sandbox: a reviewer allowed `python3` and `cargo` can run arbitrary code,
-  so the worktree, the path check and `import` remain the boundary.
+  back only this repository's skill pack and turns formatters and language servers off. The
+  OpenCode agents allow only named test and check commands (`python3 -m pytest`, `python3
+  scripts/*`, `cargo test/check/clippy/fmt --check`), and end their shell rules with denials -
+  OpenCode applies the last matching rule - so `python3 -c`, `pip`, installs, network clients,
+  removal, chaining, substitution and redirection are refused even inside an allowed command
+  (`tests/test_opencode_agents.py`). This is defence in depth, not a sandbox: a reviewer may write
+  an adversarial test and `pytest` will run it, which is arbitrary code, so the worktree, the path
+  check and `import` remain the boundary.
 - A failed run says why (`the reviewer exited N: <last logged error>`), so a provider outage is
   not mistaken for a finding.
 

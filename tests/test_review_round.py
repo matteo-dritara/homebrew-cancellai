@@ -128,6 +128,100 @@ class AppendOnlyTests(unittest.TestCase):
             self.assertTrue(rr.append_only_problems(repo, [relative], base))
 
 
+GIT_ID = ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false"]
+
+
+def _commit_all(repo: Path, message: str) -> str:
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)  # noqa: S607
+    subprocess.run(["git", *GIT_ID, "commit", "-qm", message], cwd=repo, check=True)  # noqa: S603, S607
+    return rr.git("rev-parse", "HEAD", cwd=repo).strip()
+
+
+class RenameTests(unittest.TestCase):
+    # Round 1 (R1, E34-S01): a staged rename out of production code reported only its
+    # destination, so the deleted source never reached the tier check.
+    def test_a_rename_reports_its_source_and_the_source_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            subprocess.run(["git", "init", "-q"], cwd=repo, check=True)  # noqa: S607
+            (repo / "scripts").mkdir()
+            (repo / "scripts" / "protected.py").write_text("x = 1\n", encoding="utf-8")
+            _commit_all(repo, "base")
+            (repo / "tests").mkdir()
+            subprocess.run(["git", "mv", "scripts/protected.py", "tests/test_new.py"], cwd=repo, check=True)  # noqa: S607
+            changed = rr.changed_paths(repo)
+            self.assertEqual(changed, ["scripts/protected.py", "tests/test_new.py"])
+            problems = rr.path_problems(changed, rr.allowed_paths("formal", "E34-VERIFIER-REVIEW-ROUND2.md"), set())
+            self.assertEqual(problems, ["scripts/protected.py is outside what this tier may change"])
+
+    def test_a_path_with_spaces_or_quotes_is_reported_verbatim(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            subprocess.run(["git", "init", "-q"], cwd=repo, check=True)  # noqa: S607
+            (repo / "a").write_text("", encoding="utf-8")
+            _commit_all(repo, "base")
+            (repo / 'we"ird name.py').write_text("", encoding="utf-8")
+            self.assertEqual(rr.changed_paths(repo), ['we"ird name.py'])
+
+
+class ImportTests(unittest.TestCase):
+    RECORD = "E34-VERIFIER-REVIEW-ROUND2.md"
+
+    def _setup(self, tmp: str) -> tuple[Path, Path, dict]:
+        root = Path(tmp) / "main"
+        root.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=root, check=True)  # noqa: S607
+        (root / "project" / "epics").mkdir(parents=True)
+        (root / "project" / "evidence").mkdir(parents=True)
+        (root / "project" / "epics" / "E34.json").write_text('{"status": "ready_for_review"}\n', encoding="utf-8")
+        (root / "project" / "evidence" / "E34-VERIFIER-REVIEW-ROUND1.md").write_text("Verifier: Codex\n", encoding="utf-8")
+        base = _commit_all(root, "base")
+        worktree = Path(tmp) / "review"
+        rr.git("worktree", "add", "-q", "-b", "review", str(worktree), "HEAD", cwd=root)
+        (worktree / "project" / "evidence" / self.RECORD).write_text("Verifier: Codex\n", encoding="utf-8")
+        (worktree / "project" / "epics" / "E34.json").write_text('{"status": "done"}\n', encoding="utf-8")
+        data = {"problems": [], "tier": "formal", "record": self.RECORD, "base": base, "changed": rr.changed_paths(worktree)}
+        return root, worktree, data
+
+    def test_a_clean_run_imports(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root, worktree, data = self._setup(tmp)
+            self.assertEqual(rr.import_problems(worktree, data, root), [])
+
+    # Round 1 (R1, E34-S01): a record created in the import target after the run was checked
+    # used to be overwritten by the worktree's copy.
+    def test_a_record_that_appeared_since_the_base_is_never_overwritten(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root, worktree, data = self._setup(tmp)
+            (root / "project" / "evidence" / self.RECORD).write_text("someone else's record\n", encoding="utf-8")
+            problems = rr.import_problems(worktree, data, root)
+            self.assertTrue(any("existing review record" in p for p in problems), problems)
+            self.assertTrue(any("appeared in the working tree" in p for p in problems), problems)
+
+    def test_a_target_changed_since_the_base_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root, worktree, data = self._setup(tmp)
+            (root / "project" / "epics" / "E34.json").write_text('{"status": "in_progress"}\n', encoding="utf-8")
+            problems = rr.import_problems(worktree, data, root)
+            self.assertEqual(problems, ["project/epics/E34.json changed in the working tree after the run's base; refusing to overwrite it"])
+
+    def test_a_tampered_run_file_is_rechecked(self) -> None:
+        # The run file lives where the reviewer can write, so its verdict is not trusted.
+        with tempfile.TemporaryDirectory() as tmp:
+            root, worktree, data = self._setup(tmp)
+            (worktree / "scripts").mkdir()
+            (worktree / "scripts" / "x.py").write_text("", encoding="utf-8")
+            data["changed"] = rr.changed_paths(worktree)
+            problems = rr.import_problems(worktree, data, root)
+            self.assertIn("scripts/x.py is outside what this tier may change", problems)
+
+    def test_a_failed_run_imports_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root, worktree, data = self._setup(tmp)
+            data["problems"] = ["the reviewer exited 1"]
+            self.assertTrue(rr.import_problems(worktree, data, root))
+
+
 class ReviewerEnvironmentTests(unittest.TestCase):
     def test_a_reviewer_cannot_push_to_origin(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

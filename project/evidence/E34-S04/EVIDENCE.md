@@ -2,7 +2,7 @@
 
 - Commit/PR: the E34 follow-up commit on `main`
 - Executor: Claude
-- Independent verifier: pending
+- Independent verifier: round 1 FAIL (Codex, E34-VERIFIER-REVIEW-ROUND1.md); repaired, awaiting round 2
 - Change Risk: CR1
 - Spec version/commit: `project/epics/E34.json` at this commit; PD-028
 
@@ -18,10 +18,21 @@ PASS
 | AC2 - an unrecognised `.opencode/` entry is reported | `unrecognised:.opencode/<name>`; OpenCode's own dependency install (`node_modules`, `package.json`, lockfiles, `.gitignore`) is excluded as per-machine state. Same test. | PASS |
 | AC3 - language servers and formatters enabled, including by omission, are reported | `lsp:opencode` and `unrecognised:opencode-formatter` unless explicitly `false`; `test_the_committed_configuration_carries_nothing_implicit` shows the committed shape carries nothing. | PASS |
 
+## Repairs after independent round 1 (2026-09-24)
+
+`E34-VERIFIER-REVIEW-ROUND1.md` (Codex) failed AC2: in a tree holding `.opencode/agents/known.md`,
+`.opencode/agents/unknown/` and `.opencode/skills/rogue.txt`, only `known` was reported; the nested
+directory and the stray file vanished.
+
+| Repair | Evidence |
+| --- | --- |
+| Each component directory admits one shape - flat `.md` agents/commands, flat `.ts`/`.js`/`.mjs` plugins/tools, skill directories holding `SKILL.md` - and every other visible child, nested or empty directory included, is `unrecognised:<path>` | `test_unknown_entries_inside_component_directories_are_reported` (nested dir, empty dir, `.txt` under agents, file under skills, skill dir without `SKILL.md`); fails against the pre-repair walk |
+| The committed repository still passes | `check_agent_toolchain.py check`: 13 managed, nothing unmanaged |
+
 ## Verification Commands
 
 ```text
-python3 -m pytest tests/test_agent_toolchain.py -q   -> 61 passed
+python3 -m pytest tests/test_agent_toolchain.py -q   -> 62 passed (after the round-1 repair)
 python3 scripts/check_agent_toolchain.py check       -> 13 managed, nothing unmanaged
 ```
 

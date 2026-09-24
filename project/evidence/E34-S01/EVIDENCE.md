@@ -2,7 +2,7 @@
 
 - Commit/PR: the E34 commit on `main`
 - Executor: Claude
-- Independent verifier: pending
+- Independent verifier: round 1 FAIL (Codex, E34-VERIFIER-REVIEW-ROUND1.md); repaired, awaiting round 2
 - Change Risk: CR2
 - Spec version/commit: `project/epics/E34.json` at this commit; owner decision 2026-09-24 (OpenCode + OpenRouter reviewer, PD-028)
 
@@ -43,10 +43,26 @@ committed brief through a mock; `gate_sensitivity.py check` passes locally (11/1
 that shells out to git against the real repository is not hermetic here - build a temporary repo
 (as `AppendOnlyTests` does) or mock `git`.
 
+## Repairs after independent round 1 (2026-09-24)
+
+`E34-VERIFIER-REVIEW-ROUND1.md` (Codex) failed this story on AC4 and AC2/AC5. Both
+counterexamples are pinned as regression tests and each was mutation-checked: reverting the repair
+makes its test fail.
+
+| Finding | Repair | Evidence |
+| --- | --- | --- |
+| A staged rename `scripts/protected.py -> tests/test_new.py` reported only the destination, so the deleted production source never reached the tier check (AC4) | `changed_paths` runs `git status --porcelain=v1 -z --no-renames`: a rename is its deleted source plus its destination, and `-z` gives paths verbatim | `test_a_rename_reports_its_source_and_the_source_is_refused`, `test_a_path_with_spaces_or_quotes_is_reported_verbatim`; dropping `--no-renames` fails the first |
+| `import` trusted the run file and overwrote a record created in the main tree after the run was checked (AC2, AC5) | `import_problems` repeats the path, existing-record and append-only checks at import time, and refuses - before copying any byte - a target that appeared or changed in the main tree after the run's `base`; `cmd_import` copies nothing unless it returns no problem | `ImportTests` (5 cases: clean import, record appeared, target changed, tampered run file, failed run); disabling the base comparison fails two of them |
+
+Not repaired, recorded: the harness writes its logs to `.opencode-run/` inside the review
+worktree, and a reviewer running the full suite there sees `check_docs` fail on the prompt's
+relative links (the round-1 reviewer moved the directory aside to run it). It is a usability
+defect of the harness, not an acceptance-criterion failure; backlog candidate for E34.
+
 ## Verification Commands
 
 ```text
-python3 -m pytest tests/test_review_round.py -q     -> 15 passed
+python3 -m pytest tests/test_review_round.py -q     -> 24 passed (after the round-1 repairs)
 python3 -m mypy --strict scripts/review_round.py    -> no issues
 python3 -m ruff check / format --check              -> clean
 ```

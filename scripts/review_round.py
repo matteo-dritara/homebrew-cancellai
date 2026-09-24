@@ -38,6 +38,7 @@ import sys
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 EVIDENCE = ROOT / "project" / "evidence"
@@ -195,14 +196,12 @@ def path_problems(changed: list[str], allowed: tuple[str, ...], existing_records
 
 
 def changed_paths(worktree: Path) -> list[str]:
-    """Every path the reviewer changed, added or deleted, relative to the worktree root."""
-    out = git("status", "--porcelain", "--untracked-files=all", cwd=worktree)
-    paths = []
-    for line in out.splitlines():
-        path = line[3:]
-        if " -> " in path:
-            path = path.split(" -> ", 1)[1]
-        paths.append(path.strip('"'))
+    """Every path the reviewer changed, added or deleted, relative to the worktree root.
+
+    Rename detection is off, so a rename is its deleted source plus its added destination and the
+    source is judged like any other deletion; `-z` gives paths unquoted, whatever they contain."""
+    out = git("status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all", cwd=worktree)
+    paths = [entry[3:] for entry in out.split("\0") if entry]
     return sorted(p for p in paths if p != RUN_FILE and not p.startswith(".opencode-run/"))
 
 
@@ -356,22 +355,52 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0 if run.passed else 1
 
 
-def cmd_import(args: argparse.Namespace) -> int:
-    """Copies a passing run's allowed changes into the main working tree - nothing else."""
-    worktree = Path(args.worktree).resolve()
-    data = json.loads((worktree / RUN_FILE).read_text(encoding="utf-8"))
+def base_bytes(relative: str, base: str, root: Path) -> bytes | None:
+    """The path's content at `base`, or None when it did not exist there."""
+    result = subprocess.run(["git", "cat-file", "blob", f"{base}:{relative}"], cwd=root, capture_output=True, check=False)  # noqa: S603, S607
+    return result.stdout if result.returncode == 0 else None
+
+
+def import_problems(worktree: Path, data: dict[str, Any], root: Path = ROOT) -> list[str]:
+    """Everything that must hold, at the moment of import, before a single byte is copied.
+
+    The run's own checks are repeated rather than trusted - the run file lives in a worktree the
+    reviewer could write to - and every target must still be what it was at the run's base: a
+    record or change that appeared in the working tree since then is refused, never overwritten."""
     if data["problems"]:
-        raise ReviewError("the run did not pass its checks; nothing is imported:\n" + "\n".join(data["problems"]))
+        return ["the run did not pass its checks:", *data["problems"]]
     current = changed_paths(worktree)
     if current != data["changed"]:
-        raise ReviewError("the worktree changed after the run was checked; re-run the check")
+        return ["the worktree changed after the run was checked; re-run the check"]
+    evidence = root / "project" / "evidence"
+    existing = {f"project/evidence/{p.name}" for p in evidence.glob("*REVIEW*.md")}
+    problems = path_problems(current, allowed_paths(data["tier"], data["record"]), existing)
+    problems += append_only_problems(worktree, current, data["base"])
     for relative in current:
-        source, target = worktree / relative, ROOT / relative
-        if source.exists():
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(source, target)
-        else:
-            raise ReviewError(f"{relative} was deleted by the reviewer; deletions are never imported")
+        if not (worktree / relative).exists():
+            problems.append(f"{relative} was deleted by the reviewer; deletions are never imported")
+            continue
+        target = root / relative
+        before = base_bytes(relative, data["base"], root)
+        if before is None and target.exists():
+            problems.append(f"{relative} appeared in the working tree after the run's base; refusing to overwrite it")
+        elif before is not None and (not target.is_file() or target.read_bytes() != before):
+            problems.append(f"{relative} changed in the working tree after the run's base; refusing to overwrite it")
+    return problems
+
+
+def cmd_import(args: argparse.Namespace) -> int:
+    """Copies a passing run's allowed changes into the main working tree - nothing else, and
+    nothing at all unless every path passes `import_problems`."""
+    worktree = Path(args.worktree).resolve()
+    data = json.loads((worktree / RUN_FILE).read_text(encoding="utf-8"))
+    problems = import_problems(worktree, data)
+    if problems:
+        raise ReviewError("nothing is imported:\n" + "\n".join(problems))
+    for relative in data["changed"]:
+        target = ROOT / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(worktree / relative, target)
         print(f"imported {relative}")
     return 0
 

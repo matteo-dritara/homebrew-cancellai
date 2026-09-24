@@ -26,8 +26,12 @@ permission:
     "rust/crates/*/tests/**": allow
   bash:
     "*": deny
-    "cargo *": allow
-    "python3 *": allow
+    "python3 -m pytest *": allow
+    "python3 scripts/*": allow
+    "cargo test*": allow
+    "cargo check*": allow
+    "cargo clippy*": allow
+    "cargo fmt --check*": allow
     "git status*": allow
     "git diff*": allow
     "git log*": allow
@@ -61,6 +65,32 @@ permission:
     "brew *": deny
     "curl *": deny
     "pip *": deny
+    # OpenCode applies the last matching rule, so these come last and win over every allow above:
+    # an allowed interpreter or test runner must not become a way to run what is denied directly.
+    "* -c *": deny
+    "*..*": deny
+    "*;*": deny
+    "*&&*": deny
+    "*||*": deny
+    "*`*": deny
+    "*$(*": deny
+    "*>*": deny
+    "*|*sh*": deny
+    "*|*python*": deny
+    "*pip*": deny
+    "*install*": deny
+    "*curl*": deny
+    "*wget*": deny
+    "*http*": deny
+    "*urllib*": deny
+    "*requests*": deny
+    "*socket*": deny
+    "*rm *": deny
+    "*rmtree*": deny
+    "*remove*": deny
+    "*unlink*": deny
+    "*-delete*": deny
+    "*-exec*": deny
 ---
 You are the independent verifier for the cancellAI repository, running under
 `scripts/review_round.py` (E34). Your method is the `epic-verifier` skill - load it with the skill

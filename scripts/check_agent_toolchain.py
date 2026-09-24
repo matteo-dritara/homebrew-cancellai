@@ -427,6 +427,16 @@ OPENCODE_CONFIGS = ("opencode.json", "opencode.jsonc", ".opencode/opencode.json"
 OPENCODE_KNOWN_SKILL_PATHS = {".claude/skills"}
 
 
+# The one shape each `.opencode/` component directory holds: a flat set of files with these
+# suffixes. Anything else there - a nested directory, an empty one, another kind of file - is
+# reported as unrecognised, because the walk cannot say what OpenCode would make of it (E34 round 1).
+OPENCODE_COMPONENT_SUFFIXES = {"subagent": {".md"}, "command": {".md"}, "plugin": {".ts", ".js", ".mjs"}}
+
+
+def _visible_children(directory: Path) -> list[Path]:
+    return sorted(child for child in directory.iterdir() if not child.name.startswith("."))
+
+
 def _opencode_components(present: dict[str, str]) -> None:
     """Agents, commands, plugins, tools, skills, MCP servers, language servers and formatters that
     OpenCode would load for a session in this repository. Fails closed like the `.claude/` walk:
@@ -439,13 +449,19 @@ def _opencode_components(present: dict[str, str]) -> None:
             relative = entry.relative_to(ROOT).as_posix()
             if entry.is_dir() and entry.name in OPENCODE_DIRECTORIES:
                 kind = OPENCODE_DIRECTORIES[entry.name]
-                for item in sorted(entry.rglob("*")):
-                    if item.is_file() and not item.name.startswith("."):
-                        present[f"{kind}:opencode/{item.stem}"] = item.relative_to(ROOT).as_posix()
+                for item in _visible_children(entry):
+                    item_relative = item.relative_to(ROOT).as_posix()
+                    if item.is_file() and item.suffix in OPENCODE_COMPONENT_SUFFIXES[kind]:
+                        present[f"{kind}:opencode/{item.stem}"] = item_relative
+                    else:
+                        present[f"unrecognised:{item_relative}"] = item_relative
             elif entry.is_dir() and entry.name in {"skill", "skills"}:
-                for skill in sorted(entry.iterdir()):
-                    if skill.is_dir():
-                        present[f"skill:{skill.relative_to(ROOT).as_posix()}"] = skill.relative_to(ROOT).as_posix()
+                for skill in _visible_children(entry):
+                    skill_relative = skill.relative_to(ROOT).as_posix()
+                    if skill.is_dir() and (skill / "SKILL.md").is_file():
+                        present[f"skill:{skill_relative}"] = skill_relative
+                    else:
+                        present[f"unrecognised:{skill_relative}"] = skill_relative
             elif entry.name not in {"opencode.json", "opencode.jsonc"}:
                 present[f"unrecognised:{relative}"] = relative
     for name in OPENCODE_CONFIGS:

@@ -2,7 +2,7 @@
 
 - Commit/PR: the E34 commit on `main`
 - Executor: Claude
-- Independent verifier: pending
+- Independent verifier: round 1 FAIL (Codex, E34-VERIFIER-REVIEW-ROUND1.md); repaired, awaiting round 2
 - Change Risk: CR1
 - Spec version/commit: `project/epics/E34.json` at this commit; PD-028
 
@@ -26,6 +26,25 @@ PASS
 | Any configured provider could serve a session | `"enabled_providers": ["openrouter"]` |
 | `gh` was allowed but the harness now gives it no credentials | `gh *` denied in both agents |
 | Personal skills from `~/.claude` loaded into the reviewer | `"skills": {"paths": [".claude/skills"]}` with the harness disabling `.claude` loading (E34-S01) |
+
+## Repairs after independent round 1 (2026-09-24)
+
+`E34-VERIFIER-REVIEW-ROUND1.md` (Codex) failed AC1: `"python3 *": allow` re-admitted what the direct
+denials refused - `python3 -m pip install`, `python3 -c "os.remove(...)"`, `python3 -c "urllib..."` -
+and `cargo *` admitted arbitrary cargo subcommands.
+
+| Repair | Evidence |
+| --- | --- |
+| Both agents allow only named commands: `python3 -m pytest *`, `python3 scripts/*`, `cargo test/check/clippy/fmt --check`, and read-only git and text tools | `.opencode/agents/verifier.md`, `pre-reviewer.md` |
+| The shell rules end with denials that OpenCode, applying the last matching rule, puts above every allow: `-c`, `..`, `;`, `&&`, `\|\|`, backticks, `$(`, `>`, piping into a shell or Python, `pip`, `install`, `curl`, `wget`, `http`, `urllib`, `requests`, `socket`, `rm `, `rmtree`, `remove`, `unlink`, `find -delete/-exec` | `tests/test_opencode_agents.py` evaluates every committed rule with last-match-wins over 21 denied commands (round 1's three included) and 8 needed ones, for both agents; against the pre-repair agents 22 cases fail |
+| OpenCode loads the result as intended | `opencode debug agent verifier` (1.18.30): 65 ordered bash rules, first `*: deny`, last `*-exec*: deny`; model `openrouter/nvidia/nemotron-3-ultra-550b-a55b:free` |
+
+**Residual, stated rather than claimed away:** a formal-tier reviewer may write an adversarial test
+under `tests/` and `python3 -m pytest` will run it; that test is arbitrary Python, which no
+command-level permission can bound. What bounds it is the review worktree, the reviewer
+environment (no credentials, no push URL) and the harness's path check and import (E34-S01). The
+AC's "deny package installation, file removal and web access" is met for every command the agent
+issues, not for code a test it wrote executes. Whether AC1 should say so is put to the owner.
 
 ## Verification Commands
 

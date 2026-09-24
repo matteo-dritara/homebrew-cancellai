@@ -499,3 +499,41 @@ class OpenCodeComponentsAreEnumerated(unittest.TestCase):
     def test_the_committed_configuration_carries_nothing_implicit(self):
         found = self.enumerate({"opencode.json": {"skills": {"paths": [".claude/skills"]}, "lsp": False, "formatter": False}})
         self.assertEqual({}, found)
+
+    def test_unknown_entries_inside_component_directories_are_reported(self):
+        # Round 1 (E34-S04): a nested directory under agents/ and a stray file under skills/
+        # vanished from the walk instead of being reported as unrecognised.
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for relative in (
+                ".opencode/agents/known.md",
+                ".opencode/agents/unknown/inner.md",
+                ".opencode/agents/notes.txt",
+                ".opencode/plugins/hook.ts",
+                ".opencode/skills/rogue.txt",
+                ".opencode/skills/real/SKILL.md",
+                ".opencode/skills/no-skill-file/README.md",
+            ):
+                (root / relative).parent.mkdir(parents=True, exist_ok=True)
+                (root / relative).write_text("x", encoding="utf-8")
+            (root / ".opencode" / "agents" / "empty").mkdir()
+            (root / ".opencode" / "skills" / "empty").mkdir()
+            with mock.patch.object(toolchain, "ROOT", root):
+                found = toolchain.installed_project_components()
+        self.assertIn("subagent:opencode/known", found)
+        self.assertIn("plugin:opencode/hook", found)
+        self.assertIn("skill:.opencode/skills/real", found)
+        for entry in (
+            "agents/unknown",
+            "agents/empty",
+            "agents/notes.txt",
+            "skills/rogue.txt",
+            "skills/empty",
+            "skills/no-skill-file",
+        ):
+            self.assertIn(f"unrecognised:.opencode/{entry}", found)
+        self.assertNotIn("subagent:opencode/inner", found)

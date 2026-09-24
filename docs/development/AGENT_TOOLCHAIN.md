@@ -56,6 +56,9 @@ Project scope includes OpenCode, the second reviewer runtime (PD-028): the check
 MCP servers, extra skill paths or URLs - and reports a language server or formatter that is not
 explicitly switched off, because both execute code by default. OpenCode's own dependency install
 (`.opencode/node_modules`, `package.json`, lockfiles) is per-machine state and is not a component.
+Inside a component directory the walk admits one shape - flat `.md` agents and commands, flat
+`.ts`/`.js`/`.mjs` plugins and tools, skills as directories holding `SKILL.md` - and reports
+anything else there, a nested or empty directory included, as unrecognised.
 
 ## What an agent may not do
 
