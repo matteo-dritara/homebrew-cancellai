@@ -34,7 +34,8 @@ grades it I1/I2/I3 and subjects the risk classification itself to a confirmation
 
 Counting parties here rather than roles: one human owner, one executor model, one reviewer model.
 That is the **independent person** rung - the lowest one. It is genuinely better than same-model
-review, because Claude and Codex are different model families with different failure modes, and
+review, because Claude and Codex (or a model PD-028 admits through OpenCode) are different model
+families with different failure modes, and
 the measured 47% first-round rejection rate is evidence that the separation does real work. It is
 not an independent department and it is not an independent organisation, and a CR4 gate that says
 "independent verification" should be read as the first rung and no further.
@@ -68,6 +69,20 @@ python3 scripts/review_round.py import ../review-worktrees/E06-formal-9
 - It limits which paths the reviewer may change (a formal round: its record, appended Safety
   Verdicts, story status, generated docs and new tests; a pre-review: its own record only), and
   `import` copies only those paths into the main tree.
+- It runs the reviewer in an environment that cannot publish - no git credential helper, no ssh,
+  an invalid push URL for `origin`, an empty `gh` configuration - and, for OpenCode, with
+  `~/.claude` loading, auto-update and language-server downloads disabled; `opencode.json` loads
+  back only this repository's skill pack and turns formatters and language servers off. This is
+  defence in depth, not a sandbox: a reviewer allowed `python3` and `cargo` can run arbitrary code,
+  so the worktree, the path check and `import` remain the boundary.
+- A failed run says why (`the reviewer exited N: <last logged error>`), so a provider outage is
+  not mistaken for a finding.
+
+**Data policy.** OpenRouter's free models are served only to accounts that allow the provider to
+train on prompts; `provider.data_collection: "deny"` makes them unroutable. A free-model review
+therefore sends this public repository's code and the committed briefs to a provider that may
+train on them. Nothing private may be placed in a review prompt, and moving to a paid model with
+`data_collection: "deny"` is the owner's decision recorded in PD-028.
 
 A **pre-review** (`--tier pre`) is an advisory pass by a cheap model before a formal round, meant
 to spend the scarce formal reviewer on work that has already survived a first reading. It is

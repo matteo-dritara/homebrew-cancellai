@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -239,10 +240,38 @@ existing review record - the harness checks every changed path after you exit.
     return template + rules + "\n## Committed verifier briefs\n\n" + "\n\n".join(briefs) + "\n"
 
 
+def reviewer_env(log_dir: Path) -> dict[str, str]:
+    """The environment a reviewer runs in. It cannot publish: every git remote operation that
+    would authenticate fails (no credential helper, no ssh, origin's push URL invalid) and `gh`
+    sees an empty config, so it holds no token. OpenCode loads no `~/.claude` prompt or skills
+    (the repository pack comes back through `opencode.json`'s `skills.paths`), and downloads no
+    update or language server. This is defence in depth: a reviewer allowed `python3` and `cargo`
+    can run arbitrary code, so the worktree, the path check and `import` remain the boundary."""
+    env = {k: v for k, v in os.environ.items() if k not in {"SSH_AUTH_SOCK", "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN"}}
+    gh_dir = log_dir / "gh-empty"
+    gh_dir.mkdir(parents=True, exist_ok=True)
+    blocked = {"credential.helper": "", "core.sshCommand": "false", "remote.origin.pushurl": "invalid://review-cannot-push"}
+    env.update(
+        {
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_CONFIG_COUNT": str(len(blocked)),
+            "GH_CONFIG_DIR": str(gh_dir),
+            "OPENCODE_DISABLE_CLAUDE_CODE": "1",
+            "OPENCODE_DISABLE_AUTOUPDATE": "1",
+            "OPENCODE_DISABLE_LSP_DOWNLOAD": "1",
+        }
+    )
+    for index, (key, value) in enumerate(blocked.items()):
+        env[f"GIT_CONFIG_KEY_{index}"] = key
+        env[f"GIT_CONFIG_VALUE_{index}"] = value
+    return env
+
+
 def run_reviewer(reviewer: str, model: str | None, tier: str, worktree: Path, prompt: str, log_dir: Path) -> tuple[int, str]:
     log_dir.mkdir(parents=True, exist_ok=True)
     prompt_file = log_dir / "prompt.md"
     prompt_file.write_text(prompt, encoding="utf-8")
+    env = reviewer_env(log_dir)
     if reviewer == "codex":
         command = [
             "codex", "exec", "-s", "workspace-write",
@@ -250,7 +279,7 @@ def run_reviewer(reviewer: str, model: str | None, tier: str, worktree: Path, pr
             "-C", str(worktree), "-o", str(log_dir / "final.md"), "-",
         ]  # fmt: skip
         with prompt_file.open("rb") as stdin, (log_dir / "events.log").open("wb") as out:
-            result = subprocess.run(command, stdin=stdin, stdout=out, stderr=subprocess.STDOUT, check=False)  # noqa: S603
+            result = subprocess.run(command, stdin=stdin, stdout=out, stderr=subprocess.STDOUT, env=env, check=False)  # noqa: S603
         return result.returncode, ""
     agent = "verifier" if tier == "formal" else "pre-reviewer"
     command = [
@@ -259,8 +288,17 @@ def run_reviewer(reviewer: str, model: str | None, tier: str, worktree: Path, pr
         "Follow the attached instructions exactly.", "--file", str(prompt_file),
     ]  # fmt: skip
     with (log_dir / "events.jsonl").open("wb") as out, (log_dir / "opencode.log").open("wb") as err:
-        result = subprocess.run(command, cwd=worktree, stdout=out, stderr=err, check=False)  # noqa: S603
+        result = subprocess.run(command, cwd=worktree, stdout=out, stderr=err, env=env, check=False)  # noqa: S603
     return result.returncode, (log_dir / "opencode.log").read_text(encoding="utf-8", errors="replace")
+
+
+ERROR_RE = re.compile(r'level=ERROR .*?(?:error\.error\.message|error)="([^"]*)"')
+
+
+def last_error(log_text: str) -> str:
+    """The last error OpenCode logged, so a failed run says why (e.g. an overloaded provider)."""
+    found = ERROR_RE.findall(log_text)
+    return found[-1] if found else ""
 
 
 def check_record(worktree: Path, record: str, label: str, tier: str) -> list[str]:
@@ -303,6 +341,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     run.exit_code, log_text = run_reviewer(reviewer, model, tier, worktree, prompt, worktree / ".opencode-run")
     run.seconds = round(time.monotonic() - started, 1)
 
+    if run.exit_code != 0:
+        run.problems.append(f"the reviewer exited {run.exit_code}" + (f": {last_error(log_text)}" if last_error(log_text) else ""))
     if reviewer == "opencode":
         run.streamed = streamed_models(log_text)
         run.problems += stream_problems(run.streamed, str(model))

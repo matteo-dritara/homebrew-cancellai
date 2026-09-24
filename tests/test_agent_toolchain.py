@@ -449,3 +449,53 @@ class LicenceEvidenceIsBoundToARevision(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OpenCodeComponentsAreEnumerated(unittest.TestCase):
+    """OpenCode loads agents, plugins, MCP servers, language servers and skills from `.opencode/`
+    and `opencode.json` exactly as Claude Code loads them from `.claude/`. A walk that only knew
+    `.claude/` would let the second reviewer's runtime carry anything unseen (E34-S04)."""
+
+    def enumerate(self, files):
+        import json
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for relative, content in files.items():
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content if isinstance(content, str) else json.dumps(content), encoding="utf-8")
+            with mock.patch.object(toolchain, "ROOT", root):
+                return toolchain.installed_project_components()
+
+    def test_agents_plugins_and_unknown_entries_are_found(self):
+        found = self.enumerate(
+            {
+                ".opencode/agents/verifier.md": "x",
+                ".opencode/plugins/hook.ts": "x",
+                ".opencode/mystery/file": "x",
+                ".opencode/node_modules/pkg/index.js": "x",
+                ".opencode/package.json": "{}",
+            }
+        )
+        self.assertIn("subagent:opencode/verifier", found)
+        self.assertIn("plugin:opencode/hook", found)
+        self.assertIn("unrecognised:.opencode/mystery", found)
+        self.assertFalse(any("node_modules" in key or "package.json" in key for key in found), found)
+
+    def test_config_components_and_default_code_execution_are_found(self):
+        found = self.enumerate(
+            {"opencode.json": {"mcp": {"srv": {}}, "plugin": ["npm-plugin"], "skills": {"paths": ["elsewhere"], "urls": ["https://x"]}}}
+        )
+        for key in ("mcp:srv", "plugin:npm-plugin", "unrecognised:skills-path:elsewhere", "unrecognised:skills-url:https://x"):
+            self.assertIn(key, found)
+        # Language servers and formatters are on unless switched off, and both execute code.
+        self.assertIn("lsp:opencode", found)
+        self.assertIn("unrecognised:opencode-formatter", found)
+
+    def test_the_committed_configuration_carries_nothing_implicit(self):
+        found = self.enumerate({"opencode.json": {"skills": {"paths": [".claude/skills"]}, "lsp": False, "formatter": False}})
+        self.assertEqual({}, found)

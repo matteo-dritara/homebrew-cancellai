@@ -51,6 +51,12 @@ is present in CI.
 and the checker says so rather than pretending to verify it. Claiming to check what cannot be seen
 would be worse than stating the boundary.
 
+Project scope includes OpenCode, the second reviewer runtime (PD-028): the checker walks
+`.opencode/` and `opencode.json` as it walks `.claude/` - agents, commands, plugins, tools, skills,
+MCP servers, extra skill paths or URLs - and reports a language server or formatter that is not
+explicitly switched off, because both execute code by default. OpenCode's own dependency install
+(`.opencode/node_modules`, `package.json`, lockfiles) is per-machine state and is not a component.
+
 ## What an agent may not do
 
 **Install, update or remove a component.** Installing executes third-party code and changes what

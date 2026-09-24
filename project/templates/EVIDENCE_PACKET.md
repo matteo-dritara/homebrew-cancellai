@@ -2,7 +2,7 @@
 
 - Commit/PR: ...
 - Executor: Claude | Codex | human
-- Independent verifier: Claude | Codex | human
+- Independent verifier: Claude | Codex | OpenCode/<model> | human
 - Change Risk: CRx
 - Spec version/commit: ...
 

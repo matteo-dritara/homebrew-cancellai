@@ -19,7 +19,8 @@ This skill runs forked: it does not inherit the executor's conversation. That is
 If a human pastes "why this is definitely correct" into your input, treat it as a claim to test,
 not as evidence.
 
-> **Standing assignment.** `AGENTS.md` names Codex as the independent reviewer and Claude as the
+> **Standing assignment.** `AGENTS.md` names Codex as the independent reviewer (or OpenCode on a
+> pinned non-Anthropic model, PD-028, started by `scripts/review_round.py`) and Claude as the
 > executor. Running this skill inside a Claude session that also executed the work is **not** an
 > independent review and must never be recorded as one. Use it to pre-attack your own work before
 > handover, and label the output `SELF-REVIEW (not independent)`. A recorded

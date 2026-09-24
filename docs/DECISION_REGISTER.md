@@ -385,3 +385,4 @@ Codex credit limits stopped independent review for hours at a time. The owner ac
 - scripts/process_metrics.py reports independent rounds per reviewer family and lists pre-reviews apart from rounds.
 - The owner's cap of two independent reviews per story counts formal rounds from either reviewer; pre-reviews do not count.
 - The end-of-project retrospective revisits the pool with measured per-family yield.
+- Data policy: OpenRouter serves free models only to accounts that allow provider training on prompts (a request with provider.data_collection=deny is unroutable, verified 2026-09-24). A free-model review therefore sends this public repository's code and committed briefs to a provider that may train on them; nothing private may enter a review prompt. Moving to a paid model with data_collection=deny is an owner decision.

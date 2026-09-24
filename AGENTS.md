@@ -136,7 +136,7 @@ Executor:
   (`docs/development/AGENT_PROTOCOL.md`, "Method defects");
 - set the story to `ready_for_review` and stop there.
 
-`ready_for_review` is the executor's exit state. Never mark your own work `verification` or `done`, and never write your own CR4 Safety Verdict. Claude is the standing executor; Codex performs the independent review.
+`ready_for_review` is the executor's exit state. Never mark your own work `verification` or `done`, and never write your own CR4 Safety Verdict. Claude is the standing executor; Codex performs the independent review - or, when Codex is unavailable, OpenCode on a pinned non-Anthropic model (PD-028), always through `scripts/review_round.py`.
 
 Review runs at **epic** scope, once every story in the epic is `ready_for_review`. It stops on
 **measured yield**, not on a round count: another round is required while a round rejects 10% or

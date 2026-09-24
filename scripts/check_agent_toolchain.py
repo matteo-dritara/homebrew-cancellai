@@ -362,6 +362,7 @@ def installed_project_components() -> dict[str, str]:
     "nothing unmanaged". The control's entire purpose is that an addition becomes visible.
     """
     present: dict[str, str] = {}
+    _opencode_components(present)
     claude = ROOT / ".claude"
     if not claude.is_dir():
         return present
@@ -404,6 +405,78 @@ def installed_project_components() -> dict[str, str]:
     if project_mcp.is_file():
         _settings_components(project_mcp, present)
     return present
+
+
+# OpenCode, the second reviewer runtime (PD-028, E34-S04), loads components from `.opencode/` and
+# `opencode.json` exactly as Claude Code loads them from `.claude/`. It writes its own dependency
+# install next to them; that is per-machine state, gitignored by OpenCode itself.
+OPENCODE_LOCAL_STATE = {"node_modules", "package.json", "package-lock.json", "bun.lock", ".gitignore"}
+OPENCODE_DIRECTORIES = {
+    "agent": "subagent",
+    "agents": "subagent",
+    "command": "command",
+    "commands": "command",
+    "plugin": "plugin",
+    "plugins": "plugin",
+    "tool": "plugin",
+    "tools": "plugin",
+}
+OPENCODE_CONFIGS = ("opencode.json", "opencode.jsonc", ".opencode/opencode.json", ".opencode/opencode.jsonc")
+# The repository's own pack, which `opencode.json` loads back after the harness disables OpenCode's
+# `~/.claude` loading. Any other skill path or URL is a component nobody decided to carry.
+OPENCODE_KNOWN_SKILL_PATHS = {".claude/skills"}
+
+
+def _opencode_components(present: dict[str, str]) -> None:
+    """Agents, commands, plugins, tools, skills, MCP servers, language servers and formatters that
+    OpenCode would load for a session in this repository. Fails closed like the `.claude/` walk:
+    anything under `.opencode/` it does not recognise is reported, not ignored."""
+    opencode = ROOT / ".opencode"
+    if opencode.is_dir():
+        for entry in sorted(opencode.iterdir()):
+            if entry.name in OPENCODE_LOCAL_STATE:
+                continue
+            relative = entry.relative_to(ROOT).as_posix()
+            if entry.is_dir() and entry.name in OPENCODE_DIRECTORIES:
+                kind = OPENCODE_DIRECTORIES[entry.name]
+                for item in sorted(entry.rglob("*")):
+                    if item.is_file() and not item.name.startswith("."):
+                        present[f"{kind}:opencode/{item.stem}"] = item.relative_to(ROOT).as_posix()
+            elif entry.is_dir() and entry.name in {"skill", "skills"}:
+                for skill in sorted(entry.iterdir()):
+                    if skill.is_dir():
+                        present[f"skill:{skill.relative_to(ROOT).as_posix()}"] = skill.relative_to(ROOT).as_posix()
+            elif entry.name not in {"opencode.json", "opencode.jsonc"}:
+                present[f"unrecognised:{relative}"] = relative
+    for name in OPENCODE_CONFIGS:
+        path = ROOT / name
+        if not path.is_file():
+            continue
+        try:
+            config = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            present[f"unreadable:{name}"] = name
+            continue
+        for server in config.get("mcp", {}):
+            present[f"mcp:{server}"] = name
+        for plugin in config.get("plugin", []):
+            present[f"plugin:{plugin}"] = name
+        for agent in config.get("agent", {}):
+            present[f"subagent:opencode/{agent}"] = name
+        for command in config.get("command", {}):
+            present[f"command:opencode/{command}"] = name
+        skills = config.get("skills", {})
+        for skill_path in skills.get("paths", []):
+            if skill_path not in OPENCODE_KNOWN_SKILL_PATHS:
+                present[f"unrecognised:skills-path:{skill_path}"] = name
+        for url in skills.get("urls", []):
+            present[f"unrecognised:skills-url:{url}"] = name
+        # Both are enabled by default and both execute code: a language server is downloaded and run,
+        # a formatter rewrites files a reviewer touched. Absent means enabled.
+        if config.get("lsp", True) is not False:
+            present["lsp:opencode"] = name
+        if config.get("formatter", True) is not False:
+            present["unrecognised:opencode-formatter"] = name
 
 
 def stale_decisions(components: list[dict[str, Any]], cadence: int, today: dt.date) -> list[tuple[str, int]]:

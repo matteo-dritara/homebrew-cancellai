@@ -4239,3 +4239,23 @@ Independent review is this repository's central method and it has depended on on
 
 - `docs/development/AGENT_PROTOCOL.md`
 - `project/decisions.json`
+
+### E34-S04 - The toolchain gate sees what OpenCode would load
+
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E34-S02 | **Safety obligations:** none
+
+**Outcome.** scripts/check_agent_toolchain.py enumerates .opencode/ and opencode.json as it enumerates .claude/, so a component the second reviewer runtime carries is managed or fails the gate.
+
+**Acceptance criteria**
+
+- The system shall report every agent, command, plugin, tool, skill and MCP server that .opencode/ or opencode.json declares as a component the manifest must manage.
+- If .opencode/ holds an entry the checker does not recognise, then it shall be reported as unrecognised rather than ignored.
+- If opencode.json leaves language servers or formatters enabled, including by omission, then the checker shall report them, because both execute code by default.
+
+**Verification**
+
+- Unit tests over synthetic .opencode trees and configurations; check passes on the committed repository with the reviewer agents registered.
+
+**Documentation impact**
+
+- `docs/development/AGENT_TOOLCHAIN.md`

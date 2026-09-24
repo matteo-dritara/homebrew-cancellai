@@ -127,6 +127,32 @@ class AppendOnlyTests(unittest.TestCase):
             self.assertTrue(rr.append_only_problems(repo, [relative], base))
 
 
+class ReviewerEnvironmentTests(unittest.TestCase):
+    def test_a_reviewer_cannot_push_to_origin(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subprocess.run(["git", "init", "-q", "--bare", str(root / "remote.git")], check=True)  # noqa: S603, S607
+            repo = root / "repo"
+            subprocess.run(["git", "init", "-q", str(repo)], check=True)  # noqa: S603, S607
+            (repo / "f").write_text("x", encoding="utf-8")
+            config = ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false"]
+            subprocess.run(["git", *config, "add", "f"], cwd=repo, check=True)  # noqa: S603, S607
+            subprocess.run(["git", *config, "commit", "-qm", "x"], cwd=repo, check=True)  # noqa: S603, S607
+            subprocess.run(["git", "remote", "add", "origin", str(root / "remote.git")], cwd=repo, check=True)  # noqa: S603, S607
+            env = rr.reviewer_env(root / "logs")
+            pushed = subprocess.run(["git", "push", "-q", "origin", "HEAD:main"], cwd=repo, env=env, capture_output=True, check=False)  # noqa: S607
+            self.assertNotEqual(pushed.returncode, 0)
+            self.assertEqual(env["OPENCODE_DISABLE_CLAUDE_CODE"], "1")
+            self.assertNotIn("SSH_AUTH_SOCK", env)
+            self.assertTrue(env["GH_CONFIG_DIR"].startswith(str(root / "logs")))
+
+    def test_a_failed_run_says_why(self) -> None:
+        log = 'timestamp=1 level=ERROR run=x message="stream error" error.error.code=503 '
+        log += 'error.error.message="Service temporarily overloaded" x=y\n'
+        self.assertEqual(rr.last_error(log), "Service temporarily overloaded")
+        self.assertEqual(rr.last_error("level=INFO fine\n"), "")
+
+
 class BriefTests(unittest.TestCase):
     def test_a_story_without_a_committed_brief_is_refused(self) -> None:
         with self.assertRaises(rr.ReviewError):

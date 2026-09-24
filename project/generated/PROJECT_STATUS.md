@@ -4,19 +4,19 @@
 
 Current phase: **P1**
 
-Epics: **35** | Stories: **182**
+Epics: **35** | Stories: **183**
 
 ## Story status
 
 - `cancelled`: 1
 - `done`: 175
 - `planned`: 1
-- `ready_for_review`: 5
+- `ready_for_review`: 6
 
 ## Change risk distribution
 
 - `CR0`: 14
-- `CR1`: 41
+- `CR1`: 42
 - `CR2`: 52
 - `CR3`: 33
 - `CR4`: 42
@@ -32,3 +32,4 @@ Epics: **35** | Stories: **182**
 - **E34-S01** - A review round is run by a harness that proves who reviewed and what they changed (CR2)
 - **E34-S02** - OpenCode reviewer agents with tool-enforced permissions and a pinned model (CR1)
 - **E34-S03** - Advisory pre-review is recorded and never counted; the reviewer pool is a decision (CR1)
+- **E34-S04** - The toolchain gate sees what OpenCode would load (CR1)

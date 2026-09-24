@@ -268,6 +268,34 @@
         "rationale": "Trail of Bits is a named security vendor with a public track record. Ships one skill, no hooks, no MCP server: prompt content only."
       },
       "license_source_revision": "github:trailofbits/skills@027bc47a69a276c340717bafdc3708263094b9a4"
+    },
+    {
+      "id": "opencode-reviewer-agents",
+      "kind": "subagent",
+      "scope": "project",
+      "source": ".opencode/agents",
+      "version": "tracked-in-repo",
+      "license": "MIT",
+      "trust": "FirstParty",
+      "capabilities": [
+        "subagent",
+        "executes-code",
+        "network",
+        "writes-files"
+      ],
+      "always_on_tokens": 0,
+      "members": [
+        "subagent:opencode/pre-reviewer",
+        "subagent:opencode/verifier"
+      ],
+      "purpose": "The second independent reviewer's agent definitions (PD-028): OpenCode's verifier and advisory pre-reviewer, each pinned to one non-Anthropic model through OpenRouter, with tool permissions that default to deny. They never load in a Claude Code session; they load only in an OpenCode session that scripts/review_round.py starts in a review worktree, with ~/.claude loading, auto-update and language-server downloads disabled.",
+      "decision": {
+        "status": "approved",
+        "by": "owner",
+        "date": "2026-09-24",
+        "rationale": "Owner accepted OpenCode + OpenRouter as a second reviewer when Codex credits ran out. Authored here; the agents run a hosted model that can execute allow-listed commands in a throwaway worktree, whose output the harness path-checks before anything is imported."
+      },
+      "license_source_revision": "self:e9cd2cdeedb648a9fe08147718a5a5c05758e9ea"
     }
   ],
   "rejected": [

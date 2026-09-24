@@ -8,7 +8,6 @@ permission:
   glob: allow
   grep: allow
   list: allow
-  lsp: allow
   skill: allow
   task: deny
   question: deny
@@ -35,8 +34,7 @@ permission:
     "git show*": allow
     "git ls-files*": allow
     "git rev-parse*": allow
-    "gh run list*": allow
-    "gh run view*": allow
+    "gh *": deny
     "ls*": allow
     "cat *": allow
     "head *": allow

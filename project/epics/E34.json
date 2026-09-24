@@ -72,6 +72,28 @@
         "docs/development/AGENT_PROTOCOL.md",
         "project/decisions.json"
       ]
+    },
+    {
+      "id": "E34-S04",
+      "title": "The toolchain gate sees what OpenCode would load",
+      "status": "ready_for_review",
+      "outcome": "scripts/check_agent_toolchain.py enumerates .opencode/ and opencode.json as it enumerates .claude/, so a component the second reviewer runtime carries is managed or fails the gate.",
+      "change_risk": "CR1",
+      "dependencies": [
+        "E34-S02"
+      ],
+      "acceptance_criteria": [
+        "The system shall report every agent, command, plugin, tool, skill and MCP server that .opencode/ or opencode.json declares as a component the manifest must manage.",
+        "If .opencode/ holds an entry the checker does not recognise, then it shall be reported as unrecognised rather than ignored.",
+        "If opencode.json leaves language servers or formatters enabled, including by omission, then the checker shall report them, because both execute code by default."
+      ],
+      "safety_obligations": [],
+      "verification": [
+        "Unit tests over synthetic .opencode trees and configurations; check passes on the committed repository with the reviewer agents registered."
+      ],
+      "documentation_impact": [
+        "docs/development/AGENT_TOOLCHAIN.md"
+      ]
     }
   ]
 }

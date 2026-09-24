@@ -18,6 +18,15 @@ PASS
 | AC2 - one pinned model for every agent and the small model | `opencode.json` pins `model` and `small_model` to `openrouter/nvidia/nemotron-3-ultra-550b-a55b:free`, both agents pin the same model; the harness's stream check (E34-S01 AC3) catches a session that streamed another one. The smoke run showed the default small model (a second family) before pinning - the reason for this AC. | PASS |
 | AC3 - a permission not explicitly allowed is denied, not prompted | Every permission map starts from `"*": deny`, `doom_loop: deny`, `question: deny`; `opencode.json` denies edit/bash/web by default for any other agent. `share: disabled`, `autoupdate: false`. | PASS |
 
+## Repairs from the configuration audit (2026-09-24)
+
+| Finding | Repair |
+| --- | --- |
+| Language servers are downloaded and run by default; formatters rewrite edited files | `opencode.json`: `"lsp": false`, `"formatter": false`; the `lsp` permission removed from both agents |
+| Any configured provider could serve a session | `"enabled_providers": ["openrouter"]` |
+| `gh` was allowed but the harness now gives it no credentials | `gh *` denied in both agents |
+| Personal skills from `~/.claude` loaded into the reviewer | `"skills": {"paths": [".claude/skills"]}` with the harness disabling `.claude` loading (E34-S01) |
+
 ## Verification Commands
 
 ```text
