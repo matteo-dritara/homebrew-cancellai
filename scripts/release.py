@@ -24,7 +24,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import hashlib
-import itertools
+import importlib.util
 import json
 import os
 import re
@@ -612,38 +612,27 @@ AUTHORIZATION_FIELD_RE = re.compile(r"^(Authorized-by|Version|Safety-Verdict-SHA
 
 
 ROUND_HEADING_RE = re.compile(r"^## Round \d+\b", re.MULTILINE)
-SECTION_HEADING_RE = re.compile(r"^## ", re.MULTILINE)
-VERDICT_HEADING_RE = re.compile(r"## Verdict\s*$", re.MULTILINE)
-VERDICT_LINE_RE = re.compile(r"^\s*`?(PASS_WITH_RESIDUALS|PASS|FAIL|REJECT)`?\s*$", re.MULTILINE | re.IGNORECASE)
-FENCE_RE = re.compile(r"^```.*?^```\s*$", re.MULTILINE | re.DOTALL)
 
 
 def safety_verdict_passes(path: Path) -> bool:
-    """Whether the migration Safety Verdict's final round passes, read from what may decide it: the
-    last `## Round <n>` heading's own body plus the template's `## Verdict` section when it is the
-    very next section, and any FAIL/REJECT there fails;
-    fenced blocks excluded. A verdict-shaped line in any other later section - an "owner note",
-    say - makes the verdict unreadable, so it fails (E06 review round 10). The same rule as
-    `project_os.py`'s gate (E35-S01)."""
+    """Whether the migration Safety Verdict's final round passes: `project_os.py`'s own gate
+    (E35-S01 - the final round's body decides by its last verdict line, the template's `## Verdict`
+    section only right after it and in agreement, and a verdict line in any other later section
+    refuses), loaded by file location like the other scripts do, so the release and the control
+    plane apply one rule, not two copies of it. The cutover also requires the verdict to record its
+    rounds under `## Round <n>` headings."""
     try:
-        text = FENCE_RE.sub("", path.read_text(encoding="utf-8"))
+        if not ROUND_HEADING_RE.search(path.read_text(encoding="utf-8")):
+            return False
     except OSError:
         return False
-    rounds = list(ROUND_HEADING_RE.finditer(text))
-    if not rounds:
-        return False
-    sections = [*SECTION_HEADING_RE.finditer(text, rounds[-1].end()), None]
-    admissible = [text[rounds[-1].end() : sections[0].start() if sections[0] else len(text)]]
-    for index, (here, following) in enumerate(itertools.pairwise(sections)):
-        if here is None:
-            break
-        section = text[here.start() : following.start() if following else len(text)]
-        if index == 0 and VERDICT_HEADING_RE.match(section):
-            admissible.append(section)  # the template's own section, only right after the round
-        elif VERDICT_LINE_RE.search(section):
-            return False
-    verdicts = {match.group(1).upper() for match in VERDICT_LINE_RE.finditer("\n".join(admissible))}
-    return bool(verdicts) and not verdicts & {"FAIL", "REJECT"}
+    spec = importlib.util.spec_from_file_location("cancellai_project_os_release", Path(__file__).resolve().parent / "project_os.py")
+    if spec is None or spec.loader is None:
+        raise ReleaseError("cannot load scripts/project_os.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module  # its dataclasses resolve their module through sys.modules
+    spec.loader.exec_module(module)
+    return bool(module.safety_verdict_passes(path))
 
 
 CODEOWNERS = ROOT / ".github" / "CODEOWNERS"
