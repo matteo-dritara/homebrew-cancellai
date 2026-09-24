@@ -112,6 +112,58 @@ class HandoffCases(unittest.TestCase):
         self.assertIn("no VERIFIER_BRIEF.md", problems[0].replace(handoff.BRIEF, "VERIFIER_BRIEF.md"))
 
 
+class ASupersededBriefKeepsItsVerdicts(HandoffCases):
+    """E34-S05: narrowing a criterion after a round re-renders the brief; the round that answered
+    the earlier brief must still answer a document the gate rendered, and nothing else may."""
+
+    NEW_BODY = BODY + "- a narrowed criterion\n"
+
+    def rerender(self, body: str) -> None:
+        with mock.patch.object(handoff, "render_brief", return_value=body):
+            handoff.write_brief("E00-S01", "Claude (executor)", handoff.dt.date(2026, 9, 24))
+
+    def test_rerendering_archives_the_previous_brief_byte_for_byte(self) -> None:
+        old = self.write_brief()
+        before = (self.evidence / "E00-S01" / handoff.BRIEF).read_bytes()
+        self.rerender(self.NEW_BODY)
+        archive = self.evidence / "E00-S01" / f"VERIFIER_BRIEF.superseded-{old[:12]}.md"
+        self.assertEqual(archive.read_bytes(), before)
+
+    def test_an_unchanged_rerender_archives_nothing(self) -> None:
+        self.write_brief()
+        self.rerender(BODY)
+        self.assertEqual(list((self.evidence / "E00-S01").glob(handoff.SUPERSEDED_GLOB)), [])
+
+    def test_an_earlier_verdict_answers_its_superseded_brief(self) -> None:
+        self.write_verdict(checksum=self.write_brief())
+        self.rerender(self.NEW_BODY)
+        self.assertEqual(handoff.check_story("E00-S01"), [])
+
+    def test_a_checksum_matching_neither_brief_is_refused(self) -> None:
+        self.write_brief()
+        self.rerender(self.NEW_BODY)
+        self.write_verdict(checksum=handoff.digest(BODY + " elsewhere"))
+        problems = handoff.check_story("E00-S01")
+        self.assertEqual(len(problems), 1)
+        self.assertIn("no superseded brief matches", problems[0])
+
+    def test_a_tampered_superseded_brief_answers_nothing(self) -> None:
+        old = self.write_brief()
+        self.rerender(self.NEW_BODY)
+        archive = self.evidence / "E00-S01" / f"VERIFIER_BRIEF.superseded-{old[:12]}.md"
+        archive.write_text(archive.read_text(encoding="utf-8") + "- a criterion added later\n", encoding="utf-8")
+        self.write_verdict(checksum=old)
+        problems = handoff.check_story("E00-S01")
+        self.assertTrue(any("does not hash to its declared checksum" in p for p in problems), problems)
+        self.assertTrue(any("no superseded brief matches" in p for p in problems), problems)
+
+    def test_the_executor_may_not_author_a_verdict_on_a_superseded_brief_either(self) -> None:
+        old = self.write_brief()
+        self.rerender(self.NEW_BODY)
+        self.write_verdict(checksum=old, verifier="Claude (executor)")
+        self.assertTrue(any("collapse" in p for p in handoff.check_story("E00-S01")))
+
+
 class TheSeparationSurvivesTheAutomation(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = TemporaryDirectory()

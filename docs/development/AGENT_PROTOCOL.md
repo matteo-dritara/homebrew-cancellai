@@ -295,6 +295,13 @@ itself on a `Verifier:` line. `check` refuses a verdict that answers a checksum 
 committed brief's, a brief edited after it was rendered, a verdict that ignores an existing brief,
 and a verdict with no author.
 
+A story's criteria can change after a round - the owner narrowing one the reviewer showed was
+overclaimed, for instance. Re-rendering then keeps the previous brief, byte for byte, as
+`VERIFIER_BRIEF.superseded-<checksum>.md`, and a verdict may answer the current brief or a
+superseded one; a superseded brief whose body no longer hashes to its checksum answers nothing
+(E34-S05). The review harness always quotes the current brief, so a new round answers the new
+criteria.
+
 **The refusal that matters most** is the one that keeps the two roles apart: a verdict whose
 `Verifier:` is the party that rendered the brief is refused outright. Automating a handoff between
 two roles is the most direct way to collapse them, so the rule that an executor's work ends at

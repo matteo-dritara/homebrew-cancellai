@@ -49,6 +49,9 @@ ROOT = Path(__file__).resolve().parent.parent
 PROJECT = ROOT / "project"
 EVIDENCE = PROJECT / "evidence"
 BRIEF = "VERIFIER_BRIEF.md"
+# A brief re-rendered after its story's criteria changed keeps its predecessor beside it, so a
+# verdict that answered the earlier brief still answers a document the gate rendered (E34-S05).
+SUPERSEDED_GLOB = "VERIFIER_BRIEF.superseded-*.md"
 
 HEADER_END = "<!-- end handoff header -->"
 CHECKSUM_LINE = re.compile(r"^Brief-Checksum:\s*([0-9a-f]{64})\s*$", re.MULTILINE)
@@ -134,6 +137,11 @@ def write_brief(story_id: str, rendered_by: str, today: dt.date) -> Path:
     body = relocate_links(render_brief(story_id))
     path = brief_path(story_id)
     path.parent.mkdir(parents=True, exist_ok=True)
+    previous = read_brief(story_id)
+    if previous is not None and previous["declared"] and previous["declared"] != digest(body):
+        # Kept byte for byte: it is what earlier verdicts answered.
+        archive = path.with_name(f"VERIFIER_BRIEF.superseded-{previous['declared'][:12]}.md")
+        archive.write_bytes(path.read_bytes())
     header = (
         f"<!-- Rendered by scripts/verifier_handoff.py. The checksum is over the body below this\n"
         f"header; a verdict answering this brief repeats it, so the ledger can tell whether the\n"
@@ -152,6 +160,15 @@ def read_brief(story_id: str) -> dict[str, Any] | None:
     path = brief_path(story_id)
     if not path.is_file():
         return None
+    return brief_facts(path)
+
+
+def superseded_briefs(story_id: str) -> list[dict[str, Any]]:
+    directory = EVIDENCE / story_id
+    return [brief_facts(path) for path in sorted(directory.glob(SUPERSEDED_GLOB))] if directory.is_dir() else []
+
+
+def brief_facts(path: Path) -> dict[str, Any]:
     text = path.read_text(encoding="utf-8")
     declared = CHECKSUM_LINE.search(text)
     rendered_by = RENDERED_BY.search(text)
@@ -208,6 +225,17 @@ def check_story(story_id: str) -> list[str]:
         if not brief["rendered_by"]:
             problems.append(f"{story_id}: {BRIEF} records no Rendered-by, so the separation it exists to prove cannot be checked")
 
+    # A superseded brief is admissible only while it is still the document it claims to be.
+    answerable = {brief["actual"]: brief} if brief is not None else {}
+    for old in superseded_briefs(story_id):
+        name = old["path"].relative_to(ROOT)
+        if old["declared"] is None or old["declared"] != old["actual"]:
+            problems.append(f"{name}: its body does not hash to its declared checksum, so no verdict can answer it")
+        elif not old["rendered_by"]:
+            problems.append(f"{name}: records no Rendered-by, so no verdict can answer it")
+        else:
+            answerable.setdefault(old["actual"], old)
+
     for verdict in verdicts_for(story_id):
         text = verdict.read_text(encoding="utf-8")
         claimed = checksum_for_story(text, story_id)
@@ -223,14 +251,17 @@ def check_story(story_id: str) -> list[str]:
         if brief is None:
             problems.append(f"{name}: names a brief checksum, but {story_id} has no {BRIEF} to answer")
             continue
-        if claimed != brief["actual"]:
+        answered = answerable.get(claimed)
+        if answered is None:
             problems.append(
                 f"{name}: answers checksum {claimed[:12]}, but {story_id}'s brief hashes to "
-                f"{brief['actual'][:12]} - this verdict answers a document that is not the committed brief"
+                f"{brief['actual'][:12]} and no superseded brief matches - this verdict answers a document "
+                "that is not the committed brief"
             )
+            answered = brief
         if author is None:
             problems.append(f"{name}: records no Verifier, and an unattributed verdict is not expressible")
-        elif brief["rendered_by"] and author.group(1).strip().lower() == brief["rendered_by"].strip().lower():
+        elif answered["rendered_by"] and author.group(1).strip().lower() == answered["rendered_by"].strip().lower():
             problems.append(
                 f"{name}: Verifier is {author.group(1)!r}, which is the party that rendered the brief. "
                 "An executor's work ends at ready_for_review and it does not write its own verdict - "

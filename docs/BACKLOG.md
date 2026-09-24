@@ -4207,7 +4207,7 @@ Independent review is this repository's central method and it has depended on on
 
 **Acceptance criteria**
 
-- The system shall define verifier and pre-reviewer agents whose permissions deny git commit, push, tag and reset, package installation, file removal and web access.
+- The system shall define verifier and pre-reviewer agents whose permissions deny every command that would git commit, push, tag or reset, install a package, remove a file or reach the web, including when it is issued through an allowed interpreter or test runner; code that an adversarial test written by the reviewer executes is bounded by the review worktree and the harness's path check and import (E34-S01), not by these permissions.
 - The system shall pin one model for every agent and for the small model, so a session streams from exactly one model.
 - If a permission is not explicitly allowed, then the agent shall be denied rather than prompted, because a non-interactive run cannot answer a prompt.
 
@@ -4259,3 +4259,23 @@ Independent review is this repository's central method and it has depended on on
 **Documentation impact**
 
 - `docs/development/AGENT_TOOLCHAIN.md`
+
+### E34-S05 - A brief re-rendered after its criteria change keeps the verdicts that answered the old one
+
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
+
+**Outcome.** verifier_handoff.py checked every verdict a story ever received against the story's current brief, so narrowing an acceptance criterion after a review round - as the owner did for E34-S02 on 2026-09-24 - made the earlier round's record fail the gate. Re-rendering now keeps the superseded brief beside the new one, and a verdict is valid when it answers either the current brief or a superseded brief the gate rendered.
+
+**Acceptance criteria**
+
+- When a brief is re-rendered with a different checksum, the system shall keep the previous brief byte for byte as a superseded brief named by its checksum.
+- The system shall accept a verdict whose checksum answers the story's current brief or one of its superseded briefs, and refuse any other checksum.
+- If a superseded brief's body does not hash to its declared checksum, or it records no Rendered-by, then the system shall report it and no verdict shall be accepted against it.
+
+**Verification**
+
+- Unit tests over a synthetic evidence tree: re-render archives, an old verdict passes against its superseded brief, an unknown checksum fails, a tampered superseded brief fails; check passes on the committed repository.
+
+**Documentation impact**
+
+- `docs/development/AGENT_PROTOCOL.md`

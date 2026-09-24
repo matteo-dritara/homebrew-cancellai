@@ -5,7 +5,7 @@ verifier was given this document or a paraphrase of it. -->
 Story: E34-S02
 Rendered-by: Claude
 Rendered-on: 2026-09-24
-Brief-Checksum: 5e918fad438f54e004dbca7c33dedb69e3e699fddccb9db97126c70add803454
+Brief-Checksum: f67a2ee4c768ed1a25d97575c01930ad7fc2778279284d1d5ceded8363618012
 
 <!-- end handoff header -->
 # Verifier Brief - E34-S02 - OpenCode reviewer agents with tool-enforced permissions and a pinned model
@@ -15,7 +15,7 @@ Outcome: OpenCode loads this repository's skill pack natively from .claude/skill
 Dependencies: none
 
 ## Acceptance Criteria
-- The system shall define verifier and pre-reviewer agents whose permissions deny every command that would git commit, push, tag or reset, install a package, remove a file or reach the web, including when it is issued through an allowed interpreter or test runner; code that an adversarial test written by the reviewer executes is bounded by the review worktree and the harness's path check and import (E34-S01), not by these permissions.
+- The system shall define verifier and pre-reviewer agents whose permissions deny git commit, push, tag and reset, package installation, file removal and web access.
 - The system shall pin one model for every agent and for the small model, so a session streams from exactly one model.
 - If a permission is not explicitly allowed, then the agent shall be denied rather than prompted, because a non-interactive run cannot answer a prompt.
 

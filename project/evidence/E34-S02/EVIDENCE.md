@@ -44,7 +44,9 @@ under `tests/` and `python3 -m pytest` will run it; that test is arbitrary Pytho
 command-level permission can bound. What bounds it is the review worktree, the reviewer
 environment (no credentials, no push URL) and the harness's path check and import (E34-S01). The
 AC's "deny package installation, file removal and web access" is met for every command the agent
-issues, not for code a test it wrote executes. Whether AC1 should say so is put to the owner.
+issues, not for code a test it wrote executes. Put to the owner on 2026-09-24, who chose to narrow AC1 to say exactly this: the permissions deny
+those operations for every command, including through an allowed interpreter or test runner, and
+code run by a test the reviewer wrote is bounded by the worktree and the harness (E34-S01).
 
 ## Verification Commands
 
