@@ -97,7 +97,11 @@ jobs:
       - name: the cutover formula installs and runs this commit's engine
         run: |
           set -euo pipefail
-          version="$(python3 cancellai.py version)"
+          # E06 review round 15: build the cutover release's own candidate - this commit moved to
+          # the cutover version, as `prepare` would - not a formula carrying today's version.
+          version="$(python3 scripts/release.py stage-candidate)"
+          git -c user.name=ci -c user.email=ci@example.invalid commit -qam "candidate $version"
+          test "$(python3 cancellai.py version)" = "$version"
           work="$RUNNER_TEMP/cutover"
           mkdir -p "$work/tap/Formula" "$work/engine/cancellai-cli-$version-aarch64-apple-darwin"
           (cd rust && CANCELLAI_CHANNEL=stable cargo build --release -p cancellai-cli --target-dir "$work/target")

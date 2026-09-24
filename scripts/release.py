@@ -133,6 +133,15 @@ def set_engine_version(version: str) -> None:
     RUST_LOCK.write_text(RUST_LOCK_MEMBER_RE.sub(lambda m: f"{m.group(1)}{version}{m.group(2)}", read(RUST_LOCK)), encoding="utf-8")
 
 
+def set_versions(version: str) -> None:
+    """Moves the source, the packaging metadata and the Rust workspace to `version` together - what
+    `prepare` does to the tree, and what `stage-candidate` does in CI to build the cutover release
+    before it exists (E06 review round 15)."""
+    CANCELLAI.write_text(VERSION_RE.sub(f'VERSION = "{version}"', read(CANCELLAI), count=1), encoding="utf-8")
+    PYPROJECT.write_text(PYPROJECT_VERSION_RE.sub(f'version = "{version}"', read(PYPROJECT), count=1), encoding="utf-8")
+    set_engine_version(version)
+
+
 def parse(version: str) -> tuple[int, int, int]:
     match = SEMVER_RE.match(version)
     if not match:
@@ -404,9 +413,7 @@ def prepare(version: str, epic_id: str | None = None, reason: str | None = None)
     if not body.strip():
         raise ReleaseError("CHANGELOG.md has nothing under Unreleased; there is nothing to release")
 
-    CANCELLAI.write_text(VERSION_RE.sub(f'VERSION = "{version}"', read(CANCELLAI), count=1), encoding="utf-8")
-    PYPROJECT.write_text(PYPROJECT_VERSION_RE.sub(f'version = "{version}"', read(PYPROJECT), count=1), encoding="utf-8")
-    set_engine_version(version)
+    set_versions(version)
 
     text = read(CHANGELOG)
     start = UNRELEASED_RE.search(text)
@@ -1093,6 +1100,7 @@ def build_parser() -> argparse.ArgumentParser:
     local_cmd.add_argument("--version", required=True)
     local_cmd.add_argument("--source-archive", required=True, type=Path)
     local_cmd.add_argument("--engine-archive", required=True, type=Path)
+    sub.add_parser("stage-candidate", help="CI only: move this checkout to the cutover version, to build that release's candidate")
     render_cmd = sub.add_parser("render-release-formula", help="the release workflow: the formula as a function of the manifest")
     render_cmd.add_argument("--version", required=True)
     render_cmd.add_argument("--manifest", required=True, type=Path)
@@ -1121,6 +1129,10 @@ def main(argv: list[str] | None = None) -> int:
             finalize(args.version, args.sha256, adopt_cutover=args.adopt_cutover)
         elif command == "render-local-cutover":
             print(render_local_cutover(args.version, args.source_archive.resolve(), args.engine_archive.resolve()), end="")
+        elif command == "stage-candidate":
+            candidate = ".".join(str(part) for part in CUTOVER_VERSION)
+            set_versions(candidate)
+            print(candidate)
         elif command == "render-release-formula":
             args.out.write_text(render_release_formula(args.version, args.manifest, args.source_sha), encoding="utf-8")
             print(f"rendered {args.out} for v{args.version} from {args.manifest}")

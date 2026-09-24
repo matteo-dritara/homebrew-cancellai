@@ -102,6 +102,16 @@ below is on `50b023e`, whose code the review reads (later commits change evidenc
 | C7 | Rollback documented | `docs/RELEASING.md` "Rolling back the cutover" (containment kill-switch, `cancellai-legacy`, formula revert) |
 | C8 | `finalize` refuses the cutover without the owner's authorization | E06-S15 (independently passed); `CutoverAuthorizationTests` |
 
+## Round 15 repair (Codex, `project/evidence/E06-VERIFIER-REVIEW-ROUND15.md`)
+
+Round 15 found C1, C2 and C4-C8 holding on the checklist and failed C3: the `homebrew` job
+rendered, installed and `brew test`ed the engine formula at the checkout's own version, 1.21.1, so
+it never installed a 2.0.0 formula. Repair: `release.py stage-candidate` moves the checkout to the
+cutover version exactly as `prepare` does (`set_versions`, now shared by both), the job commits
+that throwaway candidate and builds, archives, renders, installs, runs `verify-installed --version
+2.0.0` and `brew test` on it. Checked locally in a scratch clone: `stage-candidate` printed `2.0.0`,
+`cancellai.py version` and the built `cancellai-cli version` both report 2.0.0.
+
 ## Round 14 repairs (Codex, `project/evidence/E06-VERIFIER-REVIEW-ROUND14.md`)
 
 | Finding | Repair | Evidence |

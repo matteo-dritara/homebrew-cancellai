@@ -269,6 +269,32 @@ class EngineCutoverTests(unittest.TestCase):
             version = "1.22.0" if "pre-cutover" in label else "2.0.0"
             self.assertTrue(release.live_formula_problems(candidate, version), label)
 
+    def test_set_versions_moves_source_packaging_and_engine_together(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            files = {
+                "CANCELLAI": (root / "cancellai.py", release.read(release.CANCELLAI)),
+                "PYPROJECT": (root / "pyproject.toml", release.read(release.PYPROJECT)),
+                "RUST_WORKSPACE": (root / "Cargo.toml", release.read(release.RUST_WORKSPACE)),
+                "RUST_LOCK": (root / "Cargo.lock", release.read(release.RUST_LOCK)),
+            }
+            for path, text in files.values():
+                path.write_text(text, encoding="utf-8")
+            patches = [mock.patch.object(release, name, path) for name, (path, _) in files.items()]
+            patches.append(mock.patch.object(release, "RUST", root / "no-crates"))
+            for patch in patches:
+                patch.start()
+            try:
+                release.set_versions("2.0.0")
+                versions = release.current_versions()
+            finally:
+                for patch in patches:
+                    patch.stop()
+            self.assertEqual((versions.source, versions.packaging, versions.engine), ("2.0.0", "2.0.0", "2.0.0"))
+
     def test_render_formula_refuses_a_wrong_set_of_targets(self) -> None:
         with self.assertRaises(release.ReleaseError):
             release.render_formula("2.0.0", "f" * 64, {"riscv64-unknown-linux-gnu": ("u", "0" * 64)})
