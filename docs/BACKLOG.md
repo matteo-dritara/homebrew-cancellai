@@ -4178,7 +4178,7 @@ Independent review is this repository's central method and it has depended on on
 
 ### E34-S01 - A review round is run by a harness that proves who reviewed and what they changed
 
-**Status:** `in_progress` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** Rounds were run by hand: a prompt paraphrased by the executor, a worktree created ad hoc, and records imported by copying files - which is how one reviewer overwrote a 2026-09-01 record. scripts/review_round.py runs a round from the committed briefs for Codex or OpenCode, names the record so it can never overwrite one, and after the reviewer exits checks that every model the session streamed from is the declared, non-Anthropic model and that every changed path is one the tier allows.
 
@@ -4201,7 +4201,7 @@ Independent review is this repository's central method and it has depended on on
 
 ### E34-S02 - OpenCode reviewer agents with tool-enforced permissions and a pinned model
 
-**Status:** `in_progress` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** OpenCode loads this repository's skill pack natively from .claude/skills and can enforce per-agent permissions. Two agents - verifier and pre-reviewer - are defined in .opencode/agents with edits allowed only under project/evidence and the story statuses, dangerous shell commands denied, no web access, and one pinned model with no fallback; opencode.json pins the small model too, so no second model enters a session, and disables sharing and autoupdate.
 
@@ -4221,7 +4221,7 @@ Independent review is this repository's central method and it has depended on on
 
 ### E34-S03 - Advisory pre-review is recorded and never counted; the reviewer pool is a decision
 
-**Status:** `blocked` | **Change Risk:** `CR1` | **Dependencies:** E34-S01 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E34-S01 | **Safety obligations:** none
 
 **Outcome.** A pre-review on a free model is useful exactly because it is cheap, and harmful if it can pass for the independent verdict. Pre-review records are named <EPIC>-PRE-REVIEW-<n>.md, never count as a round or against the owner's two-review limit, and cannot close a story; process metrics report them separately and break independent rounds down by reviewer family. PD-028 names the reviewer pool and the rule.
 
@@ -4242,7 +4242,7 @@ Independent review is this repository's central method and it has depended on on
 
 ### E34-S04 - The toolchain gate sees what OpenCode would load
 
-**Status:** `blocked` | **Change Risk:** `CR1` | **Dependencies:** E34-S02 | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** E34-S02 | **Safety obligations:** none
 
 **Outcome.** scripts/check_agent_toolchain.py enumerates .opencode/ and opencode.json as it enumerates .claude/, so a component the second reviewer runtime carries is managed or fails the gate.
 
@@ -4262,7 +4262,7 @@ Independent review is this repository's central method and it has depended on on
 
 ### E34-S05 - A brief re-rendered after its criteria change keeps the verdicts that answered the old one
 
-**Status:** `in_progress` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
+**Status:** `ready_for_review` | **Change Risk:** `CR1` | **Dependencies:** none | **Safety obligations:** none
 
 **Outcome.** verifier_handoff.py checked every verdict a story ever received against the story's current brief, so narrowing an acceptance criterion after a review round - as the owner did for E34-S02 on 2026-09-24 - made the earlier round's record fail the gate. Re-rendering now keeps the superseded brief beside the new one, and a verdict is valid when it answers either the current brief or a superseded brief the gate rendered.
 
