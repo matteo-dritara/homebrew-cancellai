@@ -308,6 +308,16 @@ class ProjectOSTests(unittest.TestCase):
             )
             self.assertFalse(project_os.safety_verdict_passes(path))
 
+    def test_the_last_standalone_verdict_in_the_final_round_decides(self) -> None:
+        # E35-S01 AC1 says the last standalone verdict in the final round decides.
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "SAFETY_VERDICT.md"
+            path.write_text(
+                "## Round 10\n\nFAIL\n\nRe-evaluated after repair.\n\nPASS\n",
+                encoding="utf-8",
+            )
+            self.assertTrue(project_os.safety_verdict_passes(path))
+
     def test_every_committed_safety_verdict_keeps_its_judgement(self) -> None:
         # E35-S01 AC3: the change must not re-judge any Safety Verdict already committed. These two
         # closed CR4 stories put their verdict in the template's `## Verdict` section after a

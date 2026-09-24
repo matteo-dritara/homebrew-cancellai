@@ -10,7 +10,7 @@
     {
       "id": "E35-S01",
       "title": "safety_verdict_passes reads the final round's own verdict",
-      "status": "ready_for_review",
+      "status": "in_progress",
       "outcome": "When a Safety Verdict records rounds under `## Round <n>` headings, the gate reads the verdict from the final round's own section, and a verdict-shaped line in any later section makes the file refuse rather than decide. A file with no round headings keeps E32-S01's rule.",
       "change_risk": "CR2",
       "dependencies": [],
