@@ -60,7 +60,8 @@ signed notices. A network distribution channel is outside the perimeter and move
    containment (SI-029).
 5. **Implementation notes (E06-S07, 2026-09-23).** The persisted form is an append-only history
    of the raw installed bundles and local lifts, replayed and re-verified by the kernel on every
-   load; evidence is never deserialized. The history resists every input from outside the owner's
+   load; evidence is never deserialized. (ADR-0040, 2026-09-24: the history is a SQLite table,
+   read, decided and appended in one transaction, replacing the JSONL file.) The history resists every input from outside the owner's
    account but not the owner's own account: a same-user process can delete, truncate or append
    to it. The owner accepted that limit after Codex's design review raised it. Because the release
    channel is now live, every build without `CANCELLAI_CHANNEL=stable` compiled in - every local

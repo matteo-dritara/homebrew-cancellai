@@ -11,6 +11,8 @@
 //!
 //! The points, in the order `clean` reaches them: `roots-established`, `before-delete#n`,
 //! `after-delete#n`, `before-report`. `tests/kill_harness.rs` enumerates the same list.
+//! `containment install|refresh|lift` has one more, `containment-before-commit`, between the
+//! ledger row's insert and its commit (E33-S03, `tests/containment.rs`).
 //!
 //! - `CANCELLAI_KILL_POINT` names the point to arm, as `<point>` or `<point>#<n>` for the n-th
 //!   (zero-based) visit of a point reached once per action.

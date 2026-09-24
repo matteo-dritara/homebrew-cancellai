@@ -4199,7 +4199,7 @@ ADR-0039 kept the network out of the Rust cutover: a signed containment notice r
 **Acceptance criteria**
 
 - When the Guardian runs a cycle, the system shall refresh containment through the same verified path as containment refresh.
-- If the refresh fails for any reason, then the Guardian shall keep running and the ledger shall stay byte-identical.
+- If the refresh fails for any reason, then the Guardian shall keep running and the ledger's event rows shall stay identical.
 - The system shall keep exactly one implementation of fetch, verification and persistence shared by the CLI and the Guardian.
 
 **Verification**

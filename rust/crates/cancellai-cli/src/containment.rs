@@ -25,7 +25,9 @@ use cancellai_safety::{
     effective_authority_under_containment,
 };
 use cancellai_store::LocalStateRoot;
-use cancellai_store::containment_state::{self, Load, StoredEvent};
+use cancellai_store::containment_state::{self, Decision, Load, StoredEvent};
+
+use crate::kill_points;
 
 /// The cancellAI incident-response public key (publisher `cancellai-incident`, ADR-0039). The
 /// private half was generated on 2026-09-23 without touching disk in plaintext and is held
@@ -96,28 +98,32 @@ fn events_of(stored: Vec<StoredEvent>) -> Vec<ContainmentEvent> {
         .collect()
 }
 
-/// The ledger replayed from one read of the history, and that history's chain head - the head an
-/// append decided on this ledger must name (E06 review round 8).
-fn snapshot(root: &LocalStateRoot) -> Result<(ContainmentLedger, String), String> {
+/// The ledger replayed from `events` against the current trust policy.
+fn replay(
+    events: &[StoredEvent],
+    policy: &cancellai_safety::LocalTrustPolicy,
+) -> Result<ContainmentLedger, String> {
+    ContainmentLedger::replay(&events_of(events.to_vec()), policy).map_err(|(index, error)| {
+        format!(
+            "containment history event {} does not re-verify: {error}",
+            index + 1
+        )
+    })
+}
+
+/// The ledger as persisted, read without writing anything.
+fn snapshot(root: &LocalStateRoot) -> Result<ContainmentLedger, String> {
     let policy = trust_policy(root)?;
-    match containment_state::load_history(root) {
-        Load::Missing => Ok((ContainmentLedger::empty(), containment_state::empty_head())),
+    match containment_state::load_events(root) {
+        Load::Missing => Ok(ContainmentLedger::empty()),
         Load::Unreadable(reason) => Err(format!("containment history: {reason}")),
-        Load::Found(history) => {
-            match ContainmentLedger::replay(&events_of(history.events), &policy) {
-                Ok(ledger) => Ok((ledger, history.head)),
-                Err((index, error)) => Err(format!(
-                    "containment history event {} does not re-verify: {error}",
-                    index + 1
-                )),
-            }
-        }
+        Load::Found(events) => replay(&events, &policy),
     }
 }
 
 fn replay_at(root: &LocalStateRoot) -> LedgerState {
     match snapshot(root) {
-        Ok((ledger, _head)) => LedgerState::Known(ledger),
+        Ok(ledger) => LedgerState::Known(ledger),
         Err(reason) => LedgerState::Unknown(reason),
     }
 }
@@ -274,72 +280,91 @@ pub fn cmd_install(path: &std::path::Path) -> Result<Vec<String>, (i32, String)>
     install_text(&root, text, false)
 }
 
-/// Verifies `text` against the current history and trust, and appends it on success - the one
-/// path both `install` and `refresh` use.
+/// Verifies `text` against the history and trust, and appends it on success - the one path both
+/// `install` and `refresh` use. Reading the history, replaying it, deciding and appending happen in
+/// one ledger transaction (ADR-0040): a refusal, an "already current" and a decision that would
+/// have raced a concurrent change all insert nothing.
 fn install_text(
     root: &LocalStateRoot,
     text: String,
     from_feed: bool,
 ) -> Result<Vec<String>, (i32, String)> {
-    let (mut ledger, head) = snapshot(root).map_err(|reason| {
+    let policy = trust_policy(root).map_err(|e| (4, e))?;
+    let decided = containment_state::transact(
+        root,
+        |events| match decide_install(events, &policy, &text, from_feed) {
+            Ok(Some(messages)) => {
+                Decision::Append(StoredEvent::Install(text.clone()), Ok(messages))
+            }
+            Ok(None) => Decision::Keep(Ok(vec![
+                "already current: the same notice is installed".to_string(),
+            ])),
+            Err(refusal) => Decision::Keep(Err(refusal)),
+        },
+        || kill_points::reached("containment-before-commit", 0),
+    )
+    .map_err(|e| (4, format!("could not persist the containment: {e}")))?;
+    let messages = decided?;
+    // Read it back: the persisted history, not the in-memory ledger, is what later runs obey.
+    if let LedgerState::Unknown(reason) = replay_at(root) {
+        return Err((
+            4,
+            format!("the containment was written but the history no longer replays: {reason}"),
+        ));
+    }
+    Ok(messages)
+}
+
+/// The decision `install_text` makes inside the transaction: `Some(messages)` to append the notice,
+/// `None` when a feed notice is already the installed one, `Err` to refuse.
+fn decide_install(
+    events: &[StoredEvent],
+    policy: &cancellai_safety::LocalTrustPolicy,
+    text: &str,
+    from_feed: bool,
+) -> Result<Option<Vec<String>>, (i32, String)> {
+    let mut ledger = replay(events, policy).map_err(|reason| {
         (
             4,
             format!("refusing to install into an unusable ledger: {reason}"),
         )
     })?;
-    let policy = trust_policy(root).map_err(|e| (4, e))?;
-    let evidence = match ledger.install(&text, &policy, now_unix()) {
-        Ok(evidence) => evidence,
-        // A refresh racing another refresh of the same feed may read the history after the
-        // other one installed this very notice: that is current, not a replay (E06 review
-        // round 8). An explicit `install` of an installed notice stays a refused replay.
-        Err(cancellai_safety::ContainmentError::Replayed)
-            if from_feed && installed(root, &text) =>
-        {
-            return Ok(vec![
-                "already current: the same notice is installed".to_string(),
-            ]);
-        }
-        Err(error) => return Err((4, error.to_string())),
-    };
-    let appended =
-        containment_state::append_event(root, &StoredEvent::Install(text.clone()), &head)
-            .map_err(|e| (4, format!("could not persist the containment: {e}")))?;
-    // Read it back: the persisted history, not the in-memory ledger, is what later runs obey.
-    match replay_at(root) {
-        LedgerState::Known(_) => {}
-        LedgerState::Unknown(reason) => {
+    // Current means the feed serves the newest notice this ledger verified from its publisher.
+    // An older one - even one installed before - is a rollback and is refused (E06 review round
+    // 7); a newer one goes through the full install path, which verifies it.
+    if from_feed
+        && let Ok(bundle) = cancellai_safety::parse_bundle(text)
+        && let Some(last) = ledger.last_sequence(&bundle.publisher_id)
+    {
+        if bundle.sequence < last {
             return Err((
                 4,
-                format!("the containment was written but the history no longer replays: {reason}"),
+                format!(
+                    "the feed serves sequence {} from {}, older than the verified {last}; a rolled-back notice is refused and the ledger is unchanged",
+                    bundle.sequence, bundle.publisher_id
+                ),
             ));
         }
-    }
-    // A concurrent change was appended first, so nothing was written (E06 review rounds 8-9).
-    // The same notice installed by the winner is current.
-    if !appended.is_some_and(|nonce| accepted(root, &nonce)) {
-        if installed(root, &text) {
-            return Ok(vec![
-                "already current: the same notice was installed concurrently".to_string(),
-            ]);
+        if bundle.sequence == last && events.contains(&StoredEvent::Install(text.to_string())) {
+            return Ok(None);
         }
-        return Err((
-            4,
-            "a concurrent containment change was recorded first; this install was not applied - retry"
-                .to_string(),
-        ));
     }
-    Ok(evidence
-        .iter()
-        .map(|record| {
-            format!(
-                "contained {} for {} at {:?}",
-                record.incident_id(),
-                record.provider_id(),
-                record.ceiling()
-            )
-        })
-        .collect())
+    let evidence = ledger
+        .install(text, policy, now_unix())
+        .map_err(|error| (4, error.to_string()))?;
+    Ok(Some(
+        evidence
+            .iter()
+            .map(|record| {
+                format!(
+                    "contained {} for {} at {:?}",
+                    record.incident_id(),
+                    record.provider_id(),
+                    record.ceiling()
+                )
+            })
+            .collect(),
+    ))
 }
 
 pub fn cmd_list() -> Result<Vec<String>, (i32, String)> {
@@ -367,40 +392,31 @@ pub fn cmd_list() -> Result<Vec<String>, (i32, String)> {
 
 pub fn cmd_lift(incident_id: &str) -> Result<usize, (i32, String)> {
     let root = LocalStateRoot::resolve_platform_default().map_err(|e| (4, e.to_string()))?;
-    let (mut ledger, head) = snapshot(&root).map_err(|reason| {
-        (
-            4,
-            format!("refusing to lift from an unusable ledger: {reason}"),
-        )
-    })?;
-    let lifted = ledger.lift_locally(incident_id);
-    if lifted.is_empty() {
-        return Err((
-            2,
-            format!("no active containment has incident id {incident_id}"),
-        ));
-    }
-    let appended =
-        containment_state::append_event(&root, &StoredEvent::Lift(incident_id.to_string()), &head)
-            .map_err(|e| (4, format!("could not persist the lift: {e}")))?;
-    if !appended.is_some_and(|nonce| accepted(&root, &nonce)) {
-        return Err((
-            4,
-            "a concurrent containment change was recorded first; the lift was not applied - retry"
-                .to_string(),
-        ));
-    }
-    Ok(lifted.len())
-}
-
-/// Whether the append that returned `nonce` is part of the accepted history.
-fn accepted(root: &LocalStateRoot, nonce: &str) -> bool {
-    matches!(containment_state::load_history(root), Load::Found(history) if history.nonces.iter().any(|n| n == nonce))
-}
-
-/// Whether exactly `text` is an accepted install in the history.
-fn installed(root: &LocalStateRoot, text: &str) -> bool {
-    matches!(containment_state::load_log(root), Load::Found(events) if events.contains(&StoredEvent::Install(text.to_string())))
+    let policy = trust_policy(&root).map_err(|e| (4, e))?;
+    containment_state::transact(
+        &root,
+        |events| {
+            let mut ledger = match replay(events, &policy) {
+                Ok(ledger) => ledger,
+                Err(reason) => {
+                    return Decision::Keep(Err((
+                        4,
+                        format!("refusing to lift from an unusable ledger: {reason}"),
+                    )));
+                }
+            };
+            let lifted = ledger.lift_locally(incident_id);
+            if lifted.is_empty() {
+                return Decision::Keep(Err((
+                    2,
+                    format!("no active containment has incident id {incident_id}"),
+                )));
+            }
+            Decision::Append(StoredEvent::Lift(incident_id.to_string()), Ok(lifted.len()))
+        },
+        || kill_points::reached("containment-before-commit", 0),
+    )
+    .map_err(|e| (4, format!("could not persist the lift: {e}")))?
 }
 
 /// Where the cancellAI incident-response feed is published (E33-S01): the latest cumulative
@@ -535,7 +551,7 @@ fn fetch(url: &str) -> Fetched {
 
 /// `containment refresh` (E33-S01): fetch the published notice and install it through exactly
 /// the path `containment install` uses. Unavailable, oversized, malformed, replayed, rolled-back
-/// or untrusted input leaves the history byte-identical; a notice already installed is
+/// or untrusted input leaves the history's event rows unchanged; a notice already installed is
 /// "already current", not an error.
 pub fn cmd_refresh() -> Result<Vec<String>, (i32, String)> {
     let root = LocalStateRoot::resolve_platform_default().map_err(|e| (4, e.to_string()))?;
@@ -554,39 +570,9 @@ pub fn cmd_refresh() -> Result<Vec<String>, (i32, String)> {
             ));
         }
     };
-    // "Already current" is only true of a history that replays: an unverifiable history holding
-    // the same text is unknown, not current (E06 review round 6).
-    let ledger = match replay_at(&root) {
-        LedgerState::Known(ledger) => ledger,
-        LedgerState::Unknown(reason) => {
-            return Err((
-                4,
-                format!("refusing to refresh an unusable ledger: {reason}"),
-            ));
-        }
-    };
-    // Current means the feed serves the newest notice this ledger verified from its publisher.
-    // An older one - even one installed before - is a rollback and is refused (E06 review round
-    // 7); a newer one goes through the full install path, which verifies it.
-    if let Ok(bundle) = cancellai_safety::parse_bundle(&text)
-        && let Some(last) = ledger.last_sequence(&bundle.publisher_id)
-    {
-        if bundle.sequence < last {
-            return Err((
-                4,
-                format!(
-                    "the feed serves sequence {} from {}, older than the verified {last}; a rolled-back notice is refused and the ledger is unchanged",
-                    bundle.sequence, bundle.publisher_id
-                ),
-            ));
-        }
-        if bundle.sequence == last
-            && let Load::Found(events) = containment_state::load_log(&root)
-            && events.contains(&StoredEvent::Install(text.clone()))
-        {
-            return Ok(vec![format!("already current with {url}")]);
-        }
-    }
+    // Replay, rollback and "already current" are decided inside the ledger transaction, on the
+    // history the append would continue (ADR-0040). "Already current" is only ever said of a
+    // history that replays (E06 review round 6).
     install_text(&root, text, true)
 }
 

@@ -56,8 +56,41 @@ impl Tree {
         self.0.join("cancellai-home/state")
     }
 
-    fn log(&self) -> PathBuf {
-        self.state().join("containment_log.jsonl")
+    fn ledger(&self) -> PathBuf {
+        self.state().join("containment_ledger.sqlite3")
+    }
+
+    /// The ledger's event rows, in order - what a refusal must leave identical (E33-S03). A
+    /// missing ledger has none.
+    fn rows(&self) -> Vec<(String, String)> {
+        if !self.ledger().exists() {
+            return Vec::new();
+        }
+        let conn = rusqlite::Connection::open(self.ledger()).unwrap();
+        let mut statement = conn
+            .prepare("SELECT kind, payload FROM events ORDER BY seq")
+            .unwrap();
+        statement
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect()
+    }
+
+    /// Plants one event row directly, as a tampered or damaged ledger would hold it.
+    fn plant_row(&self, kind: &str, payload: &str) {
+        std::fs::create_dir_all(self.state()).unwrap();
+        let conn = rusqlite::Connection::open(self.ledger()).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS events (seq INTEGER PRIMARY KEY AUTOINCREMENT, \
+             kind TEXT NOT NULL, payload TEXT NOT NULL)",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO events (kind, payload) VALUES (?1, ?2)",
+            [kind, payload],
+        )
+        .unwrap();
     }
 
     fn seed_sessions(&self) {
@@ -282,7 +315,7 @@ fn every_refused_notice_leaves_the_history_byte_identical() {
     tree.trust_test_publisher();
     let first = signed(7, PUBLISHER, 1, None, &notice("INC-1", "claude-code"));
     assert_eq!(tree.install("first.json", &first).status.code(), Some(0));
-    let history = std::fs::read(tree.log()).unwrap();
+    let history = tree.rows();
 
     let mut forged: serde_json::Value = serde_json::from_str(&signed(
         7,
@@ -326,25 +359,26 @@ fn every_refused_notice_leaves_the_history_byte_identical() {
             "{name}: {}",
             String::from_utf8_lossy(&output.stderr)
         );
-        assert_eq!(
-            std::fs::read(tree.log()).unwrap(),
-            history,
-            "{name} changed the history"
-        );
+        assert_eq!(tree.rows(), history, "{name} changed the history");
     }
 }
 
 #[test]
 fn an_unreadable_or_unverifiable_history_caps_everything_at_recommend() {
     needs_stable_build!();
-    for (label, content) in [
-        ("truncated", "{\"install\":\"{\\\"schema"),
-        ("garbage", "not json at all\n"),
-        ("unsigned-install", "{\"install\":\"{}\"}\n"),
-    ] {
+    for label in ["truncated", "garbage", "unsigned-install", "unknown-kind"] {
         let tree = Tree::new(label);
         std::fs::create_dir_all(tree.state()).unwrap();
-        std::fs::write(tree.log(), content).unwrap();
+        match label {
+            "truncated" => {
+                tree.plant_row("lift", "INC-1");
+                let bytes = std::fs::read(tree.ledger()).unwrap();
+                std::fs::write(tree.ledger(), &bytes[..bytes.len() / 2]).unwrap();
+            }
+            "garbage" => std::fs::write(tree.ledger(), "not a database at all\n").unwrap(),
+            "unsigned-install" => tree.plant_row("install", "{}"),
+            _ => tree.plant_row("grant", "everything"),
+        }
         let plan = tree.plan();
         assert!(deletes(&plan).is_empty(), "{label}: {plan}");
         assert!(
@@ -498,11 +532,11 @@ fn refresh_installs_a_published_notice_once_and_is_current_after() {
         "{}",
         String::from_utf8_lossy(&first.stderr)
     );
-    let history = std::fs::read(tree.log()).unwrap();
+    let history = tree.rows();
     let again = tree.run_with_path(&["containment", "refresh"], Some(&bin));
     assert_eq!(again.status.code(), Some(0));
     assert!(String::from_utf8_lossy(&again.stdout).contains("already current"));
-    assert_eq!(std::fs::read(tree.log()).unwrap(), history);
+    assert_eq!(tree.rows(), history);
     let listed = tree.run(&["containment", "list"]);
     assert!(String::from_utf8_lossy(&listed.stdout).contains("INC-1"));
 }
@@ -514,7 +548,7 @@ fn every_unusable_feed_leaves_the_history_byte_identical() {
     tree.trust_test_publisher();
     let first = signed(7, PUBLISHER, 2, None, &notice("INC-1", "claude-code"));
     assert_eq!(tree.install("first.json", &first).status.code(), Some(0));
-    let history = std::fs::read(tree.log()).unwrap();
+    let history = tree.rows();
 
     let rolled_back = signed(7, PUBLISHER, 1, None, &notice("INC-2", "codex-cli"));
     let untrusted = signed(9, PUBLISHER, 3, None, &notice("INC-2", "codex-cli"));
@@ -543,11 +577,7 @@ fn every_unusable_feed_leaves_the_history_byte_identical() {
             "{label}: {}",
             String::from_utf8_lossy(&output.stderr)
         );
-        assert_eq!(
-            std::fs::read(tree.log()).unwrap(),
-            history,
-            "{label} changed the history"
-        );
+        assert_eq!(tree.rows(), history, "{label} changed the history");
         if label == "oversized" {
             assert!(
                 String::from_utf8_lossy(&output.stderr).contains("larger than"),
@@ -606,9 +636,8 @@ fn an_unverifiable_history_is_never_already_current() {
     tree.trust_test_publisher();
     let text = "{\"not\":\"a bundle\"}".to_string();
     std::fs::create_dir_all(tree.state()).unwrap();
-    let line = serde_json::json!({ "install": text }).to_string();
-    std::fs::write(tree.log(), format!("{line}\n")).unwrap();
-    let before = std::fs::read(tree.log()).unwrap();
+    tree.plant_row("install", &text);
+    let before = tree.rows();
     let bin = fake_curl(&tree, &text, "200", 0);
     let output = tree.run_with_path(&["containment", "refresh"], Some(&bin));
     assert_eq!(
@@ -618,7 +647,7 @@ fn an_unverifiable_history_is_never_already_current() {
         String::from_utf8_lossy(&output.stdout)
     );
     assert!(!String::from_utf8_lossy(&output.stdout).contains("already current"));
-    assert_eq!(std::fs::read(tree.log()).unwrap(), before);
+    assert_eq!(tree.rows(), before);
 }
 
 #[test]
@@ -646,7 +675,7 @@ fn a_feed_serving_an_older_installed_notice_is_refused_as_a_rollback() {
     let second = signed(7, PUBLISHER, 2, None, &notice("INC-1", "claude-code"));
     assert_eq!(tree.install("one.json", &first).status.code(), Some(0));
     assert_eq!(tree.install("two.json", &second).status.code(), Some(0));
-    let before = std::fs::read(tree.log()).unwrap();
+    let before = tree.rows();
     let bin = fake_curl(&tree, &first, "200", 0);
     let output = tree.run_with_path(&["containment", "refresh"], Some(&bin));
     assert_eq!(
@@ -656,7 +685,7 @@ fn a_feed_serving_an_older_installed_notice_is_refused_as_a_rollback() {
         String::from_utf8_lossy(&output.stdout)
     );
     assert!(String::from_utf8_lossy(&output.stderr).contains("older"));
-    assert_eq!(std::fs::read(tree.log()).unwrap(), before);
+    assert_eq!(tree.rows(), before);
     let bin = fake_curl(&tree, &second, "200", 1);
     let output = tree.run_with_path(&["containment", "refresh"], Some(&bin));
     assert_eq!(output.status.code(), Some(4), "curl failure is not current");
@@ -710,10 +739,9 @@ fn concurrent_refreshes_of_one_notice_leave_one_accepted_install_and_a_replayabl
             .count(),
         1
     );
-    // E06 review round 9: the losers must not have written anything - one physical line, not
-    // merely one accepted event.
-    let history = std::fs::read_to_string(tree.log()).unwrap();
-    assert_eq!(history.lines().count(), 1, "{history}");
+    // E06 review round 9: the losers must not have written anything - one row, not merely one
+    // accepted event.
+    assert_eq!(tree.rows().len(), 1, "{:?}", tree.rows());
 }
 
 /// E06 review round 8, the general case: many concurrent installs of different newer notices.
@@ -774,7 +802,59 @@ fn concurrent_installs_of_different_notices_never_break_the_history() {
         String::from_utf8_lossy(&listed.stdout).lines().count(),
         accepted
     );
-    // Every line in the history is an accepted install: a refused one wrote nothing.
-    let history = std::fs::read_to_string(tree.log()).unwrap();
-    assert_eq!(history.lines().count(), accepted, "{history}");
+    // Every row in the history is an accepted install: a refused one wrote nothing.
+    assert_eq!(tree.rows().len(), accepted, "{:?}", tree.rows());
+}
+
+/// E33-S03 AC3: a `containment install` killed after its row is inserted and before the
+/// transaction commits leaves no part of the event behind. The history still replays, and the
+/// same install succeeds on retry.
+#[cfg(feature = "kill-points")]
+#[test]
+fn an_install_killed_before_commit_leaves_no_partial_event() {
+    let tree = Tree::new("kill-before-commit");
+    tree.trust_test_publisher();
+    let first = signed(7, PUBLISHER, 1, None, &notice("INC-1", "claude-code"));
+    assert_eq!(tree.install("first.json", &first).status.code(), Some(0));
+    let before = tree.rows();
+    let second = signed(7, PUBLISHER, 2, None, &notice("INC-2", "codex-cli"));
+    let path = tree.write_notice("second.json", &second);
+    let marker = tree.0.join("killed-at");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_cancellai-cli"))
+        .args(["containment", "install", path.to_str().unwrap()])
+        .env("HOME", &tree.0)
+        .env("CANCELLAI_HOME", tree.0.join("cancellai-home"))
+        .env("CANCELLAI_KILL_POINT", "containment-before-commit")
+        .env("CANCELLAI_KILL_MARKER", &marker)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    while !marker.exists() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the install never reached its commit point"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    child.kill().unwrap();
+    child.wait().unwrap();
+    assert_eq!(tree.rows(), before, "the killed install left a row behind");
+    let listed = tree.run(&["containment", "list"]);
+    assert_eq!(
+        listed.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&listed.stderr)
+    );
+    assert!(!String::from_utf8_lossy(&listed.stdout).contains("INC-2"));
+    let retried = tree.install("second-again.json", &second);
+    assert_eq!(
+        retried.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&retried.stderr)
+    );
+    assert_eq!(tree.rows().len(), before.len() + 1);
 }

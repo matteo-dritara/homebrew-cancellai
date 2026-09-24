@@ -7,17 +7,15 @@
 //! give the kernel a second way to construct `IncidentEvidence` - from a file - which SI-022
 //! forbids.
 //!
-//! **Append-only, one line per event, one `write` per line, opened with `O_APPEND`.** There is no
-//! temporary file and no rename: a read-modify-rename cycle can lose a concurrent writer's event.
-//! Appends are serialized by an exclusive SQLite transaction on `containment_lock.sqlite3` beside
-//! the history - a file that is created once and never removed or written, so taking the lock is
-//! not a mutation outside the one safety boundary (SI-019), and the operating system releases it
-//! when its holder exits or crashes. Under that lock [`append_event`] re-reads the chain head and
-//! writes only when it is still the head the caller decided on: of concurrent appends decided on
-//! one history exactly one writes, and every other leaves the file byte for byte as it was (E06
-//! review round 9). A crash mid-write can still leave a torn last line, which makes the history
-//! fail to replay; the caller treats that as an unknown ledger - fail closed, never a silently
-//! weaker one.
+//! **One SQLite table, decided and appended in one transaction (ADR-0040, E33-S03).** Each event is
+//! one row of raw text. [`transact`] opens a `BEGIN IMMEDIATE` transaction, reads every row, hands
+//! them to the caller - which replays and verifies them through `cancellai-safety` and decides -
+//! and inserts at most the one row the caller decided on before committing. A decision that refuses,
+//! finds the notice already current, or runs after a concurrent change inserts nothing, and an
+//! interrupted transaction contributes no row: there is no losing line and no torn line. Rounds 8
+//! and 9 of the E06 review found both in the JSONL history this replaces; containment had not
+//! shipped, so nothing migrates. SQLite is persistence only: it stores opaque text and decides
+//! nothing.
 //!
 //! **What the history guarantees, and what it does not (owner decision, 2026-09-23).** The
 //! history resists everything that arrives from outside - a notice, a replayed or expired bundle,
@@ -27,20 +25,23 @@
 //! deleting this state as a local act; editing it is the same act. A same-user attacker can also
 //! delete the provider files directly, so the history adds no capability that attacker lacks.
 
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::Path;
 
-use sha2::{Digest, Sha256};
+use rusqlite::{Connection, OpenFlags, TransactionBehavior};
 
 use crate::LocalStateRoot;
 
-const LOG_FILENAME: &str = "containment_log.jsonl";
-const LOCK_FILENAME: &str = "containment_lock.sqlite3";
-/// How long an append waits for a concurrent one before giving up without writing.
-const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
+const LEDGER_FILENAME: &str = "containment_ledger.sqlite3";
+/// How long a transaction waits for a concurrent one before giving up without writing.
+const BUSY_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
 const TRUST_FILENAME: &str = "trusted_publishers.json";
-/// The largest history this module will read. A larger file is unreadable, not truncated.
-pub const MAX_LOG_BYTES: u64 = 16 * 1024 * 1024;
+/// The largest ledger this module will read. A larger file is unreadable, not truncated.
+pub const MAX_LEDGER_BYTES: u64 = 16 * 1024 * 1024;
+const CREATE_TABLE: &str = "CREATE TABLE IF NOT EXISTS events (\
+    seq INTEGER PRIMARY KEY AUTOINCREMENT, \
+    kind TEXT NOT NULL CHECK (kind IN ('install', 'lift')), \
+    payload TEXT NOT NULL)";
 /// The largest owner trust file this module will read.
 pub const MAX_TRUST_BYTES: u64 = 64 * 1024;
 
@@ -49,41 +50,6 @@ pub const MAX_TRUST_BYTES: u64 = 64 * 1024;
 pub enum StoredEvent {
     Install(String),
     Lift(String),
-}
-
-/// One persisted line: exactly one of `install`/`lift`, the digest of every line accepted before
-/// it (`prev`), and a nonce naming this append. A line whose `prev` is not the digest of the lines
-/// accepted before it lost a race with a concurrent append and is skipped, never applied (E06
-/// review round 8: concurrent refreshes wrote duplicate sequences and broke replay). The appender
-/// re-reads and learns from its nonce whether it won.
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Line {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    install: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    lift: Option<String>,
-    prev: String,
-    nonce: String,
-}
-
-/// The accepted history: the events, and the nonce of the append that wrote each.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct History {
-    pub events: Vec<StoredEvent>,
-    pub nonces: Vec<String>,
-    /// The chain digest after the last accepted line: what an append decided on this history
-    /// must name as its `prev`.
-    pub head: String,
-}
-
-/// The chain head of an empty (or missing) history.
-pub fn empty_head() -> String {
-    hex(&Sha256::new().finalize())
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// What reading a persisted file found. `Missing` and `Unreadable` are deliberately distinct:
@@ -124,155 +90,142 @@ fn read_bounded(path: &Path, cap: u64) -> Load<String> {
     }
 }
 
-/// The containment history, in order - only the lines that continue the digest chain. Any line
-/// that is not one well-formed event, including a torn last line, makes the history unreadable.
-pub fn load_history(root: &LocalStateRoot) -> Load<History> {
-    let path = match root.path_for(LOG_FILENAME) {
+/// What a [`transact`] caller decided, having read the history: append one event, or keep the
+/// history exactly as it is. Either carries the caller's own result.
+pub enum Decision<T> {
+    Append(StoredEvent, T),
+    Keep(T),
+}
+
+fn too_large(path: &Path) -> Option<String> {
+    match std::fs::metadata(path) {
+        Ok(meta) if meta.len() > MAX_LEDGER_BYTES => Some(format!(
+            "{} is larger than {MAX_LEDGER_BYTES} bytes",
+            path.display()
+        )),
+        _ => None,
+    }
+}
+
+fn read_rows(conn: &Connection, path: &Path) -> Result<Vec<StoredEvent>, String> {
+    let describe = |e: rusqlite::Error| format!("{}: {e}", path.display());
+    let mut statement = conn
+        .prepare("SELECT kind, payload FROM events ORDER BY seq")
+        .map_err(describe)?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(describe)?;
+    let mut events = Vec::new();
+    for row in rows {
+        let (kind, payload) = row.map_err(describe)?;
+        events.push(match kind.as_str() {
+            "install" => StoredEvent::Install(payload),
+            "lift" => StoredEvent::Lift(payload),
+            other => {
+                return Err(format!(
+                    "{}: an event of unknown kind {other:?}",
+                    path.display()
+                ));
+            }
+        });
+    }
+    Ok(events)
+}
+
+/// The containment history, in order, read without writing anything. A database that exists and
+/// cannot be opened, read or parsed - a missing table included - is unreadable, never empty.
+pub fn load_events(root: &LocalStateRoot) -> Load<Vec<StoredEvent>> {
+    let path = match root.path_for(LEDGER_FILENAME) {
         Ok(path) => path,
         Err(error) => return Load::Unreadable(error.to_string()),
     };
-    let text = match read_bounded(&path, MAX_LOG_BYTES) {
-        Load::Found(text) => text,
-        Load::Missing => return Load::Missing,
-        Load::Unreadable(reason) => return Load::Unreadable(reason),
-    };
-    if !text.is_empty() && !text.ends_with('\n') {
-        return Load::Unreadable(format!(
-            "{}: the last event is incomplete (a write was interrupted)",
-            path.display()
-        ));
+    match std::fs::symlink_metadata(&path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Load::Missing,
+        Err(error) => return Load::Unreadable(format!("{}: {error}", path.display())),
+        Ok(_) => {}
     }
-    let mut chain = Sha256::new();
-    let mut history = History::default();
-    for (number, line) in text.lines().enumerate() {
-        let parsed: Line = match serde_json::from_str(line) {
-            Ok(parsed) => parsed,
-            Err(error) => {
-                return Load::Unreadable(format!(
-                    "{} line {}: {error}",
-                    path.display(),
-                    number + 1
-                ));
-            }
-        };
-        let event = match (parsed.install, parsed.lift) {
-            (Some(bundle), None) => StoredEvent::Install(bundle),
-            (None, Some(incident)) => StoredEvent::Lift(incident),
-            _ => {
-                return Load::Unreadable(format!(
-                    "{} line {}: exactly one of install/lift is required",
-                    path.display(),
-                    number + 1
-                ));
-            }
-        };
-        if parsed.prev != hex(&chain.clone().finalize()) {
-            // Lost a race with a concurrent append: not part of the history.
-            continue;
-        }
-        chain.update(line.as_bytes());
-        chain.update(b"\n");
-        history.events.push(event);
-        history.nonces.push(parsed.nonce);
+    if let Some(reason) = too_large(&path) {
+        return Load::Unreadable(reason);
     }
-    history.head = hex(&chain.finalize());
-    Load::Found(history)
-}
-
-/// The accepted events alone. See [`load_history`].
-pub fn load_log(root: &LocalStateRoot) -> Load<Vec<StoredEvent>> {
-    match load_history(root) {
-        Load::Found(history) => Load::Found(history.events),
-        Load::Missing => Load::Missing,
-        Load::Unreadable(reason) => Load::Unreadable(reason),
+    let opened = Connection::open_with_flags(
+        &path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .and_then(|conn| conn.busy_timeout(BUSY_WAIT).map(|()| conn));
+    match opened {
+        Ok(conn) => match read_rows(&conn, &path) {
+            Ok(events) => Load::Found(events),
+            Err(reason) => Load::Unreadable(reason),
+        },
+        Err(error) => Load::Unreadable(format!("{}: {error}", path.display())),
     }
 }
 
-fn fresh_nonce() -> String {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let mut digest = Sha256::new();
-    digest.update(std::process::id().to_le_bytes());
-    digest.update(COUNTER.fetch_add(1, Ordering::Relaxed).to_le_bytes());
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    digest.update(nanos.to_le_bytes());
-    hex(&digest.finalize())
-        .get(..32)
-        .unwrap_or_default()
-        .to_string()
-}
-
-/// Appends `event` as a continuation of the history whose chain head is `head` - the history the
-/// caller read and decided on - as one line with one `write`, creating the file if needed.
-///
-/// Compare-and-append: under the exclusive append lock the history is re-read, and if anything
-/// was accepted after the caller's read the event is not written at all and `Ok(None)` says so;
-/// a decision made on a stale history is never applied and never leaves a line behind (E06 review
-/// rounds 8-9). `Ok(Some(nonce))` names the line written. On an error nothing was decided; the
-/// caller must reload, because a partial write is detected by [`load_log`] as an incomplete last
-/// event.
-pub fn append_event(
+/// Reads the history, lets `decide` judge it, and appends at most the one event it decided on -
+/// all inside one `BEGIN IMMEDIATE` transaction, so no other process can append between the read
+/// and the write. [`Decision::Keep`] inserts nothing. `before_commit` runs after the insert and
+/// before the commit; the CLI's crash harness kills the process there. An `Err` means nothing was
+/// decided or nothing was committed.
+pub fn transact<T>(
     root: &LocalStateRoot,
-    event: &StoredEvent,
-    head: &str,
-) -> Result<Option<String>, String> {
-    let lock_path = root.path_for(LOCK_FILENAME).map_err(|e| e.to_string())?;
-    let lock = rusqlite::Connection::open(&lock_path)
-        .and_then(|conn| conn.busy_timeout(LOCK_WAIT).map(|()| conn))
-        .and_then(|conn| conn.execute_batch("BEGIN EXCLUSIVE").map(|()| conn))
-        .map_err(|e| {
-            format!(
-                "{}: could not take the append lock: {e}",
-                lock_path.display()
-            )
-        })?;
-    let current = match load_history(root) {
-        Load::Found(history) => history.head,
-        Load::Missing => empty_head(),
-        Load::Unreadable(reason) => return Err(reason),
-    };
-    if current != head {
-        return Ok(None);
+    decide: impl FnOnce(&[StoredEvent]) -> Decision<T>,
+    before_commit: impl FnOnce(),
+) -> Result<T, String> {
+    let path = root.path_for(LEDGER_FILENAME).map_err(|e| e.to_string())?;
+    if let Some(reason) = too_large(&path) {
+        return Err(reason);
     }
-    let written = write_line(root, event, head);
-    // Nothing was written through the connection; ending the transaction only releases the lock,
-    // which dropping the connection would also do.
-    drop(lock.execute_batch("COMMIT"));
-    written.map(Some)
+    create_private(&path)?;
+    let describe = |e: rusqlite::Error| format!("{}: {e}", path.display());
+    let mut conn = Connection::open_with_flags(
+        &path,
+        OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(describe)?;
+    conn.busy_timeout(BUSY_WAIT).map_err(describe)?;
+    // Committed on its own, so every ledger this module ever created has its table, whatever a
+    // decision later does.
+    conn.execute(CREATE_TABLE, []).map_err(describe)?;
+    let transaction = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(describe)?;
+    let events = read_rows(&transaction, &path)?;
+    match decide(&events) {
+        Decision::Keep(result) => Ok(result), // dropping the transaction rolls it back
+        Decision::Append(event, result) => {
+            let (kind, payload) = match event {
+                StoredEvent::Install(text) => ("install", text),
+                StoredEvent::Lift(incident) => ("lift", incident),
+            };
+            transaction
+                .execute(
+                    "INSERT INTO events (kind, payload) VALUES (?1, ?2)",
+                    [kind, payload.as_str()],
+                )
+                .map_err(describe)?;
+            before_commit();
+            transaction.commit().map_err(describe)?;
+            Ok(result)
+        }
+    }
 }
 
-fn write_line(root: &LocalStateRoot, event: &StoredEvent, head: &str) -> Result<String, String> {
-    let path = root.path_for(LOG_FILENAME).map_err(|e| e.to_string())?;
-    let nonce = fresh_nonce();
-    let (install, lift) = match event {
-        StoredEvent::Install(text) => (Some(text.clone()), None),
-        StoredEvent::Lift(incident) => (None, Some(incident.clone())),
-    };
-    let line = Line {
-        install,
-        lift,
-        prev: head.to_string(),
-        nonce: nonce.clone(),
-    };
-    let mut bytes = serde_json::to_vec(&line).map_err(|e| e.to_string())?;
-    bytes.push(b'\n');
+/// Creates the ledger file owner-only if it does not exist yet; SQLite would create it with the
+/// process umask.
+fn create_private(path: &Path) -> Result<(), String> {
     let mut options = std::fs::OpenOptions::new();
-    options.append(true).create(true);
+    options.write(true).create(true).truncate(false);
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
-    let mut file = options
-        .open(&path)
-        .map_err(|e| format!("{}: {e}", path.display()))?;
-    file.write_all(&bytes)
-        .and_then(|()| file.sync_all())
-        .map_err(|e| format!("{}: {e}", path.display()))?;
-    Ok(nonce)
+    options
+        .open(path)
+        .map(drop)
+        .map_err(|e| format!("{}: {e}", path.display()))
 }
 
 const FEED_OVERRIDE_FILENAME: &str = "containment_feed_url";
@@ -310,13 +263,6 @@ mod tests {
 
     struct TempRoot(PathBuf);
 
-    fn current_head(root: &LocalStateRoot) -> String {
-        match load_history(root) {
-            Load::Found(history) => history.head,
-            _ => empty_head(),
-        }
-    }
-
     impl TempRoot {
         fn new(label: &str) -> (Self, LocalStateRoot) {
             let dir = std::env::temp_dir().join(format!(
@@ -334,10 +280,14 @@ mod tests {
         }
     }
 
+    fn append(root: &LocalStateRoot, event: StoredEvent) {
+        transact(root, |_| Decision::Append(event, ()), || {}).unwrap();
+    }
+
     #[test]
-    fn a_missing_log_is_missing_not_empty_found() {
+    fn a_missing_ledger_is_missing_not_empty_found() {
         let (_guard, root) = TempRoot::new("missing");
-        assert_eq!(load_log(&root), Load::Missing);
+        assert_eq!(load_events(&root), Load::Missing);
         assert_eq!(load_trust(&root), Load::Missing);
     }
 
@@ -349,122 +299,146 @@ mod tests {
             StoredEvent::Lift("INC-1".to_string()),
         ];
         for event in &events {
-            append_event(&root, event, &current_head(&root))
-                .unwrap()
-                .unwrap();
+            append(&root, event.clone());
         }
-        assert_eq!(load_log(&root), Load::Found(events));
+        assert_eq!(load_events(&root), Load::Found(events));
     }
 
     #[test]
-    fn a_torn_last_line_or_a_malformed_line_makes_the_log_unreadable() {
-        let (_guard, root) = TempRoot::new("torn");
-        append_event(
-            &root,
-            &StoredEvent::Lift("INC-1".to_string()),
-            &current_head(&root),
-        )
-        .unwrap();
-        let path = root.path_for(LOG_FILENAME).unwrap();
-        let mut file = std::fs::OpenOptions::new()
-            .append(true)
-            .open(&path)
-            .unwrap();
-        file.write_all(b"{\"lift\":\"INC-").unwrap();
-        assert!(matches!(load_log(&root), Load::Unreadable(_)));
-        file.write_all(b"2\"}\n{\"grant\":\"everything\"}\n")
-            .unwrap();
-        assert!(matches!(load_log(&root), Load::Unreadable(_)));
+    fn the_decision_sees_the_history_it_appends_to() {
+        let (_guard, root) = TempRoot::new("decision-sees");
+        append(&root, StoredEvent::Lift("INC-1".to_string()));
+        let seen = transact(&root, |events| Decision::Keep(events.to_vec()), || {}).unwrap();
+        assert_eq!(seen, vec![StoredEvent::Lift("INC-1".to_string())]);
     }
 
+    // E33-S03 AC2: a decision that keeps the history inserts nothing, and a first decision that
+    // keeps it still leaves a readable, empty ledger behind.
     #[test]
-    fn a_line_that_lost_a_concurrent_append_is_skipped_and_its_nonce_is_not_accepted() {
-        let (_guard, root) = TempRoot::new("stale-append");
-        let won = append_event(
-            &root,
-            &StoredEvent::Lift("INC-1".to_string()),
-            &current_head(&root),
-        )
-        .unwrap()
-        .unwrap();
-        // A second writer that read the history before the first append landed: its `prev` is
-        // the digest of the empty history.
-        let path = root.path_for(LOG_FILENAME).unwrap();
-        let stale = Line {
-            install: None,
-            lift: Some("INC-2".to_string()),
-            prev: hex(&Sha256::new().finalize()),
-            nonce: "lost".to_string(),
-        };
-        let mut file = std::fs::OpenOptions::new()
-            .append(true)
-            .open(&path)
-            .unwrap();
-        file.write_all(format!("{}\n", serde_json::to_string(&stale).unwrap()).as_bytes())
-            .unwrap();
-        let Load::Found(history) = load_history(&root) else {
-            panic!("history must load");
-        };
-        assert_eq!(history.events, vec![StoredEvent::Lift("INC-1".to_string())]);
-        assert_eq!(history.nonces, vec![won]);
-        // A later append continues the accepted chain, not the skipped line.
-        let next = append_event(
-            &root,
-            &StoredEvent::Lift("INC-3".to_string()),
-            &current_head(&root),
-        )
-        .unwrap()
-        .unwrap();
-        let Load::Found(history) = load_history(&root) else {
-            panic!("history must load");
-        };
-        assert_eq!(history.events.len(), 2);
-        assert_eq!(history.nonces.last(), Some(&next));
+    fn a_kept_decision_inserts_nothing() {
+        let (_guard, root) = TempRoot::new("keep");
+        transact(&root, |_| Decision::Keep(()), || {}).unwrap();
+        assert_eq!(load_events(&root), Load::Found(Vec::new()));
+        append(&root, StoredEvent::Lift("INC-1".to_string()));
+        transact(&root, |_| Decision::Keep(()), || {}).unwrap();
+        assert_eq!(
+            load_events(&root),
+            Load::Found(vec![StoredEvent::Lift("INC-1".to_string())])
+        );
     }
 
-    // E06 review round 9: a stale append wrote its line before learning it had lost, changing
-    // the bytes of a history it then reported as current.
+    // E06 review rounds 8-9: concurrent appends decided on one history. Each thread decides to
+    // append only if the history is still empty; exactly one may.
     #[test]
-    fn a_stale_append_writes_nothing() {
-        let (_guard, root) = TempRoot::new("stale-writes-nothing");
-        let event = StoredEvent::Install("{\"notice\":1}".to_string());
-        let decided_on = empty_head();
-        assert!(append_event(&root, &event, &decided_on).unwrap().is_some());
-        let path = root.path_for(LOG_FILENAME).unwrap();
-        let before = std::fs::read(&path).unwrap();
-        assert_eq!(append_event(&root, &event, &decided_on).unwrap(), None);
-        assert_eq!(std::fs::read(&path).unwrap(), before);
-    }
-
-    #[test]
-    fn concurrent_appends_decided_on_one_history_write_exactly_one_line() {
-        let (_guard, root) = TempRoot::new("concurrent-appends");
-        let decided_on = empty_head();
-        let outcomes: Vec<Option<String>> = std::thread::scope(|scope| {
+    fn concurrent_decisions_on_one_history_append_exactly_one_event() {
+        let (_guard, root) = TempRoot::new("concurrent");
+        transact(&root, |_| Decision::Keep(()), || {}).unwrap();
+        let appended: Vec<bool> = std::thread::scope(|scope| {
             let handles: Vec<_> = (0..16)
                 .map(|n| {
                     let root = &root;
-                    let decided_on = &decided_on;
                     scope.spawn(move || {
-                        let event = StoredEvent::Lift(format!("INC-{n}"));
-                        append_event(root, &event, decided_on).unwrap()
+                        transact(
+                            root,
+                            |events| {
+                                if events.is_empty() {
+                                    Decision::Append(StoredEvent::Lift(format!("INC-{n}")), true)
+                                } else {
+                                    Decision::Keep(false)
+                                }
+                            },
+                            || {},
+                        )
+                        .unwrap()
                     })
                 })
                 .collect();
             handles.into_iter().map(|h| h.join().unwrap()).collect()
         });
-        assert_eq!(outcomes.iter().filter(|o| o.is_some()).count(), 1);
-        let text = std::fs::read_to_string(root.path_for(LOG_FILENAME).unwrap()).unwrap();
-        assert_eq!(text.lines().count(), 1);
+        assert_eq!(appended.iter().filter(|a| **a).count(), 1);
+        let Load::Found(events) = load_events(&root) else {
+            panic!("ledger must load");
+        };
+        assert_eq!(events.len(), 1);
+    }
+
+    // E33-S03 AC3: an event whose transaction never commits leaves no trace. A panic inside
+    // `before_commit` unwinds through the uncommitted transaction.
+    #[test]
+    fn an_uncommitted_event_leaves_no_trace() {
+        let (_guard, root) = TempRoot::new("uncommitted");
+        append(&root, StoredEvent::Lift("INC-1".to_string()));
+        let interrupted = std::panic::catch_unwind(|| {
+            transact(
+                &root,
+                |_| Decision::Append(StoredEvent::Lift("INC-2".to_string()), ()),
+                || panic!("interrupted before commit"),
+            )
+        });
+        assert!(interrupted.is_err());
+        assert_eq!(
+            load_events(&root),
+            Load::Found(vec![StoredEvent::Lift("INC-1".to_string())])
+        );
     }
 
     #[test]
-    fn an_oversized_log_is_unreadable_not_truncated() {
+    fn a_corrupt_or_foreign_database_is_unreadable_and_refuses_writes() {
+        let (_guard, root) = TempRoot::new("corrupt");
+        let path = root.path_for(LEDGER_FILENAME).unwrap();
+        std::fs::write(
+            &path,
+            b"not a database at all, padded past the header size......",
+        )
+        .unwrap();
+        assert!(matches!(load_events(&root), Load::Unreadable(_)));
+        let before = std::fs::read(&path).unwrap();
+        assert!(
+            transact(
+                &root,
+                |_| Decision::Append(StoredEvent::Lift("INC-1".to_string()), ()),
+                || {}
+            )
+            .is_err()
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+
+    #[test]
+    fn an_event_of_unknown_kind_makes_the_ledger_unreadable() {
+        let (_guard, root) = TempRoot::new("unknown-kind");
+        append(&root, StoredEvent::Lift("INC-1".to_string()));
+        let path = root.path_for(LEDGER_FILENAME).unwrap();
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE loose (kind TEXT, payload TEXT); DROP TABLE events; \
+             ALTER TABLE loose RENAME TO events; \
+             INSERT INTO events VALUES ('grant', 'everything');",
+        )
+        .unwrap();
+        drop(conn);
+        assert!(matches!(load_events(&root), Load::Unreadable(_)));
+    }
+
+    #[test]
+    fn an_oversized_ledger_is_unreadable_not_truncated() {
         let (_guard, root) = TempRoot::new("oversized");
-        let path = root.path_for(LOG_FILENAME).unwrap();
+        let path = root.path_for(LEDGER_FILENAME).unwrap();
         let file = std::fs::File::create(&path).unwrap();
-        file.set_len(MAX_LOG_BYTES + 1).unwrap();
-        assert!(matches!(load_log(&root), Load::Unreadable(_)));
+        file.set_len(MAX_LEDGER_BYTES + 1).unwrap();
+        assert!(matches!(load_events(&root), Load::Unreadable(_)));
+        assert!(transact(&root, |_| Decision::Keep(()), || {}).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_ledger_is_created_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let (_guard, root) = TempRoot::new("mode");
+        append(&root, StoredEvent::Lift("INC-1".to_string()));
+        let path = root.path_for(LEDGER_FILENAME).unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
     }
 
     #[test]

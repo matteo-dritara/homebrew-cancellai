@@ -147,8 +147,10 @@ while it waits at its prompt still binds.
 
 - **Installing a notice.** `cancellai-cli containment install <file>` reads at most
   `MAX_NOTICE_BYTES` (256 KiB) before parsing, verifies the bundle in full - expiry included - and
-  appends it to `<state>/containment_log.jsonl` (`$CANCELLAI_HOME/state`, else
-  `$HOME/.cancellai/state`). A refused notice leaves the history byte-identical. `containment
+  records it as one row of `<state>/containment_ledger.sqlite3` (`$CANCELLAI_HOME/state`, else
+  `$HOME/.cancellai/state`). Reading the history, deciding and inserting happen in one database
+  transaction (ADR-0040), so a refused, already-current or concurrently-raced notice inserts
+  nothing and an interrupted install leaves no part of itself: the event rows stay identical. `containment
   list` shows what binds; `containment lift <incident-id> --confirm` is the only lift.
 - **Who can sign.** The binary compiles in the cancellAI incident-response public key (publisher
   `cancellai-incident`). The owner may add publishers in `<state>/trusted_publishers.json`
@@ -176,7 +178,7 @@ while it waits at its prompt still binds.
   only, redirects included, 30 s, at most 256 KiB read - and installs it through exactly the
   `install` path. The transport is not trusted for authenticity; the signature is. An unreachable
   feed, a missing `curl`, a non-200 answer, an oversized, malformed, replayed, rolled-back or
-  untrusted notice all leave the history byte-identical; a 404 means nothing is published; a
+  untrusted notice all leave the history's event rows identical; a 404 means nothing is published; a
   notice already installed is "already current".
 - **Publishing a notice** (maintainers). Sign it as above with a sequence above every earlier one,
   make it cumulative (every incident still in force), and commit it as `containment/notice.json`

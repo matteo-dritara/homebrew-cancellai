@@ -40,5 +40,8 @@ clap = { workspace = true }
 # Same versions and features the safety kernel already resolves.
 ed25519-dalek = { version = "3.0.0", default-features = false, features = ["fast", "zeroize"] }
 sha2 = { version = "0.11.0", default-features = false }
+# E33-S03: the containment tests read the ledger's rows and plant corrupt or unverifiable ones.
+# Same version and features `cancellai-store` resolves, so no new code enters the build.
+rusqlite = { version = "0.40.2", default-features = false, features = ["bundled"] }
 # E19-S02: the view-model parity test builds the dashboard view from this binary's own API.
 cancellai-desktop = { path = "../cancellai-desktop", version = "1.21.0" }

@@ -166,6 +166,11 @@ jobs:
         working-directory: rust
         env:
           CANCELLAI_CHANNEL: stable
+      # E33-S03: a containment install killed between its insert and its commit leaves no row.
+      - run: cargo test -p cancellai-cli --features kill-points --test containment an_install_killed_before_commit
+        working-directory: rust
+        env:
+          CANCELLAI_CHANNEL: stable
 
   # E06-S07: the release channel is a live authority input, so this crate's tests behave
   # differently by channel. `quality` runs them as a nightly build (every deletion withheld, which

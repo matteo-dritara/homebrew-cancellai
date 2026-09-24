@@ -46,6 +46,14 @@ PASS
 The chain digest and nonce stay as a second barrier: a line that does not continue the chain is
 still skipped on load.
 
+## Superseded by E33-S03 (ADR-0040, 2026-09-24)
+
+The round-9 repair above - a lock database around the JSONL append - is replaced: the history is
+now a SQLite table read, decided and appended in one transaction (E33-S03), and `refresh`'s
+rollback and "already current" checks moved inside that transaction (`decide_install`). This
+story's second criterion now reads "the ledger's ordered event rows and their raw signed payloads
+shall stay identical", which the refusal tests assert.
+
 ## Safety Evidence
 
 | Invariant | Counterexample tested | Evidence | Result |
