@@ -240,6 +240,10 @@ epic status.
    earlier version of this gate refused to close any CR4 story whose Safety Verdict recorded more
    than one round, because a repaired-and-passed final round still carried its own corrected
    round's `FAIL`/`REJECT` in the file). A later `REJECT` still overrides an earlier `PASS`.
+   When rounds are recorded under `## Round <n>` headings, only the final round's own body and
+   the template's `## Verdict` section after it can decide; a verdict-shaped line in any other
+   later section (an owner note, say) refuses the file rather than deciding it (E35-S01, found by
+   E06 review round 10). `release.py`'s cutover check reads the verdict the same way.
 
 ## Failure cycle
 

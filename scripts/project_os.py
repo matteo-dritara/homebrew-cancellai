@@ -14,6 +14,7 @@ Commands:
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import re
 import sys
@@ -54,6 +55,9 @@ EVIDENCE_RESIDUAL_TERMS = ("residual", "known risk")
 # committed FAIL is evidence that the story is not finished, not evidence that it is.
 FAILING_VERDICT_RE = re.compile(r"^\s*`?(FAIL|REJECT)`?\s*$", re.MULTILINE | re.IGNORECASE)
 PASSING_VERDICT_RE = re.compile(r"^\s*`?(PASS|PASS_WITH_RESIDUALS)`?\s*$", re.MULTILINE | re.IGNORECASE)
+ROUND_HEADING_RE = re.compile(r"^## Round \d+\b", re.MULTILINE)
+SECTION_HEADING_RE = re.compile(r"^## ", re.MULTILINE)
+VERDICT_HEADING_RE = re.compile(r"## Verdict\s*$", re.MULTILINE)
 # A verdict word inside a fenced example (an illustration of the convention, a reproduction
 # transcript) is not a verdict - E32-S01's own round-1 independent review found the naive scan
 # below reading exactly that as if it were current, and round 2 defeated a regex-based "balanced
@@ -161,6 +165,26 @@ def strip_fenced_code(text: str) -> str:
     return "\n".join(kept)
 
 
+def final_round_text(text: str, start: int) -> str | None:
+    """The part of a Safety Verdict that may decide it: the final round's own body, plus the
+    template's `## Verdict` section if one follows. None when any other later `## ` section holds a
+    verdict-shaped line, which would otherwise be read as the decision (E35-S01)."""
+    admissible = []
+    sections = [*SECTION_HEADING_RE.finditer(text, start), None]
+    body_end = sections[0].start() if sections[0] else len(text)
+    admissible.append(text[start:body_end])
+    for here, following in itertools.pairwise(sections):
+        if here is None:
+            break
+        section = text[here.start() : following.start() if following else len(text)]
+        holds_verdict = PASSING_VERDICT_RE.search(section) or FAILING_VERDICT_RE.search(section)
+        if VERDICT_HEADING_RE.match(section):
+            admissible.append(section)
+        elif holds_verdict:
+            return None
+    return "\n".join(admissible)
+
+
 def safety_verdict_passes(path: Path) -> bool:
     """Whether a Safety Verdict's most recent standalone verdict line is a pass.
 
@@ -183,6 +207,15 @@ def safety_verdict_passes(path: Path) -> bool:
     except OSError:
         return False
     text = strip_fenced_code(text)
+    # E35-S01: a file that records rounds under `## Round <n>` is decided by its final round's own
+    # section, and a verdict-shaped line in any later section - an "owner note" after a failed
+    # round, say - refuses the file instead of deciding it (E06 review round 10).
+    rounds = list(ROUND_HEADING_RE.finditer(text))
+    if rounds:
+        decisive = final_round_text(text, rounds[-1].end())
+        if decisive is None:
+            return False
+        text = decisive
     verdicts = [(m.start(), True) for m in PASSING_VERDICT_RE.finditer(text)]
     verdicts += [(m.start(), False) for m in FAILING_VERDICT_RE.finditer(text)]
     if not verdicts:

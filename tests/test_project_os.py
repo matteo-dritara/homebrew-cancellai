@@ -272,6 +272,37 @@ class ProjectOSTests(unittest.TestCase):
             never_judged.write_text("# Safety Verdict - E00-S01\n\nNo verdict recorded yet.\n", encoding="utf-8")
             self.assertFalse(project_os.safety_verdict_passes(never_judged))
 
+    def test_the_final_round_decides_and_a_later_section_cannot(self) -> None:
+        # E35-S01, from E06 review round 10: `## Round 10 ... FAIL` then `## Owner note ... PASS`
+        # read as a pass, because the last verdict-shaped line in the whole file decided.
+        cases = {
+            "## Round 10\nVerifier: Codex\n\nFAIL\n\n## Owner note\n\nPASS\n": False,
+            "## Round 10\n\nPASS\n\n## Owner note\n\nFAIL\n": False,
+            "## Round 9\n\nFAIL\n\n## Round 10\n\nPASS\n": True,
+            # The template's own shape: a round heading, then its `## Verdict` section, then prose.
+            "## Round 2 - operative verdict\n\n## Verdict\n\n`PASS_WITH_RESIDUALS`\n\n## Owner decision\n\naccepted\n": True,
+            "## Round 2\n\n## Verdict\n\n`PASS`\n\n## Owner decision\n\n`REJECT`\n": False,
+            "## Round 2\n\nno verdict yet\n": False,
+        }
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "SAFETY_VERDICT.md"
+            for text, passes in cases.items():
+                path.write_text(text, encoding="utf-8")
+                with self.subTest(text=text):
+                    self.assertEqual(project_os.safety_verdict_passes(path), passes)
+
+    def test_every_committed_safety_verdict_keeps_its_judgement(self) -> None:
+        # E35-S01 AC3: the change must not re-judge any Safety Verdict already committed. These two
+        # closed CR4 stories put their verdict in the template's `## Verdict` section after a
+        # `## Round <n>` heading - the shape a first draft of this change wrongly refused.
+        expected = {"E14-S04": True, "E14-S05": True}
+        for story, passes in expected.items():
+            path = project_os.ROOT / "project" / "evidence" / story / "SAFETY_VERDICT.md"
+            if not path.exists():
+                continue  # gate_sensitivity runs this suite on a copy that may lack evidence
+            with self.subTest(story=story):
+                self.assertEqual(project_os.safety_verdict_passes(path), passes)
+
     def test_a_verdict_word_inside_a_fenced_code_block_is_not_a_verdict(self) -> None:
         # E32-S01's own round-1 independent review: a verdict-shaped word inside a fenced
         # reproduction transcript or documentation example is not a current verdict. Scanning raw

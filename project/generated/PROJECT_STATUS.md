@@ -4,20 +4,20 @@
 
 Current phase: **P1**
 
-Epics: **35** | Stories: **188**
+Epics: **36** | Stories: **189**
 
 ## Story status
 
 - `blocked`: 2
 - `cancelled`: 1
 - `done`: 183
-- `ready_for_review`: 2
+- `ready_for_review`: 3
 
 ## Change risk distribution
 
 - `CR0`: 14
 - `CR1`: 43
-- `CR2`: 53
+- `CR2`: 54
 - `CR3`: 33
 - `CR4`: 45
 
@@ -29,3 +29,4 @@ Epics: **35** | Stories: **188**
 
 - **E06-S14** - The release formula is a function of the release manifest, rendered where the bytes are built (CR4)
 - **E33-S01** - Signed containment notices are fetched from a published feed (CR4)
+- **E35-S01** - safety_verdict_passes reads the final round's own verdict (CR2)

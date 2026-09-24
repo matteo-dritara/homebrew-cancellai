@@ -4362,3 +4362,29 @@ Independent review is this repository's central method and it has depended on on
 **Documentation impact**
 
 - `docs/development/AGENT_PROTOCOL.md`
+
+## E35 - Safety Verdict Gate Reads the Final Round
+
+**Phase:** `P1` | **Status:** `in_progress` | **Epic dependencies:** none
+
+E06 review round 10 showed that a Safety Verdict ending `## Round 10 ... FAIL` followed by an `## Owner note ... PASS` reads as passing, because `scripts/project_os.py`'s `safety_verdict_passes` - the gate every CR4 story's closure goes through - takes the last verdict-shaped line in the whole file (E32-S01's rule). `scripts/release.py` was repaired for its own cutover check (E06-S15); the control-plane gate has the same defect, found in the same round and recorded there as out of scope. This epic carries it, as E29 and E32 did for review-discovered engineering-system defects.
+
+### E35-S01 - safety_verdict_passes reads the final round's own verdict
+
+**Status:** `ready_for_review` | **Change Risk:** `CR2` | **Dependencies:** none | **Safety obligations:** none
+
+**Outcome.** When a Safety Verdict records rounds under `## Round <n>` headings, the gate reads the verdict from the final round's own section, and a verdict-shaped line in any later section makes the file refuse rather than decide. A file with no round headings keeps E32-S01's rule.
+
+**Acceptance criteria**
+
+- When a Safety Verdict has `## Round <n>` headings, the gate shall decide from the last standalone verdict line inside the final round's section.
+- If a verdict-shaped line appears in any section after the final round's, then the gate shall refuse the file.
+- If a Safety Verdict has no round headings, then the gate shall apply E32-S01's rule unchanged, and every Safety Verdict already committed shall be judged as it was before this change.
+
+**Verification**
+
+- Regression tests for round 10's owner-note counterexample and the E32-S01 fixtures; every committed Safety Verdict is judged identically before and after the change.
+
+**Documentation impact**
+
+- `docs/development/AGENT_PROTOCOL.md`

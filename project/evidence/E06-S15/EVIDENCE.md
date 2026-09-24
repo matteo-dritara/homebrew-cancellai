@@ -35,9 +35,9 @@ add, in the owner's words, too much complexity. The owner accepted the same-user
 ADR-0039 already accepts for the containment ledger - with the identity check above closing the
 reproduced case.
 
-**Flagged, not fixed:** `scripts/project_os.py safety_verdict_passes`, which gates CR4 story
-closure, has the same last-line-wins weakness. It belongs to E32-S01's mechanism and is outside
-this story; recorded here as a backlog candidate.
+**Flagged here, fixed in its own story:** `scripts/project_os.py safety_verdict_passes`, which
+gates CR4 story closure, had the same last-line-wins weakness; E35-S01 carries it, and both readers
+now apply one rule.
 
 ## Verification Commands
 
