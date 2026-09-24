@@ -64,7 +64,7 @@ through. The owner chose to change the mechanism rather than patch it a fourth t
 | Native per-platform partial-scan reproduction not observed | The `parity` CI job above; the evidence claim that it already ran in CI is corrected | `.github/workflows/rust.yml` `parity` |
 
 Still open, and not the executor's to close: AC1 (the owner's acceptance of the migration Safety
-Verdict, which follows an independent PASS), and the first CI run of `parity`.
+Verdict, which follows an independent PASS).
 
 ## Verification (native reproduction per platform, E21-S02 partial-scan fixtures)
 
@@ -74,8 +74,9 @@ scenarios on the stable-channel build. **Correction (round 9 repairs):** this se
 it ran on Linux and macOS in CI on every change; it ran only in `release.yml` at a tag, on one
 runner, and locally. `rust.yml` now carries a `parity` job on `macos-latest` and `ubuntu-latest`
 for every change; Windows withholding is pinned by the stable-channel CLI suite (E06-S13), which
-already runs there. The first CI run of that job is the native evidence and is cited once it
-exists.
+already runs there. First native run: `rust` workflow run 36008396337 on `57b1a1b`
+(2026-09-24) - `parity (macos-latest)` success, `parity (ubuntu-latest)` success, and
+`cli-stable-channel` success on macOS, Linux and Windows.
 
 ## Residual risks
 
