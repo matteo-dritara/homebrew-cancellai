@@ -11,8 +11,8 @@ Epics: **36** | Stories: **190**
 - `blocked`: 1
 - `cancelled`: 1
 - `done`: 185
+- `in_progress`: 1
 - `planned`: 2
-- `ready_for_review`: 1
 
 ## Change risk distribution
 
@@ -28,4 +28,4 @@ Epics: **36** | Stories: **190**
 
 ## Awaiting independent review
 
-- **E06-S14** - The release formula is a function of the release manifest, rendered where the bytes are built (CR4)
+- none

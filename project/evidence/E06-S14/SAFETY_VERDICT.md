@@ -75,3 +75,38 @@ unauthenticated. Full gates and reproduction:
 Pending; this verifier rejects release adoption on the reviewed tree.
 
 FAIL
+
+## Round 12 — 2026-09-24
+
+Verifier: Codex
+Brief-Checksum: fa4a751b449e2ed74da03c05db7ca490cf6c54f8bf5e6cdf05089a7c0eabcbda
+Review target: `cdea9e34d4683e71c4a325ba65b7fdb737412c67..02257d24fff44aa728c80e1a9bba1a9365473342`
+Risk: CR4
+
+### Safety surface and independent evidence
+
+`finalize` can replace the live Homebrew formula, making the release manifest,
+archive hashes and build provenance a CR4 release authority boundary. The
+closed-manifest repair rejects round 11's duplicate-target case. An independent
+simulated `finalize` with synthetic archive files adopted a valid release and
+refused 15 missing, altered and conflicting evidence cases while leaving the
+live formula byte-identical. The existing release and manifest tests passed.
+The real successful tag run 35875377083 supplied an API response shape that
+`check_release_run` accepted. No actual cutover release was performed.
+
+| Invariant / obligation | Required property | Evidence | Result |
+| --- | --- | --- | --- |
+| E06-S14 AC2–AC3, SI-019 | Only a byte-identical published formula backed by the closed manifest and verified archive bytes may be adopted. | `tests/test_round12_adversarial.py`: positive control and 15 refusal subtests; original formula bytes unchanged on every refusal. | PASS for the simulated boundary |
+| E06-S14 AC1, C-16/SI-019 | The tagged release must pass its required gates before it publishes the formula asset. | `ruff format --check .` fails on the story's committed `project/evidence/E06-S14/DESIGN_CONSULTATION_2.md`; main `tests / lint` run 36046575202 failed at the same step. `release.yml` requires this gate in `verify` before `publish`. | FAIL |
+
+### Required repair and recovery
+
+Format the committed design-consultation code fence and demonstrate a green
+release gate. Update `docs/RELEASING.md`'s cutover instructions: they still say
+`finalize` trusts `.sha256` sidecars, but this story deliberately removes that
+trust path. E06-S04 stays blocked and the Python formula stays live. No owner
+acceptance of this failed CR4 round is recorded.
+
+Full reproduction and gate details: `project/evidence/E06-VERIFIER-REVIEW-ROUND12.md`.
+
+FAIL

@@ -373,7 +373,7 @@
     {
       "id": "E06-S14",
       "title": "The release formula is a function of the release manifest, rendered where the bytes are built",
-      "status": "ready_for_review",
+      "status": "in_progress",
       "outcome": "Nine review rounds found holes in release.py's post-hoc reconstruction of what the formula installs (ADR-0040). The release workflow now renders the Homebrew formula from the verified release manifest and the tag archive's digest and publishes it as the release asset cancellai.rb; finalize adopts that asset only if it is exactly what render_formula produces from the published manifest, after downloading every engine archive it names, hashing it to the manifest's digest and verifying its build provenance.",
       "change_risk": "CR4",
       "dependencies": [

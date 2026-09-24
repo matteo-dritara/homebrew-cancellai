@@ -1025,7 +1025,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S14 - The release formula is a function of the release manifest, rendered where the bytes are built
 
-**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E22-S01 | **Safety obligations:** SI-019
+**Status:** `in_progress` | **Change Risk:** `CR4` | **Dependencies:** E22-S01 | **Safety obligations:** SI-019
 
 **Outcome.** Nine review rounds found holes in release.py's post-hoc reconstruction of what the formula installs (ADR-0040). The release workflow now renders the Homebrew formula from the verified release manifest and the tag archive's digest and publishes it as the release asset cancellai.rb; finalize adopts that asset only if it is exactly what render_formula produces from the published manifest, after downloading every engine archive it names, hashing it to the manifest's digest and verifying its build provenance.
 
