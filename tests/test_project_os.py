@@ -302,6 +302,17 @@ class ProjectOSTests(unittest.TestCase):
             # A thematic break and a level-3 subsection stay inside the round (AC1).
             "## Round 10\n\nFAIL\n\n---\n\nPASS\n": True,
             "## Round 10\n\nFAIL\n\n### Re-evaluation\n\nPASS\n": True,
+            # E35 self-review round 2: a setext underline makes the whole paragraph the heading,
+            # and a round heading may be spelled at level 1 or with leading spaces, a tab or a BOM.
+            "## Round 10\n\nFAIL\n\nPASS\nOwner override\n--------------\n": False,
+            "## Round 10\n\nFAIL\n\nPASS\nsecond\nthird\n===\n": False,
+            "## Round 10\nPASS\nheading text\n---\n\nFAIL\n": False,
+            "## Round 10\r\n\r\nFAIL\r\n\r\nPASS\r\nOwner\r\n---\r\n": False,
+            "# Round 10\n\nFAIL\n\n## Owner note\n\nPASS\n": False,
+            " ## Round 10\n\nFAIL\n\n## Owner note\n\nPASS\n": False,
+            "##\tRound 10\n\nFAIL\n\n## Owner note\n\nPASS\n": False,
+            "\ufeff## Round 10\n\nFAIL\n\n## Owner note\n\nPASS\n": False,
+            "## Round 10\n\nFAIL\n\n***\n\nPASS\n": True,
         }
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "SAFETY_VERDICT.md"

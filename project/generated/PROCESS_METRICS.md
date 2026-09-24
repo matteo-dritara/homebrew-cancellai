@@ -97,6 +97,7 @@ distinguished by the next round, which is why the ceiling matters.
 | E34 | 3 | independent | 5 | 2 | 2 | 40% |
 | E35 | 1 | **self** | 1 | 1 | 1 | 100% |
 | E35 | 1 | independent | 1 | 1 | 1 | 100% |
+| E35 | 2 | **self** | 1 | 1 | 1 | 100% |
 | E35 | 2 | independent | 1 | 1 | 1 | 100% |
 
 ## First-pass rejection rate
@@ -178,7 +179,7 @@ load-bearing rather than academic.
 
 ## Requirements shape
 
-- Acceptance criteria describing **unwanted behaviour**: **113 of 613** (18%).
+- Acceptance criteria describing **unwanted behaviour**: **114 of 614** (19%).
 - Epics whose requirements describe the feature and not the hazard:
   - `E00` - 0 of 29
   - `E01` - 0 of 13

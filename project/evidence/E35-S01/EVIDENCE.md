@@ -62,6 +62,16 @@ Markdown renders the file (HTML comments, inline triple backticks, indented code
 U+2028) - is not this story's change and is filed as **E35-S02**. Its residual 1 (a `###`
 subsection inside the final round decides, as AC1 literally says) is kept as the contract states.
 
+## Repairs after self-review round 2 (`project/evidence/E35-SELF-REVIEW-ROUND2.md`, not independent)
+
+| Finding | Repair | Evidence |
+| --- | --- | --- |
+| A setext underline under a multi-line paragraph started the new section at the paragraph's last line, so `PASS` on an earlier line of that heading stayed in the round and decided | `section_starts` tracks where the current paragraph began and starts the section there | Four multi-line setext cases (including CRLF and a setext heading right after the round heading); making the section start at the last line fails four tests |
+| Rounds spelled `# Round 10`, ` ## Round 10`, `##<tab>Round 10` or behind a BOM fell back to last-line-wins in `project_os`, while `release.py` refused the same file | `ROUND_HEADING_RE` accepts level-1/2 ATX with up to three leading spaces, a tab, and a leading BOM; `release.py` uses `project_os`'s pattern instead of its own copy | Four round-spelling cases; every committed Safety Verdict still judged as before |
+
+Soft line breaks (`The owner says` then `PASS`) are added to E35-S02, with the other ways the
+reader differs from rendered Markdown.
+
 ## Verification Commands
 
 ```text

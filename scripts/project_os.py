@@ -55,7 +55,9 @@ EVIDENCE_RESIDUAL_TERMS = ("residual", "known risk")
 # committed FAIL is evidence that the story is not finished, not evidence that it is.
 FAILING_VERDICT_RE = re.compile(r"^\s*`?(FAIL|REJECT)`?\s*$", re.MULTILINE | re.IGNORECASE)
 PASSING_VERDICT_RE = re.compile(r"^\s*`?(PASS|PASS_WITH_RESIDUALS)`?\s*$", re.MULTILINE | re.IGNORECASE)
-ROUND_HEADING_RE = re.compile(r"^## Round \d+\b", re.MULTILINE)
+# A round heading at level 1 or 2 in any ATX spelling Markdown renders - up to three leading
+# spaces, a tab - not only `## Round <n>` (E35 self-review round 2).
+ROUND_HEADING_RE = re.compile(r"^\ufeff? {0,3}#{1,2}[ \t]+Round[ \t]+\d+\b", re.MULTILINE)
 ATX_SECTION_RE = re.compile(r" {0,3}#{1,2}(?:[ \t]|$)")
 SETEXT_UNDERLINE_RE = re.compile(r" {0,3}(?:=+|-+)[ \t]*")
 VERDICT_HEADING_RE = re.compile(r"## Verdict\s*$", re.MULTILINE)
@@ -180,17 +182,21 @@ def section_starts(text: str, start: int) -> list[int]:
     indented heading or an underlined one reopen the owner-note bypass (E35 self-review)."""
     starts = []
     offset = start
-    previous: tuple[int, str] | None = None
+    paragraph: int | None = None  # where the paragraph the current line belongs to began
     for line in text[start:].splitlines(keepends=True):
         bare = line.rstrip("\r\n")
         if ATX_SECTION_RE.match(bare):
             starts.append(offset)
-            previous = None
-        elif SETEXT_UNDERLINE_RE.fullmatch(bare) and previous is not None and previous[1].strip():
-            starts.append(previous[0])
-            previous = None
+            paragraph = None
+        elif SETEXT_UNDERLINE_RE.fullmatch(bare) and paragraph is not None:
+            # The underline makes the whole paragraph above it the heading, so the section starts
+            # at its first line, not the last (E35 self-review round 2).
+            starts.append(paragraph)
+            paragraph = None
+        elif bare.strip():
+            paragraph = offset if paragraph is None else paragraph
         else:
-            previous = (offset, bare)
+            paragraph = None
         offset += len(line)
     return starts
 

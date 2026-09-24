@@ -4393,13 +4393,14 @@ E06 review round 10 showed that a Safety Verdict ending `## Round 10 ... FAIL` f
 
 **Status:** `planned` | **Change Risk:** `CR2` | **Dependencies:** E35-S01 | **Safety obligations:** none
 
-**Outcome.** The E35 self-review found four ways the verdict reader, unchanged since E32-S01, counts or hides a verdict differently from how the file renders: a line opening with three backticks inside inline code starts a fence that swallows the rest of the file; HTML comments are not stripped, so a commented PASS or round heading decides; a four-space-indented code line counts as a verdict; and splitlines breaks on form feed and U+2028, making text inside one rendered line a standalone verdict. Each affects files with and without round headings alike.
+**Outcome.** The E35 self-review found four ways the verdict reader, unchanged since E32-S01, counts or hides a verdict differently from how the file renders: a line opening with three backticks inside inline code starts a fence that swallows the rest of the file; HTML comments are not stripped, so a commented PASS or round heading decides; a four-space-indented code line counts as a verdict; and splitlines breaks on form feed and U+2028, making text inside one rendered line a standalone verdict; and a soft line break (`The owner says` then `PASS` on the next line) is read as a standalone verdict although it renders inside one paragraph (E35 self-review round 2). Each affects files with and without round headings alike.
 
 **Acceptance criteria**
 
 - If a verdict-shaped line or a round heading appears only inside an HTML comment, an indented code block or a fenced block, then the gate shall not treat it as a verdict or a round.
 - If a line only starts with three backticks as inline code, then the gate shall not treat the rest of the file as fenced.
 - The gate shall split lines only where Markdown ends a line, so a form feed or a Unicode line separator does not create a standalone verdict.
+- If a verdict word only continues a paragraph across a soft line break, then the gate shall not treat it as a standalone verdict.
 - The system shall judge every Safety Verdict already committed as it did before this change.
 
 **Verification**

@@ -22,7 +22,9 @@ repair was mutation-checked, and every committed Safety Verdict is judged as bef
 
 The forked self-review (`E35-SELF-REVIEW.md`) then failed the story on heading shapes other than
 `## ` and on the round heading's own tail; both are repaired and pinned (evidence packet, "Repairs
-after the forked self-review"), and the pre-existing parser differences it found are E35-S02.
+after the forked self-review"), and the pre-existing parser differences it found are E35-S02. A second self-review
+(`E35-SELF-REVIEW-ROUND2.md`) found multi-line setext headings and round-heading spellings; both
+are repaired and pinned too.
 
 The story is CR2: it closes on this decision plus a forked self-review, not a third independent
 round.
