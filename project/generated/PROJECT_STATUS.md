@@ -8,11 +8,11 @@ Epics: **36** | Stories: **190**
 
 ## Story status
 
-- `blocked`: 2
+- `blocked`: 1
 - `cancelled`: 1
-- `done`: 184
-- `planned`: 1
-- `ready_for_review`: 2
+- `done`: 185
+- `in_progress`: 1
+- `planned`: 2
 
 ## Change risk distribution
 
@@ -28,5 +28,4 @@ Epics: **36** | Stories: **190**
 
 ## Awaiting independent review
 
-- **E06-S14** - The release formula is a function of the release manifest, rendered where the bytes are built (CR4)
-- **E33-S01** - Signed containment notices are fetched from a published feed (CR4)
+- none

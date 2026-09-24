@@ -337,8 +337,8 @@
         "docs/development/RELEASE_GATES.md"
       ],
       "blocked_by": {
-        "summary": "ADR-0040 moved the formula mechanism into E06-S14, which failed round 10 and must pass first",
-        "argument": "docs/adrs/0040-release-integrity-by-construction-and-a-transactional-containment-ledger.md",
+        "summary": "E06-S14 failed independent review round 11: the manifest can name a Homebrew target twice under different artifact names; its exact-target check must pass before cutover",
+        "argument": "project/evidence/E06-VERIFIER-REVIEW-ROUND11.md",
         "waiting_on": [
           "E06-S14"
         ]
@@ -373,7 +373,7 @@
     {
       "id": "E06-S14",
       "title": "The release formula is a function of the release manifest, rendered where the bytes are built",
-      "status": "ready_for_review",
+      "status": "in_progress",
       "outcome": "Nine review rounds found holes in release.py's post-hoc reconstruction of what the formula installs (ADR-0040). The release workflow now renders the Homebrew formula from the verified release manifest and the tag archive's digest and publishes it as the release asset cancellai.rb; finalize adopts that asset only if it is exactly what render_formula produces from the published manifest, after downloading every engine archive it names, hashing it to the manifest's digest and verifying its build provenance.",
       "change_risk": "CR4",
       "dependencies": [

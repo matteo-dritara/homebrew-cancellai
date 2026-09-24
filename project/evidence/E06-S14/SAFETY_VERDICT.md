@@ -39,3 +39,39 @@ reverified. Main CI was unavailable to this reviewer.
 Pending; this verifier rejects release adoption on the reviewed tree.
 
 FAIL
+
+## Round 11 — 2026-09-24
+
+Verifier: Codex
+Brief-Checksum: fa4a751b449e2ed74da03c05db7ca490cf6c54f8bf5e6cdf05089a7c0eabcbda
+Review target: `0afe3ad..2414975a40538cbda0d4a60f59945906d2eba062`
+Risk: CR4
+
+### Safety surface and evidence
+
+The release manifest authorizes adoption of a published Homebrew formula.
+`tests/test_round11_adversarial.py` constructs a complete manifest that
+`release_manifest.validate_document` accepts, with an extra artifact named
+`second-macos-arm-archive` carrying the same `aarch64-apple-darwin` target
+as the expected archive. All expected archive bytes, digests, formula bytes,
+tag commit and mocked provenance agree. `adoptable_formula` returns the
+formula instead of refusing. Its selector counts expected names but never
+counts all occurrences of a target triple.
+
+| Invariant / obligation | Required property | Result |
+| --- | --- | --- |
+| E06-S14 AC3, SI-019/C-16 | A manifest target occurs exactly once before its release formula may be adopted. | FAIL |
+
+The exact repair is to count every manifest artifact's target triple,
+independent of its name, and refuse duplicate or missing Homebrew targets
+before render/adoption. A simulated `finalize` regression must prove the
+live formula remains byte-identical on refusal. The current Python formula
+stays live; E06-S04 remains blocked. Main CI was unknown because `gh` was
+unauthenticated. Full gates and reproduction:
+`project/evidence/E06-VERIFIER-REVIEW-ROUND11.md`.
+
+### Owner decision
+
+Pending; this verifier rejects release adoption on the reviewed tree.
+
+FAIL

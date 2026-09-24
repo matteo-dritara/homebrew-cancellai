@@ -33,6 +33,7 @@ distinguished by the next round, which is why the ceiling matters.
 | E06 | 8 | independent | 2 | 2 | 2 | 100% |
 | E06 | 9 | independent | 2 | 2 | 2 | 100% |
 | E06 | 10 | independent | 3 | 1 | 1 | 33% |
+| E06 | 11 | independent | 3 | 1 | 1 | 33% |
 | E07 | 1 | independent | - | - | - | **not machine-readable** |
 | E08 | 1 | independent | 4 | 1 | 1 | 25% |
 | E09 | 1 | **self** | 4 | 0 | 0 | 0% |
@@ -145,7 +146,7 @@ independent samples, and the population estimate collapses to what one round alr
 
 ## Evidence-ledger integrity
 
-- **171 of 186** story packets past `ready_for_review` carry a row per acceptance criterion.
+- **170 of 185** story packets past `ready_for_review` carry a row per acceptance criterion.
 - Packets that do not:
   - E00-S01 (CR4): 0 rows for 3 criteria
   - E00-S02 (CR4): 0 rows for 3 criteria
@@ -220,7 +221,7 @@ no reviewer is shown as `unnamed`, not credited to anyone.
 
 | Reviewer | Rounds | Stories judged | Found |
 | --- | --- | --- | --- |
-| Codex | 42 | 102 | 67 |
+| Codex | 43 | 105 | 68 |
 | unnamed | 29 | 118 | 53 |
 
 ## Advisory pre-reviews (never rounds, never verdicts)

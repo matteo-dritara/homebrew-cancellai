@@ -138,3 +138,41 @@ A temporary raw-line-count assertion in the existing 16-process integration test
 Unknown/corrupt history caps authority at Recommend, but a valid concurrent refresh should not create ignored physical history. No release or user-data mutation occurred. Owner decision: PENDING. This round rejects the story and accepts no new residual.
 
 FAIL
+
+## Round 11 — 2026-09-24
+
+Verifier: Codex
+Brief-Checksum: d241ce1bedaf2c4e61db3ee33384640f4c5e3a46d03d134b55bf118345bcfced
+Review target: `0afe3ad..2414975a40538cbda0d4a60f59945906d2eba062`
+Risk: CR4
+
+### Safety surface and evidence
+
+An independent localhost HTTPS feed probe used the production system curl
+with a synthetic Ed25519 publisher and state root. A valid signed notice
+returned 0 and inserted one raw event row. HTTP 500 carrying that same valid
+notice returned 4 with the row list unchanged. A response over 256 KiB
+returned 4 with rows unchanged. The stable-channel
+`test-curl,kill-points` integration suite passed 16 cases, including
+concurrent refresh and a process killed after insert but before commit.
+`cmd_refresh` uses the local install decision/replay path; feed content has
+no lift operation, and the kernel's containment ceilings only reduce
+authority.
+
+| Invariant / obligation | Required property | Result |
+| --- | --- | --- |
+| SI-022 | Feed content remains signed data, not executable or destructive authority. | PASS |
+| SI-029 | Refused feeds leave ordered event rows and raw payloads unchanged; local authority remains usable. | PASS |
+| SI-030 | The compiled release channel still caps authority on the CLI mutation path. | PASS |
+
+The host was macOS; native Linux and Windows feed runs were not observed.
+Windows cross-target Clippy passed; Linux cross-target Clippy could not build
+bundled SQLite without `x86_64-linux-gnu-gcc`. The owner's same-user state
+limit in ADR-0039 remains accepted. Full evidence and gates:
+`project/evidence/E06-VERIFIER-REVIEW-ROUND11.md`.
+
+### Owner decision
+
+Pending; no new residual risk is accepted by this verifier.
+
+PASS
