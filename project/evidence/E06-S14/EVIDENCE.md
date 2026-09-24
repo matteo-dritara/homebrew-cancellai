@@ -75,6 +75,21 @@ adopted); an asset replaced or the tag retargeted after `finalize` (re-run `veri
 compromised release workflow producing self-consistent, attested bad bytes - the trust anchor
 ADR-0040 names.
 
+## Round 12 repair (Codex, `project/evidence/E06-VERIFIER-REVIEW-ROUND12.md`)
+
+Round 12 found the closed-manifest design holding - its own `tests/test_round12_adversarial.py`
+drives a simulated `finalize` through 15 fault cases, all refused with the live formula
+unchanged - and failed the story on two defects around it:
+
+| Finding | Repair |
+| --- | --- |
+| `DESIGN_CONSULTATION_2.md` quoted OpenCode's Python blocks as live code, so `ruff format --check .` failed and the `tests` workflow's lint job was red on `main` from `06d775e` - a gate `release.yml` requires before `publish`. The executor had not read that workflow's result before moving on | Each answer is now quoted verbatim inside a `text` fence (which also undoes a heading-demotion that had rewritten `#` comments inside the quoted code); `ruff format --check .` passes |
+| `docs/RELEASING.md` still said cutover `finalize` used the `.sha256` sidecars and E06-S04's `done` status | Rewritten for the closed manifest, provenance binding and the owner's `CUTOVER_AUTHORIZATION.md` |
+
+**Method defect.** A red CI workflow on `main` went unread across two commits, although AGENTS.md
+requires reading every workflow's conclusion. Before every push from here on the executor reads
+all four workflows of the previous push first.
+
 ## Verification Commands
 
 ```text

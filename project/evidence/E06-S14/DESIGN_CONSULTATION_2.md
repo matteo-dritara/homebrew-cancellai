@@ -17,16 +17,19 @@ Windows zip (the real workflow always lists it, so every real release would be r
 `--signer-run-id` flag, which `gh` 2.101 does not have; the run id is read from the attestation
 certificate's `runInvocationURI` instead.
 
+Each answer is quoted verbatim inside a text fence.
+
 ## Prompt
 
-### Design consultation - cancellAI E06-S14 (not a review round)
+````text
+# Design consultation - cancellAI E06-S14 (not a review round)
 
 You are one of three models (Claude = executor, Codex, OpenCode) asked by the project owner to stop
 a review loop on one story by finding a design that closes the *class* of defect, not the latest
 instance. Do not write a verdict and do not modify any file. Read the repository at the current
 directory and answer in your final message only.
 
-#### The story and its history
+## The story and its history
 
 E06-S14 (`project/epics/E06.json`, evidence `project/evidence/E06-S14/`, ADR-0040): the Homebrew
 formula is a pure function of the release manifest and the tag archive's digest. `scripts/release.py`
@@ -45,7 +48,7 @@ imagine:
   second, differently named artifact for an expected target triple was accepted, because the check
   looks up expected *names* and never counts *targets* across all entries.
 
-#### What to answer
+## What to answer
 
 1. Root cause in one paragraph: why does validation-by-lookup keep missing shapes?
 2. A design that makes the accepted manifest shape *closed* - so that any manifest that is not
@@ -63,9 +66,11 @@ imagine:
 
 Constraints: `AGENTS.md`, `docs/security/SAFETY_INVARIANTS.md` (SI-019), ADR-0040, Python stdlib only
 for `scripts/`. Be concrete - cite functions. Under ~1000 words.
+````
 
 ## Codex
 
+````text
 **Root cause.** `manifest_digests` asks whether each expected artifact *name* exists, then discards the rest of the manifest. Each new check narrows a known path through that lookup; it does not define the complete set of acceptable documents. That is why a second artifact with the same target and a different name survives. `release_manifest.validate_document` defines a broader, valid distribution manifest: it permits multiple artifacts per target, while E06-S14 needs one particular manifest produced by `release-manifest-generate`. Acceptance needs to compare that complete expected document with the published one.
 
 **Closed design.** Give the four archives in `.github/workflows/release.yml`—the three Homebrew tarballs **and the Windows zip**—one ordered release inventory shared with `release.py`. In `manifest_sha256s`, download each published archive under a size cap, compute its SHA-256 from its bytes, and verify its attestation. Establish one trusted run ID from the *verified attestations*, requiring all four to identify the same run, canonical repository and `release.yml`, tag ref, and tag commit. Check that run’s event, ref, commit and successful conclusion through GitHub’s run record. A `run_id` supplied only by the manifest proves nothing.
@@ -83,20 +88,22 @@ A same-user or compromised release workflow can still produce and attest self-co
 3. Correct manifest and formula with one changed archive byte; then correct bytes whose verified attestation has another run ID while repository/ref/commit agree.
 4. All four archives and manifest agreeing, but `cancellai.rb` changed by one byte.
 5. A valid snapshot followed by asset or remote-tag replacement, to demonstrate and document the remaining time-of-check/time-of-use limit rather than claim the gate closes it.
+````
 
 ## OpenCode (nemotron-3-ultra, free tier)
 
+````text
 Now I have a complete picture. Let me provide the design consultation answer.
 
 ---
 
-#### 1. Root cause
+## 1. Root cause
 
 Validation-by-lookup (`manifest_digests` at line 466–488) checks that each *expected artifact name* appears exactly once in the manifest. It never counts `target_triple` across *all* entries, so a manifest carrying the three expected names plus a fourth artifact with a different name but a duplicate `target_triple` passes: the lookup finds each expected name once, ignores the extra entry, and returns the digests. Each review round discovers a new "extra entry" shape the lookup didn't imagine (sidecar digests, wrong workflow/ref, duplicate target under another name) because the check is **open-world** — it verifies presence of known-good entries but not absence of everything else.
 
 ---
 
-#### 2. Closed-manifest design
+## 2. Closed-manifest design
 
 Replace the lookup with **exact equality against a derived expected manifest**.
 
@@ -150,7 +157,7 @@ This makes the accepted manifest shape **closed**: any manifest not *exactly* th
 
 ---
 
-#### 3. Remaining divergence vectors under this design
+## 3. Remaining divergence vectors under this design
 
 | Vector | Closed by design? | Notes |
 |--------|-------------------|-------|
@@ -172,10 +179,10 @@ This makes the accepted manifest shape **closed**: any manifest not *exactly* th
 
 ---
 
-#### 4. Smallest adversarial tests falsifying the design
+## 4. Smallest adversarial tests falsifying the design
 
 ```python
-### tests/test_closed_manifest.py
+# tests/test_closed_manifest.py
 import hashlib, json, unittest
 from unittest import mock
 from scripts import release, release_manifest
@@ -230,3 +237,4 @@ class ClosedManifestTest(unittest.TestCase):
 ```
 
 These four tests cover the class of defects rounds 9–11 found: extra artifacts, duplicate targets, missing artifacts, and unbound `run_id`. Any future shape that differs from the exact expected manifest will fail the bijection check, not require a new enumerated check.
+````

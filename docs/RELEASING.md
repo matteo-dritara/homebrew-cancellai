@@ -44,8 +44,7 @@ git commit -am "chore(release): point formula at the vX.Y.Z tarball" && git push
 
 ### The cutover release (E06-S04)
 
-The first release after the owner accepts the migration Safety Verdict - E06-S04 `done` - is
-`2.0.0`. `prepare` moves the Rust workspace version with the source version (the engine used to
+The first release after the owner accepts the migration Safety Verdict is `2.0.0`. `prepare` moves the Rust workspace version with the source version (the engine used to
 report `0.1.0`), and the release workflow refuses a tag that disagrees with either. Finalize the
 cutover release with the switch stated explicitly:
 
@@ -54,13 +53,26 @@ python3 scripts/release.py finalize --version 2.0.0 --adopt-cutover
 ```
 
 `finalize` never edits the formula: `render_formula` generates it whole for the tag - Python-only
-before 2.0.0, the engine formula from 2.0.0 - with the digests the release published (the tag
-archive's own hash and each engine archive's `.sha256`), writes it atomically, and restores the
-original if the post-write check fails. `--adopt-cutover` is required for the one release that
-first carries the engine and is refused unless E06-S04 is `done`. `release.py check` requires the
-live formula to be byte for byte what `render_formula` produces for its version, and
-`release.py verify-formula` re-checks its digests against the published release; `tests.yml`
-installs the engine formula built from each commit and runs its `brew test`.
+before 2.0.0, the engine formula from 2.0.0 - writes it atomically, and restores the original if
+the post-write check fails. From 2.0.0 the formula it writes is the release asset `cancellai.rb`
+that `release.yml` rendered from the manifest (E06-S14, ADR-0040), adopted only when:
+
+- the published `release-manifest.json` is byte-identical to what the generator writes from the
+  tag's commit (the same locally and on GitHub), the one run the attestations of all four
+  archives name, and the SHA-256 of each archive `finalize` downloads - no `.sha256` sidecar is
+  read, and `--sha256` cannot stand in for any of it;
+- every archive's provenance verifies with `gh attestation verify`, bound to `release.yml`, the tag
+  ref, the tag commit and GitHub-hosted runners, and that run is the tag's successful release run;
+- `cancellai.rb` is byte-identical to the formula rendered from that manifest.
+
+`finalize` therefore needs `gh`, authenticated, and the network; anything unavailable refuses.
+`--adopt-cutover` is required for the one release that first carries the engine and is refused
+without the owner's `project/evidence/E06-S04/CUTOVER_AUTHORIZATION.md` (E06-S15:
+`Authorized-by: @matteo-dritara`, `Version: 2.0.0`, `Safety-Verdict-SHA256: <sha256 of
+SAFETY_VERDICT.md>`, whose final round must pass). `release.py check` requires the live formula to
+be byte for byte what `render_formula` produces for its version, and `release.py verify-formula`
+repeats the published-release verification; `tests.yml` installs the engine formula built from
+each commit and runs its `brew test`.
 
 ### When a release fails
 
