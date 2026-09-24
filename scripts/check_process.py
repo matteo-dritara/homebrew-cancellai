@@ -154,7 +154,10 @@ REVIEW_ROUND_EXCEPTIONS = {
     "judges new code rather than repeating a pass over code already judged. Round 10 is the single "
     "independent round over ADR-0040's redesign (E06-S14, E06-S15, E33-S03, and the reduced E06-S04 "
     "and E33-S01), which the owner chose on 2026-09-24 after round 9 instead of a tenth patch, and "
-    "approved reviewing once at the end",
+    "approved reviewing once at the end. Round 11 re-judges E06-S14 after round 10 failed it, "
+    "E06-S15 whose verdict reader changed after its round-10 PASS, and E33-S01, unblocked by "
+    "E33-S03's PASS; the owner authorized it on 2026-09-24, with a redesign consultation in "
+    "place of a further round if it fails",
 }
 # Matches both an epic-scoped record (`E07-VERIFIER-REVIEW.md`) and a story-scoped one
 # (`E07-S07-VERIFIER-REVIEW.md`), counting both against the *epic's* ceiling (captured
