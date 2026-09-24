@@ -46,6 +46,35 @@ verification; skipping the archive-to-manifest comparison.
 Not bound, recorded: `build_identity.run_id` is not compared with the attestation's run; the
 signer workflow, tag ref and commit already fix which build produced the bytes.
 
+## Round 11 and the closed-manifest redesign (`E06-VERIFIER-REVIEW-ROUND11.md`, `DESIGN_CONSULTATION_2.md`)
+
+Round 11 found a manifest carrying a second, differently named artifact for an expected target
+accepted: the check looked up expected names and ignored everything else. It was the fourth
+shape in three rounds that a hand-written check had not imagined, so instead of a fifth check the
+owner asked Codex and OpenCode for a design that closes the class. All three models converged:
+
+| Mechanism | Where | What it closes |
+| --- | --- | --- |
+| The published manifest must be byte-identical to `release_manifest.build_manifest`'s output, serialized as the generator writes it - first from its own values (`closed_manifest`, before any download or `gh` call), then from independently derived ones | `expected_manifest_text`, `closed_manifest`, `engine_sha256s` step 5 | Extra, missing, renamed, relabelled, reordered or duplicated artifacts (round 11), any changed or unknown field, duplicate JSON keys, another serialization |
+| All four archives of `RELEASE_ARCHIVES` - the Windows zip included, as the workflow lists it - downloaded, hashed, and provenance-verified; all must name one run | `engine_sha256s` step 3, `verify_provenance`, `attested_run_ids` | Archive bytes differing (round 9); archives spliced from different runs |
+| Provenance: `--signer-workflow`, `--source-ref refs/tags/v<version>`, `--source-digest <tag commit>`, `--deny-self-hosted-runners`, `--format json`; the run id is read from the certificate's `runInvocationURI`, never from the manifest | `provenance_command` | Another workflow, ref, commit (round 10) or a self-hosted runner; a manifest naming another run |
+| The run must be this repository's `release.yml`, triggered by the push of `v<version>` at the tag commit, concluded `success` | `check_release_run` | An attested run that was not the tag's successful release |
+| The local tag and GitHub's tag must name the same commit | `remote_tag_commit` | Finalizing against a local tag nobody published |
+| The release workflow's generator inputs are the ones `finalize` assumes | `test_the_release_workflow_writes_what_finalize_expects` parses `release.yml` | The two drifting apart |
+
+Evidence: `PublishedEngineEvidenceTests` (every earlier round's counterexample, nine manifest
+mutations, three serializations, run and remote-tag cases, provenance command and certificate
+parsing); Codex's `tests/test_round10_adversarial.py` and `tests/test_round11_adversarial.py` pass
+unchanged. Mutation checks, each killed: dropping the final byte equality, the remote-tag check,
+the run-record check, the one-run check, `--deny-self-hosted-runners`, or the early closed-shape
+check.
+
+**What the guarantee covers:** the manifest, the formula and the four archives, at the moment
+`finalize` runs. **Not covered:** the `.sha256` sidecars and the SBOM assets (published, not
+adopted); an asset replaced or the tag retargeted after `finalize` (re-run `verify-formula`); and a
+compromised release workflow producing self-consistent, attested bad bytes - the trust anchor
+ADR-0040 names.
+
 ## Verification Commands
 
 ```text

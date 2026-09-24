@@ -35,6 +35,7 @@ import tempfile
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
+from types import ModuleType
 
 ROOT = Path(__file__).resolve().parent.parent
 CANCELLAI = ROOT / "cancellai.py"
@@ -446,6 +447,18 @@ RELEASE_MANIFEST_ASSET = "https://github.com/{repo}/releases/download/v{version}
 FORMULA_ASSET = "https://github.com/{repo}/releases/download/v{version}/cancellai.rb"
 # The workflow that builds, attests and publishes a release; the manifest names it as build identity.
 RELEASE_WORKFLOW = "release.yml"
+# Every archive `release.yml` builds and its manifest lists, in the order it lists them. The formula
+# installs the first three; the Windows zip is verified all the same, because it is part of the
+# manifest `finalize` must find exactly as the workflow wrote it.
+RELEASE_ARCHIVES = (
+    ("aarch64-apple-darwin", "tar.gz"),
+    ("x86_64-apple-darwin", "tar.gz"),
+    ("x86_64-unknown-linux-gnu", "tar.gz"),
+    ("x86_64-pc-windows-msvc", "zip"),
+)
+ARCHIVE_ASSET = "https://github.com/{repo}/releases/download/v{version}/cancellai-cli-{version}-{target}.{ext}"
+# The knowledge-schema range `release.yml` passes to the manifest generator.
+KNOWLEDGE_RANGE = (1, 1)
 # Bounds on what a verification download may read: an engine archive, the manifest or formula.
 MAX_ENGINE_ARCHIVE_BYTES = 256 * 1024 * 1024
 MAX_MANIFEST_BYTES = 1024 * 1024
@@ -463,37 +476,61 @@ def download(url: str, cap: int) -> bytes:
     return bytes(data)
 
 
-def manifest_digests(doc: object, version: str, where: str) -> dict[str, str]:
-    """Each engine archive's digest as a release manifest (E17-S01) records it, after checking the
-    document is the manifest for `version` and names each target's archive exactly once."""
-    if not isinstance(doc, dict) or doc.get("document_type") != "release_manifest" or doc.get("version") != version:
-        raise ReleaseError(f"{where} is not the release manifest for v{version}")
-    identity = doc.get("build_identity")
-    if not isinstance(identity, dict) or identity.get("repository") != REPO or identity.get("workflow") != RELEASE_WORKFLOW:
-        raise ReleaseError(f"{where} was not built by {REPO}'s {RELEASE_WORKFLOW}")
-    artifacts = doc.get("artifacts")
-    if not isinstance(artifacts, list):
-        raise ReleaseError(f"{where} lists no artifacts")
-    digests = {}
-    for target in ENGINE_TARGETS:
-        name = f"cancellai-cli-{version}-{target}"
-        entries = [a for a in artifacts if isinstance(a, dict) and a.get("name") == name]
-        if len(entries) != 1:
-            raise ReleaseError(f"{where} names {name} {len(entries)} times, not once")
-        entry = entries[0]
-        digest = entry.get("sha256")
-        if entry.get("target_triple") != target or not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
-            raise ReleaseError(f"{where}: {name} does not carry target {target} and a SHA-256 digest")
-        digests[target] = digest
-    return digests
+def release_manifest_module() -> ModuleType:
+    """`scripts/release_manifest.py` (E17-S01), loaded by file location like the other scripts do."""
+    spec = importlib.util.spec_from_file_location("cancellai_release_manifest_release", Path(__file__).resolve().parent / "release_manifest.py")
+    if spec is None or spec.loader is None:
+        raise ReleaseError("cannot load scripts/release_manifest.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
-def manifest_source_commit(doc: dict[str, object], where: str) -> str:
-    """The commit the manifest says the release was built from."""
-    source = doc.get("source_sha")
-    if not isinstance(source, str) or not re.fullmatch(r"[0-9a-f]{40}", source):
-        raise ReleaseError(f"{where} does not name the 40-hex commit it was built from")
-    return source
+def archive_name(version: str, target: str) -> str:
+    return f"cancellai-cli-{version}-{target}"
+
+
+def expected_manifest_text(version: str, source_sha: str, run_id: str, digests: dict[str, str]) -> str:
+    """The exact bytes `release.yml`'s `release-manifest-generate` writes for this release: the same
+    generator (`release_manifest.build_manifest`), the same fixed fields, the four archives of
+    `RELEASE_ARCHIVES` in the workflow's order, serialized as the generator serializes. A published
+    manifest is accepted only if it is byte-identical to this, so no shape the check did not
+    imagine - an extra artifact, a second name for a target, a field, a key order - can pass
+    (ADR-0040; E06 review round 11 and the design consultation after it)."""
+    manifest = release_manifest_module()
+    try:
+        doc = manifest.build_manifest(
+            version=version,
+            channel="stable",
+            source_sha=source_sha,
+            repository=REPO,
+            workflow=RELEASE_WORKFLOW,
+            run_id=run_id,
+            knowledge_min=KNOWLEDGE_RANGE[0],
+            knowledge_max=KNOWLEDGE_RANGE[1],
+            artifacts=[(archive_name(version, target), target, digests[target]) for target, _ in RELEASE_ARCHIVES],
+        )
+    except (manifest.ReleaseManifestError, KeyError, TypeError) as exc:
+        raise ReleaseError(f"cannot build the expected v{version} release manifest: {exc}") from exc
+    return json.dumps(doc, indent=2) + "\n"
+
+
+def closed_manifest(text: str, version: str) -> tuple[str, str, dict[str, str]]:
+    """The commit, run id and per-target digests a manifest states, accepted only if the manifest
+    is exactly what the generator would write from those same values - the release profile, checked
+    before anything is downloaded or asked of GitHub."""
+    try:
+        doc = json.loads(text)
+        source_sha = doc["source_sha"]
+        run_id = doc["build_identity"]["run_id"]
+        by_name = {entry["name"]: entry["sha256"] for entry in doc["artifacts"]}
+        digests = {target: by_name[archive_name(version, target)] for target, _ in RELEASE_ARCHIVES}
+    except (ValueError, KeyError, TypeError) as exc:
+        raise ReleaseError(f"the v{version} release manifest is not the shape release.yml writes: {exc}") from exc
+    if not isinstance(source_sha, str) or not isinstance(run_id, str) or text != expected_manifest_text(version, source_sha, run_id, digests):
+        raise ReleaseError(f"the v{version} release manifest is not exactly the one release.yml writes for its own values")
+    return source_sha, run_id, digests
 
 
 def tag_commit(version: str) -> str:
@@ -505,39 +542,80 @@ def tag_commit(version: str) -> str:
     return commit
 
 
-def manifest_sha256s(version: str) -> tuple[dict[str, str], str]:
-    """The published release manifest's engine digests, and the commit it names - which must be the
-    commit of the `v<version>` tag (E06 review round 10: a manifest naming another commit was
-    adopted)."""
-    url = RELEASE_MANIFEST_ASSET.format(repo=REPO, version=version)
+def gh_json(*args: str) -> object:
+    """`gh` with JSON output; unavailable `gh`, a failure or non-JSON output refuses."""
+    gh = shutil.which("gh")
+    if gh is None:
+        raise ReleaseError("`gh` is not installed; the release cannot be verified")
+    result = subprocess.run([gh, *args], capture_output=True, text=True, check=False)  # noqa: S603
+    if result.returncode != 0:
+        raise ReleaseError(f"gh {' '.join(args[:3])} failed: {(result.stderr or result.stdout).strip()}")
     try:
-        doc = json.loads(download(url, MAX_MANIFEST_BYTES))
+        return json.loads(result.stdout)
     except ValueError as exc:
-        raise ReleaseError(f"{url} is not JSON: {exc}") from exc
-    digests = manifest_digests(doc, version, url)
-    source = manifest_source_commit(doc, url)
-    tagged = tag_commit(version)
-    if source != tagged:
-        raise ReleaseError(f"{url} was built from {source}, but v{version} is {tagged}")
-    return digests, source
+        raise ReleaseError(f"gh {' '.join(args[:3])} did not answer JSON") from exc
+
+
+def remote_tag_commit(version: str) -> str:
+    """The commit GitHub's `v<version>` tag points at, which must be the local tag's."""
+    answer = gh_json("api", f"repos/{REPO}/commits/v{version}")
+    commit = answer.get("sha") if isinstance(answer, dict) else None
+    if not isinstance(commit, str):
+        raise ReleaseError(f"GitHub names no commit for v{version}")
+    return commit
+
+
+def check_release_run(run_id: str, version: str, commit: str) -> None:
+    """The run the attestations name is this repository's `release.yml`, triggered by the push of
+    `v<version>` at `commit`, and it succeeded."""
+    run = gh_json("api", f"repos/{REPO}/actions/runs/{run_id}")
+    if not isinstance(run, dict):
+        raise ReleaseError(f"run {run_id} is unreadable")
+    expected = {
+        "path": f".github/workflows/{RELEASE_WORKFLOW}",
+        "head_sha": commit,
+        "head_branch": f"v{version}",
+        "event": "push",
+        "conclusion": "success",
+    }
+    wrong = {key: run.get(key) for key, value in expected.items() if run.get(key) != value}
+    if wrong:
+        raise ReleaseError(f"run {run_id} is not v{version}'s successful release run: {wrong}")
 
 
 def provenance_command(gh: str, path: Path, version: str, commit: str) -> list[str]:
     """`gh attestation verify` bound to the exact release: this repository, signed by its release
-    workflow, from the version's tag at the tag's own commit - not merely "some workflow in this
-    repository" (E06 review round 10)."""
+    workflow on a GitHub-hosted runner, from the version's tag at the tag's own commit, answering
+    JSON so the run that built the bytes can be read (E06 review rounds 10-11)."""
     return [
         gh, "attestation", "verify", str(path), "--repo", REPO,
         "--signer-workflow", f"{REPO}/.github/workflows/{RELEASE_WORKFLOW}",
         "--source-ref", f"refs/tags/v{version}",
         "--source-digest", commit,
+        "--deny-self-hosted-runners",
+        "--format", "json",
     ]  # fmt: skip
 
 
-def verify_provenance(data: bytes, name: str, version: str, commit: str) -> None:
-    """`gh attestation verify` over exactly these bytes: they were built by this repository's
-    release workflow from the `v<version>` tag at `commit`. Unavailable `gh` or a failed
-    verification refuses."""
+RUN_INVOCATION_RE = re.compile(rf"^https://github\.com/{re.escape(REPO)}/actions/runs/(\d+)/attempts/\d+$")
+
+
+def attested_run_ids(answer: object) -> set[str]:
+    """The run ids the verified attestations' certificates name."""
+    runs = set()
+    for entry in answer if isinstance(answer, list) else []:
+        try:
+            uri = entry["verificationResult"]["signature"]["certificate"]["runInvocationURI"]
+        except (KeyError, TypeError):
+            continue
+        match = RUN_INVOCATION_RE.match(uri) if isinstance(uri, str) else None
+        runs.add(match.group(1) if match else "")
+    return runs
+
+
+def verify_provenance(data: bytes, name: str, version: str, commit: str) -> str:
+    """`gh attestation verify` over exactly these bytes; returns the one run id every verified
+    attestation names. Unavailable `gh`, a failed verification, or no single run refuses."""
     gh = shutil.which("gh")
     if gh is None:
         raise ReleaseError(f"cannot verify {name}'s build provenance: `gh` is not installed")
@@ -547,42 +625,72 @@ def verify_provenance(data: bytes, name: str, version: str, commit: str) -> None
         result = subprocess.run(provenance_command(gh, path, version, commit), capture_output=True, text=True, check=False)  # noqa: S603
     if result.returncode != 0:
         raise ReleaseError(f"{name} failed build-provenance verification: {(result.stderr or result.stdout).strip()}")
+    try:
+        runs = attested_run_ids(json.loads(result.stdout))
+    except ValueError as exc:
+        raise ReleaseError(f"{name}'s provenance verification did not answer JSON") from exc
+    if len(runs) != 1 or "" in runs:
+        raise ReleaseError(f"{name}'s attestations do not name exactly one release run: {sorted(runs)}")
+    return runs.pop()
 
 
 def engine_sha256s(version: str) -> dict[str, str]:
-    """Each engine archive's digest, taken from the published release manifest and confirmed on the
-    bytes: every archive is downloaded, hashed to the manifest's digest, and its build provenance
-    verified (E06 review round 9, ADR-0040). Nothing is taken from a `.sha256` sidecar, and a
-    disagreement or any unavailable piece refuses."""
-    recorded, commit = manifest_sha256s(version)
-    problems = []
-    for target in ENGINE_TARGETS:
-        url = ENGINE_ASSET.format(repo=REPO, version=version, target=target)
-        data = download(url, MAX_ENGINE_ARCHIVE_BYTES)
-        actual = hashlib.sha256(data).hexdigest()
-        if actual != recorded[target]:
-            problems.append(f"{target}: archive {actual}, manifest {recorded[target]}")
-            continue
-        verify_provenance(data, url.rsplit("/", 1)[-1], version, commit)
-    if problems:
-        raise ReleaseError(f"v{version}'s engine archives disagree with the release manifest:\n" + "\n".join(f"- {p}" for p in problems))
-    return recorded
+    """The engine digests `finalize` may put in the formula, established without trusting anything
+    the release states about itself (ADR-0040, the round-11 design consultation):
+
+    1. the published manifest must be exactly what the generator writes from its own values;
+    2. the local and GitHub `v<version>` tags must name the same commit;
+    3. every archive of the release - Windows included - is downloaded, hashed, and
+       provenance-verified against that tag and commit, and all four must come from one run;
+    4. that run must be this repository's successful `release.yml` run for the tag's push;
+    5. the manifest must then be byte-identical to the one generated from the tag's commit, the
+       attested run and the digests of the bytes just downloaded.
+
+    Any failure, disagreement or unavailable piece refuses. Covered: the manifest, the formula (by
+    `adoptable_formula`) and the four archives - not the `.sha256` sidecars or the SBOMs."""
+    url = RELEASE_MANIFEST_ASSET.format(repo=REPO, version=version)
+    try:
+        text = download(url, MAX_MANIFEST_BYTES).decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ReleaseError(f"{url} is not UTF-8") from exc
+    closed_manifest(text, version)
+    commit = tag_commit(version)
+    remote = remote_tag_commit(version)
+    if remote != commit:
+        raise ReleaseError(f"v{version} is {commit} here but {remote} on GitHub")
+    digests: dict[str, str] = {}
+    runs: set[str] = set()
+    for target, extension in RELEASE_ARCHIVES:
+        asset = ARCHIVE_ASSET.format(repo=REPO, version=version, target=target, ext=extension)
+        data = download(asset, MAX_ENGINE_ARCHIVE_BYTES)
+        digests[target] = hashlib.sha256(data).hexdigest()
+        runs.add(verify_provenance(data, asset.rsplit("/", 1)[-1], version, commit))
+    if len(runs) != 1:
+        raise ReleaseError(f"v{version}'s archives were attested by different runs: {sorted(runs)}")
+    run_id = runs.pop()
+    check_release_run(run_id, version, commit)
+    if text != expected_manifest_text(version, commit, run_id, digests):
+        raise ReleaseError(
+            f"{url} is not the manifest release.yml writes for v{version} at {commit}, run {run_id}, with the published archives' digests"
+        )
+    return {target: digests[target] for target in ENGINE_TARGETS}
 
 
 def render_release_formula(version: str, manifest: Path, source_sha: str) -> str:
     """The formula for `version` as a pure function of the release manifest and the tag archive's
     digest (E06-S14). The release workflow runs it after `release_manifest.py verify-checksums` has
-    tied every built archive to the manifest, and publishes the result as `cancellai.rb`."""
+    tied every built archive to the manifest, and publishes the result as `cancellai.rb`. The
+    manifest must already have the closed release shape `finalize` will demand."""
     if not re.fullmatch(r"[0-9a-f]{64}", source_sha):
         raise ReleaseError(f"not a SHA-256 digest: {source_sha!r}")
     engines = None
     if parse(version) >= CUTOVER_VERSION:
         try:
-            doc = json.loads(manifest.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as exc:
+            text = manifest.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
             raise ReleaseError(f"cannot read {manifest}: {exc}") from exc
-        manifest_source_commit(doc, str(manifest))
-        engines = published_engines(version, manifest_digests(doc, version, str(manifest)))
+        _, _, digests = closed_manifest(text, version)
+        engines = published_engines(version, {target: digests[target] for target in ENGINE_TARGETS})
     return render_formula(version, source_sha, engines)
 
 

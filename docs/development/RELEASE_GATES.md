@@ -371,6 +371,10 @@ the mechanics left E06-S04:
   manifest, after downloading every engine archive the formula names, hashing it to the
   manifest's digest and verifying its provenance with `gh attestation verify`. No `.sha256`
   sidecar is consulted, `--sha256` cannot stand in for any of it, and a missing piece refuses.
+  Since review round 11 the manifest is *closed*: it must be byte-identical to what the
+  generator writes from the tag's commit (local and on GitHub), the one run all four archives'
+  attestations name (Windows included), and the digests of the downloaded bytes, and that run
+  must be the tag's successful `release.yml` run.
 - **E06-S15 - the owner authorizes the cutover explicitly.** `finalize --adopt-cutover` requires
   `project/evidence/E06-S04/CUTOVER_AUTHORIZATION.md`, bound to the version and to the
   Safety Verdict the owner accepted; no story status stands in for it. The file carries three

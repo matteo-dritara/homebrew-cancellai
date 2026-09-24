@@ -36,7 +36,11 @@ model was overloaded for every attempt.
    adopts that asset only if it is byte-identical to what `render_formula` produces from the
    published manifest, and only after every engine archive the formula names has been downloaded,
    hashed to the manifest's digest, and its build provenance verified with
-   `gh attestation verify`. Nothing is derived from a sidecar; a missing piece refuses.
+   `gh attestation verify`. Nothing is derived from a sidecar; a missing piece refuses. (Amended
+   2026-09-24 after round 11 and a second design consultation: the manifest is accepted only if
+   byte-identical to the generator's output rebuilt from independently derived values - the
+   tag's commit, the run the verified attestations of all four archives name, and the digests of
+   the downloaded bytes - and that run must be the tag's successful `release.yml` run.)
 2. **Cutover is adopted on an explicit owner authorization, not on a story status (E06-S15).**
    `finalize --adopt-cutover` requires `project/evidence/E06-S04/CUTOVER_AUTHORIZATION.md`, which
    names the version it authorizes and the SHA-256 of the `SAFETY_VERDICT.md` the owner accepted,

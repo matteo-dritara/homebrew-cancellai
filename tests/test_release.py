@@ -389,50 +389,36 @@ class EngineCutoverTests(unittest.TestCase):
 
 
 class PublishedEngineEvidenceTests(unittest.TestCase):
-    """E06-S14 (ADR-0040), after nine review rounds on release.py: the formula is a pure function of
-    the release manifest and the tag archive's digest, rendered by the release workflow and adopted
-    only if it renders identically from the published manifest, whose every engine archive is
-    downloaded, hashed to the manifest's digest and provenance-verified. Round 9's case - a sidecar
-    agreeing with the formula while the archive's bytes differ - has no sidecar left to agree with."""
+    """E06-S14 (ADR-0040) after rounds 9-11 and the design consultation that followed: nothing the
+    release says about itself is trusted. The manifest must be byte-identical to what the generator
+    writes - first from its own values, then from the tag's commit, the run the attestations name
+    and the digests of the downloaded bytes - and the published formula byte-identical to the one
+    rendered from it. Each earlier round's counterexample is one case below."""
 
     VERSION = "2.0.0"
     SOURCE = "f" * 64
+    COMMIT = "1" * 40
+    RUN = "4242"
 
-    def published(
-        self,
-        *,
-        archive: bytes = b"engine",
-        manifest_digest: str | None = None,
-        manifest_version: str = VERSION,
-        artifacts=None,
-        workflow: str | None = None,
-        source_sha: str = "1" * 40,
-    ):
+    def digests_of(self, archives: dict[str, bytes]) -> dict[str, str]:
         import hashlib
-        import json
 
-        real = hashlib.sha256(b"engine").hexdigest()
-        assets = {}
-        entries = []
-        for target in release.ENGINE_TARGETS:
-            url = release.ENGINE_ASSET.format(repo=release.REPO, version=self.VERSION, target=target)
-            assets[url] = archive
-            entries.append({"name": f"cancellai-cli-{self.VERSION}-{target}", "target_triple": target, "sha256": manifest_digest or real})
-        doc = {
-            "document_type": "release_manifest",
-            "version": manifest_version,
-            "source_sha": source_sha,
-            "build_identity": {"repository": release.REPO, "workflow": workflow or release.RELEASE_WORKFLOW, "run_id": "1"},
-            "artifacts": entries if artifacts is None else artifacts(entries),
-        }
-        assets[release.RELEASE_MANIFEST_ASSET.format(repo=release.REPO, version=self.VERSION)] = json.dumps(doc).encode()
+        return {target: hashlib.sha256(data).hexdigest() for target, data in archives.items()}
+
+    def published(self, *, archives: dict[str, bytes] | None = None, manifest: str | None = None, run: str = RUN, commit: str = COMMIT):
+        archives = archives or {target: f"engine {target}".encode() for target, _ in release.RELEASE_ARCHIVES}
+        digests = self.digests_of(archives)
+        text = manifest if manifest is not None else release.expected_manifest_text(self.VERSION, commit, run, digests)
+        assets = {release.RELEASE_MANIFEST_ASSET.format(repo=release.REPO, version=self.VERSION): text.encode()}
+        for target, extension in release.RELEASE_ARCHIVES:
+            assets[release.ARCHIVE_ASSET.format(repo=release.REPO, version=self.VERSION, target=target, ext=extension)] = archives[target]
         formula = release.render_formula(
-            self.VERSION, self.SOURCE, release.published_engines(self.VERSION, dict.fromkeys(release.ENGINE_TARGETS, real))
+            self.VERSION, self.SOURCE, release.published_engines(self.VERSION, {t: digests[t] for t in release.ENGINE_TARGETS})
         )
         assets[release.FORMULA_ASSET.format(repo=release.REPO, version=self.VERSION)] = formula.encode()
-        return assets, formula, doc
+        return assets, formula
 
-    def network(self, assets, *, provenance_fails: bool = False):
+    def network(self, assets, *, runs: dict[str, str] | None = None, remote: str = COMMIT, run_record=None, provenance_fails: bool = False):
         from contextlib import ExitStack
 
         def download(url, cap):
@@ -443,105 +429,205 @@ class PublishedEngineEvidenceTests(unittest.TestCase):
         def verify_provenance(data, name, version, commit):
             if provenance_fails:
                 raise release.ReleaseError(f"{name} failed build-provenance verification")
+            return (runs or {}).get(name, self.RUN)
+
+        record = run_record or {
+            "path": ".github/workflows/release.yml",
+            "head_sha": self.COMMIT,
+            "head_branch": f"v{self.VERSION}",
+            "event": "push",
+            "conclusion": "success",
+        }
+
+        def gh_json(*args):
+            if args[1].endswith(f"/commits/v{self.VERSION}"):
+                return {"sha": remote}
+            if "/actions/runs/" in args[1]:
+                return record
+            raise AssertionError(args)
 
         stack = ExitStack()
         stack.enter_context(mock.patch.object(release, "download", side_effect=download))
         stack.enter_context(mock.patch.object(release, "verify_provenance", side_effect=verify_provenance))
         stack.enter_context(mock.patch.object(release, "archive_sha256", return_value=self.SOURCE))
-        stack.enter_context(mock.patch.object(release, "tag_commit", return_value="1" * 40))
+        stack.enter_context(mock.patch.object(release, "tag_commit", return_value=self.COMMIT))
+        stack.enter_context(mock.patch.object(release, "gh_json", side_effect=gh_json))
         return stack
 
+    def refused(self, assets, **network) -> None:
+        with self.network(assets, **network), self.assertRaises(release.ReleaseError):
+            release.adoptable_formula(self.VERSION)
+
+    def test_the_release_workflow_writes_what_finalize_expects(self) -> None:
+        """The generator's inputs in release.yml are the ones `expected_manifest_text` assumes."""
+        workflow = (release.ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+        generate = workflow[workflow.index("python3 scripts/release_manifest.py generate") :]
+        generate = generate[: generate.index("--out release-manifest.json")]
+        listed = re.findall(
+            r'--artifact "cancellai-cli-\$\{version\}-([\w-]+)" ([\w-]+) "dist/cancellai-cli-\$\{version\}-[\w-]+\.([\w.]+)"', generate
+        )
+        self.assertEqual([(target, extension) for target, triple, extension in listed], list(release.RELEASE_ARCHIVES))
+        self.assertTrue(all(target == triple for target, triple, _ in listed))
+        for flag in (
+            "--channel stable",
+            "--workflow release.yml",
+            '--run-id "$GITHUB_RUN_ID"',
+            '--source-sha "$GITHUB_SHA"',
+            "--knowledge-min 1 --knowledge-max 1",
+        ):
+            self.assertIn(flag, generate)
+
     def test_agreeing_evidence_adopts_the_published_formula(self) -> None:
-        assets, formula, _ = self.published()
+        assets, formula = self.published()
         with self.network(assets):
             self.assertEqual(release.adoptable_formula(self.VERSION), formula)
             self.assertEqual(release.published_digest_problems(formula, self.VERSION), [])
 
-    def test_round_nine_an_archive_whose_bytes_differ_from_the_manifest_is_refused(self) -> None:
-        assets, _, _ = self.published(archive=b"other bytes")
-        with self.network(assets), self.assertRaisesRegex(release.ReleaseError, "disagree"):
-            release.adoptable_formula(self.VERSION)
+    def test_round_eleven_a_second_name_for_a_target_is_refused(self) -> None:
+        import json
 
-    def test_a_manifest_naming_other_bytes_is_refused(self) -> None:
-        assets, _, _ = self.published(manifest_digest="c" * 64)
-        with self.network(assets), self.assertRaisesRegex(release.ReleaseError, "disagree"):
-            release.adoptable_formula(self.VERSION)
+        assets, _ = self.published()
+        url = release.RELEASE_MANIFEST_ASSET.format(repo=release.REPO, version=self.VERSION)
+        doc = json.loads(assets[url])
+        doc["artifacts"].append({**doc["artifacts"][0], "name": "second-macos-arm-archive"})
+        assets[url] = (json.dumps(doc, indent=2) + "\n").encode()
+        self.refused(assets)
 
-    def test_a_published_formula_one_byte_off_is_refused(self) -> None:
-        assets, formula, _ = self.published()
-        assets[release.FORMULA_ASSET.format(repo=release.REPO, version=self.VERSION)] = (formula + " ").encode()
-        with self.network(assets), self.assertRaisesRegex(release.ReleaseError, "not the formula"):
-            release.adoptable_formula(self.VERSION)
+    def test_any_departure_from_the_generated_manifest_is_refused(self) -> None:
+        import json
 
-    def test_a_manifest_for_another_version_is_refused(self) -> None:
-        assets, _, _ = self.published(manifest_version="1.99.0")
-        with self.network(assets), self.assertRaisesRegex(release.ReleaseError, "not the release manifest"):
-            release.adoptable_formula(self.VERSION)
+        cases = {
+            "missing Windows archive": lambda doc: doc["artifacts"].pop(),
+            "fifth archive": lambda doc: doc["artifacts"].append(
+                {"name": "cancellai-cli-2.0.0-riscv", "target_triple": "riscv", "sha256": "0" * 64}
+            ),
+            "reordered archives": lambda doc: doc["artifacts"].reverse(),
+            "renamed archive": lambda doc: doc["artifacts"][1].update(name="cancellai-cli-2.0.0-intel"),
+            "relabelled triple": lambda doc: doc["artifacts"][1].update(target_triple="x86_64-unknown-linux-gnu"),
+            "beta channel": lambda doc: doc.update(channel="beta"),
+            "widened knowledge range": lambda doc: doc["knowledge_compatibility"].update(max_schema_version=2),
+            "unknown nested field": lambda doc: doc["build_identity"].update(extra="x"),
+            "another workflow": lambda doc: doc["build_identity"].update(workflow="experiment.yml"),
+        }
+        for label, mutate in cases.items():
+            assets, _ = self.published()
+            url = release.RELEASE_MANIFEST_ASSET.format(repo=release.REPO, version=self.VERSION)
+            doc = json.loads(assets[url])
+            mutate(doc)
+            assets[url] = (json.dumps(doc, indent=2) + "\n").encode()
+            with self.subTest(label):
+                self.refused(assets)
 
-    def test_a_target_named_twice_or_not_at_all_is_refused(self) -> None:
-        for label, shape in (("duplicated", lambda entries: [*entries, entries[0]]), ("missing", lambda entries: entries[1:])):
-            assets, _, _ = self.published(artifacts=shape)
-            with self.subTest(label), self.network(assets), self.assertRaisesRegex(release.ReleaseError, "not once"):
-                release.adoptable_formula(self.VERSION)
+    def test_a_manifest_serialized_differently_is_refused(self) -> None:
+        import json
+
+        assets, _ = self.published()
+        url = release.RELEASE_MANIFEST_ASSET.format(repo=release.REPO, version=self.VERSION)
+        text = assets[url].decode()
+        for label, variant in {
+            "compact": json.dumps(json.loads(text)),
+            "duplicate key": text.replace('"channel": "stable",', '"channel": "beta",\n  "channel": "stable",', 1),
+            "no final newline": text.rstrip("\n"),
+        }.items():
+            assets[url] = variant.encode()
+            with self.subTest(label):
+                self.refused(assets)
+
+    def test_round_ten_a_manifest_naming_another_commit_is_refused(self) -> None:
+        assets, _ = self.published(commit="0" * 40)
+        self.refused(assets)
+
+    def test_a_local_tag_github_does_not_share_is_refused(self) -> None:
+        assets, _ = self.published()
+        self.refused(assets, remote="2" * 40)
+
+    def test_round_nine_an_archive_byte_changed_is_refused(self) -> None:
+        assets, _ = self.published()
+        url = release.ARCHIVE_ASSET.format(repo=release.REPO, version=self.VERSION, target="x86_64-pc-windows-msvc", ext="zip")
+        assets[url] = assets[url] + b"x"
+        self.refused(assets)
+
+    def test_archives_from_different_runs_or_a_manifest_naming_another_run_are_refused(self) -> None:
+        assets, _ = self.published()
+        split = self.network(assets, runs={"cancellai-cli-2.0.0-x86_64-pc-windows-msvc.zip": "9999"})
+        with split, self.assertRaisesRegex(release.ReleaseError, "different runs"):
+            release.adoptable_formula(self.VERSION)
+        assets, _ = self.published(run="9999")
+        self.refused(assets)
+
+    def test_a_run_that_is_not_the_tags_successful_release_run_is_refused(self) -> None:
+        base = {
+            "path": ".github/workflows/release.yml",
+            "head_sha": self.COMMIT,
+            "head_branch": "v2.0.0",
+            "event": "push",
+            "conclusion": "success",
+        }
+        for key, value in (
+            ("conclusion", "failure"),
+            ("head_sha", "2" * 40),
+            ("head_branch", "main"),
+            ("event", "workflow_dispatch"),
+            ("path", ".github/workflows/x.yml"),
+        ):
+            assets, _ = self.published()
+            with self.subTest(key):
+                self.refused(assets, run_record={**base, key: value})
 
     def test_a_provenance_failure_is_refused(self) -> None:
-        assets, _, _ = self.published()
-        with self.network(assets, provenance_fails=True), self.assertRaisesRegex(release.ReleaseError, "provenance"):
-            release.adoptable_formula(self.VERSION)
+        assets, _ = self.published()
+        self.refused(assets, provenance_fails=True)
+
+    def test_a_published_formula_one_byte_off_is_refused(self) -> None:
+        assets, formula = self.published()
+        assets[release.FORMULA_ASSET.format(repo=release.REPO, version=self.VERSION)] = (formula + " ").encode()
+        self.refused(assets)
 
     def test_missing_evidence_is_refused_not_skipped(self) -> None:
-        for missing in ("release-manifest.json", ".tar.gz", "cancellai.rb"):
-            assets, _, _ = self.published()
+        for missing in ("release-manifest.json", ".tar.gz", ".zip", "cancellai.rb"):
+            assets, _ = self.published()
             assets = {url: data for url, data in assets.items() if not url.endswith(missing)}
-            with self.subTest(missing=missing), self.network(assets), self.assertRaises(release.ReleaseError):
-                release.adoptable_formula(self.VERSION)
+            with self.subTest(missing=missing):
+                self.refused(assets)
 
     def test_the_workflow_and_finalize_render_the_same_formula(self) -> None:
-        import json
         import tempfile
         from pathlib import Path
 
-        _, formula, doc = self.published()
+        assets, formula = self.published()
+        text = assets[release.RELEASE_MANIFEST_ASSET.format(repo=release.REPO, version=self.VERSION)].decode()
         with tempfile.TemporaryDirectory() as tmp:
             manifest = Path(tmp) / "release-manifest.json"
-            manifest.write_text(json.dumps(doc), encoding="utf-8")
+            manifest.write_text(text, encoding="utf-8")
             self.assertEqual(release.render_release_formula(self.VERSION, manifest, self.SOURCE), formula)
-            doc["version"] = "1.99.0"
-            manifest.write_text(json.dumps(doc), encoding="utf-8")
+            manifest.write_text(text.replace('"stable"', '"beta"'), encoding="utf-8")
             with self.assertRaises(release.ReleaseError):
                 release.render_release_formula(self.VERSION, manifest, self.SOURCE)
 
     def test_a_live_formula_that_is_not_the_published_one_is_reported(self) -> None:
-        assets, formula, _ = self.published()
+        assets, formula = self.published()
         with self.network(assets):
             self.assertTrue(release.published_digest_problems(formula.replace("f" * 64, "e" * 64, 1), self.VERSION))
 
-    # E06 review round 10: provenance from any workflow or ref of this repository satisfied the check.
-    def test_provenance_is_bound_to_the_release_workflow_and_the_tag(self) -> None:
+    def test_provenance_is_bound_to_the_workflow_tag_commit_and_hosted_runners(self) -> None:
         from pathlib import Path
 
         command = release.provenance_command("gh", Path("a.tar.gz"), "2.0.0", "1" * 40)
-        self.assertEqual(command[command.index("--source-digest") + 1], "1" * 40)
         self.assertEqual(command[command.index("--signer-workflow") + 1], f"{release.REPO}/.github/workflows/release.yml")
         self.assertEqual(command[command.index("--source-ref") + 1], "refs/tags/v2.0.0")
+        self.assertEqual(command[command.index("--source-digest") + 1], "1" * 40)
+        self.assertIn("--deny-self-hosted-runners", command)
+        self.assertEqual(command[command.index("--format") + 1], "json")
 
-    # E06 review round 10: a manifest naming another commit than the tag's was adopted.
-    def test_a_manifest_built_from_another_commit_is_refused(self) -> None:
-        for source_sha in ("0" * 40, "not-a-commit"):
-            assets, _, _ = self.published(source_sha=source_sha)
-            with self.subTest(source_sha=source_sha), self.network(assets), self.assertRaises(release.ReleaseError):
-                release.adoptable_formula(self.VERSION)
+    def test_the_attested_run_is_read_from_the_certificate(self) -> None:
+        def entry(uri):
+            return {"verificationResult": {"signature": {"certificate": {"runInvocationURI": uri}}}}
 
-    def test_an_unresolvable_tag_is_refused(self) -> None:
-        assets, _, _ = self.published()
-        unresolvable = mock.patch.object(release, "tag_commit", side_effect=release.ReleaseError("cannot resolve tag"))
-        with self.network(assets), unresolvable, self.assertRaises(release.ReleaseError):
-            release.adoptable_formula(self.VERSION)
-
-    def test_a_manifest_built_by_another_workflow_is_refused(self) -> None:
-        assets, _, _ = self.published(workflow="experiment.yml")
-        with self.network(assets), self.assertRaisesRegex(release.ReleaseError, "was not built by"):
-            release.adoptable_formula(self.VERSION)
+        good = f"https://github.com/{release.REPO}/actions/runs/4242/attempts/1"
+        self.assertEqual(release.attested_run_ids([entry(good)]), {"4242"})
+        self.assertEqual(release.attested_run_ids([entry(good), entry(good.replace("4242", "7"))]), {"4242", "7"})
+        self.assertEqual(release.attested_run_ids([entry("https://github.com/someone/else/actions/runs/4242/attempts/1")]), {""})
+        self.assertEqual(release.attested_run_ids([{}]), set())
 
     def test_verify_provenance_refuses_without_gh(self) -> None:
         with mock.patch.object(release.shutil, "which", return_value=None), self.assertRaisesRegex(release.ReleaseError, "gh"):
