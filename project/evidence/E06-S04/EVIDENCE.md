@@ -89,13 +89,13 @@ the parity gate runs natively on macOS and Linux for every change (`rust.yml` `p
 
 The story is judged on these eight items; re-judging stories closed by their own rounds is out of
 scope. CI results are recorded here because the reviewer's sandbox cannot reach GitHub: every run
-below is on `50b023e`, whose code the review reads (later commits change evidence files only).
+below is on `50b023e` or, for C3 after round 15, on `8ebda6d` (`rust` `36072310467`, `tests` `36072310449`, `governance` `36072310457`, `codeql` `36072310482`, all green).
 
 | # | Check | Evidence |
 | --- | --- | --- |
 | C1 | Every dependency done; E06-S14 and E06-S15 by their own rounds | `project_os.py check`; E06-S14 PASS_WITH_RESIDUALS round 13, E06-S15 PASS rounds 10-11 (`E06-VERIFIER-REVIEW-ROUND10/11/13.md`) |
 | C2 | Rehearsal v1.21.1 published and verified on its real assets | Release run `36069385676` (all 11 jobs green); `verify-release --version 1.21.1` passed first time; `project/evidence/RELEASE-v1.21.1.md` |
-| C3 | The 2.0.0 engine formula from this commit installs and `brew test`s | `tests` run `36070653690`, job `homebrew` ("the cutover formula installs and runs this commit's engine") success |
+| C3 | The 2.0.0 engine formula from this commit installs and `brew test`s | Since round 15: `tests` run `36072310449` on `8ebda6d`, job `homebrew` - the checkout staged to the cutover version (`stage-candidate`), installed from a throwaway tap, `verify-installed` printed `cancellai -> cancellai-cli 2.0.0` and `cancellai-legacy -> cancellai 2.0.0`, `brew test` passed. (Run `36070653690` on `e54a639` tested the formula at 1.21.1, which round 15 rightly did not accept.) |
 | C4 | Native partial-scan reproduction on three platforms | `rust` run `36070653682`: `parity (macos-latest)`, `parity (ubuntu-latest)` success; `cli-stable-channel (windows-latest)` - `tests\windows_partial_scan.rs: 1 passed` |
 | C5 | `cancellai-legacy` through 2.1.0; Python source in the tags | `release.py render_formula` (`_ENGINE_BODY` installs `cancellai.py` as `cancellai-legacy`); `test_a_rendered_engine_formula_is_accepted_and_names_each_archive_in_its_platform_block`; every `v*` tag carries `cancellai.py` |
 | C6 | Unreleased states every intentional contract change | `CHANGELOG.md` `[Unreleased]` cutover entry, against `docs/CLI_RUST.md` and `project/cli_inventory.json` |
