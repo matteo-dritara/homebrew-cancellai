@@ -301,7 +301,7 @@
     {
       "id": "E06-S04",
       "title": "Canonical engine switch",
-      "status": "ready_for_review",
+      "status": "in_progress",
       "outcome": "Promote Rust to stable only after functional, safety, compatibility, and operability gates pass. ADR-0040 (2026-09-24) moved the release mechanics out of this story: E06-S14 makes the formula a function of the release manifest rendered where the bytes are built, and E06-S15 adopts the cutover on the owner's explicit authorization. What stays here is the owner's: accepting the migration Safety Verdict, the transition window and the release notes.",
       "change_risk": "CR4",
       "dependencies": [

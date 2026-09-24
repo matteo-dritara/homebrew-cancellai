@@ -210,3 +210,33 @@ Review target: `351295d..7e35a2a`
 Existing Unix leaf-name and late-link residuals remain recorded from prior rounds. The Python source remains tag-archiveable and the proposed engine formula installs it as `cancellai-legacy`; no cutover release was made. Owner acceptance of the migration Safety Verdict: PENDING. This round rejects the story and does not accept a new residual.
 
 FAIL
+
+## Round 14 — 2026-09-24
+
+Verifier: Codex
+Brief-Checksum: b48e620110482c92c727a7f8bad34338f6b6b7fbe228714ce16b6df83afe97e9
+Review target: `2ac50ebaeafae6a8e576f1ee43aaa99ada0c1c4c..1f7873fadf809ba6dae19c7058c27f006076e874`
+
+### Safety surface and obligations
+
+E06-S04 would authorize the Rust engine as canonical, including permanent deletion. SI-019 and C-16 require a verified single mutation boundary, independent CR4 evidence and an owner-visible Safety Verdict before that authority is released. `check_mutation_boundary.py check` passed locally, and the macOS parity comparator matched all 14 normative fixtures in both root-origin scenarios. These results do not cover the required native Windows E21-S02 partial-scan cases.
+
+| Obligation | Independent evidence | Result |
+| --- | --- | --- |
+| SI-019 mutation boundary | Static gate inspected 121 Rust sources; the deletion primitive and capability remain confined to `cancellai-platform::mutation` and `cancellai-safety::mutation_executor`. Local stable-channel CLI and kill-harness tests passed. | PASS on tested host |
+| Partial/unknown state must withhold destructive action | The 14-fixture differential gate passed locally; the workflow's parity matrix covers macOS/Linux only. Windows is tier 1 and advertised as supported, but its stable-channel CLI tests do not execute the E21-S02 partial-scan fixtures against the frozen reference. | NOT VERIFIED on Windows |
+| Owner-visible cutover acceptance | `CUTOVER_AUTHORIZATION.md` is absent; `cutover_authorization_problems('2.0.0')` refuses. The owner has not accepted a passing migration verdict. | FAIL |
+
+### Adversarial cases and compatibility
+
+The comparator's self-test caught injected divergences; the actual local run matched 14 normative fixtures under default and custom roots. The counterexample to the *verification claim* is the Windows CI path: it runs a different set of CLI tests, with the relevant permission-failure tests Unix-gated, so a Windows partial-scan regression in those fixture branches would not be caught by the named gate. This does not establish an unsafe Windows deletion. The live v1.21.0 formula still installs Python; the proposed cutover formula retains `cancellai-legacy` through 2.1.0. The Unreleased notes disclose the intended CLI differences.
+
+### Required repair, residual risk and recovery
+
+Run native Windows E21-S02 partial-scan cases in both root-origin scenarios with withheld actions and exit status asserted against the frozen reference's expected behavior, or obtain an owner-approved ADR that excludes Windows from the initial cutover and corrects the support claims. Then seek a new independent migration PASS and the owner's version-and-hash-bound authorization. The local docs/pytest gate failure comes from an untracked harness prompt; the Linux cross-target Clippy command lacks a cross C compiler; these environmental gaps are recorded in the round review and are not treated as passes. Until the criteria are met, keep the Python formula live and do not adopt the Rust cutover.
+
+### Owner decision
+
+PENDING
+
+FAIL
