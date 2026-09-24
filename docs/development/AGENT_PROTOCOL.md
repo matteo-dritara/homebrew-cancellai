@@ -70,14 +70,19 @@ python3 scripts/review_round.py import ../review-worktrees/E06-formal-9
   Verdicts, story status, generated docs and new tests; a pre-review: its own record only), and
   `import` copies only those paths into the main tree. A rename counts as its deleted source plus
   its destination, so moving production code into `tests/` is refused. `import` re-runs these
-  checks rather than trusting the run file, and refuses - before copying anything - a target that
-  changed or appeared in the main tree after the run's base, so it never overwrites a record.
+  checks rather than trusting the run file - the record's header and author and, for OpenCode, the
+  model attribution from the stream log - refuses any byte that differs from what the run checked
+  (the run binds each changed file and the log by sha256), and refuses, before copying anything, a
+  target that changed or appeared in the main tree after the run's base, so it never overwrites a
+  record.
 - It runs the reviewer in an environment that cannot publish - no git credential helper, no ssh,
   an invalid push URL for `origin`, an empty `gh` configuration - and, for OpenCode, with
   `~/.claude` loading, auto-update and language-server downloads disabled; `opencode.json` loads
   back only this repository's skill pack and turns formatters and language servers off. The
-  OpenCode agents allow only named test and check commands (`python3 -m pytest`, `python3
-  scripts/*`, `cargo test/check/clippy/fmt --check`), and end their shell rules with denials -
+  OpenCode agents allow only named test and check commands (`python3 -m pytest`, reviewed
+  `python3 scripts/<name>.py <subcommand>` pairs that never reach the network, `cargo
+  test/check/clippy/fmt --check`, with `CARGO_NET_OFFLINE` set by the harness), and end their
+  shell rules with denials -
   OpenCode applies the last matching rule - so `python3 -c`, `pip`, installs, network clients,
   removal, chaining, substitution and redirection are refused even inside an allowed command
   (`tests/test_opencode_agents.py`). This is defence in depth, not a sandbox: a reviewer may write
@@ -297,7 +302,8 @@ and a verdict with no author.
 
 A story's criteria can change after a round - the owner narrowing one the reviewer showed was
 overclaimed, for instance. Re-rendering then keeps the previous brief, byte for byte, as
-`VERIFIER_BRIEF.superseded-<checksum>.md`, and a verdict may answer the current brief or a
+`VERIFIER_BRIEF.superseded-<checksum>.md` (never overwritten: the same body rendered on another
+day is kept beside it as `-2`, `-3`, ...), and a verdict may answer the current brief or a
 superseded one; a superseded brief whose body no longer hashes to its checksum answers nothing
 (E34-S05). The review harness always quotes the current brief, so a new round answers the new
 criteria.

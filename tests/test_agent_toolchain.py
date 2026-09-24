@@ -517,6 +517,10 @@ class OpenCodeComponentsAreEnumerated(unittest.TestCase):
                 ".opencode/skills/rogue.txt",
                 ".opencode/skills/real/SKILL.md",
                 ".opencode/skills/no-skill-file/README.md",
+                # Round 2: a hidden entry used to be dropped before it was judged.
+                ".opencode/agents/.hidden.md",
+                ".opencode/skills/.hidden/SKILL.md",
+                ".opencode/agents/.DS_Store",
             ):
                 (root / relative).parent.mkdir(parents=True, exist_ok=True)
                 (root / relative).write_text("x", encoding="utf-8")
@@ -534,6 +538,9 @@ class OpenCodeComponentsAreEnumerated(unittest.TestCase):
             "skills/rogue.txt",
             "skills/empty",
             "skills/no-skill-file",
+            "agents/.hidden.md",
+            "skills/.hidden",
         ):
             self.assertIn(f"unrecognised:.opencode/{entry}", found)
         self.assertNotIn("subagent:opencode/inner", found)
+        self.assertNotIn("unrecognised:.opencode/agents/.DS_Store", found)

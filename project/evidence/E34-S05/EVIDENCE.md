@@ -2,7 +2,7 @@
 
 - Commit/PR: the E34-S05 commit on `main`
 - Executor: Claude
-- Independent verifier: pending
+- Independent verifier: round 2 FAIL (Codex, E34-VERIFIER-REVIEW-ROUND2.md); repaired
 - Change Risk: CR1
 - Spec version/commit: `project/epics/E34.json` at this commit
 
@@ -29,6 +29,15 @@ repaired here as its own story rather than inside E34-S02's diff.
 
 Mutation check: admitting no superseded brief fails one test; dropping the hash comparison on
 superseded briefs fails one test.
+
+## Repairs after independent round 2 (2026-09-24)
+
+`E34-VERIFIER-REVIEW-ROUND2.md` (Codex) failed AC1: rendering A, B, A, B replaced the first archive of
+A (rendered 2026-09-01) with the later A (2026-09-03) at the same path.
+
+| Repair | Evidence |
+| --- | --- |
+| An archive is never overwritten: identical bytes are not duplicated, and different bytes for the same checksum go beside it as `-2`, `-3`, ... | `test_an_archive_is_never_overwritten` (A, B, A, B: three archives, the first unchanged byte for byte, check clean); fails against the pre-repair writer |
 
 ## Verification Commands
 

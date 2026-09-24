@@ -180,8 +180,25 @@ class ImportTests(unittest.TestCase):
         rr.git("worktree", "add", "-q", "-b", "review", str(worktree), "HEAD", cwd=root)
         (worktree / "project" / "evidence" / self.RECORD).write_text("Verifier: Codex\n", encoding="utf-8")
         (worktree / "project" / "epics" / "E34.json").write_text('{"status": "done"}\n', encoding="utf-8")
-        data = {"problems": [], "tier": "formal", "record": self.RECORD, "base": base, "changed": rr.changed_paths(worktree)}
+        changed = rr.changed_paths(worktree)
+        data = {
+            "problems": [],
+            "tier": "formal",
+            "reviewer": "codex",
+            "model": None,
+            "label": "Codex",
+            "record": self.RECORD,
+            "base": base,
+            "changed": changed,
+            "digests": rr.output_digests(worktree, changed),
+        }
         return root, worktree, data
+
+    @staticmethod
+    def rewrite_run_file(worktree: Path, data: dict) -> None:
+        """What a reviewer able to write the run file could do: re-describe the tree as checked."""
+        data["changed"] = rr.changed_paths(worktree)
+        data["digests"] = rr.output_digests(worktree, data["changed"])
 
     def test_a_clean_run_imports(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -211,9 +228,40 @@ class ImportTests(unittest.TestCase):
             root, worktree, data = self._setup(tmp)
             (worktree / "scripts").mkdir()
             (worktree / "scripts" / "x.py").write_text("", encoding="utf-8")
-            data["changed"] = rr.changed_paths(worktree)
+            self.rewrite_run_file(worktree, data)
             problems = rr.import_problems(worktree, data, root)
             self.assertIn("scripts/x.py is outside what this tier may change", problems)
+
+    # Round 2 (E34-S01): a record edited after the run was checked, with its path list unchanged,
+    # was imported as it stood.
+    def test_a_record_edited_after_the_check_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root, worktree, data = self._setup(tmp)
+            (worktree / "project" / "evidence" / self.RECORD).write_text("wrong header\nVerifier: forged\n", encoding="utf-8")
+            self.assertEqual(rr.import_problems(worktree, data, root), ["the worktree changed after the run was checked; re-run the check"])
+
+    def test_a_forged_record_fails_even_when_the_run_file_is_rewritten_to_match(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root, worktree, data = self._setup(tmp)
+            (worktree / "project" / "evidence" / self.RECORD).write_text("Verifier: forged\n", encoding="utf-8")
+            self.rewrite_run_file(worktree, data)
+            self.assertIn(f"{self.RECORD} must name `Verifier: Codex`", rr.import_problems(worktree, data, root))
+
+    def test_an_opencode_run_is_reattributed_from_its_log_at_import(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root, worktree, data = self._setup(tmp)
+            model = "openrouter/nvidia/model-a:free"
+            data.update(reviewer="opencode", model=model, label=rr.reviewer_label("opencode", model))
+            (worktree / "project" / "evidence" / self.RECORD).write_text(f"Verifier: {data['label']}\n", encoding="utf-8")
+            (worktree / rr.LOG_DIR).mkdir()
+            (worktree / rr.STREAM_LOG).write_text(LOG, encoding="utf-8")
+            self.rewrite_run_file(worktree, data)
+            self.assertEqual(rr.import_problems(worktree, data, root), [])
+            forged = LOG + "timestamp=3 level=INFO message=stream providerID=anthropic modelID=claude-x agent=verifier\n"
+            (worktree / rr.STREAM_LOG).write_text(forged, encoding="utf-8")
+            self.assertEqual(rr.import_problems(worktree, data, root), ["the worktree changed after the run was checked; re-run the check"])
+            self.rewrite_run_file(worktree, data)
+            self.assertTrue(rr.import_problems(worktree, data, root))
 
     def test_a_failed_run_imports_nothing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -27,7 +27,42 @@ permission:
   bash:
     "*": deny
     "python3 -m pytest *": allow
-    "python3 scripts/*": allow
+    # Reviewed script/subcommand pairs only: each runs offline (cargo is offline in the harness
+    # environment). Not listed, so denied: check_platforms.py check (probes CI through gh),
+    # check_agent_toolchain.py updates (gh api), and every release.py command but check.
+    "python3 scripts/project_os.py check": allow
+    "python3 scripts/project_os.py status": allow
+    "python3 scripts/project_os.py next": allow
+    "python3 scripts/project_os.py review": allow
+    "python3 scripts/project_os.py brief E??-S?? --role verifier": allow
+    "python3 scripts/gen_docs.py --check": allow
+    "python3 scripts/rust_python_parity.py self-test": allow
+    "python3 scripts/check_agent_toolchain.py report": allow
+    "python3 scripts/check_docs.py check": allow
+    "python3 scripts/check_workflows.py check": allow
+    "python3 scripts/check_fixtures.py check": allow
+    "python3 scripts/check_schemas.py check": allow
+    "python3 scripts/characterize.py check": allow
+    "python3 scripts/diff_harness.py check": allow
+    "python3 scripts/check_rust_workspace.py check": allow
+    "python3 scripts/check_mutation_boundary.py check": allow
+    "python3 scripts/check_provider_compatibility.py check": allow
+    "python3 scripts/check_provider_trust.py check": allow
+    "python3 scripts/rust_python_parity.py check": allow
+    "python3 scripts/check_process.py check": allow
+    "python3 scripts/release.py check": allow
+    "python3 scripts/release_manifest.py check": allow
+    "python3 scripts/check_repository_topology.py check": allow
+    "python3 scripts/check_agent_skills.py check": allow
+    "python3 scripts/process_metrics.py check": allow
+    "python3 scripts/check_risk_classification.py check": allow
+    "python3 scripts/check_agent_toolchain.py check": allow
+    "python3 scripts/check_skill_content.py check": allow
+    "python3 scripts/verifier_handoff.py check": allow
+    "python3 scripts/check_evidence.py check": allow
+    "python3 scripts/safety_oracle.py check": allow
+    "python3 scripts/check_ears.py check": allow
+    "python3 scripts/gate_sensitivity.py check": allow
     "cargo test*": allow
     "cargo check*": allow
     "cargo clippy*": allow
@@ -91,6 +126,9 @@ permission:
     "*unlink*": deny
     "*-delete*": deny
     "*-exec*": deny
+    "*--config*": deny
+    "*net.offline*": deny
+    "*CARGO_NET*": deny
 ---
 You are the independent verifier for the cancellAI repository, running under
 `scripts/review_round.py` (E34). Your method is the `epic-verifier` skill - load it with the skill

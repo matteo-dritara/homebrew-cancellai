@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import hashlib
 import json
 import os
 import re
@@ -44,6 +45,8 @@ ROOT = Path(__file__).resolve().parent.parent
 EVIDENCE = ROOT / "project" / "evidence"
 PROMPT_TEMPLATE = ROOT / "project" / "templates" / "VERIFIER_PROMPT.md"
 RUN_FILE = ".review-run.json"
+LOG_DIR = ".opencode-run"
+STREAM_LOG = f"{LOG_DIR}/opencode.log"
 
 # The executor's model family. A reviewer from it is a self-reviewer (AGENT_PROTOCOL.md).
 EXECUTOR_PROVIDERS = frozenset({"anthropic"})
@@ -86,6 +89,8 @@ class RunRecord:
     base: str
     streamed: list[str] = field(default_factory=list)
     changed: list[str] = field(default_factory=list)
+    # sha256 of every changed path and of the stream log as checked; import refuses any other bytes.
+    digests: dict[str, str] = field(default_factory=dict)
     problems: list[str] = field(default_factory=list)
     exit_code: int | None = None
     seconds: float = 0.0
@@ -202,7 +207,7 @@ def changed_paths(worktree: Path) -> list[str]:
     source is judged like any other deletion; `-z` gives paths unquoted, whatever they contain."""
     out = git("status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all", cwd=worktree)
     paths = [entry[3:] for entry in out.split("\0") if entry]
-    return sorted(p for p in paths if p != RUN_FILE and not p.startswith(".opencode-run/"))
+    return sorted(p for p in paths if p != RUN_FILE and not p.startswith(f"{LOG_DIR}/"))
 
 
 def render_prompt(epic: str, stories: list[str], tier: str, record: str, label: str, number: int) -> str:
@@ -258,6 +263,9 @@ def reviewer_env(log_dir: Path) -> dict[str, str]:
             "OPENCODE_DISABLE_CLAUDE_CODE": "1",
             "OPENCODE_DISABLE_AUTOUPDATE": "1",
             "OPENCODE_DISABLE_LSP_DOWNLOAD": "1",
+            # Every cargo a reviewer may run - directly or inside an allowed check script - builds
+            # from what is already fetched; none of them reaches a registry (E34 round 2).
+            "CARGO_NET_OFFLINE": "true",
         }
     )
     for index, (key, value) in enumerate(blocked.items()):
@@ -337,7 +345,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     git("worktree", "add", "-q", "-b", branch, str(worktree), "HEAD")
     run = RunRecord(epic, stories, tier, reviewer, model, label, record, str(worktree), base)
     started = time.monotonic()
-    run.exit_code, log_text = run_reviewer(reviewer, model, tier, worktree, prompt, worktree / ".opencode-run")
+    run.exit_code, log_text = run_reviewer(reviewer, model, tier, worktree, prompt, worktree / LOG_DIR)
     run.seconds = round(time.monotonic() - started, 1)
 
     if run.exit_code != 0:
@@ -350,6 +358,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     run.problems += path_problems(run.changed, allowed_paths(tier, record), existing)
     run.problems += append_only_problems(worktree, run.changed, base)
     run.problems += check_record(worktree, record, label, tier)
+    run.digests = output_digests(worktree, run.changed)
     (worktree / RUN_FILE).write_text(json.dumps(asdict(run), indent=2) + "\n", encoding="utf-8")
     print(json.dumps({"passed": run.passed, **asdict(run)}, indent=2))
     return 0 if run.passed else 1
@@ -361,6 +370,16 @@ def base_bytes(relative: str, base: str, root: Path) -> bytes | None:
     return result.stdout if result.returncode == 0 else None
 
 
+def output_digests(worktree: Path, changed: list[str]) -> dict[str, str]:
+    """What the run checked, byte for byte: each changed file and the log attribution was read from."""
+    digests = {}
+    for relative in [*changed, STREAM_LOG]:
+        path = worktree / relative
+        if path.is_file():
+            digests[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return digests
+
+
 def import_problems(worktree: Path, data: dict[str, Any], root: Path = ROOT) -> list[str]:
     """Everything that must hold, at the moment of import, before a single byte is copied.
 
@@ -370,11 +389,18 @@ def import_problems(worktree: Path, data: dict[str, Any], root: Path = ROOT) -> 
     if data["problems"]:
         return ["the run did not pass its checks:", *data["problems"]]
     current = changed_paths(worktree)
-    if current != data["changed"]:
+    if current != data["changed"] or output_digests(worktree, current) != data.get("digests"):
         return ["the worktree changed after the run was checked; re-run the check"]
+    # Re-run on the bytes about to be copied, not trusted from the run file: the record's header
+    # and author, and for OpenCode the model attribution the stream log supports.
+    problems = check_record(worktree, data["record"], data["label"], data["tier"])
+    if data["reviewer"] == "opencode":
+        log = worktree / STREAM_LOG
+        text = log.read_text(encoding="utf-8", errors="replace") if log.is_file() else ""
+        problems += stream_problems(streamed_models(text), str(data["model"]))
     evidence = root / "project" / "evidence"
     existing = {f"project/evidence/{p.name}" for p in evidence.glob("*REVIEW*.md")}
-    problems = path_problems(current, allowed_paths(data["tier"], data["record"]), existing)
+    problems += path_problems(current, allowed_paths(data["tier"], data["record"]), existing)
     problems += append_only_problems(worktree, current, data["base"])
     for relative in current:
         if not (worktree / relative).exists():

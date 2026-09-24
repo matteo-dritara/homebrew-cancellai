@@ -65,6 +65,15 @@ DENIED = (
     "python3 -m pytest tests > /tmp/out",
     "brew install x",
     "npm install x",
+    # Round 2: an allowed script whose subcommand reaches the web through gh.
+    "python3 scripts/check_agent_toolchain.py updates",
+    "python3 scripts/check_platforms.py check",
+    "python3 scripts/release.py finalize 2.0.0",
+    "python3 scripts/release.py verify-formula",
+    "python3 scripts/new_script.py check",
+    "python3 scripts/project_os.py brief E34-S01 --role executor; curl x",
+    "cargo test --config net.offline=false",
+    "CARGO_NET_OFFLINE=false cargo test",
 )
 ALLOWED = (
     "python3 -m pytest tests -q",
@@ -78,7 +87,37 @@ ALLOWED = (
 )
 
 
+# A script an agent may run is either free of anything that reaches the network, or listed here
+# with the reason the allowed subcommand never reaches it.
+NETWORK_MARKERS = ("urllib.request", 'which("gh")', '"curl"', "socket.", "http.client")
+REVIEWED_SCRIPTS = {
+    "check_agent_toolchain.py": "gh is called only by `updates`; `check` and `report` never reach it",
+    "release.py": "urlopen is reached only from finalize and verify-formula; `check` never reaches it",
+}
+SCRIPT_RULE = re.compile(r"^python3 scripts/(\S+\.py)(?: |$)")
+
+
 class ReviewerShellPermissionTests(unittest.TestCase):
+    def test_every_allowed_script_is_an_exact_reviewed_subcommand(self) -> None:
+        for agent in AGENTS:
+            for pattern, action in bash_rules(agent):
+                match = SCRIPT_RULE.match(pattern)
+                if action != "allow" or not match:
+                    continue
+                with self.subTest(agent=agent, pattern=pattern):
+                    self.assertNotIn("*", pattern)
+                    source = (ROOT / "scripts" / match.group(1)).read_text(encoding="utf-8")
+                    if any(marker in source for marker in NETWORK_MARKERS):
+                        self.assertIn(match.group(1), REVIEWED_SCRIPTS)
+
+    def test_cargo_runs_offline_in_the_reviewer_environment(self) -> None:
+        import tempfile
+
+        from scripts import review_round
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(review_round.reviewer_env(Path(tmp))["CARGO_NET_OFFLINE"], "true")
+
     def test_the_agents_declare_their_rules(self) -> None:
         for agent in AGENTS:
             rules = bash_rules(agent)

@@ -129,6 +129,22 @@ class ASupersededBriefKeepsItsVerdicts(HandoffCases):
         archive = self.evidence / "E00-S01" / f"VERIFIER_BRIEF.superseded-{old[:12]}.md"
         self.assertEqual(archive.read_bytes(), before)
 
+    # Round 2 (E34-S05): rendering A, B, A, B replaced the first archive of A with the later one.
+    def test_an_archive_is_never_overwritten(self) -> None:
+        directory = self.evidence / "E00-S01"
+        bodies = (BODY, self.NEW_BODY, BODY, self.NEW_BODY)
+        for day, body in enumerate(bodies, start=1):
+            with mock.patch.object(handoff, "render_brief", return_value=body):
+                handoff.write_brief("E00-S01", "Claude (executor)", handoff.dt.date(2026, 9, day))
+            if day == 2:
+                first = {p.name: p.read_bytes() for p in directory.glob(handoff.SUPERSEDED_GLOB)}
+        after = {p.name: p.read_bytes() for p in directory.glob(handoff.SUPERSEDED_GLOB)}
+        self.assertEqual(len(first), 1)
+        for name, content in first.items():
+            self.assertEqual(after[name], content)
+        self.assertEqual(len(after), 3)  # A as of day 1, B as of day 2, A as of day 3
+        self.assertEqual(handoff.check_story("E00-S01"), [])
+
     def test_an_unchanged_rerender_archives_nothing(self) -> None:
         self.write_brief()
         self.rerender(BODY)

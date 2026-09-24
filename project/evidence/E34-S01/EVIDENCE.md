@@ -2,7 +2,7 @@
 
 - Commit/PR: the E34 commit on `main`
 - Executor: Claude
-- Independent verifier: round 1 FAIL (Codex, E34-VERIFIER-REVIEW-ROUND1.md); repaired, awaiting round 2
+- Independent verifier: round 1 FAIL (Codex, E34-VERIFIER-REVIEW-ROUND1.md); round 2 FAIL (Codex, E34-VERIFIER-REVIEW-ROUND2.md); repaired
 - Change Risk: CR2
 - Spec version/commit: `project/epics/E34.json` at this commit; owner decision 2026-09-24 (OpenCode + OpenRouter reviewer, PD-028)
 
@@ -58,6 +58,19 @@ Not repaired, recorded: the harness writes its logs to `.opencode-run/` inside t
 worktree, and a reviewer running the full suite there sees `check_docs` fail on the prompt's
 relative links (the round-1 reviewer moved the directory aside to run it). It is a usability
 defect of the harness, not an acceptance-criterion failure; backlog candidate for E34.
+
+## Repairs after independent round 2 (2026-09-24)
+
+`E34-VERIFIER-REVIEW-ROUND2.md` (Codex) failed AC5: a record replaced after the run's check with
+`wrong header / Verifier: forged`, path list unchanged, was imported; import re-ran neither the
+record check nor the model attribution.
+
+| Repair | Evidence |
+| --- | --- |
+| The run binds what it checked: `digests` holds the sha256 of every changed file and of the stream log; `import` refuses any other bytes | `test_a_record_edited_after_the_check_is_refused` |
+| `import` re-runs `check_record` and, for OpenCode, the stream attribution on the bytes it is about to copy, so a run file rewritten to match forged output still fails | `test_a_forged_record_fails_even_when_the_run_file_is_rewritten_to_match`, `test_an_opencode_run_is_reattributed_from_its_log_at_import` |
+
+Mutation check: dropping the digest comparison fails two tests; dropping the record re-check fails one.
 
 ## Verification Commands
 

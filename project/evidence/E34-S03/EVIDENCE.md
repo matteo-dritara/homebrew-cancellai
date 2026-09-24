@@ -2,7 +2,7 @@
 
 - Commit/PR: the E34 commit on `main`
 - Executor: Claude
-- Independent verifier: pending
+- Independent verifier: round 1 PASS, round 2 PASS (Codex, E34-VERIFIER-REVIEW-ROUND1.md, -ROUND2.md)
 - Change Risk: CR1
 - Spec version/commit: `project/epics/E34.json` at this commit; PD-028
 

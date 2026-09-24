@@ -139,9 +139,16 @@ def write_brief(story_id: str, rendered_by: str, today: dt.date) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     previous = read_brief(story_id)
     if previous is not None and previous["declared"] and previous["declared"] != digest(body):
-        # Kept byte for byte: it is what earlier verdicts answered.
-        archive = path.with_name(f"VERIFIER_BRIEF.superseded-{previous['declared'][:12]}.md")
-        archive.write_bytes(path.read_bytes())
+        # Kept byte for byte: it is what earlier verdicts answered. An archive is never
+        # overwritten - the same body rendered on another day is a different file, kept beside it.
+        kept = path.read_bytes()
+        stem = f"VERIFIER_BRIEF.superseded-{previous['declared'][:12]}"
+        archive, copy = path.with_name(f"{stem}.md"), 1
+        while archive.exists() and archive.read_bytes() != kept:
+            copy += 1
+            archive = path.with_name(f"{stem}-{copy}.md")
+        if not archive.exists():
+            archive.write_bytes(kept)
     header = (
         f"<!-- Rendered by scripts/verifier_handoff.py. The checksum is over the body below this\n"
         f"header; a verdict answering this brief repeats it, so the ledger can tell whether the\n"

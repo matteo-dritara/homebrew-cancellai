@@ -2,7 +2,7 @@
 
 - Commit/PR: the E34 commit on `main`
 - Executor: Claude
-- Independent verifier: round 1 FAIL (Codex, E34-VERIFIER-REVIEW-ROUND1.md); repaired, awaiting round 2
+- Independent verifier: round 1 FAIL (Codex, E34-VERIFIER-REVIEW-ROUND1.md); round 2 FAIL (Codex, E34-VERIFIER-REVIEW-ROUND2.md); repaired
 - Change Risk: CR1
 - Spec version/commit: `project/epics/E34.json` at this commit; PD-028
 
@@ -47,6 +47,16 @@ AC's "deny package installation, file removal and web access" is met for every c
 issues, not for code a test it wrote executes. Put to the owner on 2026-09-24, who chose to narrow AC1 to say exactly this: the permissions deny
 those operations for every command, including through an allowed interpreter or test runner, and
 code run by a test the reviewer wrote is bounded by the worktree and the harness (E34-S01).
+
+## Repairs after independent round 2 (2026-09-24)
+
+`E34-VERIFIER-REVIEW-ROUND2.md` (Codex) failed the narrowed AC1: `python3 scripts/*` admitted
+`check_agent_toolchain.py updates`, which calls `gh api`.
+
+| Repair | Evidence |
+| --- | --- |
+| `python3 scripts/*` is replaced by exact, reviewed script/subcommand pairs; `check_platforms.py check` (probes CI through `gh`), `check_agent_toolchain.py updates` and every `release.py` command but `check` are left out, so denied | `test_every_allowed_script_is_an_exact_reviewed_subcommand`: every allowed script rule has no wildcard, and a script containing a network marker (`urllib.request`, `which("gh")`, `"curl"`, `socket.`, `http.client`) must be listed with the reason its allowed subcommand never reaches it |
+| Every cargo a reviewer runs - directly, or inside an allowed script such as `check_provider_compatibility.py check` - is offline: the harness sets `CARGO_NET_OFFLINE=true`, and `--config`, `net.offline` and `CARGO_NET` overrides are denied | `test_cargo_runs_offline_in_the_reviewer_environment`; `DENIED` gains round 2's command and seven more |
 
 ## Verification Commands
 

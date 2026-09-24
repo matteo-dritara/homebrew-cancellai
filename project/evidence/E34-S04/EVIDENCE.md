@@ -2,7 +2,7 @@
 
 - Commit/PR: the E34 follow-up commit on `main`
 - Executor: Claude
-- Independent verifier: round 1 FAIL (Codex, E34-VERIFIER-REVIEW-ROUND1.md); repaired, awaiting round 2
+- Independent verifier: round 1 FAIL (Codex, E34-VERIFIER-REVIEW-ROUND1.md); round 2 FAIL (Codex, E34-VERIFIER-REVIEW-ROUND2.md); repaired
 - Change Risk: CR1
 - Spec version/commit: `project/epics/E34.json` at this commit; PD-028
 
@@ -28,6 +28,15 @@ directory and the stray file vanished.
 | --- | --- |
 | Each component directory admits one shape - flat `.md` agents/commands, flat `.ts`/`.js`/`.mjs` plugins/tools, skill directories holding `SKILL.md` - and every other visible child, nested or empty directory included, is `unrecognised:<path>` | `test_unknown_entries_inside_component_directories_are_reported` (nested dir, empty dir, `.txt` under agents, file under skills, skill dir without `SKILL.md`); fails against the pre-repair walk |
 | The committed repository still passes | `check_agent_toolchain.py check`: 13 managed, nothing unmanaged |
+
+## Repairs after independent round 2 (2026-09-24)
+
+`E34-VERIFIER-REVIEW-ROUND2.md` (Codex) failed AC2: `.opencode/agents/.hidden.md` was dropped before
+it was judged, because the walk skipped every dot-name.
+
+| Repair | Evidence |
+| --- | --- |
+| Only `.DS_Store` (Finder metadata) is skipped; every other entry is judged, and a hidden one is never a recognised component, so it is reported as unrecognised | `test_unknown_entries_inside_component_directories_are_reported` gains `agents/.hidden.md`, `skills/.hidden/` and a `.DS_Store` that stays silent |
 
 ## Verification Commands
 

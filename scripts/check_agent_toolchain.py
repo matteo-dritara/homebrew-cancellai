@@ -433,8 +433,13 @@ OPENCODE_KNOWN_SKILL_PATHS = {".claude/skills"}
 OPENCODE_COMPONENT_SUFFIXES = {"subagent": {".md"}, "command": {".md"}, "plugin": {".ts", ".js", ".mjs"}}
 
 
+# Finder metadata: per-machine, never loaded. Every other entry is judged, and a hidden one is
+# never a recognised component - whether OpenCode loads it is exactly what the walk cannot say.
+OPENCODE_IGNORED_CHILDREN = {".DS_Store"}
+
+
 def _visible_children(directory: Path) -> list[Path]:
-    return sorted(child for child in directory.iterdir() if not child.name.startswith("."))
+    return sorted(child for child in directory.iterdir() if child.name not in OPENCODE_IGNORED_CHILDREN)
 
 
 def _opencode_components(present: dict[str, str]) -> None:
@@ -451,14 +456,14 @@ def _opencode_components(present: dict[str, str]) -> None:
                 kind = OPENCODE_DIRECTORIES[entry.name]
                 for item in _visible_children(entry):
                     item_relative = item.relative_to(ROOT).as_posix()
-                    if item.is_file() and item.suffix in OPENCODE_COMPONENT_SUFFIXES[kind]:
+                    if not item.name.startswith(".") and item.is_file() and item.suffix in OPENCODE_COMPONENT_SUFFIXES[kind]:
                         present[f"{kind}:opencode/{item.stem}"] = item_relative
                     else:
                         present[f"unrecognised:{item_relative}"] = item_relative
             elif entry.is_dir() and entry.name in {"skill", "skills"}:
                 for skill in _visible_children(entry):
                     skill_relative = skill.relative_to(ROOT).as_posix()
-                    if skill.is_dir() and (skill / "SKILL.md").is_file():
+                    if not skill.name.startswith(".") and skill.is_dir() and (skill / "SKILL.md").is_file():
                         present[f"skill:{skill_relative}"] = skill_relative
                     else:
                         present[f"unrecognised:{skill_relative}"] = skill_relative
