@@ -5,18 +5,18 @@ verifier was given this document or a paraphrase of it. -->
 Story: E33-S01
 Rendered-by: Claude
 Rendered-on: 2026-09-24
-Brief-Checksum: d241ce1bedaf2c4e61db3ee33384640f4c5e3a46d03d134b55bf118345bcfced
+Brief-Checksum: bb614fb4de0d31b814e7497488c4e83eac0c298b389fc899b433a3d92b1854a9
 
 <!-- end handoff header -->
 # Verifier Brief - E33-S01 - Signed containment notices are fetched from a published feed
 
-Status: blocked | Change Risk: CR4
+Status: ready_for_review | Change Risk: CR4
 Outcome: Fetch signed containment notices from a published feed and ingest them through the same path as containment install, so an incident reaches installations without a manual step, while an unreachable, oversized, stale or forged feed leaves the ledger exactly as it was. Owner decisions (2026-09-23): fetch with the system curl, no HTTP client in the binary; publish one cumulative signed notice as containment/notice.json in the canonical repository, fetched by an explicit containment refresh.
-Dependencies: E06-S07, E33-S03
+Dependencies: E06-S07
 
 ## Acceptance Criteria
 - When the feed is reachable, the system shall ingest every new notice through the same verification and persistence path as containment install.
-- If the feed is unreachable, oversized, malformed, replayed, rolled back or signed by an untrusted publisher, then the ledger's ordered event rows and their raw signed payloads shall stay identical and authority shall keep being computed from local state.
+- If the feed is unreachable, oversized, malformed, replayed, rolled back or signed by an untrusted publisher, then the ledger shall stay byte-identical and authority shall keep being computed from local state.
 - The system shall never lift, narrow or loosen a containment from feed content.
 
 ## Verification Contract

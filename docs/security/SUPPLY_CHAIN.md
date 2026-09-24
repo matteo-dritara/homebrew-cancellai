@@ -116,6 +116,11 @@ rather than shipping silently (AC3). This is what "achieved level" means in prac
 build-provenance-shaped evidence plus an attested SBOM, per canonical archive, both
 independently re-verified before publish - not a claim to a specific numbered SLSA level.
 
+The Homebrew formula is bound to the same evidence (E06-S14, ADR-0040): the release workflow
+renders it from the verified release manifest and publishes it as `cancellai.rb`, and
+`release.py finalize` adopts it only after downloading every engine archive it names, hashing it
+to the manifest's digest and running `gh attestation verify` on those exact bytes.
+
 ## Release automation
 
 The target Rust release factory should evaluate `dist`/cargo-dist (or a successor with equivalent evidence) because it can generate cross-platform archives and multiple installers including shell, PowerShell, Homebrew, and MSI. Tool adoption remains an ADR because release infrastructure is security-sensitive.

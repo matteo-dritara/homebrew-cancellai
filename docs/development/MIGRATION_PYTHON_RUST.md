@@ -133,7 +133,9 @@ script to the Rust release binary: from 2.0.0 `scripts/release.py render_formula
 formula that installs the platform's signed archive as `cancellai` and `cancellai.py` as
 `cancellai-legacy`. The formula is always generated whole and compared byte for byte, never edited
 (E06 review round 8); the tap reads `main`, so the engine formula is written only by `finalize
---adopt-cutover` of the cutover release, once E06-S04 is `done`. `tests.yml` installs and
+--adopt-cutover` of the cutover release. Since ADR-0040 the formula is rendered from the release
+manifest by the release workflow and adopted only after every archive it names is re-verified
+(E06-S14), on the owner's explicit authorization (E06-S15). `tests.yml` installs and
 `brew test`s the engine formula built from each commit. `cancellai-legacy` is removed after 2.1.0;
 the Python source stays in the release tags.
 

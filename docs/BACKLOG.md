@@ -1025,7 +1025,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S14 - The release formula is a function of the release manifest, rendered where the bytes are built
 
-**Status:** `in_progress` | **Change Risk:** `CR4` | **Dependencies:** E22-S01 | **Safety obligations:** SI-019
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E22-S01 | **Safety obligations:** SI-019
 
 **Outcome.** Nine review rounds found holes in release.py's post-hoc reconstruction of what the formula installs (ADR-0040). The release workflow now renders the Homebrew formula from the verified release manifest and the tag archive's digest and publishes it as the release asset cancellai.rb; finalize adopts that asset only if it is exactly what render_formula produces from the published manifest, after downloading every engine archive it names, hashing it to the manifest's digest and verifying its build provenance.
 
@@ -1046,7 +1046,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S15 - The cutover is adopted on the owner's explicit authorization, bound to the Safety Verdict it accepts
 
-**Status:** `in_progress` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-019
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** none | **Safety obligations:** SI-019
 
 **Outcome.** finalize --adopt-cutover read E06-S04's done status as the owner's acceptance of the migration, so a status edit stood in for a decision (ADR-0040). It now requires project/evidence/E06-S04/CUTOVER_AUTHORIZATION.md naming the version and the SHA-256 of the SAFETY_VERDICT.md the owner accepted, whose final round must pass.
 
@@ -4213,7 +4213,7 @@ ADR-0039 kept the network out of the Rust cutover: a signed containment notice r
 
 ### E33-S03 - The containment ledger is a SQLite table decided and appended in one transaction
 
-**Status:** `in_progress` | **Change Risk:** `CR4` | **Dependencies:** E06-S07 | **Safety obligations:** SI-022, SI-029
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E06-S07 | **Safety obligations:** SI-022, SI-029
 
 **Outcome.** The JSONL history decided from one read and appended in a separate write; rounds 8 and 9 found concurrent refreshes writing duplicate or losing lines, and a crash inside the write could leave a torn line (ADR-0040). The ledger is now a SQLite table: install, refresh and lift read, replay through cancellai-safety, decide and insert at most one row inside one BEGIN IMMEDIATE transaction.
 

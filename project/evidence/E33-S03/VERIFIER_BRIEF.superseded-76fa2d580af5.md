@@ -5,12 +5,12 @@ verifier was given this document or a paraphrase of it. -->
 Story: E33-S03
 Rendered-by: Claude
 Rendered-on: 2026-09-24
-Brief-Checksum: 06f4b8e341065cb1b07f471d44b7fe59f0964ded2c3c6aa937c285f4c6365e92
+Brief-Checksum: 76fa2d580af56d961223b3b67561cb2315a0f68b875cc04b82fdab2cb79ab098
 
 <!-- end handoff header -->
 # Verifier Brief - E33-S03 - The containment ledger is a SQLite table decided and appended in one transaction
 
-Status: ready_for_review | Change Risk: CR4
+Status: in_progress | Change Risk: CR4
 Outcome: The JSONL history decided from one read and appended in a separate write; rounds 8 and 9 found concurrent refreshes writing duplicate or losing lines, and a crash inside the write could leave a torn line (ADR-0040). The ledger is now a SQLite table: install, refresh and lift read, replay through cancellai-safety, decide and insert at most one row inside one BEGIN IMMEDIATE transaction.
 Dependencies: E06-S07
 

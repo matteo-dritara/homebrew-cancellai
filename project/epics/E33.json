@@ -80,7 +80,7 @@
     {
       "id": "E33-S03",
       "title": "The containment ledger is a SQLite table decided and appended in one transaction",
-      "status": "in_progress",
+      "status": "ready_for_review",
       "outcome": "The JSONL history decided from one read and appended in a separate write; rounds 8 and 9 found concurrent refreshes writing duplicate or losing lines, and a crash inside the write could leave a torn line (ADR-0040). The ledger is now a SQLite table: install, refresh and lift read, replay through cancellai-safety, decide and insert at most one row inside one BEGIN IMMEDIATE transaction.",
       "change_risk": "CR4",
       "dependencies": [

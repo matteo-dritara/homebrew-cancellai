@@ -5,14 +5,14 @@ verifier was given this document or a paraphrase of it. -->
 Story: E06-S04
 Rendered-by: Claude
 Rendered-on: 2026-09-24
-Brief-Checksum: b78b236d5e2433f08acd89d4f261ef6d0fe7a37436bdf8644d64ab4f670ca107
+Brief-Checksum: 76f63bf3b664b057b00bc82b00b7377d819011f07f9aa96bda0d4b81cedcc642
 
 <!-- end handoff header -->
 # Verifier Brief - E06-S04 - Canonical engine switch
 
-Status: blocked | Change Risk: CR4
-Outcome: Promote Rust to stable only after functional, safety, compatibility, and operability gates pass. ADR-0040 (2026-09-24) moved the release mechanics out of this story: E06-S14 makes the formula a function of the release manifest rendered where the bytes are built, and E06-S15 adopts the cutover on the owner's explicit authorization. What stays here is the owner's: accepting the migration Safety Verdict, the transition window and the release notes.
-Dependencies: E06-S03, E21, E22-S01, E06-S06, E06-S07, E06-S08, E06-S09, E06-S10, E06-S11, E06-S12, E06-S13, E06-S14, E06-S15
+Status: ready_for_review | Change Risk: CR4
+Outcome: Promote Rust to stable only after functional, safety, compatibility, and operability gates pass.
+Dependencies: E06-S03, E21, E22-S01, E06-S06, E06-S07, E06-S08, E06-S09, E06-S10, E06-S11, E06-S12, E06-S13
 
 ## Acceptance Criteria
 - Owner-visible migration Safety Verdict is accepted.

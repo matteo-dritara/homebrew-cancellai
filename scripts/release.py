@@ -24,11 +24,14 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import hashlib
+import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -439,9 +442,10 @@ def archive_sha256(version: str) -> str:
 
 
 RELEASE_MANIFEST_ASSET = "https://github.com/{repo}/releases/download/v{version}/release-manifest.json"
-# Bounds on what a verification download may read: an engine archive, a sidecar, the manifest.
+# E06-S14: the formula the release workflow rendered from the manifest, published beside it.
+FORMULA_ASSET = "https://github.com/{repo}/releases/download/v{version}/cancellai.rb"
+# Bounds on what a verification download may read: an engine archive, the manifest or formula.
 MAX_ENGINE_ARCHIVE_BYTES = 256 * 1024 * 1024
-MAX_SIDECAR_BYTES = 4096
 MAX_MANIFEST_BYTES = 1024 * 1024
 
 
@@ -457,55 +461,99 @@ def download(url: str, cap: int) -> bytes:
     return bytes(data)
 
 
-def manifest_sha256s(version: str) -> dict[str, str]:
-    """Each engine archive's digest as the published release manifest (E17-S01) records it, after
-    checking that the manifest is for this version and names each target's archive exactly once."""
-    url = RELEASE_MANIFEST_ASSET.format(repo=REPO, version=version)
-    try:
-        doc = json.loads(download(url, MAX_MANIFEST_BYTES))
-    except ValueError as exc:
-        raise ReleaseError(f"{url} is not JSON: {exc}") from exc
+def manifest_digests(doc: object, version: str, where: str) -> dict[str, str]:
+    """Each engine archive's digest as a release manifest (E17-S01) records it, after checking the
+    document is the manifest for `version` and names each target's archive exactly once."""
     if not isinstance(doc, dict) or doc.get("document_type") != "release_manifest" or doc.get("version") != version:
-        raise ReleaseError(f"{url} is not the release manifest for v{version}")
+        raise ReleaseError(f"{where} is not the release manifest for v{version}")
     artifacts = doc.get("artifacts")
     if not isinstance(artifacts, list):
-        raise ReleaseError(f"{url} lists no artifacts")
+        raise ReleaseError(f"{where} lists no artifacts")
     digests = {}
     for target in ENGINE_TARGETS:
         name = f"cancellai-cli-{version}-{target}"
         entries = [a for a in artifacts if isinstance(a, dict) and a.get("name") == name]
         if len(entries) != 1:
-            raise ReleaseError(f"{url} names {name} {len(entries)} times, not once")
+            raise ReleaseError(f"{where} names {name} {len(entries)} times, not once")
         entry = entries[0]
         digest = entry.get("sha256")
         if entry.get("target_triple") != target or not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
-            raise ReleaseError(f"{url}: {name} does not carry target {target} and a SHA-256 digest")
+            raise ReleaseError(f"{where}: {name} does not carry target {target} and a SHA-256 digest")
         digests[target] = digest
     return digests
 
 
+def manifest_sha256s(version: str) -> dict[str, str]:
+    """The published release manifest's engine digests."""
+    url = RELEASE_MANIFEST_ASSET.format(repo=REPO, version=version)
+    try:
+        doc = json.loads(download(url, MAX_MANIFEST_BYTES))
+    except ValueError as exc:
+        raise ReleaseError(f"{url} is not JSON: {exc}") from exc
+    return manifest_digests(doc, version, url)
+
+
+def verify_provenance(data: bytes, name: str) -> None:
+    """`gh attestation verify` over exactly these bytes: they were built by this repository's
+    release workflow. Unavailable `gh` or a failed verification refuses."""
+    gh = shutil.which("gh")
+    if gh is None:
+        raise ReleaseError(f"cannot verify {name}'s build provenance: `gh` is not installed")
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / name
+        path.write_bytes(data)
+        result = subprocess.run([gh, "attestation", "verify", str(path), "--repo", REPO], capture_output=True, text=True, check=False)  # noqa: S603
+    if result.returncode != 0:
+        raise ReleaseError(f"{name} failed build-provenance verification: {(result.stderr or result.stdout).strip()}")
+
+
 def engine_sha256s(version: str) -> dict[str, str]:
-    """Each engine archive's digest, established three ways that must agree (E06 review round 9):
-    the archive itself, downloaded and hashed; the `.sha256` sidecar the release workflow published
-    beside it (E17-S03); and the published release manifest. A sidecar alone could name bytes the
-    formula would never install, so a disagreement - or any of the three being unavailable - is a
-    refusal, never a choice between them."""
+    """Each engine archive's digest, taken from the published release manifest and confirmed on the
+    bytes: every archive is downloaded, hashed to the manifest's digest, and its build provenance
+    verified (E06 review round 9, ADR-0040). Nothing is taken from a `.sha256` sidecar, and a
+    disagreement or any unavailable piece refuses."""
     recorded = manifest_sha256s(version)
-    digests = {}
     problems = []
     for target in ENGINE_TARGETS:
         url = ENGINE_ASSET.format(repo=REPO, version=version, target=target)
-        actual = hashlib.sha256(download(url, MAX_ENGINE_ARCHIVE_BYTES)).hexdigest()
-        line = download(url + ".sha256", MAX_SIDECAR_BYTES).decode("utf-8", errors="replace").strip()
-        sidecar = line.split()[0] if line else ""
-        if not re.fullmatch(r"[0-9a-f]{64}", sidecar):
-            raise ReleaseError(f"{url}.sha256 does not hold a SHA-256 digest: {line!r}")
-        if not actual == sidecar == recorded[target]:
-            problems.append(f"{target}: archive {actual}, sidecar {sidecar}, manifest {recorded[target]}")
-        digests[target] = actual
+        data = download(url, MAX_ENGINE_ARCHIVE_BYTES)
+        actual = hashlib.sha256(data).hexdigest()
+        if actual != recorded[target]:
+            problems.append(f"{target}: archive {actual}, manifest {recorded[target]}")
+            continue
+        verify_provenance(data, url.rsplit("/", 1)[-1])
     if problems:
-        raise ReleaseError(f"v{version}'s engine archives disagree with their published digests:\n" + "\n".join(f"- {p}" for p in problems))
-    return digests
+        raise ReleaseError(f"v{version}'s engine archives disagree with the release manifest:\n" + "\n".join(f"- {p}" for p in problems))
+    return recorded
+
+
+def render_release_formula(version: str, manifest: Path, source_sha: str) -> str:
+    """The formula for `version` as a pure function of the release manifest and the tag archive's
+    digest (E06-S14). The release workflow runs it after `release_manifest.py verify-checksums` has
+    tied every built archive to the manifest, and publishes the result as `cancellai.rb`."""
+    if not re.fullmatch(r"[0-9a-f]{64}", source_sha):
+        raise ReleaseError(f"not a SHA-256 digest: {source_sha!r}")
+    engines = None
+    if parse(version) >= CUTOVER_VERSION:
+        try:
+            doc = json.loads(manifest.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise ReleaseError(f"cannot read {manifest}: {exc}") from exc
+        engines = published_engines(version, manifest_digests(doc, version, str(manifest)))
+    return render_formula(version, source_sha, engines)
+
+
+def adoptable_formula(version: str) -> str:
+    """The formula `finalize` may write for an engine-carrying `version`: the published
+    `cancellai.rb`, accepted only if it is byte-identical to the formula rendered from the published
+    manifest - whose every engine archive has been downloaded, hashed and provenance-verified - and
+    the tag archive's digest (ADR-0040)."""
+    expected = render_formula(version, archive_sha256(version), published_engines(version, engine_sha256s(version)))
+    url = FORMULA_ASSET.format(repo=REPO, version=version)
+    published = download(url, MAX_MANIFEST_BYTES)
+    if published != expected.encode("utf-8"):
+        raise ReleaseError(f"{url} is not the formula the published release manifest renders; refusing to adopt it")
+    return expected
 
 
 # Engine archives released before the engine carried its own version (E06-S04): their binaries
@@ -514,15 +562,56 @@ UNVERSIONED_ENGINE_RELEASES = frozenset({"1.21.0"})
 CUTOVER_VERSION = (2, 0, 0)
 
 
-def cutover_story_status() -> str:
-    epic = load_epic("E06")
-    stories = epic.get("stories", [])
-    if not isinstance(stories, list):
-        return "missing"
-    for story in stories:
-        if isinstance(story, dict) and story.get("id") == "E06-S04":
-            return str(story.get("status"))
-    return "missing"
+CUTOVER_EVIDENCE = ROOT / "project" / "evidence" / "E06-S04"
+CUTOVER_AUTHORIZATION = CUTOVER_EVIDENCE / "CUTOVER_AUTHORIZATION.md"
+CUTOVER_SAFETY_VERDICT = CUTOVER_EVIDENCE / "SAFETY_VERDICT.md"
+AUTHORIZATION_FIELD_RE = re.compile(r"^(Authorized-by|Version|Safety-Verdict-SHA256):[ \t]*(\S.*?)[ \t]*$", re.MULTILINE)
+
+
+def safety_verdict_passes(path: Path) -> bool:
+    """`project_os.py`'s own reading of a Safety Verdict's most recent round, loaded by file
+    location like the other scripts do, so the release and the control plane cannot disagree."""
+    spec = importlib.util.spec_from_file_location("cancellai_project_os_release", ROOT / "scripts" / "project_os.py")
+    if spec is None or spec.loader is None:
+        raise ReleaseError("cannot load scripts/project_os.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module  # its dataclasses resolve their module through sys.modules
+    spec.loader.exec_module(module)
+    return bool(module.safety_verdict_passes(path))
+
+
+def cutover_authorization_problems(version: str) -> list[str]:
+    """Why the owner has not authorized adopting `version` as the cutover (E06-S15, ADR-0040).
+
+    The authorization is a committed file naming who authorized, the version, and the SHA-256 of
+    the migration Safety Verdict they accepted. It is void if the verdict changed since, if the
+    verdict's final round does not pass, or if it names another version. No story status stands
+    in for it: a status is an edit anyone can make, not the owner's decision."""
+    try:
+        text = CUTOVER_AUTHORIZATION.read_text(encoding="utf-8")
+    except OSError:
+        return [f"no owner authorization: {CUTOVER_AUTHORIZATION.relative_to(ROOT)} does not exist"]
+    fields: dict[str, list[str]] = {}
+    for match in AUTHORIZATION_FIELD_RE.finditer(text):
+        fields.setdefault(match.group(1), []).append(match.group(2))
+    problems = [
+        f"the authorization must name `{name}:` exactly once"
+        for name in ("Authorized-by", "Version", "Safety-Verdict-SHA256")
+        if len(fields.get(name, [])) != 1
+    ]
+    if problems:
+        return problems
+    if fields["Version"][0] != version:
+        problems.append(f"the authorization is for v{fields['Version'][0]}, not v{version}")
+    try:
+        verdict = CUTOVER_SAFETY_VERDICT.read_bytes()
+    except OSError:
+        return [*problems, f"{CUTOVER_SAFETY_VERDICT.relative_to(ROOT)} does not exist"]
+    if hashlib.sha256(verdict).hexdigest() != fields["Safety-Verdict-SHA256"][0]:
+        problems.append("the migration Safety Verdict changed after the owner authorized it")
+    if not safety_verdict_passes(CUTOVER_SAFETY_VERDICT):
+        problems.append("the migration Safety Verdict's final round does not pass")
+    return problems
 
 
 # E06-S04 after review round 8: the formula is generated whole by `render_formula` and compared
@@ -642,18 +731,15 @@ def live_formula_problems(text: str, version: str) -> list[str]:
 
 def published_digest_problems(text: str, version: str) -> list[str]:
     """Every digest in the formula against the bytes the release published: the tag archive,
-    downloaded and hashed, and each engine archive, downloaded and hashed and agreeing with its
-    sidecar and the release manifest (E06 review rounds 7-9).
-    Needs the network, so it runs in `finalize` and CI, not in the offline `check`."""
+    downloaded and hashed, and - from the cutover on - the formula must be exactly the published,
+    verified `adoptable_formula` (E06 review rounds 7-9, ADR-0040). Needs the network, so it runs
+    in `finalize` and `verify-formula`, not in the offline `check`."""
     digests = FORMULA_ALL_SHA_RE.findall(text)
     problems = []
     if not digests or digests[0] != archive_sha256(version):
         problems.append(f"the source digest is not the sha256 of the v{version} tag archive")
-    if len(digests) == 1 + len(ENGINE_TARGETS):
-        published = engine_sha256s(version)
-        for target, digest in zip(ENGINE_TARGETS, digests[1:], strict=True):
-            if digest != published[target]:
-                problems.append(f"the {target} engine digest is not the one v{version} published")
+    if parse(version) >= CUTOVER_VERSION and text != adoptable_formula(version):
+        problems.append(f"the formula is not the published v{version} formula its release manifest renders")
     return problems
 
 
@@ -688,15 +774,15 @@ def write_atomically(path: Path, text: str) -> None:
 def finalize(
     version: str,
     sha256: str | None = None,
-    engine_digests: dict[str, str] | None = None,
     adopt_cutover: bool = False,
 ) -> None:
     """Regenerate the formula for the pushed `version` from `render_formula`, never by editing.
 
     From the cutover version on the formula carries the engine; the release that first does so
-    must say `--adopt-cutover`, which is only accepted once E06-S04 is `done` (the owner accepted
-    the migration Safety Verdict). Digests are the published ones (`sha256`/`engine_digests`
-    override them for tests); the text is written atomically and restored if `check` then fails.
+    must say `--adopt-cutover`, which is only accepted with the owner's authorization bound to the
+    migration Safety Verdict they accepted (E06-S15). From the cutover on the formula is the published, verified one
+    (`adoptable_formula`) and `sha256` cannot stand in for it; before it, `sha256` skips the tag
+    download. The text is written atomically and restored if `check` then fails.
     """
     versions = current_versions()
     if versions.source != version:
@@ -712,24 +798,27 @@ def finalize(
             raise ReleaseError(f"v{version} is at or after the cutover and must carry the engine: pass --adopt-cutover")
         if version in UNVERSIONED_ENGINE_RELEASES:
             raise ReleaseError(f"v{version} cannot be the cutover release: its engine does not carry its own version")
-        if cutover_story_status() != "done":
-            raise ReleaseError("E06-S04 is not done: the owner has not accepted the migration Safety Verdict")
+        refused = cutover_authorization_problems(version)
+        if refused:
+            raise ReleaseError("the owner has not authorized this cutover:\n" + "\n".join(f"- {p}" for p in refused))
         print("adopting the engine formula: the Rust engine becomes `cancellai` (E06-S04)")
     elif adopt_cutover:
         raise ReleaseError("--adopt-cutover is for the one release that first carries the engine")
 
-    source_sha = sha256 or archive_sha256(version)
-    if not re.fullmatch(r"[0-9a-f]{64}", source_sha):
-        raise ReleaseError(f"not a SHA-256 digest: {source_sha!r}")
-    engines = None
     if carries_engine:
-        digests = engine_sha256s(version) if engine_digests is None else engine_digests
-        engines = published_engines(version, digests)
-    text = render_formula(version, source_sha, engines)
-    if sha256 is None and engine_digests is None:
-        problems = published_digest_problems(text, version)
-        if problems:
-            raise ReleaseError("the rendered formula does not match the published release:\n" + "\n".join(f"- {p}" for p in problems))
+        if sha256 is not None:
+            raise ReleaseError("--sha256 cannot stand in for the published release from the cutover on")
+        text = adoptable_formula(version)
+        source_sha = FORMULA_ALL_SHA_RE.findall(text)[0]
+    else:
+        source_sha = sha256 or archive_sha256(version)
+        if not re.fullmatch(r"[0-9a-f]{64}", source_sha):
+            raise ReleaseError(f"not a SHA-256 digest: {source_sha!r}")
+        text = render_formula(version, source_sha, None)
+        if sha256 is None:
+            problems = published_digest_problems(text, version)
+            if problems:
+                raise ReleaseError("the rendered formula does not match the published release:\n" + "\n".join(f"- {p}" for p in problems))
     write_atomically(FORMULA, text)
 
     problems = check()
@@ -797,6 +886,11 @@ def build_parser() -> argparse.ArgumentParser:
     local_cmd.add_argument("--version", required=True)
     local_cmd.add_argument("--source-archive", required=True, type=Path)
     local_cmd.add_argument("--engine-archive", required=True, type=Path)
+    render_cmd = sub.add_parser("render-release-formula", help="the release workflow: the formula as a function of the manifest")
+    render_cmd.add_argument("--version", required=True)
+    render_cmd.add_argument("--manifest", required=True, type=Path)
+    render_cmd.add_argument("--source-sha", required=True)
+    render_cmd.add_argument("--out", required=True, type=Path)
     sub.add_parser("verify-formula", help="compare the live formula's engine digests with the published ones")
     verify_cmd = sub.add_parser("verify-installed", help="assert an installed cutover formula reports its version")
     verify_cmd.add_argument("--version", required=True)
@@ -818,6 +912,9 @@ def main(argv: list[str] | None = None) -> int:
             finalize(args.version, args.sha256, adopt_cutover=args.adopt_cutover)
         elif command == "render-local-cutover":
             print(render_local_cutover(args.version, args.source_archive.resolve(), args.engine_archive.resolve()), end="")
+        elif command == "render-release-formula":
+            args.out.write_text(render_release_formula(args.version, args.manifest, args.source_sha), encoding="utf-8")
+            print(f"rendered {args.out} for v{args.version} from {args.manifest}")
         elif command == "verify-formula":
             versions = current_versions()
             found = live_formula_problems(read(FORMULA), versions.formula) or published_digest_problems(read(FORMULA), versions.formula)

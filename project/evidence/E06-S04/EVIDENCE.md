@@ -66,6 +66,16 @@ through. The owner chose to change the mechanism rather than patch it a fourth t
 Still open, and not the executor's to close: AC1 (the owner's acceptance of the migration Safety
 Verdict, which follows an independent PASS).
 
+## ADR-0040: the mechanics leave this story (2026-09-24)
+
+After round 9 the owner chose, with a design consultation (`DESIGN_CONSULTATION.md`), to replace
+the release mechanism rather than patch it again. Formula generation and release-integrity
+verification are E06-S14; the owner's cutover authorization is E06-S15. This story keeps what is
+the owner's: accepting the migration Safety Verdict, the transition window and the release notes.
+The round-9 repair above (`engine_sha256s` hashing downloads and consulting the manifest) is
+carried into E06-S14, without the sidecar, plus provenance verification and the published
+`cancellai.rb`.
+
 ## Verification (native reproduction per platform, E21-S02 partial-scan fixtures)
 
 `rust_python_parity.py check` runs the partial-scan fixtures (`codex-partial-tree`,

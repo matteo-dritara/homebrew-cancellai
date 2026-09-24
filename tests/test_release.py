@@ -273,7 +273,7 @@ class EngineCutoverTests(unittest.TestCase):
         with self.assertRaises(release.ReleaseError):
             release.render_formula("2.0.0", "f" * 64, {"riscv64-unknown-linux-gnu": ("u", "0" * 64)})
 
-    def _finalize_as(self, version: str, *, adopt: bool, story_status: str = "in_progress") -> str:
+    def _finalize_as(self, version: str, *, adopt: bool, authorized: bool = False) -> str:
         import tempfile
         from pathlib import Path
         from unittest import mock
@@ -284,29 +284,74 @@ class EngineCutoverTests(unittest.TestCase):
             evidence = Path(tmp) / "RELEASE.md"
             evidence.write_text("x", encoding="utf-8")
             versions = release.Versions(source=version, packaging=version, formula=version, engine=version)
+            engine = release.parse(version) >= release.CUTOVER_VERSION
             with (
                 mock.patch.object(release, "FORMULA", formula),
                 mock.patch.object(release, "current_versions", return_value=versions),
                 mock.patch.object(release, "release_evidence_path", return_value=evidence),
-                mock.patch.object(release, "cutover_story_status", return_value=story_status),
+                mock.patch.object(release, "cutover_authorization_problems", return_value=[] if authorized else ["no owner authorization"]),
+                mock.patch.object(release, "adoptable_formula", return_value=self._engine_formula(version)),
                 mock.patch.object(release, "check", return_value=[]),
             ):
-                release.finalize(version, sha256="b" * 64, engine_digests=self.DIGESTS, adopt_cutover=adopt)
+                release.finalize(version, sha256=None if engine else "b" * 64, adopt_cutover=adopt)
             return formula.read_text(encoding="utf-8")
+
+    def test_sha256_cannot_stand_in_for_the_published_release_after_the_cutover(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            formula = Path(tmp) / "cancellai.rb"
+            formula.write_text(release.read(release.FORMULA), encoding="utf-8")
+            before = formula.read_text(encoding="utf-8")
+            evidence = Path(tmp) / "RELEASE.md"
+            evidence.write_text("x", encoding="utf-8")
+            versions = release.Versions(source="2.0.0", packaging="2.0.0", formula="2.0.0", engine="2.0.0")
+            with (
+                mock.patch.object(release, "FORMULA", formula),
+                mock.patch.object(release, "current_versions", return_value=versions),
+                mock.patch.object(release, "release_evidence_path", return_value=evidence),
+                mock.patch.object(release, "cutover_authorization_problems", return_value=[]),
+                self.assertRaisesRegex(release.ReleaseError, "cannot stand in"),
+            ):
+                release.finalize("2.0.0", sha256="b" * 64, adopt_cutover=True)
+            self.assertEqual(formula.read_text(encoding="utf-8"), before)
+
+    def test_a_refused_adoption_leaves_the_live_formula_unchanged(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            formula = Path(tmp) / "cancellai.rb"
+            formula.write_text(release.read(release.FORMULA), encoding="utf-8")
+            before = formula.read_text(encoding="utf-8")
+            evidence = Path(tmp) / "RELEASE.md"
+            evidence.write_text("x", encoding="utf-8")
+            versions = release.Versions(source="2.0.0", packaging="2.0.0", formula="2.0.0", engine="2.0.0")
+            with (
+                mock.patch.object(release, "FORMULA", formula),
+                mock.patch.object(release, "current_versions", return_value=versions),
+                mock.patch.object(release, "release_evidence_path", return_value=evidence),
+                mock.patch.object(release, "cutover_authorization_problems", return_value=[]),
+                mock.patch.object(release, "adoptable_formula", side_effect=release.ReleaseError("provenance")),
+                self.assertRaises(release.ReleaseError),
+            ):
+                release.finalize("2.0.0", adopt_cutover=True)
+            self.assertEqual(formula.read_text(encoding="utf-8"), before)
 
     def test_a_release_at_or_after_the_cutover_cannot_skip_the_engine(self) -> None:
         with self.assertRaises(release.ReleaseError):
             self._finalize_as("2.0.0", adopt=False)
 
-    def test_adoption_needs_the_owner_accepted_cutover_story(self) -> None:
-        with self.assertRaises(release.ReleaseError):
-            self._finalize_as("2.0.0", adopt=True, story_status="verification")
-        adopted = self._finalize_as("2.0.0", adopt=True, story_status="done")
+    def test_adoption_needs_the_owners_authorization(self) -> None:
+        with self.assertRaisesRegex(release.ReleaseError, "not authorized"):
+            self._finalize_as("2.0.0", adopt=True, authorized=False)
+        adopted = self._finalize_as("2.0.0", adopt=True, authorized=True)
         self.assertEqual(release.live_formula_problems(adopted, "2.0.0"), [])
 
     def test_adopt_cutover_is_refused_before_the_cutover_version(self) -> None:
         with self.assertRaises(release.ReleaseError):
-            self._finalize_as("1.22.0", adopt=True, story_status="done")
+            self._finalize_as("1.22.0", adopt=True, authorized=True)
 
     def test_a_failed_post_write_check_restores_the_formula(self) -> None:
         import tempfile
@@ -344,82 +389,197 @@ class EngineCutoverTests(unittest.TestCase):
 
 
 class PublishedEngineEvidenceTests(unittest.TestCase):
-    """E06 review round 9: a formula whose engine digests matched the `.sha256` sidecars was
-    accepted while the archives' own bytes hashed to something else, and no archive was ever
-    downloaded. The archive, its sidecar and the release manifest must now agree."""
+    """E06-S14 (ADR-0040), after nine review rounds on release.py: the formula is a pure function of
+    the release manifest and the tag archive's digest, rendered by the release workflow and adopted
+    only if it renders identically from the published manifest, whose every engine archive is
+    downloaded, hashed to the manifest's digest and provenance-verified. Round 9's case - a sidecar
+    agreeing with the formula while the archive's bytes differ - has no sidecar left to agree with."""
 
     VERSION = "2.0.0"
+    SOURCE = "f" * 64
 
-    def published(self, *, archive: bytes = b"engine", sidecar: str | None = None, manifest: str | None = None, manifest_version: str = VERSION):
+    def published(self, *, archive: bytes = b"engine", manifest_digest: str | None = None, manifest_version: str = VERSION, artifacts=None):
         import hashlib
         import json
 
         real = hashlib.sha256(b"engine").hexdigest()
         assets = {}
-        artifacts = []
+        entries = []
         for target in release.ENGINE_TARGETS:
             url = release.ENGINE_ASSET.format(repo=release.REPO, version=self.VERSION, target=target)
             assets[url] = archive
-            assets[url + ".sha256"] = f"{sidecar or real}  cancellai-cli-{self.VERSION}-{target}.tar.gz\n".encode()
-            artifacts.append({"name": f"cancellai-cli-{self.VERSION}-{target}", "target_triple": target, "sha256": manifest or real})
-        doc = {"document_type": "release_manifest", "version": manifest_version, "artifacts": artifacts}
+            entries.append({"name": f"cancellai-cli-{self.VERSION}-{target}", "target_triple": target, "sha256": manifest_digest or real})
+        doc = {
+            "document_type": "release_manifest",
+            "version": manifest_version,
+            "artifacts": entries if artifacts is None else artifacts(entries),
+        }
         assets[release.RELEASE_MANIFEST_ASSET.format(repo=release.REPO, version=self.VERSION)] = json.dumps(doc).encode()
-        return assets, real
+        formula = release.render_formula(
+            self.VERSION, self.SOURCE, release.published_engines(self.VERSION, dict.fromkeys(release.ENGINE_TARGETS, real))
+        )
+        assets[release.FORMULA_ASSET.format(repo=release.REPO, version=self.VERSION)] = formula.encode()
+        return assets, formula, doc
 
-    def fetch(self, assets):
+    def network(self, assets, *, provenance_fails: bool = False):
+        from contextlib import ExitStack
+
         def download(url, cap):
             if url not in assets:
                 raise release.ReleaseError(f"could not download {url}")
             return assets[url]
 
-        return mock.patch.object(release, "download", side_effect=download)
+        def verify_provenance(data, name):
+            if provenance_fails:
+                raise release.ReleaseError(f"{name} failed build-provenance verification")
 
-    def formula(self, digest: str) -> str:
-        return release.render_formula(
-            self.VERSION, "f" * 64, release.published_engines(self.VERSION, dict.fromkeys(release.ENGINE_TARGETS, digest))
-        )
+        stack = ExitStack()
+        stack.enter_context(mock.patch.object(release, "download", side_effect=download))
+        stack.enter_context(mock.patch.object(release, "verify_provenance", side_effect=verify_provenance))
+        stack.enter_context(mock.patch.object(release, "archive_sha256", return_value=self.SOURCE))
+        return stack
 
-    def problems(self, assets, digest: str):
-        with self.fetch(assets), mock.patch.object(release, "archive_sha256", return_value="f" * 64):
-            return release.published_digest_problems(self.formula(digest), self.VERSION)
+    def test_agreeing_evidence_adopts_the_published_formula(self) -> None:
+        assets, formula, _ = self.published()
+        with self.network(assets):
+            self.assertEqual(release.adoptable_formula(self.VERSION), formula)
+            self.assertEqual(release.published_digest_problems(formula, self.VERSION), [])
 
-    def test_agreeing_evidence_passes(self) -> None:
-        assets, real = self.published()
-        self.assertEqual(self.problems(assets, real), [])
+    def test_round_nine_an_archive_whose_bytes_differ_from_the_manifest_is_refused(self) -> None:
+        assets, _, _ = self.published(archive=b"other bytes")
+        with self.network(assets), self.assertRaisesRegex(release.ReleaseError, "disagree"):
+            release.adoptable_formula(self.VERSION)
 
-    def test_an_archive_whose_bytes_differ_from_sidecar_and_manifest_is_refused(self) -> None:
-        # Round 9's probe: sidecar and manifest both say `aa…`, the archive is other bytes.
-        assets, _ = self.published(archive=b"other bytes", sidecar="a" * 64, manifest="a" * 64)
-        with self.assertRaisesRegex(release.ReleaseError, "disagree"):
-            self.problems(assets, "a" * 64)
+    def test_a_manifest_naming_other_bytes_is_refused(self) -> None:
+        assets, _, _ = self.published(manifest_digest="c" * 64)
+        with self.network(assets), self.assertRaisesRegex(release.ReleaseError, "disagree"):
+            release.adoptable_formula(self.VERSION)
 
-    def test_a_sidecar_that_disagrees_is_refused(self) -> None:
-        assets, real = self.published(sidecar="b" * 64)
-        with self.assertRaisesRegex(release.ReleaseError, "disagree"):
-            self.problems(assets, real)
-
-    def test_a_manifest_that_disagrees_is_refused(self) -> None:
-        assets, real = self.published(manifest="c" * 64)
-        with self.assertRaisesRegex(release.ReleaseError, "disagree"):
-            self.problems(assets, real)
+    def test_a_published_formula_one_byte_off_is_refused(self) -> None:
+        assets, formula, _ = self.published()
+        assets[release.FORMULA_ASSET.format(repo=release.REPO, version=self.VERSION)] = (formula + " ").encode()
+        with self.network(assets), self.assertRaisesRegex(release.ReleaseError, "not the formula"):
+            release.adoptable_formula(self.VERSION)
 
     def test_a_manifest_for_another_version_is_refused(self) -> None:
-        assets, real = self.published(manifest_version="1.99.0")
-        with self.assertRaisesRegex(release.ReleaseError, "not the release manifest"):
-            self.problems(assets, real)
+        assets, _, _ = self.published(manifest_version="1.99.0")
+        with self.network(assets), self.assertRaisesRegex(release.ReleaseError, "not the release manifest"):
+            release.adoptable_formula(self.VERSION)
+
+    def test_a_target_named_twice_or_not_at_all_is_refused(self) -> None:
+        for label, shape in (("duplicated", lambda entries: [*entries, entries[0]]), ("missing", lambda entries: entries[1:])):
+            assets, _, _ = self.published(artifacts=shape)
+            with self.subTest(label), self.network(assets), self.assertRaisesRegex(release.ReleaseError, "not once"):
+                release.adoptable_formula(self.VERSION)
+
+    def test_a_provenance_failure_is_refused(self) -> None:
+        assets, _, _ = self.published()
+        with self.network(assets, provenance_fails=True), self.assertRaisesRegex(release.ReleaseError, "provenance"):
+            release.adoptable_formula(self.VERSION)
 
     def test_missing_evidence_is_refused_not_skipped(self) -> None:
-        for missing in ("release-manifest.json", ".sha256", ".tar.gz"):
-            assets, real = self.published()
+        for missing in ("release-manifest.json", ".tar.gz", "cancellai.rb"):
+            assets, _, _ = self.published()
             assets = {url: data for url, data in assets.items() if not url.endswith(missing)}
-            with self.subTest(missing=missing), self.assertRaises(release.ReleaseError):
-                self.problems(assets, real)
+            with self.subTest(missing=missing), self.network(assets), self.assertRaises(release.ReleaseError):
+                release.adoptable_formula(self.VERSION)
 
-    def test_a_formula_naming_other_bytes_than_the_agreed_archive_is_reported(self) -> None:
-        assets, _ = self.published()
-        self.assertTrue(self.problems(assets, "d" * 64))
+    def test_the_workflow_and_finalize_render_the_same_formula(self) -> None:
+        import json
+        import tempfile
+        from pathlib import Path
 
-    def test_finalize_takes_its_digests_from_the_archives(self) -> None:
-        assets, real = self.published()
-        with self.fetch(assets):
-            self.assertEqual(release.engine_sha256s(self.VERSION), dict.fromkeys(release.ENGINE_TARGETS, real))
+        _, formula, doc = self.published()
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest = Path(tmp) / "release-manifest.json"
+            manifest.write_text(json.dumps(doc), encoding="utf-8")
+            self.assertEqual(release.render_release_formula(self.VERSION, manifest, self.SOURCE), formula)
+            doc["version"] = "1.99.0"
+            manifest.write_text(json.dumps(doc), encoding="utf-8")
+            with self.assertRaises(release.ReleaseError):
+                release.render_release_formula(self.VERSION, manifest, self.SOURCE)
+
+    def test_a_live_formula_that_is_not_the_published_one_is_reported(self) -> None:
+        assets, formula, _ = self.published()
+        with self.network(assets):
+            self.assertTrue(release.published_digest_problems(formula.replace("f" * 64, "e" * 64, 1), self.VERSION))
+
+    def test_verify_provenance_refuses_without_gh(self) -> None:
+        with mock.patch.object(release.shutil, "which", return_value=None), self.assertRaisesRegex(release.ReleaseError, "gh"):
+            release.verify_provenance(b"x", "a.tar.gz")
+
+
+class CutoverAuthorizationTests(unittest.TestCase):
+    """E06-S15 (ADR-0040): `finalize --adopt-cutover` read E06-S04's `done` status as the owner's
+    acceptance, so a status edit stood in for a decision. The authorization is now a committed file
+    bound to the version and to the SHA-256 of the Safety Verdict the owner accepted."""
+
+    PASSING = "## Round 10\n\nVerifier: Codex\n\nPASS\n"
+
+    def check(self, *, verdict: str | None = PASSING, authorization: str | None = "", version: str = "2.0.0"):
+        import hashlib
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            verdict_path = root / "SAFETY_VERDICT.md"
+            authorization_path = root / "CUTOVER_AUTHORIZATION.md"
+            if verdict is not None:
+                verdict_path.write_text(verdict, encoding="utf-8")
+            if authorization is not None:
+                if authorization == "":
+                    digest = hashlib.sha256((verdict or "").encode()).hexdigest()
+                    authorization = f"Authorized-by: project owner\nVersion: 2.0.0\nSafety-Verdict-SHA256: {digest}\n"
+                authorization_path.write_text(authorization, encoding="utf-8")
+            with (
+                mock.patch.object(release, "ROOT", root),
+                mock.patch.object(release, "CUTOVER_AUTHORIZATION", authorization_path),
+                mock.patch.object(release, "CUTOVER_SAFETY_VERDICT", verdict_path),
+                mock.patch.object(
+                    release, "safety_verdict_passes", side_effect=lambda path: path.read_text(encoding="utf-8").rstrip().endswith("PASS")
+                ),
+            ):
+                return release.cutover_authorization_problems(version)
+
+    def test_a_valid_authorization_passes(self) -> None:
+        self.assertEqual(self.check(), [])
+
+    def test_no_authorization_is_refused(self) -> None:
+        self.assertTrue(self.check(authorization=None))
+
+    def test_an_authorization_for_another_version_is_refused(self) -> None:
+        self.assertTrue(any("not v2.1.0" in p for p in self.check(version="2.1.0")))
+
+    def test_a_verdict_edited_after_the_authorization_voids_it(self) -> None:
+        import hashlib
+
+        digest = hashlib.sha256(self.PASSING.encode()).hexdigest()
+        authorization = f"Authorized-by: project owner\nVersion: 2.0.0\nSafety-Verdict-SHA256: {digest}\n"
+        problems = self.check(verdict=self.PASSING + "\n## Round 11\n\nPASS\n", authorization=authorization)
+        self.assertTrue(any("changed after" in p for p in problems), problems)
+
+    def test_a_failing_final_round_is_refused_even_when_authorized(self) -> None:
+        problems = self.check(verdict="## Round 10\n\nFAIL\n")
+        self.assertTrue(any("does not pass" in p for p in problems), problems)
+
+    def test_every_field_is_required_exactly_once(self) -> None:
+        for authorization in ("Version: 2.0.0\n", "Authorized-by: a\nAuthorized-by: b\nVersion: 2.0.0\nSafety-Verdict-SHA256: x\n"):
+            with self.subTest(authorization=authorization):
+                self.assertTrue(self.check(authorization=authorization))
+
+    def test_no_story_status_is_read(self) -> None:
+        # The function has no path to a story status: with E06-S04 marked done and no file, it refuses.
+        self.assertFalse(hasattr(release, "cutover_story_status"))
+        self.assertTrue(self.check(authorization=None))
+
+    def test_the_real_safety_verdict_reader_is_project_os(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "SAFETY_VERDICT.md"
+            path.write_text("## Round 1\n\nFAIL\n\n## Round 2\n\nPASS\n", encoding="utf-8")
+            self.assertTrue(release.safety_verdict_passes(path))
+            path.write_text("## Round 1\n\nPASS\n\n## Round 2\n\nFAIL\n", encoding="utf-8")
+            self.assertFalse(release.safety_verdict_passes(path))

@@ -353,6 +353,17 @@ jobs:
           digest="$(shasum -a 256 archive.tar.gz | cut -d' ' -f1)"
           echo "sha256=$digest" >> "$GITHUB_OUTPUT"
           echo "Formula sha256 for ${GITHUB_REF_NAME}: \`$digest\`" >> "$GITHUB_STEP_SUMMARY"
+      # E06-S14 (ADR-0040): the formula is a function of the manifest just verified against the
+      # built archives and of the tag archive's digest, rendered here - where the bytes are - and
+      # published beside them. `release.py finalize` adopts it only if it renders identically from
+      # the published manifest after re-verifying every archive it names.
+      - name: render the Homebrew formula from the verified release manifest
+        env:
+          SHA256: ${{ steps.archive.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release.py render-release-formula --version "${GITHUB_REF_NAME#v}" \
+            --manifest release-manifest.json --source-sha "$SHA256" --out cancellai.rb
       - name: publish the release from the committed evidence packet
         env:
           GH_TOKEN: ${{ github.token }}
@@ -368,4 +379,4 @@ jobs:
             --title "cancellAI ${GITHUB_REF_NAME}" \
             --notes-file "$notes" \
             --verify-tag \
-            dist/*.tar.gz dist/*.zip dist/*.sha256 dist/*.cdx.json release-manifest.json
+            dist/*.tar.gz dist/*.zip dist/*.sha256 dist/*.cdx.json release-manifest.json cancellai.rb

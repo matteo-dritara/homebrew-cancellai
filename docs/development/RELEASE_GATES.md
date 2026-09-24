@@ -361,6 +361,20 @@ The switch itself is E06-S04: the Rust engine becomes `cancellai` in the Homebre
 `2.0.0` release, with `cancellai-legacy` as the rollback through 2.1.0. It needs its own
 independent CR4 pass and the owner's migration Safety Verdict.
 
+**How the switch is made (ADR-0040, 2026-09-24).** After nine review rounds on post-hoc checks,
+the mechanics left E06-S04:
+
+- **E06-S14 - the formula is a function of the release manifest.** `release.yml`'s `publish` job
+  renders the formula from `release-manifest.json` (once `verify-checksums` has tied every built
+  archive to it) and the tag archive's digest, and publishes it as `cancellai.rb`. `finalize`
+  adopts that asset only if it is byte-identical to the formula rendered from the published
+  manifest, after downloading every engine archive the formula names, hashing it to the
+  manifest's digest and verifying its provenance with `gh attestation verify`. No `.sha256`
+  sidecar is consulted, `--sha256` cannot stand in for any of it, and a missing piece refuses.
+- **E06-S15 - the owner authorizes the cutover explicitly.** `finalize --adopt-cutover` requires
+  `project/evidence/E06-S04/CUTOVER_AUTHORIZATION.md`, bound to the version and to the
+  Safety Verdict the owner accepted; no story status stands in for it.
+
 ## Epic closure
 
 Closing an epic is what triggers a release (ADR-0014, PD-021). An epic may close when:

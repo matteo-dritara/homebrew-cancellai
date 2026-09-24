@@ -11,7 +11,7 @@ Epics: **35** | Stories: **188**
 - `blocked`: 3
 - `cancelled`: 1
 - `done`: 181
-- `in_progress`: 3
+- `ready_for_review`: 3
 
 ## Change risk distribution
 
@@ -27,4 +27,6 @@ Epics: **35** | Stories: **188**
 
 ## Awaiting independent review
 
-- none
+- **E06-S14** - The release formula is a function of the release manifest, rendered where the bytes are built (CR4)
+- **E06-S15** - The cutover is adopted on the owner's explicit authorization, bound to the Safety Verdict it accepts (CR4)
+- **E33-S03** - The containment ledger is a SQLite table decided and appended in one transaction (CR4)
