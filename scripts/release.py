@@ -487,37 +487,63 @@ def manifest_digests(doc: object, version: str, where: str) -> dict[str, str]:
     return digests
 
 
-def manifest_sha256s(version: str) -> dict[str, str]:
-    """The published release manifest's engine digests."""
+def manifest_source_commit(doc: dict[str, object], where: str) -> str:
+    """The commit the manifest says the release was built from."""
+    source = doc.get("source_sha")
+    if not isinstance(source, str) or not re.fullmatch(r"[0-9a-f]{40}", source):
+        raise ReleaseError(f"{where} does not name the 40-hex commit it was built from")
+    return source
+
+
+def tag_commit(version: str) -> str:
+    """The commit the local `v<version>` tag points at - the tag `finalize` is finalizing."""
+    result = subprocess.run(["git", "rev-parse", "--verify", f"v{version}^{{commit}}"], cwd=ROOT, capture_output=True, text=True, check=False)  # noqa: S603, S607
+    commit = result.stdout.strip()
+    if result.returncode != 0 or not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise ReleaseError(f"cannot resolve tag v{version} to a commit here; fetch the tag first")
+    return commit
+
+
+def manifest_sha256s(version: str) -> tuple[dict[str, str], str]:
+    """The published release manifest's engine digests, and the commit it names - which must be the
+    commit of the `v<version>` tag (E06 review round 10: a manifest naming another commit was
+    adopted)."""
     url = RELEASE_MANIFEST_ASSET.format(repo=REPO, version=version)
     try:
         doc = json.loads(download(url, MAX_MANIFEST_BYTES))
     except ValueError as exc:
         raise ReleaseError(f"{url} is not JSON: {exc}") from exc
-    return manifest_digests(doc, version, url)
+    digests = manifest_digests(doc, version, url)
+    source = manifest_source_commit(doc, url)
+    tagged = tag_commit(version)
+    if source != tagged:
+        raise ReleaseError(f"{url} was built from {source}, but v{version} is {tagged}")
+    return digests, source
 
 
-def provenance_command(gh: str, path: Path, version: str) -> list[str]:
+def provenance_command(gh: str, path: Path, version: str, commit: str) -> list[str]:
     """`gh attestation verify` bound to the exact release: this repository, signed by its release
-    workflow, from the version's tag - not merely "some workflow in this repository" (E06 review
-    round 10)."""
+    workflow, from the version's tag at the tag's own commit - not merely "some workflow in this
+    repository" (E06 review round 10)."""
     return [
         gh, "attestation", "verify", str(path), "--repo", REPO,
         "--signer-workflow", f"{REPO}/.github/workflows/{RELEASE_WORKFLOW}",
         "--source-ref", f"refs/tags/v{version}",
+        "--source-digest", commit,
     ]  # fmt: skip
 
 
-def verify_provenance(data: bytes, name: str, version: str) -> None:
+def verify_provenance(data: bytes, name: str, version: str, commit: str) -> None:
     """`gh attestation verify` over exactly these bytes: they were built by this repository's
-    release workflow from the `v<version>` tag. Unavailable `gh` or a failed verification refuses."""
+    release workflow from the `v<version>` tag at `commit`. Unavailable `gh` or a failed
+    verification refuses."""
     gh = shutil.which("gh")
     if gh is None:
         raise ReleaseError(f"cannot verify {name}'s build provenance: `gh` is not installed")
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / name
         path.write_bytes(data)
-        result = subprocess.run(provenance_command(gh, path, version), capture_output=True, text=True, check=False)  # noqa: S603
+        result = subprocess.run(provenance_command(gh, path, version, commit), capture_output=True, text=True, check=False)  # noqa: S603
     if result.returncode != 0:
         raise ReleaseError(f"{name} failed build-provenance verification: {(result.stderr or result.stdout).strip()}")
 
@@ -527,7 +553,7 @@ def engine_sha256s(version: str) -> dict[str, str]:
     bytes: every archive is downloaded, hashed to the manifest's digest, and its build provenance
     verified (E06 review round 9, ADR-0040). Nothing is taken from a `.sha256` sidecar, and a
     disagreement or any unavailable piece refuses."""
-    recorded = manifest_sha256s(version)
+    recorded, commit = manifest_sha256s(version)
     problems = []
     for target in ENGINE_TARGETS:
         url = ENGINE_ASSET.format(repo=REPO, version=version, target=target)
@@ -536,7 +562,7 @@ def engine_sha256s(version: str) -> dict[str, str]:
         if actual != recorded[target]:
             problems.append(f"{target}: archive {actual}, manifest {recorded[target]}")
             continue
-        verify_provenance(data, url.rsplit("/", 1)[-1], version)
+        verify_provenance(data, url.rsplit("/", 1)[-1], version, commit)
     if problems:
         raise ReleaseError(f"v{version}'s engine archives disagree with the release manifest:\n" + "\n".join(f"- {p}" for p in problems))
     return recorded
@@ -554,6 +580,7 @@ def render_release_formula(version: str, manifest: Path, source_sha: str) -> str
             doc = json.loads(manifest.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
             raise ReleaseError(f"cannot read {manifest}: {exc}") from exc
+        manifest_source_commit(doc, str(manifest))
         engines = published_engines(version, manifest_digests(doc, version, str(manifest)))
     return render_formula(version, source_sha, engines)
 

@@ -37,6 +37,15 @@ verification; skipping the archive-to-manifest comparison.
 | --- | --- | --- |
 | `gh attestation verify --repo` alone accepted an attestation from any workflow or ref of this repository | `provenance_command` adds `--signer-workflow matteo-dritara/homebrew-cancellai/.github/workflows/release.yml` and `--source-ref refs/tags/v<version>`; `manifest_digests` refuses a manifest whose `build_identity` is not this repository's `release.yml` | `test_provenance_is_bound_to_the_release_workflow_and_the_tag`, `test_a_manifest_built_by_another_workflow_is_refused`; mutating the ref to `refs/heads/main` or dropping the identity check each fails a test |
 
+## Round 10 repair (Codex, `project/evidence/E06-VERIFIER-REVIEW-ROUND10.md`)
+
+| Finding | Repair | Evidence |
+| --- | --- | --- |
+| A manifest claiming `source_sha: 000...000` was adopted: its commit was never compared with the tag's, and provenance was verified without `--source-digest` | `manifest_sha256s` requires the manifest's 40-hex `source_sha` to equal the commit `v<version>` resolves to locally (`tag_commit`; an unresolvable tag refuses), and `provenance_command` passes that commit as `--source-digest`; the release workflow's renderer also refuses a manifest naming no commit | Codex's `tests/test_round10_adversarial.py` (only its `provenance_command` call adapted to the new signature), `test_a_manifest_built_from_another_commit_is_refused`, `test_an_unresolvable_tag_is_refused`, `test_provenance_is_bound_to_the_release_workflow_and_the_tag` (now also `--source-digest`); dropping the commit comparison or the flag each fails a test |
+
+Not bound, recorded: `build_identity.run_id` is not compared with the attestation's run; the
+signer workflow, tag ref and commit already fix which build produced the bytes.
+
 ## Verification Commands
 
 ```text

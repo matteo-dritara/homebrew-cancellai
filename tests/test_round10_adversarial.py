@@ -39,7 +39,9 @@ def test_manifest_source_commit_must_bind_archive_provenance() -> None:
     # A same-repository release.yml attestation from refs/tags/v2.0.0 is allowed by
     # provenance_command even when its certificate's source digest differs from the
     # manifest's source_sha. The mock represents gh accepting that valid attestation.
-    command = release.provenance_command("gh", Path("archive.tar.gz"), version)
+    # (Executor, after round 10: provenance_command now also takes the tag's commit; only this call
+    # changed. The counterexample below is the reviewer's, unchanged.)
+    command = release.provenance_command("gh", Path("archive.tar.gz"), version, "1" * 40)
     assert "--source-ref" in command
     with TemporaryDirectory() as tmp:
         live = Path(tmp) / "cancellai.rb"

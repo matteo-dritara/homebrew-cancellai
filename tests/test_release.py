@@ -406,6 +406,7 @@ class PublishedEngineEvidenceTests(unittest.TestCase):
         manifest_version: str = VERSION,
         artifacts=None,
         workflow: str | None = None,
+        source_sha: str = "1" * 40,
     ):
         import hashlib
         import json
@@ -420,6 +421,7 @@ class PublishedEngineEvidenceTests(unittest.TestCase):
         doc = {
             "document_type": "release_manifest",
             "version": manifest_version,
+            "source_sha": source_sha,
             "build_identity": {"repository": release.REPO, "workflow": workflow or release.RELEASE_WORKFLOW, "run_id": "1"},
             "artifacts": entries if artifacts is None else artifacts(entries),
         }
@@ -438,7 +440,7 @@ class PublishedEngineEvidenceTests(unittest.TestCase):
                 raise release.ReleaseError(f"could not download {url}")
             return assets[url]
 
-        def verify_provenance(data, name, version):
+        def verify_provenance(data, name, version, commit):
             if provenance_fails:
                 raise release.ReleaseError(f"{name} failed build-provenance verification")
 
@@ -446,6 +448,7 @@ class PublishedEngineEvidenceTests(unittest.TestCase):
         stack.enter_context(mock.patch.object(release, "download", side_effect=download))
         stack.enter_context(mock.patch.object(release, "verify_provenance", side_effect=verify_provenance))
         stack.enter_context(mock.patch.object(release, "archive_sha256", return_value=self.SOURCE))
+        stack.enter_context(mock.patch.object(release, "tag_commit", return_value="1" * 40))
         return stack
 
     def test_agreeing_evidence_adopts_the_published_formula(self) -> None:
@@ -517,9 +520,23 @@ class PublishedEngineEvidenceTests(unittest.TestCase):
     def test_provenance_is_bound_to_the_release_workflow_and_the_tag(self) -> None:
         from pathlib import Path
 
-        command = release.provenance_command("gh", Path("a.tar.gz"), "2.0.0")
+        command = release.provenance_command("gh", Path("a.tar.gz"), "2.0.0", "1" * 40)
+        self.assertEqual(command[command.index("--source-digest") + 1], "1" * 40)
         self.assertEqual(command[command.index("--signer-workflow") + 1], f"{release.REPO}/.github/workflows/release.yml")
         self.assertEqual(command[command.index("--source-ref") + 1], "refs/tags/v2.0.0")
+
+    # E06 review round 10: a manifest naming another commit than the tag's was adopted.
+    def test_a_manifest_built_from_another_commit_is_refused(self) -> None:
+        for source_sha in ("0" * 40, "not-a-commit"):
+            assets, _, _ = self.published(source_sha=source_sha)
+            with self.subTest(source_sha=source_sha), self.network(assets), self.assertRaises(release.ReleaseError):
+                release.adoptable_formula(self.VERSION)
+
+    def test_an_unresolvable_tag_is_refused(self) -> None:
+        assets, _, _ = self.published()
+        unresolvable = mock.patch.object(release, "tag_commit", side_effect=release.ReleaseError("cannot resolve tag"))
+        with self.network(assets), unresolvable, self.assertRaises(release.ReleaseError):
+            release.adoptable_formula(self.VERSION)
 
     def test_a_manifest_built_by_another_workflow_is_refused(self) -> None:
         assets, _, _ = self.published(workflow="experiment.yml")
@@ -528,7 +545,7 @@ class PublishedEngineEvidenceTests(unittest.TestCase):
 
     def test_verify_provenance_refuses_without_gh(self) -> None:
         with mock.patch.object(release.shutil, "which", return_value=None), self.assertRaisesRegex(release.ReleaseError, "gh"):
-            release.verify_provenance(b"x", "a.tar.gz", "2.0.0")
+            release.verify_provenance(b"x", "a.tar.gz", "2.0.0", "1" * 40)
 
 
 class CutoverAuthorizationTests(unittest.TestCase):
