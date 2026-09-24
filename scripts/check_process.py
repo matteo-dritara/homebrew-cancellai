@@ -148,7 +148,10 @@ REVIEW_ROUND_EXCEPTIONS = {
     "E06-S04, the canonical switch, whose gate stories closed in rounds 3-5; round 7 is its "
     "second, within the owner's two-review limit. Round 8 re-reviews E06-S04 and E33-S01 after "
     "both failed rounds 6 and 7: the owner, asked directly on 2026-09-24, authorized exactly this "
-    "one extra round because a CR4 story cannot close without an independent verdict",
+    "one extra round because a CR4 story cannot close without an independent verdict. Round 9 "
+    "reviews the same two stories after round 8 failed them and the owner chose to replace the "
+    "mechanisms rather than patch them (ccd56ff): the owner authorized it on 2026-09-24, so it "
+    "judges new code rather than repeating a pass over code already judged",
 }
 # Matches both an epic-scoped record (`E07-VERIFIER-REVIEW.md`) and a story-scoped one
 # (`E07-S07-VERIFIER-REVIEW.md`), counting both against the *epic's* ceiling (captured
