@@ -266,3 +266,32 @@ The proposed 2.0.0 Homebrew switch would install the Rust engine as `cancellai`,
 The v1.21.1 tag still archives `cancellai.py`; the proposed engine formula keeps it as `cancellai-legacy` through 2.1.0. `docs/RELEASING.md` documents signed containment, legacy invocation and formula revert. The reviewer's local `gh` lacks authentication, so the real release's provenance step could not be rerun here; public release CI and independently checked archive bytes are recorded in the round record. There is no `CUTOVER_AUTHORIZATION.md`, and `cutover_authorization_problems('2.0.0')` refuses. Owner acceptance of a migration Safety Verdict: PENDING.
 
 FAIL
+
+## Round 16 — 2026-09-25
+
+Verifier: Codex
+Brief-Checksum: 41346037461d07abb0cb2d459581a90b1a2015696b662e239eacd4529e6f0dbb
+Review target: `75ce008..badd59e29da05e35d05bc228c8ed870201e14e5d`
+Risk: CR4
+
+### Safety surface and invariants
+
+The proposed 2.0.0 Homebrew switch makes the Rust engine the command that can permanently delete provider artifacts. C-16 and SI-019 require an independently checked mutation boundary and owner-visible Safety Verdict before that authority is adopted. This round judges E06-S04's committed finite checklist. The reviewed diff adds 2.0.0 CI candidate staging; it does not alter Rust mutation code.
+
+| Obligation | Independent evidence | Result |
+| --- | --- | --- |
+| SI-019, one mutation boundary | `check_mutation_boundary.py check` passed over 121 Rust source files, confining the primitive and capability. Host Rust format, Clippy, check, tests and `cargo deny` passed; the exact reviewed commit's Rust workflow passed on macOS, Linux and Windows. | PASS |
+| C1-C2, prerequisites and real release rehearsal | Dependencies are `done`; E06-S14/S15 have independent passing verdicts. Published v1.21.1 release run `36069385676` completed 11 jobs. The real `verify-release` success is recorded in `RELEASE-v1.21.1.md`; round 15 independently checked the archive hashes and formula bytes. This sandbox's unauthenticated `gh` cannot rerun its provenance verification. | PASS_WITH_RESIDUALS |
+| C3, exact 2.0.0 formula installation | Exact HEAD's `tests` run `36104490949` passed Homebrew job `107973881655`, including the cutover install/verify/`brew test` step. An isolated temporary clone staged 2.0.0 in Python and Cargo, archived 2.0.0 Python source and rendered a 2.0.0 formula installing Rust as `cancellai` and Python as `cancellai-legacy`. The round-15 1.21.1 mismatch is repaired. | PASS |
+| C4-C7, compatibility and rollback | Exact HEAD's `rust` run `36104490991` passed macOS/Linux parity and Windows stable-channel CLI tests; local 14-fixture differential parity passed in both root scenarios. Formula probes retained legacy at 2.0.0 and 2.1.0; the tag contains Python source. Unreleased notes cover the checked CLI inventory; `docs/RELEASING.md` names signed containment, legacy invocation and formula revert. | PASS |
+| C8 and AC1, owner gate | `cutover_authorization_problems('2.0.0')` refuses because `CUTOVER_AUTHORIZATION.md` is absent. E06-S15's independent PASS established that `finalize --adopt-cutover` checks version, verdict hash and final passing round before writing the live formula. This passing review is the input for the owner's later decision; it is not that decision. | PASS for refusal; acceptance pending |
+
+### Adversarial cases and compatibility
+
+The round-15 false positive was a green Homebrew job installing a 1.21.1 engine formula. On exact HEAD, the job stages and commits the 2.0.0 candidate before building either archive; its successful installed-version checks and `brew test` cover the specified version. A separate temporary-clone probe confirmed the staged source and formula names without touching the live checkout. Windows partial-scan coverage uses four locked E21-S02 fixture shapes under both root origins in the stable-channel job, rather than treating a Unix permission test as Windows evidence. Full commands, run IDs and limits are in `project/evidence/E06-VERIFIER-REVIEW-ROUND16.md`.
+
+### Residual risks, rollback and owner decision
+
+Authenticated `verify-release` could not be rerun in this sandbox; the real recorded pass, public release workflow and prior independently checked archive bytes are the evidence for C2. Linux arm64 formula coverage and the first real 2.0.0 adoption remain transition risks already recorded in E06-S04's evidence. The signed containment notice, `cancellai-legacy` through 2.1.0, and formula revert are the documented rollback levers. Owner acceptance: PENDING. AC1 requires the owner to create `CUTOVER_AUTHORIZATION.md` naming version 2.0.0 and this Safety Verdict's SHA-256 before E06-S04 becomes `done` or any cutover is adopted.
+
+PASS_WITH_RESIDUALS

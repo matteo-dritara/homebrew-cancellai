@@ -11,7 +11,7 @@ Epics: **36** | Stories: **191**
 - `cancelled`: 1
 - `done`: 187
 - `planned`: 2
-- `ready_for_review`: 1
+- `verification`: 1
 
 ## Change risk distribution
 
@@ -27,4 +27,4 @@ Epics: **36** | Stories: **191**
 
 ## Awaiting independent review
 
-- **E06-S04** - Canonical engine switch (CR4)
+- none

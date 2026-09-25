@@ -38,6 +38,7 @@ distinguished by the next round, which is why the ceiling matters.
 | E06 | 13 | independent | 1 | 0 | 0 | 0% |
 | E06 | 14 | independent | 1 | 1 | 1 | 100% |
 | E06 | 15 | independent | 2 | 1 | 1 | 50% |
+| E06 | 16 | independent | 1 | 0 | 0 | 0% |
 | E07 | 1 | independent | - | - | - | **not machine-readable** |
 | E08 | 1 | independent | 4 | 1 | 1 | 25% |
 | E09 | 1 | **self** | 4 | 0 | 0 | 0% |
@@ -225,7 +226,7 @@ no reviewer is shown as `unnamed`, not credited to anyone.
 
 | Reviewer | Rounds | Stories judged | Found |
 | --- | --- | --- | --- |
-| Codex | 47 | 110 | 71 |
+| Codex | 48 | 111 | 71 |
 | unnamed | 29 | 118 | 53 |
 
 ## Advisory pre-reviews (never rounds, never verdicts)
