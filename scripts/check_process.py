@@ -164,7 +164,9 @@ REVIEW_ROUND_EXCEPTIONS = {
     "and 14 are the owner's 2026-09-24 authorization to confirm round 12's two documentation "
     "repairs on E06-S14 and then, only if it passes, to judge E06-S04 and write its migration "
     "Safety Verdict. Round 15 is the single round the owner chose on 2026-09-25 after round 14: "
-    "E06-S16's rehearsal release and E06-S04 judged against its finite eight-item checklist",
+    "E06-S16's rehearsal release and E06-S04 judged against its finite eight-item checklist. Round 16 "
+    "re-judges E06-S04's checklist after round 15 failed its C3 alone (the 2.0.0 candidate install, "
+    "repaired and proven in CI); the owner authorized it on 2026-09-25",
 }
 # Matches both an epic-scoped record (`E07-VERIFIER-REVIEW.md`) and a story-scoped one
 # (`E07-S07-VERIFIER-REVIEW.md`), counting both against the *epic's* ceiling (captured
