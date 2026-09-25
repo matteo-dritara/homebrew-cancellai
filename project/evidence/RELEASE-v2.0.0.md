@@ -6,7 +6,7 @@
 - Commit: recorded by the release workflow at the tag
 - Channel: stable
 - Date: 2026-09-25
-- Published: pending
+- Published: yes
 
 ## Included work
 
@@ -93,3 +93,23 @@ Carried from the epic's closure packet. See `project/evidence/` for the story-le
 Point the Homebrew formula back at the previous tag and its checksum; the tool keeps no
 persistent state, so there is nothing to migrate back. Published tags are immutable history
 and are never deleted.
+
+## Cutover verification (E06-S04, E06-S14, E06-S15)
+
+Release workflow run `36110160437` on tag `v2.0.0` (commit `cb61e2a`): all eleven jobs succeeded.
+The owner's authorization (`project/evidence/E06-S04/CUTOVER_AUTHORIZATION.md`, commit `ed0c47c`)
+bound the cutover to version 2.0.0 and to the migration Safety Verdict's SHA-256.
+
+`python3 scripts/release.py verify-release --version 2.0.0`, on the published assets:
+
+```text
+verified release-manifest.json: exactly what release.yml writes for v2.0.0
+verified archives: 4 downloaded, hashed and provenance-verified, one run, the tag's successful release run
+verified cancellai.rb: byte-identical to the engine formula rendered from them
+```
+
+`finalize --version 2.0.0 --adopt-cutover` then adopted the engine formula: `Formula/cancellai.rb`
+is byte-identical to the published `cancellai.rb` (`cmp`), `release.py check` passes, and
+`release.py verify-formula` reports the live formula exactly what `release.py` renders with the
+digests the release published. From this commit the tap installs the Rust engine as `cancellai`
+and the frozen Python reference as `cancellai-legacy`.
