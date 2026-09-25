@@ -9,9 +9,8 @@ Epics: **36** | Stories: **191**
 ## Story status
 
 - `cancelled`: 1
-- `done`: 187
+- `done`: 188
 - `planned`: 2
-- `verification`: 1
 
 ## Change risk distribution
 

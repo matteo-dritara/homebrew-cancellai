@@ -11,7 +11,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-cancellai-model = { path = "../cancellai-model", version = "1.21.1" }
+cancellai-model = { path = "../cancellai-model", version = "2.0.0" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 unicode-normalization = { workspace = true }

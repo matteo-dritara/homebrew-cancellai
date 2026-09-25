@@ -140,4 +140,7 @@ already runs there. First native run: `rust` workflow run 36008396337 on `57b1a1
 
 ## Verifier verdict
 
-pending
+PASS_WITH_RESIDUALS - independent round 16 (Codex, `project/evidence/E06-VERIFIER-REVIEW-ROUND16.md`),
+on the eight-item checklist. The owner accepted that verdict on 2026-09-25 in
+`project/evidence/E06-S04/CUTOVER_AUTHORIZATION.md` (commit `ed0c47c`), bound to the verdict's
+SHA-256 `2274d40b...`; `release.py cutover_authorization_problems('2.0.0')` reports none.

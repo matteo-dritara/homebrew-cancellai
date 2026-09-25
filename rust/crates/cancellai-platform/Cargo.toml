@@ -11,8 +11,8 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-cancellai-model = { path = "../cancellai-model", version = "1.21.1" }
-cancellai-sealedfs = { path = "../cancellai-sealedfs", version = "1.21.1" }
+cancellai-model = { path = "../cancellai-model", version = "2.0.0" }
+cancellai-sealedfs = { path = "../cancellai-sealedfs", version = "2.0.0" }
 serde = { workspace = true }
 sha2 = { version = "0.11.0", default-features = false }
 

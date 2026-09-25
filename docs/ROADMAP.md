@@ -39,7 +39,7 @@ Build and prove the provider-neutral Rust engine, formal safety kernel, inventor
 - **E03 - Formal Safety Kernel** (`done`): Implement constitutional safety invariants as a dedicated, testable Rust authority boundary.
 - **E04 - Single-Pass Inventory Engine** (`done`): Build a fast, evidence-rich inventory that scans once and never equates unknown with safe.
 - **E05 - Provider API and Reference Adapters** (`done`): Implement capability-based provider integration and achieve Claude/Codex semantic parity.
-- **E06 - Rust CLI Parity and Cutover** (`in_progress`): Make Rust the canonical engine only after observable parity, migration, and rollback evidence.
+- **E06 - Rust CLI Parity and Cutover** (`done`): Make Rust the canonical engine only after observable parity, migration, and rollback evidence.
 - **E21 - Target Engine Trust Remediation** (`done`): Repair the target engine's scan-completeness authority so that unknown state cannot become destructive permission, and make the differential gate capable of proving it.
 - **E22 - Engineering System Hardening** (`done`): Close the gaps between what the engineering system claims to enforce and what it actually enforces, so a green gate means what the repository says it means.
 - **E23 - Release gate history availability** (`done`): Make tagged-release verification capable of evaluating history-backed provenance gates from the complete tagged repository history.

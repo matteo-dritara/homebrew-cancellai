@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-09-25
+
 ### Changed
 
 - **`cancellai` is now the Rust engine** (E06-S04, the canonical switch). The Homebrew formula

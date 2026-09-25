@@ -168,7 +168,7 @@ checksum = "95832e849adfb21180ccb6826a99da14e5d266ae5c2e668e1602cf234f153797"
 
 [[package]]
 name = "cancellai-cli"
-version = "1.21.1"
+version = "2.0.0"
 dependencies = [
  "cancellai-desktop",
  "cancellai-desktop-api",
@@ -192,7 +192,7 @@ dependencies = [
 
 [[package]]
 name = "cancellai-desktop"
-version = "1.21.1"
+version = "2.0.0"
 dependencies = [
  "cancellai-desktop-api",
  "serde_json",
@@ -200,7 +200,7 @@ dependencies = [
 
 [[package]]
 name = "cancellai-desktop-api"
-version = "1.21.1"
+version = "2.0.0"
 dependencies = [
  "getrandom 0.4.3",
  "serde",
@@ -209,7 +209,7 @@ dependencies = [
 
 [[package]]
 name = "cancellai-guardian"
-version = "1.21.1"
+version = "2.0.0"
 dependencies = [
  "cancellai-model",
  "cancellai-policy",
@@ -219,7 +219,7 @@ dependencies = [
 
 [[package]]
 name = "cancellai-inventory"
-version = "1.21.1"
+version = "2.0.0"
 dependencies = [
  "cancellai-model",
  "cancellai-platform",
@@ -229,7 +229,7 @@ dependencies = [
 
 [[package]]
 name = "cancellai-model"
-version = "1.21.1"
+version = "2.0.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -237,7 +237,7 @@ dependencies = [
 
 [[package]]
 name = "cancellai-platform"
-version = "1.21.1"
+version = "2.0.0"
 dependencies = [
  "cancellai-model",
  "cancellai-sealedfs",
@@ -248,7 +248,7 @@ dependencies = [
 
 [[package]]
 name = "cancellai-policy"
-version = "1.21.1"
+version = "2.0.0"
 dependencies = [
  "cancellai-inventory",
  "cancellai-model",
@@ -263,7 +263,7 @@ dependencies = [
 
 [[package]]
 name = "cancellai-provider-api"
-version = "1.21.1"
+version = "2.0.0"
 dependencies = [
  "cancellai-model",
  "serde",
@@ -273,7 +273,7 @@ dependencies = [
 
 [[package]]
 name = "cancellai-provider-claude"
-version = "1.21.1"
+version = "2.0.0"
 dependencies = [
  "cancellai-inventory",
  "cancellai-model",
@@ -282,7 +282,7 @@ dependencies = [
 
 [[package]]
 name = "cancellai-provider-codex"
-version = "1.21.1"
+version = "2.0.0"
 dependencies = [
  "cancellai-inventory",
  "cancellai-model",
@@ -292,7 +292,7 @@ dependencies = [
 
 [[package]]
 name = "cancellai-safety"
-version = "1.21.1"
+version = "2.0.0"
 dependencies = [
  "cancellai-model",
  "cancellai-platform",
@@ -304,7 +304,7 @@ dependencies = [
 
 [[package]]
 name = "cancellai-sealedfs"
-version = "1.21.1"
+version = "2.0.0"
 dependencies = [
  "libc",
  "windows-sys",
@@ -312,7 +312,7 @@ dependencies = [
 
 [[package]]
 name = "cancellai-store"
-version = "1.21.1"
+version = "2.0.0"
 dependencies = [
  "cancellai-model",
  "rusqlite",
@@ -323,7 +323,7 @@ dependencies = [
 
 [[package]]
 name = "cancellai-tui"
-version = "1.21.1"
+version = "2.0.0"
 dependencies = [
  "cancellai-model",
  "cancellai-policy",

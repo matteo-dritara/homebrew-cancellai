@@ -11,8 +11,8 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-cancellai-model = { path = "../cancellai-model", version = "1.21.1" }
-cancellai-platform = { path = "../cancellai-platform", version = "1.21.1" }
+cancellai-model = { path = "../cancellai-model", version = "2.0.0" }
+cancellai-platform = { path = "../cancellai-platform", version = "2.0.0" }
 serde = { workspace = true }
 
 [dev-dependencies]

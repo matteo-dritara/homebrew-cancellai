@@ -3,7 +3,7 @@
 `project/cli_inventory.json` lists every long flag of the four commands the frozen Python CLI and
 the Rust engine share. This checks that the list is complete against the Python parser, that every
 flag it calls "same" really is in the Rust engine's committed help, and that every flag it calls
-removed or changed is disclosed in the Unreleased release notes.
+removed or changed is disclosed in the release notes of the cutover (Unreleased until 2.0.0 is cut).
 """
 
 from __future__ import annotations
@@ -34,8 +34,11 @@ def python_flags() -> dict[str, set[str]]:
 
 
 def unreleased_notes() -> str:
+    """The notes of the release that carries the cutover: Unreleased until 2.0.0 is cut, then the
+    2.0.0 section - the disclosure has to survive the cut, not only precede it."""
     text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    start = text.index("## [Unreleased]")
+    heading = "## [2.0.0]" if "## [2.0.0]" in text else "## [Unreleased]"
+    start = text.index(heading)
     end = text.index("\n## [", start + 1)
     return text[start:end]
 
