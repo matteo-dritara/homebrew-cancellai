@@ -976,7 +976,7 @@ Make Rust the canonical engine only after observable parity, migration, and roll
 
 ### E06-S04 - Canonical engine switch
 
-**Status:** `in_progress` | **Change Risk:** `CR4` | **Dependencies:** E06-S03, E21, E22-S01, E06-S06, E06-S07, E06-S08, E06-S09, E06-S10, E06-S11, E06-S12, E06-S13, E06-S14, E06-S15 | **Safety obligations:** SI-019
+**Status:** `ready_for_review` | **Change Risk:** `CR4` | **Dependencies:** E06-S03, E21, E22-S01, E06-S06, E06-S07, E06-S08, E06-S09, E06-S10, E06-S11, E06-S12, E06-S13, E06-S14, E06-S15 | **Safety obligations:** SI-019
 
 **Outcome.** Promote Rust to stable only after functional, safety, compatibility, and operability gates pass. ADR-0040 moved the release mechanics into E06-S14 and E06-S15. Owner decision 2026-09-25, after 14 rounds: this story is judged against a finite checklist - its verification list - on evidence that already exists, including a real rehearsal release (E06-S16). Re-judging the mechanisms of stories already closed by their own independent rounds is out of its scope; a defect found there is filed against that story. The owner's acceptance of the passing verdict follows the review (AC1).
 

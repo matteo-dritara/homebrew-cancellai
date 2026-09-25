@@ -301,7 +301,7 @@
     {
       "id": "E06-S04",
       "title": "Canonical engine switch",
-      "status": "in_progress",
+      "status": "ready_for_review",
       "outcome": "Promote Rust to stable only after functional, safety, compatibility, and operability gates pass. ADR-0040 moved the release mechanics into E06-S14 and E06-S15. Owner decision 2026-09-25, after 14 rounds: this story is judged against a finite checklist - its verification list - on evidence that already exists, including a real rehearsal release (E06-S16). Re-judging the mechanisms of stories already closed by their own independent rounds is out of its scope; a defect found there is filed against that story. The owner's acceptance of the passing verdict follows the review (AC1).",
       "change_risk": "CR4",
       "dependencies": [
