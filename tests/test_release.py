@@ -7,6 +7,11 @@ from unittest import mock
 
 from scripts import release
 
+# A live formula from before the cutover. The finalize tests start from it rather than from the
+# repository's own formula, which carries the engine since 2.0.0 - they depended on the tree's
+# release state, and every one failed the day the cutover landed.
+PRE_CUTOVER_FORMULA = release.render_formula("1.21.1", "a" * 64, None)
+
 
 class ReleaseConsistencyTests(unittest.TestCase):
     def test_repository_release_state_is_consistent(self) -> None:
@@ -306,7 +311,7 @@ class EngineCutoverTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             formula = Path(tmp) / "cancellai.rb"
-            formula.write_text(release.read(release.FORMULA), encoding="utf-8")
+            formula.write_text(PRE_CUTOVER_FORMULA, encoding="utf-8")
             evidence = Path(tmp) / "RELEASE.md"
             evidence.write_text("x", encoding="utf-8")
             versions = release.Versions(source=version, packaging=version, formula=version, engine=version)
@@ -328,7 +333,7 @@ class EngineCutoverTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             formula = Path(tmp) / "cancellai.rb"
-            formula.write_text(release.read(release.FORMULA), encoding="utf-8")
+            formula.write_text(PRE_CUTOVER_FORMULA, encoding="utf-8")
             before = formula.read_text(encoding="utf-8")
             evidence = Path(tmp) / "RELEASE.md"
             evidence.write_text("x", encoding="utf-8")
@@ -349,7 +354,7 @@ class EngineCutoverTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             formula = Path(tmp) / "cancellai.rb"
-            formula.write_text(release.read(release.FORMULA), encoding="utf-8")
+            formula.write_text(PRE_CUTOVER_FORMULA, encoding="utf-8")
             before = formula.read_text(encoding="utf-8")
             evidence = Path(tmp) / "RELEASE.md"
             evidence.write_text("x", encoding="utf-8")
@@ -386,13 +391,18 @@ class EngineCutoverTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             formula = Path(tmp) / "cancellai.rb"
-            formula.write_text(release.read(release.FORMULA), encoding="utf-8")
+            formula.write_text(PRE_CUTOVER_FORMULA, encoding="utf-8")
             before = formula.read_text(encoding="utf-8")
-            version = release.current_versions().source
+            version = "1.21.2"
+            evidence = Path(tmp) / "RELEASE.md"
+            evidence.write_text("x", encoding="utf-8")
+            versions = release.Versions(source=version, packaging=version, formula="1.21.1", engine=version)
             with (
                 mock.patch.object(release, "FORMULA", formula),
+                mock.patch.object(release, "current_versions", return_value=versions),
+                mock.patch.object(release, "release_evidence_path", return_value=evidence),
                 mock.patch.object(release, "check", return_value=["drift"]),
-                self.assertRaises(release.ReleaseError),
+                self.assertRaisesRegex(release.ReleaseError, "restored"),
             ):
                 release.finalize(version, sha256="f" * 64)
             self.assertEqual(formula.read_text(encoding="utf-8"), before)

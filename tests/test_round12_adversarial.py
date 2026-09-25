@@ -57,7 +57,10 @@ class FormulaAdoptionBoundaryTest(unittest.TestCase):
 
     def finalize_with(self, directory: Path, assets: dict[str, bytes], *, provenance_fails: bool = False) -> bytes:
         formula = directory / "cancellai.rb"
-        original = release.FORMULA.read_bytes()
+        # (Executor, after the 2.0.0 cutover: the live formula now carries the engine, so the
+        # starting point is a pre-cutover Python formula built here, not the repository's own.
+        # Only this line changed; the counterexamples are the reviewer's.)
+        original = release.render_formula("1.21.1", "a" * 64, None).encode()
         formula.write_bytes(original)
         evidence = directory / "release-evidence.md"
         evidence.write_text("synthetic release", encoding="utf-8")
