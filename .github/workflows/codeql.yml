@@ -23,7 +23,7 @@ jobs:
       - uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           languages: python
-      - uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
 
   # E22-S02: the target-engine workspace - the authority kernel, the sealedfs FFI boundary,
   # and the provider adapters - is in static-analysis scope alongside the Python reference,
@@ -44,4 +44,4 @@ jobs:
           languages: rust
       - run: cargo build --workspace
         working-directory: rust
-      - uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
