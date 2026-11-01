@@ -119,12 +119,12 @@ jobs:
           CANCELLAI_BENCH_SIZES: ${{ github.event.inputs.sizes || '10000,100000' }}
           CANCELLAI_BENCH_OUTPUT: ${{ github.workspace }}/rust-inventory-bench.json
         run: cargo test --release -p cancellai-inventory --test performance_scheduled -- --ignored --nocapture
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: rust-shipped-path-bench-trend
           path: rust-shipped-path-bench.json
           retention-days: 90
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: rust-inventory-bench-trend
           path: rust-inventory-bench.json
